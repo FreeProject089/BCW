@@ -31,6 +31,7 @@ import uploadRoutes from './routes/uploads.mjs';
 import platformAssetRoutes from './routes/platform-assets.mjs';
 import hostingRoutes from './routes/hosting.mjs';
 import marketplaceRoutes from './routes/marketplace.mjs';
+import paymentsAdminRoutes from './routes/payments-admin.mjs';
 import stripeWebhook from './routes/stripe-webhook.mjs';
 import analyticsRoutes from './routes/analytics.mjs';
 import projectRoutes from './routes/projects.mjs';
@@ -58,6 +59,7 @@ import announcementRoutes from './routes/announcements.mjs';
 import roleRoutes from './routes/roles.mjs';
 import myoRoutes from './routes/myo.mjs';
 import accessPolicyRoutes from './routes/access-policy.mjs';
+import studioRoutes from './routes/studio.mjs';
 import siteBanRoutes from './routes/site-bans.mjs';
 import { installSiteBans } from './lib/siteban.mjs';
 import serverControlRoutes from './routes/server-control.mjs';
@@ -76,6 +78,9 @@ import economyAdminRoutes from './routes/economy-admin.mjs';
 import teamRoutes from './routes/teams.mjs';
 import threadRoutes from './routes/threads.mjs';
 import botEmojiRoutes from './routes/bot-emoji.mjs';
+import mediaFlagRoutes from './routes/media-flags.mjs';
+import adminSearchRoutes from './routes/admin-search.mjs';
+import fileLinkRoutes from './routes/files.mjs';
 import jwt from 'jsonwebtoken';
 import connectionRoutes from './routes/connections.mjs';
 import { recordRequest } from './lib/monitor.mjs';
@@ -367,6 +372,7 @@ await app.register(uploadRoutes);
 await app.register(platformAssetRoutes);
 await app.register(hostingRoutes);
 await app.register(marketplaceRoutes);
+await app.register(paymentsAdminRoutes);
 await app.register(analyticsRoutes);
 await app.register(projectRoutes);
 await app.register(blogRoutes);
@@ -393,6 +399,7 @@ await app.register(announcementRoutes);
 await app.register(roleRoutes); // custom roles + per-project edit grants
 await app.register(myoRoutes); // "Make Your Own" commission service
 await app.register(accessPolicyRoutes);
+await app.register(studioRoutes); // the studio's saved components, per user
 await app.register(siteBanRoutes);
 await app.register(serverControlRoutes);
 await app.register(telemetryRoutes);
@@ -407,6 +414,9 @@ await app.register(economyAdminRoutes); // economy statistics + seasons (manage_
 await app.register(teamRoutes); // teams that manage repos / catalogues / pools together
 await app.register(threadRoutes); // contact threads: reaching the user or team behind a repo, a catalogue, a profile
 await app.register(botEmojiRoutes); // the bot fetches its icon set and uploads it as application emojis
+await app.register(mediaFlagRoutes); // perceptual-hash flags: pictures that look like another account's
+await app.register(adminSearchRoutes); // the dashboard's one search box over every table it holds
+await app.register(fileLinkRoutes); // /f/<token>: files behind links that stop working (MYO deliverables, mail attachments)
 await app.register(rightsRoutes); // rights notices (copyright & co.), the queue, the protected-works registry
 await app.register(connectionRoutes); // social profile connections (youtube/twitch/github/steam)
 await app.register(statusRoutes); // public status page: service uptime, incidents, alert sign-up
@@ -450,6 +460,19 @@ ensureBucket().catch((e) => app.log.warn({ e: String(e) }, 'ensureBucket failed 
 
 // Periodic sweep: hard-delete items/repos whose 72h grace window has elapsed.
 startSweeper(app);
+// Finish any checkout a crash left behind: a buyer may have paid while the API was down and
+// the webhook never ran. Non-blocking, after the DB answers, and only rows older than a
+// minute — a session opened seconds ago is still the live webhook's to finish. The sweeper
+// repeats this every ten minutes with the ordinary 15-minute threshold.
+(async () => {
+  const p = await db();
+  await p.$queryRaw`SELECT 1`;
+  const [{ reconcilePendingCheckouts }, { stripe }] = await Promise.all([import('./lib/stripe-reconcile.mjs'), import('./routes/hosting.mjs')]);
+  const sk = await stripe();
+  if (!sk) return;
+  const r = await reconcilePendingCheckouts(p, { stripe: sk, log: app.log, olderThanMin: 1 });
+  if (r.scanned) app.log.info(r, '[boot] pending checkouts reconciled');
+})().catch((e) => app.log.warn({ e: String(e) }, 'boot payment reconciliation failed (the sweeper retries)'));
 // Load the customer-domain routing table before the first request rather than on the first
 // sweeper tick: rewriteUrl cannot await, so an empty map means every customer domain 404s until
 // something happens to fill it — which would look exactly like the feature not working.

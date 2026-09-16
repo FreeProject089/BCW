@@ -18,6 +18,7 @@ import { Library, GraduationCap, ListChecks,
   Home as HomeIcon, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar,
 } from 'lucide-react';
 import { api, uploadPayload, uploadImage, uploadAsset } from '../lib/api.js';
+import { rankLeaves } from '../lib/admin-search.js';
 import { useAuth } from './auth.jsx';
 import { useI18n } from '../i18n.jsx';
 import { useTheme } from '../ui/theme.jsx';
@@ -390,7 +391,7 @@ export function JsonEditor({ value, onChange, placeholder, minH = 170 }) {
 // `tabs`: [{ id, label, icon, badge? }] — or a `{ heading }` entry (no id) to group
 // tabs under a small non-clickable section label (e.g. long admin sidebars).
 // Persists the active tab in the URL (?s=).
-export function SideDash({ title, subtitle, icon, tabs, headerActions, children }) {
+export function SideDash({ title, subtitle, icon, tabs, headerActions, children, searchKeywords = null, remoteSearch = null }) {
   const [sp, setSp] = useSearchParams();
   const { t: tr } = useI18n();
   const [navOpen, setNavOpen] = useState(false);
@@ -490,14 +491,23 @@ export function SideDash({ title, subtitle, icon, tabs, headerActions, children 
       })()}
     </button>
   );
-  // Search over every leaf, by label AND by the parent's label, so "server" finds the
-  // sub-tabs under Server without them having to repeat the word. Deliberately not fuzzy:
-  // an admin types the beginning of a word they know exists, and a fuzzy match that surfaces
-  // "Storage" for "goals" is worse than no match.
+  // Search over every leaf: the label, the parent's label ("server" finds the sub-tabs under
+  // Server), the guide's text for that screen when the caller hands one in (`searchKeywords`),
+  // FR/EN synonyms, accents ignored, a one-letter typo forgiven — ranked, best first, so Enter
+  // opens the right one (lib/admin-search.js). Below the screens, `remoteSearch(q)` — when
+  // given — asks the server for the OBJECTS that match (accounts, repos, conversations…),
+  // debounced, so the same box finds a person and the page to manage them.
   const q = query.trim().toLowerCase();
-  const hits = q
-    ? allLeaves.filter((lf) => `${lf.label} ${lf.parent.label}`.toLowerCase().includes(q)).slice(0, 8)
-    : [];
+  const hits = q ? rankLeaves(allLeaves, query, (id) => (searchKeywords ? searchKeywords[id] || '' : '')) : [];
+  const [remote, setRemote] = useState(null);
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (!remoteSearch || q.length < 2) { setRemote(null); return undefined; }
+    let alive = true;
+    const h = setTimeout(() => { Promise.resolve(remoteSearch(query.trim())).then((r) => { if (alive) setRemote(r?.groups || []); }).catch(() => { if (alive) setRemote([]); }); }, 220);
+    return () => { alive = false; clearTimeout(h); };
+  }, [q, query, remoteSearch]);
+  const openHref = (href) => { setQuery(''); setNavOpen(false); if (/^https?:/.test(href)) window.open(href, '_blank', 'noopener'); else navigate(href); };
 
   // One search box, rendered in the desktop sidebar AND in the phone sheet. Defined once
   // because a shortcut that exists on the desktop and not on the phone is a shortcut people
@@ -519,6 +529,23 @@ export function SideDash({ title, subtitle, icon, tabs, headerActions, children 
                           {lf.parent.label !== lf.label && <span className="text-[10px] text-[var(--faint)] truncate ms-auto">{lf.parent.label}</span>}
                         </button>
                       )) : <div className="px-2 py-1.5 text-[12px] text-[var(--faint)]">{tr('sd.nohit', 'Nothing by that name.')}</div>}
+                      {remoteSearch && q.length >= 2 && (
+                        <div className="mt-1 pt-1 border-t border-[var(--line)]">
+                          {remote === null ? <div className="px-2 py-1 text-[11px] text-[var(--faint)]">{tr('sd.remote.loading', 'Searching the data…')}</div>
+                            : !remote.length ? <div className="px-2 py-1 text-[11px] text-[var(--faint)]">{tr('sd.remote.none', 'No account, repo, conversation or content by that name.')}</div>
+                            : remote.map((g) => (
+                              <div key={g.kind}>
+                                <div className="px-2 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)]">{tr(`sd.remote.${g.kind}`, g.label)}</div>
+                                {g.items.map((it) => (
+                                  <button key={it.id} onClick={() => openHref(it.href)} className="w-full text-start px-2 py-1 rounded-lg text-[12px] hover:bg-[var(--surface-2)]">
+                                    <div className="truncate">{it.title}</div>
+                                    {it.sub && <div className="text-[10px] text-[var(--faint)] truncate">{it.sub}</div>}
+                                  </button>
+                                ))}
+                              </div>
+                            ))}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

@@ -434,7 +434,7 @@ function GettingStarted({ user, items, repos, onSubmit, onDismiss }) {
     { key: 'account', label: t('gs.account', 'Create your account'), done: true },
     { key: '2fa', label: t('gs.2fa', 'Secure it with 2FA'), done: !!user?.totpEnabled, to: '/profile?setup2fa=1' },
     { key: 'item', label: t('gs.item', 'Submit your first item'), done: (items?.length || 0) > 0, action: 'submit' },
-    { key: 'repo', label: t('gs.repo', 'Host your first Server-Repo'), done: (repos?.length || 0) > 0, to: '/hosting' },
+    { key: 'repo', label: t('gs.repo', 'Host your first Server-Repo'), done: (repos?.length || 0) > 0, to: '/hosting#plans' },
   ];
   const done = steps.filter((s) => s.done).length;
   const pct = Math.round((done / steps.length) * 100);
@@ -540,14 +540,44 @@ function PaymentTerminal({ ok }) {
   );
 }
 
-function PaymentResultModal({ result, onClose }) {
+function PaymentResultModal({ result, onClose, onDelivered }) {
   const { t } = useI18n();
+  const toast = useToast();
   const ok = result?.ok;
   const kind = result?.kind;
   const failed = result?.failed;             // true = payment failed (declined), vs plain cancel
   const [inv, setInv] = useState(null);       // most-recent Stripe invoice (for the real PDF)
   const [pay, setPay] = useState(null);       // fallback: local payment row (amount display)
   const [linking, setLinking] = useState(false);
+  // Marketplace: the return URL proves nothing. `?market=ok` only means Stripe sent the buyer
+  // back; the webhook is what delivers, and it can land a beat after the redirect — or, if the
+  // API was down, minutes later via the reconciler. So this polls the read-only status route
+  // until it reads `delivered`, and says "confirming" rather than "confirmed" until then.
+  // 'confirming' → 'delivered' | 'failed' | 'timeout' (still pending after ~45 s: nothing is
+  // lost, the purchase appears in "What you bought" once the webhook or reconciler finishes).
+  const sessionId = kind === 'market' && result?.sessionId ? String(result.sessionId) : null;
+  const [confirm, setConfirm] = useState(sessionId ? 'confirming' : null);
+  const [purchase, setPurchase] = useState(null);
+  const [reveal, setReveal] = useState(false);
+  useEffect(() => {
+    if (!sessionId) return undefined;
+    let tries = 0, cancelled = false;
+    const poll = async () => {
+      try {
+        const r = await api.get(`/marketplace/checkout/${encodeURIComponent(sessionId)}/status`);
+        if (cancelled) return;
+        if (r?.status === 'delivered') { setPurchase(r.purchase || null); setConfirm('delivered'); onDelivered?.(); return; }
+        if (r?.status === 'failed') { setConfirm('failed'); return; }
+      } catch { /* 404 = the ledger row can lag the redirect by a moment; keep polling */ }
+      if (cancelled) return;
+      if (tries++ < 30) setTimeout(poll, 1500); else setConfirm('timeout');
+    };
+    poll();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]);
+  const confirming = confirm === 'confirming';
+  const settled = !confirm || confirm === 'delivered';   // the invoice block only makes sense once the sale exists
   // The webhook + Stripe invoice can land a beat after the redirect — poll briefly so
   // "Download invoice" lights up once the real invoice exists.
   useEffect(() => {
@@ -585,19 +615,53 @@ function PaymentResultModal({ result, onClose }) {
   return (
     <Modal open onClose={onClose} title="" width="max-w-sm"
       footer={<>
-        {ok && <Button variant="ghost" disabled={!canDl || linking} onClick={downloadInvoice}>{linking ? <Spinner /> : <><Download size={15} /> {t('dash.pay.dl', 'Download invoice')}</>}</Button>}
-        <Button variant="primary" onClick={onClose}>{ok ? t('dash.pay.done', 'Done') : t('dash.pay.retry', 'Try again')}</Button>
+        {ok && settled && <Button variant="ghost" disabled={!canDl || linking} onClick={downloadInvoice}>{linking ? <Spinner /> : <><Download size={15} /> {t('dash.pay.dl', 'Download invoice')}</>}</Button>}
+        <Button variant="primary" onClick={onClose}>{confirm === 'failed' ? t('dash.pay.retry', 'Try again') : confirming || confirm === 'timeout' ? t('common.close', 'Close') : ok ? t('dash.pay.done', 'Done') : t('dash.pay.retry', 'Try again')}</Button>
       </>}>
       <div className="text-center pt-2 pb-1">
-        <PaymentTerminal ok={ok} />
-        <div className={`text-xl font-extrabold mt-3 ${failed ? 'text-error' : ''}`}>{ok ? t('dash.pay.ok.t', 'Payment confirmed') : failed ? t('dash.pay.fail.t', 'Payment failed') : t('dash.pay.cancel.t', 'Checkout cancelled')}</div>
-        <p className="text-sm text-[var(--muted)] mt-1.5 max-w-xs mx-auto">
-          {ok
+        <PaymentTerminal ok={ok && confirm !== 'failed'} />
+        <div className={`text-xl font-extrabold mt-3 ${failed || confirm === 'failed' ? 'text-error' : ''}`}>
+          {confirming ? <span className="inline-flex items-center gap-2"><Spinner /> {t('dash.pay.confirm.t', 'Confirming your payment')}</span>
+            : confirm === 'timeout' ? t('dash.pay.timeout.t', 'Still confirming')
+            : confirm === 'failed' ? t('dash.pay.fail.t', 'Payment failed')
+            : ok ? t('dash.pay.ok.t', 'Payment confirmed') : failed ? t('dash.pay.fail.t', 'Payment failed') : t('dash.pay.cancel.t', 'Checkout cancelled')}
+        </div>
+        <p className="text-sm text-[var(--muted)] mt-1.5 max-w-xs mx-auto" aria-live="polite">
+          {confirming ? t('dash.pay.confirm.m', 'Stripe is telling us the payment went through. This usually takes a few seconds — please keep this page open.')
+            : confirm === 'timeout' ? t('dash.pay.timeout.m', 'The confirmation is taking longer than usual. Nothing is lost: if the payment was taken, your purchase appears in “What you bought” within a few minutes, and you will get a notification. If it was not, no charge was made.')
+            : confirm === 'failed' ? t('dash.pay.expired.m', 'The checkout expired before it was paid — no charge was made. You can try again anytime.')
+            : confirm === 'delivered' ? t('dash.pay.delivered.m', 'Delivered. Here is what you bought — it also stays in “What you bought”, below.')
+            : ok
             ? (kind === 'market' ? t('dash.pay.market.m', 'Your purchase is in “What you bought”, below — with the key or content it came with.') : kind === 'feature' ? t('dash.pay.feature.m', 'Your repo is now featured on the public listing.') : t('dash.pay.hosting.m', "Your repo is being provisioned — it'll be online shortly."))
             : failed ? t('dash.pay.fail.m', 'The payment could not be completed — no charge was made. Check your card details and try again.')
             : t('dash.pay.cancel.m', 'No charge was made. You can try again anytime.')}
         </p>
-        {ok && (() => {
+        {confirm === 'delivered' && purchase && (() => {
+          const d = purchase.delivery && typeof purchase.delivery === 'object' ? purchase.delivery : {};
+          const secret = d.key || d.content || '';
+          return (
+            <div className="mt-4 rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/50 px-4 py-3 text-start text-sm max-w-xs mx-auto space-y-2">
+              <div className="font-medium truncate">{purchase.name || t('dash.pay.marketitem', 'Marketplace purchase')}</div>
+              {d.error
+                ? <div className="text-xs text-error flex items-start gap-1.5"><AlertTriangle size={13} className="shrink-0 mt-px" /> {t('mkme.failed', 'Paid, but delivery did not complete. Contact the project — your payment is on record.')}</div>
+                : secret ? (<>
+                  {/* Covered until asked for, like "What you bought": the buyer may not be alone in front of the screen. */}
+                  <div className="flex items-center gap-1.5">
+                    <Button size="sm" variant="ghost" onClick={() => setReveal((v) => !v)}>{reveal ? t('mkme.hide', 'Hide') : t('mkme.reveal', 'Reveal')}</Button>
+                    <Button size="sm" variant="ghost" onClick={() => { copyText(secret); toast.success(t('common.copied', 'Copied.')); }}>{t('common.copy', 'Copy')}</Button>
+                  </div>
+                  {reveal && <pre className="text-xs font-mono whitespace-pre-wrap break-all rounded-md bg-[var(--bg-solid)] border border-[var(--line)] px-2.5 py-2">{secret}</pre>}
+                </>)
+                : d.role ? <div className="text-xs text-[var(--muted)]">{t('mkme.role', 'Delivered as a Discord role.')}</div>
+                : d.url ? <a href={d.url} target="_blank" rel="noopener noreferrer" className="text-xs text-[var(--primary-2)] hover:underline">{t('dash.pay.openlink', 'Open the link you bought')}</a>
+                : d.fileKey ? <div className="text-xs text-[var(--muted)]">{t('dash.pay.file', 'Your file is ready — download it from “What you bought”, below.')}</div>
+                : <div className="text-xs text-[var(--faint)]">{t('mkme.nothing', 'Nothing to reveal for this one.')}</div>}
+              {purchase.redeemUrl && <a href={purchase.redeemUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-[var(--primary-2)] hover:underline block">{t('dash.pay.redeem', 'Where to use it')}</a>}
+              {purchase.redeemNote && <div className="text-[11px] text-[var(--faint)]">{purchase.redeemNote}</div>}
+            </div>
+          );
+        })()}
+        {ok && settled && (() => {
           const lines = inv?.lines || [];
           const money2 = (c) => { const cur = (inv?.currency || pay?.currency || 'usd').toUpperCase(); const sym = cur === 'USD' ? '$' : cur === 'EUR' ? '€' : cur === 'GBP' ? '£' : ''; return sym ? `${sym}${(c / 100).toFixed(2)}` : `${(c / 100).toFixed(2)} ${cur}`; };
           const single = pay?.description || (kind === 'market' ? t('dash.pay.marketitem', 'Marketplace purchase') : kind === 'feature' ? t('dash.pay.boost', 'Repo boost') : t('dash.pay.hostingitem', 'Repo hosting'));
@@ -651,10 +715,10 @@ function PaymentResultModal({ result, onClose }) {
 // worse than that — delivery happens in the Stripe webhook, so the buyer never saw it at all.
 //
 // Renders nothing when there are no purchases, so it costs an ordinary dashboard nothing.
-function MyPurchases() {
+function MyPurchases({ refreshKey = 0 }) {
   const { t } = useI18n();
   const toast = useToast();
-  const { data, loading } = useAsync(() => api.get('/marketplace/my-purchases').catch(() => null), []);
+  const { data, loading } = useAsync(() => api.get('/marketplace/my-purchases').catch(() => null), [refreshKey]);
   const [shown, setShown] = useState({});   // purchase id -> revealed?
   const rows = data?.purchases || [];
   if (loading || !rows.length) return null;
@@ -725,7 +789,8 @@ export function Dashboard() {
   // Surfaces a prominent, dismissible confirmation/cancel banner (not just a toast).
   const [sp, setSp] = useSearchParams();
   const { active: introActive } = useIntro(); // hold the payment modal until the site intro finishes
-  const [payReturn, setPayReturn] = useState(null); // { ok, kind, failed } | null
+  const [payReturn, setPayReturn] = useState(null); // { ok, kind, failed, sessionId } | null
+  const [purchasesKey, setPurchasesKey] = useState(0); // bumped when the modal sees a delivery, so "What you bought" refetches
   useEffect(() => {
     const hosting = sp.get('hosting'); const feature = sp.get('feature'); const oauth = sp.get('oauth');
     // `market` was missing here, and the marketplace checkout sends the buyer back to
@@ -740,11 +805,13 @@ export function Dashboard() {
     if (feature === 'ok') { setPayReturn({ ok: true, kind: 'feature' }); repos.reload(); }
     else if (feature === 'fail' || feature === 'failed') { setPayReturn({ ok: false, failed: true, kind: 'feature' }); }
     else if (feature === 'cancel') { setPayReturn({ ok: false, kind: 'feature' }); }
-    if (market === 'ok') setPayReturn({ ok: true, kind: 'market' });
+    // The session id rides along so the modal can ask whether the webhook delivered — it is
+    // never a grant (see GET /marketplace/checkout/:sessionId/status: read-only).
+    if (market === 'ok') setPayReturn({ ok: true, kind: 'market', sessionId: sp.get('session_id') || null });
     else if (market === 'fail' || market === 'failed') setPayReturn({ ok: false, failed: true, kind: 'market' });
     else if (market === 'cancel') setPayReturn({ ok: false, kind: 'market' });
     if (oauth === 'success') toast.success(t('auth.welcome.toast', 'Welcome!'));
-    setSp((p) => { const n = new URLSearchParams(p); n.delete('hosting'); n.delete('feature'); n.delete('oauth'); n.delete('market'); return n; }, { replace: true });
+    setSp((p) => { const n = new URLSearchParams(p); n.delete('hosting'); n.delete('feature'); n.delete('oauth'); n.delete('market'); n.delete('session_id'); return n; }, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -786,7 +853,7 @@ export function Dashboard() {
   // Quick actions — no "Write a post" here (that lives in the Blog for staff).
   const actions = [
     { icon: Upload, label: t('sub.title', 'Submit content'), to: '/submit' },
-    { icon: Rocket, label: t('dash.hostrepo', 'Host a repo'), to: '/hosting' },
+    { icon: Rocket, label: t('dash.hostrepo', 'Host a repo'), to: '/hosting#plans' },
     { icon: Package, label: t('dash.browse', 'Browse catalog'), to: '/catalog?project=bmm' },
     { icon: LayoutDashboard, label: t('dash.editprofile', 'Edit profile'), to: '/profile' },
   ];
@@ -813,7 +880,7 @@ export function Dashboard() {
   ];
   return (
     <>
-      {payReturn && !introActive && <PaymentResultModal result={payReturn} onClose={() => setPayReturn(null)} />}
+      {payReturn && !introActive && <PaymentResultModal result={payReturn} onClose={() => setPayReturn(null)} onDelivered={() => setPurchasesKey((k) => k + 1)} />}
       <SideDash icon={LayoutDashboard} title={t('dash.hi', 'Hi, {name}').replace('{name}', user?.displayName || 'there')} subtitle={t('dash.sub', 'Manage your content, repos and billing.')} tabs={tabs}
         headerActions={<Link to="/submit"><Button variant="primary"><Upload size={16} /> {t('sub.title', 'Submit content')}</Button></Link>}>
         {(s) => (<>
@@ -831,7 +898,7 @@ export function Dashboard() {
                 flush against the checklist below it. A wrapping <div className="mb-6"> would
                 have left 24px of empty margin on the (common) days the card renders null. */}
             <TransfersCard className="mb-6" />
-            <MyPurchases />
+            <MyPurchases refreshKey={purchasesKey} />
             {/* Goal-gradient onboarding: the checklist owns first-run guidance (incl. 2FA);
                 once it's done or dismissed, fall back to the standalone 2FA nudge. */}
             {(() => {

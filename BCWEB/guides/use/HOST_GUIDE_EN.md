@@ -44,11 +44,19 @@ accounts — pooled storage/subscriptions can't cross owners.
 
 ## 4. Billing
 
-- **Prepaid** term (1/3/6/12/24 months, longer = bigger discount) or **auto-renewing**
-  monthly. The first `hostingFreeGB` of storage is free; only the excess (plus any extra
+- **Prepaid** term: any whole number of months between the admin's minimum and maximum, on
+  the admin's step (defaults 1 to 36, by 1 — Admin → Hosting → *Prepaid term*). Pick it with
+  the slider or type it; the price is exact (months × monthly) and the discount steps at
+  3 / 6 / 12 / 24 months (−5 / −10 / −20 / −35 %, a term between two tiers gets the lower
+  tier). Each cart line can **auto-renew**: the same term is billed again when it ends, as a
+  real subscription you cancel from Billing (only for terms up to 12 months; a gift never
+  auto-renews). The first `hostingFreeGB` of storage is free; only the excess (plus any extra
   upload/CPU) is billed. **Promo codes** can apply a discount or free hosting.
-- Lifecycle: an expiring pool warns you first; a lapse gives a **72-hour grace** before
-  repos are suspended and catalogs hidden. Renew (or fix payment) to restore everything.
+- Lifecycle: an expiring pool warns you first (72 h ahead by default). When a term lapses
+  the repos are **suspended and catalogs hidden at once** — nothing is served, not even to
+  you — and deletion is scheduled after the grace window: **72 h** by default, a week after a
+  failed renewal payment (both admin settings). Renew (or fix payment) inside the window to
+  restore everything as it was.
 
 **Do:** enable auto-renew if the content matters, and watch for the expiry warning.
 **Don't:** let a paid term lapse and assume nothing happens — the grace window is short.

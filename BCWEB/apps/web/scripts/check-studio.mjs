@@ -41,6 +41,11 @@ try {
     // an effect, which renderToStaticMarkup never runs.
     'export const render = (value) => renderToStaticMarkup(',
     '  <I18nProvider><CanvasStudio value={value} onChange={() => {}} /></I18nProvider>);',
+    // The full-viewport form (/studio/:kind/:id/:index — pages/studio.jsx), with the top bar
+    // the page hands it and a page renderer, so the "page preview" button exists.
+    'export const renderPage = (value) => renderToStaticMarkup(',
+    '  <I18nProvider><CanvasStudio layout="page" value={value} onChange={() => {}} renderPage={() => null}',
+    '    chrome={{ title: "Doc", state: "dirty", canSave: true, onSave() {}, onBack() {} }} /></I18nProvider>);',
   ].join('\n'));
   await esbuild.build({
     nodePaths: [join(process.cwd(), 'node_modules')],
@@ -66,8 +71,8 @@ try {
   cleanup(); process.exit(2);
 }
 
-let render; let page;
-try { ({ render, page } = await import(pathToFileURL(bundle).href)); }
+let render; let page; let renderPage;
+try { ({ render, page, renderPage } = await import(pathToFileURL(bundle).href)); }
 catch (e) { console.error(`✗ the studio would not load: ${e?.message || e}`); cleanup(); process.exit(1); }
 
 const problems = [];
@@ -145,6 +150,52 @@ if (phone) {
   must(empty.length > 0, 'an empty canvas rendered nothing at phone width');
 }
 
+// ── The studio as a PAGE. ────────────────────────────────────────────────────────────
+// Same component, layout="page": the top bar, the three panes and — below the three-pane
+// width — the Blocks · Canvas · Properties tab row. The width is decided by matchMedia at the
+// first render, which is what lets both shapes be checked here: nothing else mounts this
+// surface without an admin session.
+const mq = (wideMatches, phoneMatches) => ({
+  matchMedia: (q) => ({ matches: /min-width/.test(q) ? wideMatches : phoneMatches, addEventListener() {}, removeEventListener() {} }),
+});
+const withWindow = (w, fn) => {
+  const prior = globalThis.window;
+  globalThis.window = w;
+  try { return fn(); } finally { if (prior === undefined) delete globalThis.window; else globalThis.window = prior; }
+};
+let wideHtml = '';
+try { wideHtml = withWindow(mq(true, false), () => renderPage(CANVAS)); }
+catch (e) { problems.push(`the studio page threw at desktop width: ${e?.message || e}`); }
+if (wideHtml) {
+  must(/class="cst-page"/.test(wideHtml), 'the page form did not render its .cst-page root');
+  must(/class="cst-topbar"/.test(wideHtml), 'the page form has no top bar');
+  must(/data-save-state="dirty"/.test(wideHtml), 'the top bar does not show the save state it was handed');
+  must(/class="cst-left/.test(wideHtml) && /class="cst-right/.test(wideHtml), 'at desktop width the left and right panes are not both rendered');
+  must(!/class="cst-tabs"/.test(wideHtml), 'at desktop width the mobile tab row is drawn beside three panes');
+  must(!/cst-sheet/.test(wideHtml), 'at desktop width a pane is rendered as a sheet');
+  const t2 = (wideHtml.match(/touch-action:none/g) || []).length;
+  must(t2 >= CANVAS.blocks.length + 1, `the page form has touch-action:none ${t2} time(s); the board and each block need it`);
+  must((wideHtml.match(/cursor:move/g) || []).length === CANVAS.blocks.length, 'the page form did not draw every block as draggable');
+  must(/aria-label="(?:Zoom in|Zoom avant)"/.test(wideHtml) && /aria-label="(?:Zoom out|Zoom arrière)"/.test(wideHtml), 'the page toolbar has no zoom +/- pair');
+  must(/aria-label="(?:Show the grid|Afficher la grille)"/.test(wideHtml), 'the page toolbar has no grid toggle');
+  must(/(?:Save as component|Enregistrer comme composant)/.test(wideHtml), 'the page toolbar cannot save the selection as a component');
+  must(/(?:Components|Composants)/.test(wideHtml), 'the left pane has no Components tab');
+  must(/title="(?:The whole project page, with this block in place|La page projet entière, avec ce bloc en place)"/.test(wideHtml), 'the page preview button is missing although a page renderer was given');
+}
+let narrowHtml = '';
+try { narrowHtml = withWindow(mq(false, false), () => renderPage(CANVAS)); }
+catch (e) { problems.push(`the studio page threw at tablet width: ${e?.message || e}`); }
+if (narrowHtml) {
+  must(/class="cst-tabs"/.test(narrowHtml), 'below the three-pane width there is no Blocks · Canvas · Properties tab row');
+  must(!/class="cst-left/.test(narrowHtml) && !/class="cst-right/.test(narrowHtml), 'below the three-pane width both panels are drawn at once — the canvas has no width left');
+  must(/cursor:move/.test(narrowHtml), 'below the three-pane width the board itself is gone');
+}
+// A new page opens on nothing: the empty state names the three panes.
+try {
+  const empty = withWindow(mq(true, false), () => renderPage({ id: 'c9', title: '', height: 400, blocks: [] }));
+  must(/data-empty-board/.test(empty), 'an empty page in the page form does not explain the panes');
+} catch (e) { problems.push(`an empty canvas threw in the page form: ${e?.message || e}`); }
+
 // ── What a READER gets, for every kind and for the dark variant. ─────────────────────
 // The studio is where blocks are made; this is where they are served, and the two failures
 // worth catching live here.
@@ -216,4 +267,4 @@ if (problems.length) {
   for (const p of problems) console.error(`    ${p}`);
   process.exit(1);
 }
-console.log(`✓ studio OK — rendered through the real component, ${movable} draggable block(s), touch-action on the canvas and each block, handles keep their touch target, at phone width it renders the reading-order list instead of the board, every block kind is served, an off-list embed is a link and not a frame, and a dark overlay changes only what it names`);
+console.log(`✓ studio OK — rendered through the real component, ${movable} draggable block(s), touch-action on the canvas and each block, handles keep their touch target, at phone width it renders the reading-order list instead of the board, the page form draws three panes wide and a tab row narrow, every block kind is served, an off-list embed is a link and not a frame, and a dark overlay changes only what it names`);

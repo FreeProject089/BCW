@@ -3,13 +3,14 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { applyCampaign } from './campaigns.mjs';
 import { canManage } from '../lib/teams.mjs';
 import { db, requireRole, requireCap, optionalAuth, notify, isValidRepoManifest, accountEntrySchema, pubkeyLineSchema, pubkeyErrorCode, logAudit, httpUrl } from '../lib/lib.mjs';
+import { recordPendingCheckout } from '../lib/pending-checkout.mjs';
 import { gitManifestUrl } from '../lib/gitsource.mjs';
 import { classifyRepoBody } from '../lib/repokind.mjs';
 import { purgeRepo } from '../lib/sweeper.mjs';
 import { safeFetch } from '../lib/net.mjs';
 import { repoFingerprint, normalizeFingerprint, loadOwnerIdentities, userBcId } from '../lib/repofingerprint.mjs';
 import { mintAttestation, attestationPublicKeyHex, ATTESTATION_TTL_SECONDS } from '../lib/identity-attestation.mjs';
-import { capacityStatus, capacityFactors, priceCents, termTotalCents, TERM_MONTHS, stripe, settings, ensureCustomer, recomputePoolBytes } from './hosting.mjs';
+import { capacityStatus, capacityFactors, priceCents, termTotalCents, termBounds, termCheck, TERM_LIMIT_MONTHS, stripe, settings, ensureCustomer, recomputePoolBytes } from './hosting.mjs';
 import { findBlock } from '../lib/urlblock.mjs';
 import { reservedTermIn } from '../lib/reserved-names.mjs';
 
@@ -468,7 +469,7 @@ export default async function repoRoutes(app) {
       storageGB: z.number().min(0.5).max(2000),
       uploadMbps: z.number().min(0.5).max(1000).optional(),
       cpuShare: z.number().min(0.1).max(8).optional(),
-      months: z.number().int().refine((m) => TERM_MONTHS.includes(m), 'invalid_term').default(1),
+      months: z.number().int().min(1).max(TERM_LIMIT_MONTHS).default(1),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
@@ -505,6 +506,10 @@ export default async function repoRoutes(app) {
     if (cap.allocatedGB + deltaGB > cap.usableGB) return reply.code(409).send({ error: 'capacity_full', freeGB: cap.freeGB });
 
     const s = await settings(p);
+    // The term is the admin's to bound (hosting.term*Months), never the client's — and it is
+    // refused before the hidden plan row below exists.
+    const termErr = termCheck(termBounds(s), b.data.months);
+    if (termErr) return reply.code(400).send(termErr);
     const plan = await p.hostingPlan.create({ data: {
       name: `Custom ${newStorageGB}GB (upgrade)`, storageGB: newStorageGB,
       uploadLimitKbps: Math.round(targetUploadMbps * 1024), cpuShare: targetCpuShare,
@@ -546,6 +551,9 @@ export default async function repoRoutes(app) {
       success_url: `${siteUrl}/dashboard?hosting=ok`,
       cancel_url: `${siteUrl}/dashboard?hosting=cancel`,
     });
+    // The in-flight ledger the crash reconciler walks (lib/stripe-reconcile.mjs). Best-effort:
+    // a session that exists but is not recorded is the old behaviour, not a failed checkout.
+    await recordPendingCheckout(p, { kind: session.metadata?.type || 'hosting', sessionId: session.id, userId: req.user.uid, payload: session.metadata || null }).catch(() => {});
     return { url: session.url };
   });
 
@@ -553,7 +561,7 @@ export default async function repoRoutes(app) {
   // currentPeriodEnd. Also the "resume payment" path out of a lapsed term: clears
   // any pending 72h deleteAt and restores ONLINE if the sweeper had suspended it.
   app.post('/me/repos/:id/renew', { preHandler: requireRole() }, async (req, reply) => {
-    const b = z.object({ months: z.number().int().refine((m) => TERM_MONTHS.includes(m), 'invalid_term').default(1), autoRenew: z.boolean().optional() }).safeParse(req.body);
+    const b = z.object({ months: z.number().int().min(1).max(TERM_LIMIT_MONTHS).default(1), autoRenew: z.boolean().optional() }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
     const { repo, err } = await ownRepo(p, req.params.id, req.user);
@@ -564,6 +572,8 @@ export default async function repoRoutes(app) {
     const storageGB = Number(repo.storageQuotaBytes) / GiB;
     const uploadMbps = (repo.uploadLimitKbps || 0) / 1024;
     const s = await settings(p);
+    const termErr = termCheck(termBounds(s), b.data.months);
+    if (termErr) return reply.code(400).send(termErr);
     const cap = await capacityStatus(p);
     const cf = capacityFactors(cap);
     const months = b.data.months;
@@ -613,6 +623,9 @@ export default async function repoRoutes(app) {
       metadata: md,
       success_url: `${siteUrl}/dashboard?hosting=ok`, cancel_url: `${siteUrl}/dashboard?hosting=cancel`,
     });
+    // The in-flight ledger the crash reconciler walks (lib/stripe-reconcile.mjs). Best-effort:
+    // a session that exists but is not recorded is the old behaviour, not a failed checkout.
+    await recordPendingCheckout(p, { kind: session.metadata?.type || 'hosting', sessionId: session.id, userId: req.user.uid, payload: session.metadata || null }).catch(() => {});
     return { url: session.url };
   });
 
@@ -620,7 +633,7 @@ export default async function repoRoutes(app) {
   // term. Free tier applies immediately; a paid term goes through Stripe (webhook
   // pool_renew). Also the "resume" path: restores every repo + catalog in the pool.
   app.post('/me/hosting/groups/:id/renew', { preHandler: requireRole() }, async (req, reply) => {
-    const b = z.object({ months: z.number().int().refine((m) => TERM_MONTHS.includes(m), 'invalid_term').default(1), autoRenew: z.boolean().optional() }).safeParse(req.body);
+    const b = z.object({ months: z.number().int().min(1).max(TERM_LIMIT_MONTHS).default(1), autoRenew: z.boolean().optional() }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
     const group = await p.hostingGroup.findUnique({ where: { id: req.params.id } });
@@ -630,6 +643,8 @@ export default async function repoRoutes(app) {
     const storageGB = Number(group.poolBytes) / GiB;
     const uploadMbps = (group.uploadLimitKbps || 0) / 1024;
     const s = await settings(p);
+    const termErr = termCheck(termBounds(s), b.data.months);
+    if (termErr) return reply.code(400).send(termErr);
     const cf = capacityFactors(await capacityStatus(p));
     const months = b.data.months;
     const monthly = priceCents(s, storageGB, uploadMbps, group.cpuShare || 0);
@@ -677,6 +692,9 @@ export default async function repoRoutes(app) {
       invoice_creation: { enabled: true }, metadata: md,
       success_url: `${siteUrl}/dashboard?hosting=ok`, cancel_url: `${siteUrl}/dashboard?hosting=cancel`,
     });
+    // The in-flight ledger the crash reconciler walks (lib/stripe-reconcile.mjs). Best-effort:
+    // a session that exists but is not recorded is the old behaviour, not a failed checkout.
+    await recordPendingCheckout(p, { kind: session.metadata?.type || 'hosting', sessionId: session.id, userId: req.user.uid, payload: session.metadata || null }).catch(() => {});
     return { url: session.url };
   });
 
@@ -889,6 +907,9 @@ export default async function repoRoutes(app) {
       success_url: `${siteUrl}/dashboard?hosting=consolidated`,
       cancel_url: `${siteUrl}/dashboard?hosting=cancel`,
     });
+    // The in-flight ledger the crash reconciler walks (lib/stripe-reconcile.mjs). Best-effort:
+    // a session that exists but is not recorded is the old behaviour, not a failed checkout.
+    await recordPendingCheckout(p, { kind: session.metadata?.type || 'hosting', sessionId: session.id, userId: req.user.uid, payload: session.metadata || null }).catch(() => {});
     return { url: session.url };
   });
 

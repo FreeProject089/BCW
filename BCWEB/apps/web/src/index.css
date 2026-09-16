@@ -317,19 +317,37 @@ code, .break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
   .input[aria-invalid="true"] { border-color: var(--error); box-shadow: 0 0 0 3px var(--error-bg); }
   /* Number fields: the native spinner (a grey 8px stub that differs per browser and is
      unreachable on a phone) is replaced by two real buttons drawn by <Input type="number">. */
-  .num-wrap { position: relative; display: inline-flex; width: 100%; min-width: 0; }
-  .num-wrap > .num-input { width: 100%; padding-inline-end: 2.3rem; appearance: textfield; -moz-appearance: textfield; }
+  /* Two shapes, by the field's own width (a container query, so a `!w-16` in a table and a
+     full-width field in a form each get the right one without a prop):
+       wide   [−] [ value ] [+]  — buttons 28px wide, the field's full height, at both ends;
+       narrow [ value ][−/+]     — under 9rem the two stack in a 28px column at the end, so a
+                                   64px field keeps room for its digits.
+     Revealed on hover and on focus; always drawn where there is no hover (touch). Logical
+     sides throughout, so RTL mirrors it. */
+  .num-wrap { position: relative; display: inline-flex; width: 100%; min-width: 0; container-type: inline-size; }
+  .num-wrap > .num-input { width: 100%; min-width: 0; padding-inline: 2.1rem; text-align: center; appearance: textfield; -moz-appearance: textfield; }
   .num-input::-webkit-outer-spin-button, .num-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-  .num-btns { position: absolute; inset-block: 4px; inset-inline-end: 4px; width: 1.65rem; display: flex; flex-direction: column;
-    border-radius: calc(var(--r-md) - 3px); overflow: hidden; border: 1px solid var(--control-border); background: var(--surface-2); }
-  .num-btns button { flex: 1; display: grid; place-items: center; border: 0; background: transparent; padding: 0; margin: 0;
-    color: var(--muted); cursor: pointer; line-height: 1; min-height: 0; }
-  .num-btns button:hover { background: color-mix(in srgb, var(--primary) 14%, var(--surface-2)); color: var(--text); }
-  .num-btns button:active { background: color-mix(in srgb, var(--primary) 26%, var(--surface-2)); }
-  .num-btns button + button { border-top: 1px solid var(--control-border); }
-  .num-btns svg { width: 11px; height: 11px; }
-  .num-wrap:has(.num-input:disabled) .num-btns, .num-wrap:has(.num-input[readonly]) .num-btns { opacity: .4; pointer-events: none; }
-  @media (pointer: coarse) { .num-btns { width: 2rem; } .num-wrap > .num-input { padding-inline-end: 2.7rem; } }
+  .num-wrap > button { position: absolute; inset-block: 3px; width: 1.75rem; min-width: 28px; min-height: 28px; display: grid; place-items: center;
+    border: 1px solid var(--control-border); border-radius: calc(var(--r-md) - 3px); background: var(--surface-2); color: var(--muted);
+    padding: 0; margin: 0; cursor: pointer; line-height: 1; opacity: 0; transition: opacity .12s ease, background-color .12s ease; }
+  .num-wrap > .num-dec { inset-inline-start: 3px; }
+  .num-wrap > .num-inc { inset-inline-end: 3px; }
+  .num-wrap > button svg { width: 13px; height: 13px; }
+  .num-wrap:hover > button, .num-wrap:focus-within > button { opacity: 1; }
+  .num-wrap > button:hover { background: color-mix(in srgb, var(--primary) 14%, var(--surface-2)); color: var(--text); }
+  .num-wrap > button:active { background: color-mix(in srgb, var(--primary) 26%, var(--surface-2)); }
+  .num-wrap:has(.num-input:disabled) > button, .num-wrap:has(.num-input[readonly]) > button { opacity: .35 !important; pointer-events: none; }
+  /* Narrow: one 28px column at the inline end, + above −. Each button is half the field
+     tall here (the one place the 28px target is not met), but the digits stay visible. */
+  /* 7rem = 112px: the narrowest width at which two 28px buttons still leave ~3 digits of
+     room. A `!w-28` field is the last one to get the side-by-side shape. */
+  @container (width < 7rem) {
+    .num-wrap > .num-input { padding-inline: 0.5rem 2.1rem; text-align: start; }
+    .num-wrap > .num-inc, .num-wrap > .num-dec { inset-inline-start: auto; inset-inline-end: 3px; min-height: 0; height: calc(50% - 3px); }
+    .num-wrap > .num-inc { inset-block: 3px auto; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+    .num-wrap > .num-dec { inset-block: auto 3px; border-top-left-radius: 0; border-top-right-radius: 0; border-top-width: 0; }
+  }
+  @media (hover: none), (pointer: coarse) { .num-wrap > button { opacity: 1; } }
   /* Inputs (incl. search + filter bars — <Select> is a styled .input too) are
      SOLID by default so "Translucent surfaces = off" is actually honoured. The
      frosted variant lives under [data-surface-glass] below. */
@@ -1073,4 +1091,32 @@ label:has(> input[type="radio"]) {
    block underneath: an invisible outset ring does the catching. */
 @media (pointer: coarse) {
   .cst-handle::after { content: ""; position: absolute; inset: -9px; border-radius: 50%; }
+}
+
+/* The studio as a page (/studio/:kind/:id/:index — pages/studio.jsx, canvas-studio.jsx in
+   layout="page"). It draws OVER the site shell: nav (z-40) and the mobile tab bar (z-40) are
+   under it, modals (z-50), menus (z-60+) and toasts stay above. Opaque on purpose: it is a
+   workspace, not a card, and a translucent one would show the page it covers.
+   Three panes side by side from 1024px; below that the canvas takes the width and the two
+   panels become sheets over its lower half, picked from the tab row at the bottom. */
+.cst-page { position: fixed; inset: 0; z-index: 45; display: flex; flex-direction: column; background: var(--bg-solid); color: var(--text); }
+.cst-topbar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 6px 10px; border-bottom: 1px solid var(--line); background: var(--bg-solid); }
+.cst-page-body { flex: 1; min-height: 0; position: relative; display: grid; grid-template-columns: minmax(0, 1fr); }
+.cst-center { min-width: 0; min-height: 0; overflow: auto; padding: 8px 8px 12px; }
+.cst-left, .cst-right { min-height: 0; overflow: auto; background: var(--bg-solid); }
+.cst-left { border-right: 1px solid var(--line); }
+.cst-right { border-left: 1px solid var(--line); padding: 8px; }
+.cst-right > * { margin-top: 0 !important; }
+/* Below the three-pane width a panel is a sheet over the canvas: it never pushes the board
+   around, and it leaves the top of the board visible so the block being edited stays in view. */
+.cst-sheet { position: absolute; left: 0; right: 0; bottom: 0; max-height: 62%; border: 0; border-top: 1px solid var(--line-strong); border-radius: 16px 16px 0 0; box-shadow: 0 -10px 30px -12px rgba(0, 0, 0, 0.35); z-index: 2; }
+.cst-tabs { display: flex; align-items: stretch; border-top: 1px solid var(--line); background: var(--bg-solid); padding-bottom: env(safe-area-inset-bottom); }
+.cst-tabs button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 48px; font-size: 12px; color: var(--muted); }
+.cst-tabs button.is-on { color: var(--text); box-shadow: inset 0 2px 0 var(--primary); }
+.cst-preview-body { display: block; overflow: auto; padding: 12px; }
+.cst-preview { max-width: 100%; }
+/* The whole project page, as <main> frames it on the real route. */
+.cst-page-frame { max-width: 72rem; margin: 0 auto; padding: 0 16px; }
+@media (min-width: 1024px) {
+  .cst-page-body { grid-template-columns: 280px minmax(0, 1fr) 320px; }
 }

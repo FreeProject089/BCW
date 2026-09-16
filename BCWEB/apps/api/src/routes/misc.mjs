@@ -6,7 +6,9 @@ import { shredUser } from '../lib/shred.mjs';
 import { recordErasure, emailHash as erasureEmailHash } from '../lib/erasure-log.mjs';
 import { SEED_SECTIONS, readSeedContent, generateSeedScript, listSeedItems } from '../lib/seed-export.mjs';
 import { sendMail, mailShell, emailEnabled, escapeHtml, mdToEmailHtml, setMailTemplates } from '../lib/mail.mjs';
-import { MAIL_SAMPLES, MAIL_GROUPS, renderSample } from '../lib/mail-samples.mjs';
+import { MAIL_SAMPLES, MAIL_GROUPS, renderSample, builtinBody } from '../lib/mail-samples.mjs';
+import { createExpiringFile, linkFor, effectiveExpiry } from '../lib/expiring-files.mjs';
+import { getObject } from '../lib/storage.mjs';
 import argon2 from 'argon2';
 import crypto from 'node:crypto';
 import { errorGroupId } from '../lib/errorlog.mjs';
@@ -1340,9 +1342,12 @@ export default async function miscRoutes(app) {
     // pages most likely to answer what somebody typed into a search engine, and the ones a
     // site gets found through. A page absent from the sitemap is not forbidden, but it is
     // not offered either.
+    // Community Charity is an admin switch (`charity.config`.enabled): off, /charity answers
+    // "not running" and its public routes 404 — so it is not offered to a crawler either.
+    const charityOn = (await p.adminSetting.findUnique({ where: { key: 'charity.config' } }).catch(() => null))?.value?.enabled === true;
     const staticRoutes = [
       '/', '/catalog', '/blog', '/repos', '/hosting', '/projects', '/contact',
-      '/docs', '/faq', '/users', '/myo', '/status', '/dev', '/2fa', '/charity', '/polls',
+      '/docs', '/faq', '/users', '/myo', '/status', '/dev', '/2fa', ...(charityOn ? ['/charity'] : []), '/polls',
       '/legal', '/legal/about', '/legal/privacy', '/legal/terms', '/legal/cookies', '/legal/refunds',
       '/p/bmm', '/p/bsm', '/p/installer',
     ];
@@ -2418,6 +2423,9 @@ export default async function miscRoutes(app) {
   app.get('/admin/mail/gallery', { preHandler: requireRole('ADMIN') }, async () => ({
     groups: MAIL_GROUPS,
     samples: MAIL_SAMPLES.map((s) => ({ id: s.id, group: s.group, label: s.label, note: s.note || null, editable: !!s.editable, notifyOnly: !!s.notifyOnly })),
+    // The built-in body of each editable mail, so the editor can open ON the current text
+    // (to change a sentence) rather than on a wrapper around it (to write a new one).
+    builtin: Object.fromEntries(MAIL_SAMPLES.filter((s) => s.editable).map((s) => [s.id, builtinBody(s.id)])),
     // What an admin has already written, so the editor opens on their text rather than
     // on a blank box that looks like nothing was ever saved.
     templates: await (async () => { const p = await db(); const r = await p.adminSetting.findUnique({ where: { key: 'mail.templates' } }).catch(() => null); return (r?.value && typeof r.value === 'object') ? r.value : {}; })(),
@@ -2465,6 +2473,26 @@ export default async function miscRoutes(app) {
     return { ok: true, templates: map };
   });
 
+  // The admin's own composer templates: a name, a subject, a body in the mail's markdown
+  // (the B.MD subset the shell renders: headings, lists, links, :::note-style directives),
+  // an audience and an optional button. "Start from scratch or from a template".
+  app.get('/admin/mail/custom-templates', { preHandler: requireRole('ADMIN') }, async () => {
+    const p = await db();
+    const row = await p.adminSetting.findUnique({ where: { key: 'mail.customTemplates' } }).catch(() => null);
+    return { templates: Array.isArray(row?.value) ? row.value : [] };
+  });
+  app.put('/admin/mail/custom-templates', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const b = z.object({ templates: z.array(z.object({
+      id: z.string().min(1).max(40), label: z.string().min(1).max(60), subject: z.string().max(200).default(''), body: z.string().max(20000).default(''),
+      audience: z.string().max(20).default('all'), cta: z.object({ label: z.string().max(60), url: z.string().max(500) }).nullable().optional(),
+    })).max(30) }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    await p.adminSetting.upsert({ where: { key: 'mail.customTemplates' }, create: { key: 'mail.customTemplates', value: b.data.templates }, update: { value: b.data.templates } });
+    await logAudit(p, req.user.uid, 'mail.customTemplates', `${b.data.templates.length} template(s)`, clientIp(req));
+    return { ok: true, templates: b.data.templates };
+  });
+
   app.get('/admin/mail/gallery/:id', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
     const scheme = ['auto', 'light', 'dark'].includes(String(req.query?.scheme)) ? String(req.query.scheme) : 'auto';
     const html = renderSample(req.params.id, scheme);
@@ -2509,6 +2537,11 @@ export default async function miscRoutes(app) {
       // An optional button. Rendered by the shell exactly as the system emails render
       // theirs, with the "or paste this link" fallback for clients that strip buttons.
       cta: z.object({ label: z.string().min(1).max(60), url: z.string().max(500) }).nullable().optional(),
+      // Files: uploaded through the MEDIA presign (admin-only), then either linked — one
+      // `/f/<token>` per file, dead after `attachDays` — or attached inline when small.
+      attachments: z.array(z.object({ url: z.string().max(500), name: z.string().min(1).max(200), size: z.number().int().nonnegative().optional() })).max(8).optional(),
+      attachDays: z.number().int().min(1).max(90).default(14),
+      attachMode: z.enum(['link', 'inline']).default('link'),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     if (!emailEnabled()) return reply.code(503).send({ error: 'email_disabled' });
@@ -2545,7 +2578,35 @@ export default async function miscRoutes(app) {
     // XSS aimed at every recipient at once (CWE-79/601) — the shell escapes it, but a link
     // that cannot be a web page has no business being offered as one.
     const cta = b.data.cta?.label && /^https?:\/\//i.test(b.data.cta.url || '') ? b.data.cta : undefined;
-    const html = mailShell(b.data.subject, mdToEmailHtml(b.data.body), cta, { preheader });
+    // Attachments. Links are the default: the mail stays small, and the file stops being
+    // reachable on the date the admin chose — a forwarded mail does not carry the file for
+    // ever. Inline only for a small total, and only when asked.
+    let body = b.data.body;
+    const inline = [];
+    const files = (b.data.attachments || []).map((a) => ({ ...a, key: /^\/(?:api\/)?media\/(.+)$/.exec(String(a.url).split('?')[0])?.[1] })).filter((a) => a.key && !a.key.includes('..'));
+    if (files.length) {
+      if (b.data.attachMode === 'inline') {
+        let total = 0;
+        for (const f of files) {
+          try {
+            const { body: stream, contentType } = await getObject(decodeURIComponent(f.key));
+            const chunks = []; for await (const c of stream) chunks.push(c);
+            const buf = Buffer.concat(chunks); total += buf.length;
+            if (total > 8 * 1024 * 1024) return reply.code(413).send({ error: 'attachments_too_large', maxBytes: 8 * 1024 * 1024 });
+            inline.push({ filename: f.name, content: buf, contentType: String(contentType || 'application/octet-stream') });
+          } catch { return reply.code(400).send({ error: 'attachment_missing', name: f.name }); }
+        }
+      } else {
+        const lines = [];
+        for (const f of files) {
+          const row = await createExpiringFile(p, { key: decodeURIComponent(f.key), kind: 'mail', fileName: f.name, bytes: f.size || 0, days: b.data.attachDays, createdBy: req.user.uid });
+          const until = effectiveExpiry(row);
+          lines.push(`- [${f.name.replace(/[\[\]]/g, '')}](${SITE_URL}${linkFor(row)})${until ? ` — available until ${until.toISOString().slice(0, 10)}` : ''}`);
+        }
+        body = `${body.trimEnd()}\n\n**Files**\n\n${lines.join('\n')}`;
+      }
+    }
+    const html = mailShell(b.data.subject, mdToEmailHtml(body), cta, { preheader });
     let sent = 0, failed = 0;
     // The first rejection, kept verbatim. Swallowing it left the admin with "the mail
     // server rejected every message" and nowhere to go — while the server was saying
@@ -2563,7 +2624,7 @@ export default async function miscRoutes(app) {
       // would otherwise abort the run half-way — with no record of who was already
       // reached, so a retry would double-mail them.
       try {
-        const ok = await sendMail({ to: r.email, subject: b.data.subject, html, text: b.data.body });
+        const ok = await sendMail({ to: r.email, subject: b.data.subject, html, text: body, ...(inline.length ? { attachments: inline } : {}) });
         if (ok === false) { failed++; firstError = firstError || { email: r.email, reason: 'email_disabled' }; }
         else sent++;
       } catch (e) {
@@ -3381,6 +3442,21 @@ export default async function miscRoutes(app) {
       const requestedGB = Number(value);
       if (diskGB != null && Number.isFinite(requestedGB) && requestedGB * (1024 ** 3) > diskGB) {
         return reply.code(400).send({ error: 'exceeds_disk', diskGB: +(diskGB / (1024 ** 3)).toFixed(1) });
+      }
+    }
+    // The prepaid-term bounds (min / max / step months) are read by every checkout; a value
+    // that is not a whole number of months, or a minimum above the maximum, would make every
+    // term invalid and refuse every sale — with no error anywhere but a customer's screen.
+    if (/^hosting\.term(Min|Max|Step)Months$/.test(req.params.key)) {
+      const n = Number(value);
+      if (!Number.isInteger(n) || n < 1 || n > 120) return reply.code(400).send({ error: 'invalid_term_bound', min: 1, max: 120 });
+      const other = req.params.key === 'hosting.termMinMonths' ? 'hosting.termMaxMonths' : req.params.key === 'hosting.termMaxMonths' ? 'hosting.termMinMonths' : null;
+      if (other) {
+        const row = await p.adminSetting.findUnique({ where: { key: other } }).catch(() => null);
+        const o = Number(row?.value);
+        if (Number.isFinite(o) && o > 0 && (other === 'hosting.termMaxMonths' ? n > o : n < o)) {
+          return reply.code(400).send({ error: 'term_min_above_max', min: other === 'hosting.termMaxMonths' ? n : o, max: other === 'hosting.termMaxMonths' ? o : n });
+        }
       }
     }
     // A mistyped Google tag id is the worst kind of wrong: the script loads, nothing reports,

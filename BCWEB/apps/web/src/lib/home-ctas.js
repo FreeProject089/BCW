@@ -35,7 +35,7 @@ export function heroCtas(user, t) {
   }
   return [
     { to: '/repos', label: t('home.cta.repos', 'Browse Server Repos'), primary: true, arrow: true },
-    { to: '/hosting', label: t('home.cta.host', 'Host a repo') },
+    { to: '/hosting#plans', label: t('home.cta.host', 'Host a repo') },
   ];
 }
 

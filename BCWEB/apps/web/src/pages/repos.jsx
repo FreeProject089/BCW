@@ -1209,7 +1209,7 @@ function AddRepoChoice({ pools, onClose, onPool, onExternal }) {
               </div>
             )}
           </div>
-          <Link to="/hosting" className="mt-4">
+          <Link to="/hosting#plans" className="mt-4">
             <Button variant={withRoom.length ? 'default' : 'primary'} className="w-full">
               <HardDrive size={15} /> {withRoom.length ? t('repos.addwhat.more', 'Get more space') : t('repos.addwhat.get', 'See the plans')}
             </Button>

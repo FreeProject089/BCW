@@ -702,7 +702,12 @@ export default async function apiKeyRoutes(app) {
   // ── Community Charity ───────────────────────────────────────────────────────
   // The same shape the landing widget reads: association, percent, this month's totals, the
   // vote (id + open) — so a bot or a dashboard can show the pot without scraping the page.
-  app.get('/v1/charity', { preHandler: apiAuth('charity:read'), ...RL_READ }, async () => charityCurrent(await db()));
+  // Off → 404 `charity_disabled`, the same answer the site's own `/charity/current` gives.
+  app.get('/v1/charity', { preHandler: apiAuth('charity:read'), ...RL_READ }, async (req, reply) => {
+    const cur = await charityCurrent(await db());
+    if (!cur.enabled) return reply.code(404).send({ error: 'charity_disabled', enabled: false });
+    return cur;
+  });
 
   // ── Discord economy ─────────────────────────────────────────────────────────
   app.get('/v1/economy', { preHandler: apiAuth('economy:read'), ...RL_READ }, async (req) => {

@@ -9,8 +9,11 @@ const SITE = (process.env.SITE_URL || 'http://localhost:5176').replace(/\/$/, ''
 // The real BetterCommunity icon for the email header — the logo is embedded as a base64
 // data URI (see brand-logo-data.mjs) so it always renders, with no "BC" text fallback and
 // no dependence on the container's file layout or a reachable SITE_URL.
+// On a WHITE PLATE, like the site's topbar: the mark is drawn for a dark ground, and a mail
+// client that forces light mode (Gmail, Outlook) showed it as a smudge on the cream header.
+// The plate is a table cell (not a CSS background) so every client paints it.
 function brandLogo() {
-  return `<img src="${BRAND_LOGO_DATA_URI}" width="36" height="36" alt="BetterCommunity" style="border-radius:9px;display:block">`;
+  return `<table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:separate"><tr><td style="background:#ffffff;border-radius:10px;padding:5px;line-height:0;border:1px solid #e7e2da"><img src="${BRAND_LOGO_DATA_URI}" width="26" height="26" alt="BetterCommunity" style="display:block;border-radius:6px"></td></tr></table>`;
 }
 
 
@@ -101,8 +104,18 @@ export function withMailId(id, fn) {
   try { return fn(); } finally { _previewing = prev; }
 }
 
+// "Edit the existing wording, do not rewrite it": the gallery hands the admin the built-in
+// body of a mail as the starting text. The body only exists inside a sender's call, so it is
+// CAPTURED as the sample renders — the same path the mailbox takes.
+let _capture = null;
+export function captureBuiltinBody(mailId, render) {
+  _capture = { id: mailId, html: null };
+  try { render(); } finally { const h = _capture?.html; _capture = null; return h; }
+}
+
 /** Apply a body override. `{{body}}` is the built-in, already-interpolated body. */
 function applyBodyTemplate(mailId, bodyHtml) {
+  if (_capture && _capture.id === mailId && _capture.html == null) { _capture.html = String(bodyHtml ?? ''); return bodyHtml; }
   const t = mailTemplate(mailId);
   const raw = String(t?.body || '').trim();
   if (!raw) return bodyHtml;

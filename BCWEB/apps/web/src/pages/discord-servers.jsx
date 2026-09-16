@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { MessageSquare, Server, Shield, Database, MinusCircle, Users, Check, Link2, ScrollText, Gauge, Sparkles, Image as ImageIcon, AlertTriangle, Mic, Plus, Trash2, Ban, Clock, UserMinus, Newspaper, CreditCard } from 'lucide-react';
+import { MessageSquare, Server, Shield, Database, MinusCircle, Users, Check, Link2, ScrollText, Gauge, Sparkles, Image as ImageIcon, AlertTriangle, Mic, Plus, Trash2, Ban, Clock, UserMinus, Newspaper, CreditCard, ShieldAlert, ListTree } from 'lucide-react';
+import { AutomodEditor, LogsEditor, normAutomod, normLogs, logsForSave } from './discord-automod.jsx';
 import { DiscordIcon } from '../ui/brand.jsx';
 import { api, uploadImage } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
@@ -105,6 +106,11 @@ const normBlog = (bl = {}) => ({
     channelId: r.channelId || '', sources: (r.sources && r.sources.length ? r.sources : ['*']),
   })),
 });
+// Moderation for this server: the master switch + the automod rules (normalised by the shared
+// editor module, so the owner's dashboard and the admin's bot tab save the same shape). The
+// ladder / purge channels stay admin-side. `enabled` unset counts as on: that is the bot's own
+// default, and an owner who opens this page for the first time should see the truth.
+const normMod = (m = {}) => ({ enabled: m.enabled !== false, automod: normAutomod(m.automod) });
 // Rule & role panels: a posted message with role buttons/dropdown. Roles are entered by id here
 // (like every other id in this dashboard) rather than picked, so no guild role list is needed.
 const normRp = (panels) => (Array.isArray(panels) ? panels : []).map((p) => ({
@@ -239,7 +245,7 @@ function GuildConfig({ guildId, onSaved }) {
   const [busy, setBusy] = useState(false);
   const [buyingBanner, setBuyingBanner] = useState(false);
   const [section, setSection] = useState('storage'); // which config section is shown
-  const load = () => api.get(`/me/discord/guilds/${guildId}`).then((r) => { setData(r); setDraft({ memberMode: r.guild.memberMode, logChannelId: r.guild.logChannelId || '', storeLogs: !!r.guild.storeLogs, welcome: normWelcome(r.welcome), jtc: normJtc(r.joinToCreate), gating: normGating(r.gating), blog: normBlog(r.blog), rp: normRp(r.rolePanels) }); }).catch(() => setData({ error: true }));
+  const load = () => api.get(`/me/discord/guilds/${guildId}`).then((r) => { setData(r); setDraft({ memberMode: r.guild.memberMode, logChannelId: r.guild.logChannelId || '', storeLogs: !!r.guild.storeLogs, welcome: normWelcome(r.welcome), jtc: normJtc(r.joinToCreate), gating: normGating(r.gating), blog: normBlog(r.blog), rp: normRp(r.rolePanels), mod: normMod(r.moderation), logs: normLogs(r.logRouting) }); }).catch(() => setData({ error: true }));
   useEffect(() => { setData(null); setDraft(null); load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [guildId]);
   if (!data) return <div className="py-10 flex justify-center"><Spinner /></div>;
   if (data.error) return <EmptyState icon={MessageSquare} title={t('ds.gone', 'You can no longer manage this server')} sub={t('ds.gone.s', 'Your access may have changed on Discord.')} />;
@@ -250,7 +256,9 @@ function GuildConfig({ guildId, onSaved }) {
   const gatingDirty = JSON.stringify(draft.gating) !== JSON.stringify(normGating(data.gating));
   const blogDirty = JSON.stringify(draft.blog) !== JSON.stringify(normBlog(data.blog));
   const rpDirty = JSON.stringify(draft.rp) !== JSON.stringify(normRp(data.rolePanels));
-  const dirty = (draft.logChannelId || '') !== (g.logChannelId || '') || draft.storeLogs !== g.storeLogs || welcomeDirty || jtcDirty || gatingDirty || blogDirty || rpDirty;
+  const modDirty = JSON.stringify(draft.mod) !== JSON.stringify(normMod(data.moderation));
+  const logsDirty = JSON.stringify(draft.logs) !== JSON.stringify(normLogs(data.logRouting));
+  const dirty = (draft.logChannelId || '') !== (g.logChannelId || '') || draft.storeLogs !== g.storeLogs || welcomeDirty || jtcDirty || gatingDirty || blogDirty || rpDirty || modDirty || logsDirty;
   const setW = (patch) => setDraft((d) => ({ ...d, welcome: { ...d.welcome, ...patch } }));
   const setJ = (patch) => setDraft((d) => ({ ...d, jtc: { ...d.jtc, ...patch } }));
   // Buy the custom-banner unlock for THIS server. The server decides whether it is on sale,
@@ -290,9 +298,12 @@ function GuildConfig({ guildId, onSaved }) {
   const save = async () => {
     setBusy(true);
     try {
-      const r = await api.put(`/me/discord/guilds/${guildId}`, { logChannelId: draft.logChannelId.trim() || null, storeLogs: draft.storeLogs, welcome: draft.welcome, joinToCreate: draft.jtc, gating: draft.gating, blog: draft.blog, rolePanels: draft.rp });
-      setData((d) => ({ ...d, guild: r.guild, welcome: r.welcome, joinToCreate: r.joinToCreate, gating: r.gating, blog: r.blog, rolePanels: r.rolePanels }));
-      setDraft({ memberMode: r.guild.memberMode, logChannelId: r.guild.logChannelId || '', storeLogs: !!r.guild.storeLogs, welcome: normWelcome(r.welcome), jtc: normJtc(r.joinToCreate), gating: normGating(r.gating), blog: normBlog(r.blog), rp: normRp(r.rolePanels) });
+      // Only the two subtrees an owner edits here travel under `moderation`: the server merges
+      // them into whatever else the key holds (the ladder, the purge channels) rather than
+      // replacing it, so nothing admin-side is overwritten by a save from this page.
+      const r = await api.put(`/me/discord/guilds/${guildId}`, { logChannelId: draft.logChannelId.trim() || null, storeLogs: draft.storeLogs, welcome: draft.welcome, joinToCreate: draft.jtc, gating: draft.gating, blog: draft.blog, rolePanels: draft.rp, moderation: { enabled: draft.mod.enabled, automod: draft.mod.automod }, logs: logsForSave(draft.logs) });
+      setData((d) => ({ ...d, guild: r.guild, welcome: r.welcome, joinToCreate: r.joinToCreate, gating: r.gating, blog: r.blog, rolePanels: r.rolePanels, moderation: r.moderation, logRouting: r.logRouting }));
+      setDraft({ memberMode: r.guild.memberMode, logChannelId: r.guild.logChannelId || '', storeLogs: !!r.guild.storeLogs, welcome: normWelcome(r.welcome), jtc: normJtc(r.joinToCreate), gating: normGating(r.gating), blog: normBlog(r.blog), rp: normRp(r.rolePanels), mod: normMod(r.moderation), logs: normLogs(r.logRouting) });
       toast.success(t('ds.saved', 'Saved.'));
       onSaved?.();
     } catch (x) {
@@ -306,6 +317,8 @@ function GuildConfig({ guildId, onSaved }) {
   // stores members). Each carries its own unsaved-changes dot so nothing hides behind a tab.
   const SECTIONS = [
     { id: 'storage', icon: ScrollText, label: t('ds.sec.modlogs', 'Moderation logs'), dirty: (draft.logChannelId || '') !== (g.logChannelId || '') || draft.storeLogs !== g.storeLogs },
+    { id: 'automod', icon: ShieldAlert, label: t('ds.sec.automod', 'Automod'), dirty: modDirty },
+    { id: 'logs', icon: ListTree, label: t('ds.sec.logs', 'Logs'), dirty: logsDirty },
     { id: 'welcome', icon: Sparkles, label: t('ds.sec.welcome', 'Welcome'), dirty: welcomeDirty },
     { id: 'voice', icon: Mic, label: t('ds.sec.voice', 'Voice'), dirty: jtcDirty },
     { id: 'roles', icon: Shield, label: t('ds.sec.roles', 'Auto-roles'), dirty: gatingDirty },
@@ -406,6 +419,30 @@ function GuildConfig({ guildId, onSaved }) {
         </div>
       )}
       </>}
+
+      {/* Automod — the rules the bot documents in features/automod.mjs, for THIS server. The
+          editor is shared with the admin's bot tab so the two doors save one shape. */}
+      {section === 'automod' && (
+        <div className="rounded-xl border border-[var(--line)] p-3 mb-4 space-y-3">
+          <label className="flex items-center gap-2.5 text-sm font-medium cursor-pointer select-none">
+            <input type="checkbox" checked={draft.mod.enabled} onChange={(e) => setDraft((d) => ({ ...d, mod: { ...d.mod, enabled: e.target.checked } }))} />
+            <Shield size={15} className="text-[var(--primary-2)]" /> {t('ds.automod.modon', 'Moderation on for this server')}
+          </label>
+          <p className="text-[11px] text-[var(--faint)] ps-6 -mt-2">{t('ds.automod.modon.h', 'The master switch: off, neither automod nor /warn does anything here.')}</p>
+          {draft.mod.enabled && (
+            <AutomodEditor value={draft.mod.automod} onChange={(v) => setDraft((d) => ({ ...d, mod: { ...d.mod, automod: v } }))} roles={data.roles} channels={data.channels} />
+          )}
+        </div>
+      )}
+
+      {/* Log routing — features/logs.mjs: a forum (one post per category or per day) or a text
+          channel, overridable per group and per category. */}
+      {section === 'logs' && (
+        <div className="rounded-xl border border-[var(--line)] p-3 mb-4 space-y-3">
+          <p className="text-[11px] text-[var(--faint)]">{t('ds.logs.h', 'Where the bot writes what happens on your server — a forum with one post per category, or a text channel. The moderation log channel next door stays the fallback.')}</p>
+          <LogsEditor value={draft.logs} onChange={(v) => setDraft((d) => ({ ...d, logs: v }))} channels={data.channels} />
+        </div>
+      )}
 
       {/* Welcome / bye — owner-editable per-server banner & messages (was admin-only). */}
       {section === 'welcome' && (

@@ -17,7 +17,10 @@
 import { z } from 'zod';
 import { db, requireRole, optionalAuth, notify, logAudit } from '../lib/lib.mjs';
 import { findUserIdByBcId, looksLikeBcId } from '../lib/repofingerprint.mjs';
-import { slugifyTeam, teamRoleOf, isStaff, serTeam } from '../lib/teams.mjs';
+import { slugifyTeam, teamRoleOf, isStaff, serTeam, teamLimitFor, teamSlotPrice, inviteUsable } from '../lib/teams.mjs';
+import { settings as hostingSettings, stripe } from './hosting.mjs';
+import { recordPendingCheckout } from '../lib/pending-checkout.mjs';
+import crypto from 'node:crypto';
 
 const contact = {
   contactEmail: z.string().trim().email().max(254),
@@ -76,11 +79,97 @@ export default async function teamRoutes(app) {
     if (!httpish(b.data.website)) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
     const owned = await p.team.count({ where: { ownerId: req.user.uid } });
-    if (owned >= 10 && !isStaff(req.user)) return reply.code(409).send({ error: 'too_many_teams' });
+    // The admin's limit plus the slots this account bought. The refusal carries the numbers
+    // and the price, so the dashboard can offer the slot right there.
+    const me = await p.user.findUnique({ where: { id: req.user.uid }, select: { extraTeamSlots: true } });
+    const st = await hostingSettings(p);
+    const lim = teamLimitFor(st, me || {});
+    if (owned >= lim.limit && !isStaff(req.user)) return reply.code(409).send({ error: 'too_many_teams', owned, limit: lim.limit, slot: teamSlotPrice(st) });
     const slug = await uniqueSlug(p, slugifyTeam(b.data.name));
     const t = await p.team.create({ data: { ...b.data, slug, ownerId: req.user.uid, members: { create: { userId: req.user.uid, role: 'owner', status: 'active' } } } });
     await logAudit(p, req.user.uid, 'team.create', `team=${t.id} ${t.name}`).catch(() => {});
     return reply.code(201).send({ team: serTeam(t, { myRole: 'owner', myStatus: 'active' }) });
+  });
+
+  // How many teams this account may own, how many it has, and what one more costs.
+  app.get('/me/teams/limits', { preHandler: requireRole() }, async (req) => {
+    const p = await db();
+    const [owned, me, st] = await Promise.all([p.team.count({ where: { ownerId: req.user.uid } }), p.user.findUnique({ where: { id: req.user.uid }, select: { extraTeamSlots: true } }), hostingSettings(p)]);
+    const lim = teamLimitFor(st, me || {});
+    return { owned, ...lim, staff: isStaff(req.user), slot: teamSlotPrice(st), paymentsEnabled: st['features.paymentsEnabled'] !== false };
+  });
+
+  // One more team than the limit: a one-off Stripe payment (metadata.type = team_slot). The
+  // webhook credits `extraTeamSlots`; the reconciler finishes it if the webhook never comes.
+  app.post('/me/teams/slot/checkout', { preHandler: requireRole(), config: { rateLimit: { max: 5, timeWindow: '1 hour' } } }, async (req, reply) => {
+    const p = await db();
+    const st = await hostingSettings(p);
+    if (st['features.paymentsEnabled'] === false) return reply.code(503).send({ error: 'payments_disabled' });
+    const sk = await stripe({ forPurchase: true });
+    if (!sk) return reply.code(503).send({ error: 'stripe_not_configured' });
+    const price = teamSlotPrice(st);
+    const me = await p.user.findUnique({ where: { id: req.user.uid }, select: { email: true } });
+    const siteUrl = (process.env.SITE_URL || 'http://localhost').replace(/\/+$/, '');
+    const session = await sk.checkout.sessions.create({
+      mode: 'payment',
+      customer_email: me?.email || undefined,
+      line_items: [{ quantity: 1, price_data: { currency: price.currency, unit_amount: price.cents, product_data: { name: 'One extra team' } } }],
+      metadata: { type: 'team_slot', userId: req.user.uid },
+      success_url: `${siteUrl}/dashboard?s=teams&slot=ok`,
+      cancel_url: `${siteUrl}/dashboard?s=teams&slot=cancel`,
+    });
+    await recordPendingCheckout(p, { kind: 'team_slot', sessionId: session.id, userId: req.user.uid, payload: session.metadata || null });
+    return { url: session.url };
+  });
+
+  // Invitation links: `/teams/join/<token>`, for a role, until a date and/or N uses.
+  app.get('/me/teams/:id/invites', { preHandler: requireRole() }, async (req, reply) => {
+    const p = await db();
+    const got = await load(p, req, reply, ['owner', 'admin']); if (!got) return;
+    const rows = await p.teamInvite.findMany({ where: { teamId: got.t.id, revokedAt: null }, orderBy: { createdAt: 'desc' } });
+    return { invites: rows.map((r) => ({ id: r.id, role: r.role, expiresAt: r.expiresAt, maxUses: r.maxUses, uses: r.uses, usable: inviteUsable(r), url: `/teams/join/${r.token}`, createdAt: r.createdAt })) };
+  });
+  app.post('/me/teams/:id/invites', { preHandler: requireRole(), config: { rateLimit: { max: 20, timeWindow: '1 hour' } } }, async (req, reply) => {
+    const b = z.object({ role: z.enum(['admin', 'member']).default('member'), days: z.number().int().min(1).max(90).nullable().optional(), maxUses: z.number().int().min(1).max(500).nullable().optional() }).safeParse(req.body || {});
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const got = await load(p, req, reply, ['owner', 'admin']); if (!got) return;
+    const open = await p.teamInvite.count({ where: { teamId: got.t.id, revokedAt: null } });
+    if (open >= 10) return reply.code(409).send({ error: 'too_many_invites' });
+    const r = await p.teamInvite.create({ data: { token: crypto.randomBytes(18).toString('base64url'), teamId: got.t.id, role: b.data.role, createdBy: req.user.uid, expiresAt: b.data.days ? new Date(Date.now() + b.data.days * 86400e3) : null, maxUses: b.data.maxUses || null } });
+    await logAudit(p, req.user.uid, 'team.invite.link', `team=${got.t.id} role=${r.role}`).catch(() => {});
+    return reply.code(201).send({ invite: { id: r.id, role: r.role, expiresAt: r.expiresAt, maxUses: r.maxUses, uses: 0, usable: true, url: `/teams/join/${r.token}`, createdAt: r.createdAt } });
+  });
+  app.delete('/me/teams/:id/invites/:inviteId', { preHandler: requireRole() }, async (req, reply) => {
+    const p = await db();
+    const got = await load(p, req, reply, ['owner', 'admin']); if (!got) return;
+    await p.teamInvite.updateMany({ where: { id: req.params.inviteId, teamId: got.t.id }, data: { revokedAt: new Date() } });
+    return { ok: true };
+  });
+  // The link's landing: what team, what role, still valid — then the join.
+  app.get('/teams/join/:token', { preHandler: optionalAuth() }, async (req, reply) => {
+    const p = await db();
+    const inv = await p.teamInvite.findUnique({ where: { token: String(req.params.token || '') }, include: { team: { select: { id: true, slug: true, name: true, avatar: true, description: true } } } });
+    if (!inv) return reply.code(404).send({ error: 'not_found' });
+    const member = req.user ? await p.teamMember.findUnique({ where: { teamId_userId: { teamId: inv.teamId, userId: req.user.uid } } }) : null;
+    return { team: inv.team, role: inv.role, usable: inviteUsable(inv), expiresAt: inv.expiresAt, signedIn: !!req.user, alreadyMember: member?.status === 'active' };
+  });
+  app.post('/teams/join/:token', { preHandler: requireRole(), config: { rateLimit: { max: 20, timeWindow: '1 hour' } } }, async (req, reply) => {
+    const p = await db();
+    const inv = await p.teamInvite.findUnique({ where: { token: String(req.params.token || '') }, include: { team: true } });
+    if (!inv || !inviteUsable(inv)) return reply.code(410).send({ error: 'invite_invalid' });
+    const existing = await p.teamMember.findUnique({ where: { teamId_userId: { teamId: inv.teamId, userId: req.user.uid } } });
+    if (existing?.status === 'active') return { ok: true, team: serTeam(inv.team, { myRole: existing.role, myStatus: 'active' }), already: true };
+    const count = await p.teamMember.count({ where: { teamId: inv.teamId } });
+    if (count >= 50 && !existing) return reply.code(409).send({ error: 'team_full' });
+    await p.teamMember.upsert({
+      where: { teamId_userId: { teamId: inv.teamId, userId: req.user.uid } },
+      create: { teamId: inv.teamId, userId: req.user.uid, role: inv.role, status: 'active', invitedBy: inv.createdBy },
+      update: { role: inv.role, status: 'active', invitedBy: inv.createdBy },
+    });
+    await p.teamInvite.update({ where: { id: inv.id }, data: { uses: { increment: 1 } } });
+    await notify(p, inv.team.ownerId, 'team_joined', `${req.user.displayName || 'A member'} joined “${inv.team.name}” through an invite link.`, { href: '/dashboard?s=teams' }).catch(() => {});
+    return { ok: true, team: serTeam(inv.team, { myRole: inv.role, myStatus: 'active' }) };
   });
 
   const load = async (p, req, reply, roles) => {

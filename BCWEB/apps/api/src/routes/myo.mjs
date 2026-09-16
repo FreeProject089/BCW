@@ -1,6 +1,9 @@
 import { z } from 'zod';
 import { publishToThread, streamThread } from '../lib/threadbus.mjs';
 import { db, requireRole, requireCap, hasCap, currentUser, logAudit, clientIp, requireVerifiedEmail } from '../lib/lib.mjs';
+import { recordPendingCheckout } from '../lib/pending-checkout.mjs';
+import { createExpiringFile, keyFromMediaUrl, linkFor, describe as describeLink, revokeFor, DEFAULTS as LINK_DEFAULTS } from '../lib/expiring-files.mjs';
+import { deleteObject } from '../lib/storage.mjs';
 import { applyCampaign } from './campaigns.mjs';
 import { stripe, ensureCustomer } from './hosting.mjs';
 
@@ -75,7 +78,10 @@ const ser = {
   product: (r) => ({ id: r.id, kind: r.kind, name: r.name, tagline: r.tagline, description: r.description, icon: r.icon, basePriceCents: r.basePriceCents, options: r.options || [], includesSource: r.includesSource, active: r.active, featured: r.featured, order: r.order }),
   message: (m) => ({ id: m.id, authorId: m.authorId, staff: m.staff, body: m.body, images: m.images || [], createdAt: m.createdAt, author: m.author ? { id: m.author.id, displayName: m.author.displayName, avatar: m.author.avatar } : null }),
   quote: (q) => ({ id: q.id, title: q.title, note: q.note, lineItems: q.lineItems || [], totalCents: q.totalCents, currency: q.currency, includesSource: q.includesSource, validUntil: q.validUntil, status: q.status, createdAt: q.createdAt, paidAt: q.paidAt }),
-  deliverable: (d) => ({ id: d.id, title: d.title, note: d.note, fileUrl: d.fileUrl, fileName: d.fileName, linkUrl: d.linkUrl, includesSource: d.includesSource, createdAt: d.createdAt }),
+  // `link` is the ExpiringFile row behind the deliverable's file, when there is one: the
+  // customer downloads through `/f/<token>` (bound to their account, dated), never the raw
+  // media URL — so the card can say until when, and the conversation records the download.
+  deliverable: (d, link = null) => ({ id: d.id, title: d.title, note: d.note, fileUrl: link ? linkFor(link) : d.fileUrl, fileName: d.fileName, linkUrl: d.linkUrl, includesSource: d.includesSource, createdAt: d.createdAt, ...(link ? { expiry: describeLink(link) } : {}), removed: !d.fileUrl && !!d.fileName }),
   request: (r, { withUser = false } = {}) => ({
     id: r.id, productId: r.productId, productKind: r.productKind, name: r.name, logo: r.logo,
     objective: r.objective, target: r.target, description: r.description, lang: r.lang, urgent: r.urgent,
@@ -206,7 +212,7 @@ export default async function myoRoutes(app) {
       request: ser.request(r, { withUser: staff }),
       messages: messages.map(ser.message),
       quotes: quotes.map(ser.quote),
-      deliverables: deliverables.map(ser.deliverable),
+      deliverables: await (async () => { const links = deliverables.length ? await p.expiringFile.findMany({ where: { kind: 'myo', refId: r.id } }).catch(() => []) : []; return deliverables.map((d) => ser.deliverable(d, links.find((l) => l.fileName === (d.fileName || '') && d.fileUrl && l.key === (keyFromMediaUrl(d.fileUrl) || d.fileUrl)) || null)); })(),
       viewerIsStaff: staff,
     };
   });
@@ -320,6 +326,9 @@ async function actorName(p, uid, fallback) {
         success_url: `${SITE_URL}/myo/${q.request.id}?quote=ok`,
         cancel_url: `${SITE_URL}/myo/${q.request.id}?quote=cancelled`,
       });
+      // The in-flight ledger the crash reconciler walks (lib/stripe-reconcile.mjs). Best-effort:
+      // a session that exists but is not recorded is the old behaviour, not a failed checkout.
+      await recordPendingCheckout(p, { kind: session.metadata?.type || 'myo_quote', sessionId: session.id, userId: req.user.uid, payload: session.metadata || null }).catch(() => {});
       await p.myoQuote.update({ where: { id: q.id }, data: { stripeSessionId: session.id } });
       return { checkoutUrl: session.url };
     } catch { return reply.code(503).send({ error: 'stripe_unconfigured' }); }
@@ -452,6 +461,17 @@ async function actorName(p, uid, fallback) {
       return reply.code(400).send({ error: 'still_active', status: cur.status });
     }
     const r = await p.myoRequest.update({ where: { id: cur.id }, data: { archivedAt: b.data.archived ? new Date() : null }, include: { assignedTo: true, user: true } });
+    // An archive keeps the conversation, not its attachments: the delivery files' links are
+    // revoked and the objects deleted, the messages' pictures go too. The rows keep the file
+    // NAMES, so the history still says what was delivered and when.
+    if (b.data.archived) {
+      await revokeFor(p, 'myo', r.id).catch(() => 0);
+      const dels = await p.myoDeliverable.findMany({ where: { requestId: r.id, fileUrl: { not: null } } });
+      for (const d of dels) { const k = keyFromMediaUrl(d.fileUrl); if (k) await deleteObject(k).catch(() => {}); }
+      if (dels.length) await p.myoDeliverable.updateMany({ where: { requestId: r.id }, data: { fileUrl: null } });
+      const msgs = await p.myoMessage.findMany({ where: { requestId: r.id, NOT: { images: { isEmpty: true } } }, select: { id: true, images: true } });
+      for (const m of msgs) { for (const u of m.images) { const k = keyFromMediaUrl(u); if (k) await deleteObject(k).catch(() => {}); } await p.myoMessage.update({ where: { id: m.id }, data: { images: [] } }).catch(() => {}); }
+    }
     await logAudit(p, req.user.uid, b.data.archived ? 'myo.archive' : 'myo.unarchive', r.name, clientIp(req));
     return { ok: true, request: ser.request(r, { withUser: true }) };
   });
@@ -523,9 +543,16 @@ async function actorName(p, uid, fallback) {
     const r = await p.myoRequest.findUnique({ where: { id: req.params.id } });
     if (!r) return reply.code(404).send({ error: 'not_found' });
     const d = await p.myoDeliverable.create({ data: { requestId: r.id, title: b.data.title, note: b.data.note, fileUrl: b.data.fileUrl || null, fileName: b.data.fileName || null, linkUrl: b.data.linkUrl || null, includesSource: b.data.includesSource, createdBy: req.user.uid } });
+    // The file behind a dated, owner-bound link: a month from delivery, or a week after the
+    // customer's first download, whichever comes first (Payments & Refunds says so).
+    let link = null;
+    if (d.fileUrl) {
+      const key = keyFromMediaUrl(d.fileUrl) || d.fileUrl;
+      link = await createExpiringFile(p, { key, kind: 'myo', refId: r.id, ownerId: r.userId, fileName: d.fileName || '', days: LINK_DEFAULTS.myoDays, downloadAfterDays: LINK_DEFAULTS.myoAfterDownloadDays, createdBy: req.user.uid }).catch(() => null);
+    }
     await p.myoRequest.update({ where: { id: r.id }, data: { status: 'delivered', userUnread: true, lastActivityAt: new Date() } });
     await logAudit(p, req.user.uid, 'myo.deliver', `${r.name}${b.data.includesSource ? ' (+source)' : ''}`, clientIp(req));
-    return reply.code(201).send({ deliverable: ser.deliverable(d) });
+    return reply.code(201).send({ deliverable: ser.deliverable(d, link) });
   });
 
   // Set request status (in_production / delivered / closed / open …).
@@ -591,6 +618,9 @@ async function consultationCheckout(p, userId, request, cfg) {
     success_url: `${SITE_URL}/myo/${request.id}?paid=1`,
     cancel_url: `${SITE_URL}/myo/${request.id}?cancelled=1`,
   });
+  // The in-flight ledger the crash reconciler walks (lib/stripe-reconcile.mjs). Best-effort:
+  // a session that exists but is not recorded is the old behaviour, not a failed checkout.
+  await recordPendingCheckout(p, { kind: session.metadata?.type || 'myo_consultation', sessionId: session.id, userId: userId, payload: session.metadata || null }).catch(() => {});
   await p.myoRequest.update({ where: { id: request.id }, data: { stripeSessionId: session.id } });
   return session.url;
 }

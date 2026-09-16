@@ -156,6 +156,11 @@ export function normalizeCanvas(raw) {
         shadow: SHADOWS.includes(b.shadow) ? b.shadow : '',
         hover: HOVER_EFFECTS.includes(b.hover) ? b.hover : '',
         link: safeLink(b.link),
+        // Which saved component this block came from, if any: `{ id, inst }` — the component
+        // and the particular copy of it, so "update every instance" can find the copies and
+        // "detach" can forget one. Absent on a block placed by hand. Kept here because this
+        // function is an allow-list: a field it does not name is a field the first save drops.
+        component: componentTag(b.component),
       };
     })
     .filter(Boolean);
@@ -179,6 +184,13 @@ export function normalizeCanvas(raw) {
     // (lib/css-scope.js), so what is stored is what was typed and the rule is in one place.
     css: typeof c.css === 'string' ? c.css.slice(0, 40_000) : '',
   };
+}
+
+/** The component tag, or null. Both halves are needed for it to mean anything. */
+function componentTag(raw) {
+  const o = raw && typeof raw === 'object' ? raw : null;
+  if (!o || typeof o.id !== 'string' || !o.id || typeof o.inst !== 'string' || !o.inst) return null;
+  return { id: o.id.slice(0, 60), inst: o.inst.slice(0, 60) };
 }
 
 /**

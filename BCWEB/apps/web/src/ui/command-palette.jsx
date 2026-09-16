@@ -12,6 +12,7 @@ import { useI18n } from '../i18n.jsx';
 import { api } from '../lib/api.js';
 import { useTheme } from './theme.jsx';
 import { useAuth } from '../pages/auth.jsx';
+import { useCharityEnabled } from '../lib/charity-enabled.js';
 
 // Snapshot the CURRENT view's searchable content — headings, buttons, links, labels, table
 // headers, list rows — so ⌘K can find "the thing on this page" and jump to it. Scoped to the
@@ -175,10 +176,13 @@ export default function CommandPalette() {
   // copy would show you what you picked two sessions ago.
   const [recent, setRecent] = useState(readRecent);
   useEffect(() => { if (open) setRecent(readRecent()); }, [open]);
+  // Community Charity is an admin switch; off, /charity says "not running" and the entry
+  // here would lead there. Hidden until the probe says the programme is on.
+  const charityOn = useCharityEnabled();
 
   const items = useMemo(() => {
     const n = q.trim().toLowerCase();
-    const pages = pageDefs(t);
+    const pages = pageDefs(t).filter((pg) => pg.to !== '/charity' || charityOn === true);
     const scored = (arr) => arr.map((x) => ({ ...x, s: score(n, x.kw || x.label.toLowerCase()) }))
       .filter((x) => x.s > 0).sort((a, b) => b.s - a.s);
     const p = scored(pages);
@@ -199,7 +203,7 @@ export default function CommandPalette() {
       : [...recent.map((r) => ({ kind: 'recent', label: r.label, to: r.to, s: 1 })),
          ...pages.map((x) => ({ ...x, s: 1 })), ...actions];
     return out;
-  }, [q, docs, actions, pageEls, recent, t]);
+  }, [q, docs, actions, pageEls, recent, t, charityOn]);
 
   useEffect(() => { setActive(0); }, [q, docs]);
   useEffect(() => { listRef.current?.querySelector('[data-active="1"]')?.scrollIntoView({ block: 'nearest' }); }, [active]);

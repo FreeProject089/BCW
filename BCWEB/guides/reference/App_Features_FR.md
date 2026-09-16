@@ -125,10 +125,14 @@
   visibilité par page.
 - **Mises à jour planifiées** — préparer du contenu de projet pour publication à une
   date/heure future (paresseux, sans cron), annulable.
+- **Équipes : liens et places** — un propriétaire ou admin crée des liens d’invitation (rôle, expiration, nombre d’usages) que toute personne connectée peut ouvrir pour rejoindre ; un compte possède jusqu’à la limite d’équipes fixée par l’admin (Réglages d’hébergement → Équipes), et une de plus est un paiement Stripe unique pour une place définitive.
+- **Fichiers qui expirent** — un seul mécanisme (`/f/<jeton>`) pour les livraisons Make Your Own (30 jours après la livraison ou 7 après le premier téléchargement ; le premier téléchargement est la preuve, écrite dans la conversation ; les archives ne gardent aucune pièce jointe), les pièces jointes des mails (liens datés, ou jointes quand petites) et tout fichier remis pour un temps. Mail : le compositeur garde les modèles de l’admin et la galerie permet de modifier un texte intégré sur place au lieu de le réécrire ; le logo d’en-tête est sur une plaque blanche.
+- **Recherche admin** — la boîte de la barre latérale trouve les écrans par libellé, synonyme (FR/EN), préfixe sans accents ou faute d’une lettre, classés d’après le texte du guide admin, et dessous les données elles-mêmes (comptes, dépôts, catalogues, équipes, conversations, signalements, sanctions, commandes, articles, docs, FAQ, sondages, codes) via `/admin/search`.
+- **Images ressemblantes** — chaque image envoyée (et les images dans les archives envoyées, et les avatars liés) reçoit une empreinte perceptuelle ; une image à quelques bits de celle d’un autre compte, ou identique octet pour octet, arrive dans Admin → Modération → Images ressemblantes, les deux côte à côte, à effacer ou traiter.
 - **Bot Discord** — accès multi-rôles avec exigences par rôle + `/refreshroles`,
   annonces de tips Ko-fi, alertes server-perf, modération, bienvenue, join-to-create
   vocal, annonces de blog. Le `/casino` a des **tables en direct** (une course à six voitures
-  avec la voiture choisie dans un menu, une cagnotte pondérée par la mise, et un tirage partagé de
+  avec la voiture choisie dans un menu — une simulation Paddock-Manager accélérée : l’admin choisit le circuit (intégré, généré à chaque course, ou importé en JSON), les tours, les couleurs des voitures, machines égales ou grille réaliste, incidents et arrêts au stand, sous Bot Discord → Économie → Casino → Course — une cagnotte pondérée par la mise, et un tirage partagé de
   n’importe quel jeu solo) que d’autres membres rejoignent depuis le même message ; à deux ou
   plus, la table se règle **entre les joueurs** — les mises des perdants forment la cagnotte,
   répartie par mise × multiplicateur, avantage pris sur la part seulement — et l’admin fixe
@@ -140,8 +144,24 @@
   `/appeal` (qui répond même dans un serveur bloqué) renvoie la référence du blocage plus un
   lien vers la page de contact. Les bannières de bienvenue/au revoir acceptent un **fond
   personnalisé** envoyé sur place, conservé comme image hébergée sur le site (modérable).
+  **Automod** — onze règles pilotées par les données (spam, mentions de masse, invitations,
+  liens, mots, majuscules, zalgo, pièces jointes, âge du compte, selfbot, raid), chacune avec
+  un on/off, une action (journaliser / supprimer / avertir / exclusion temporaire / expulser /
+  bannir, quarantaine pour l'âge du compte) et ses seuils sous « Avancé », plus des exemptions
+  (rôles, salons, utilisateurs, modérateurs) et une péremption des avertissements — et le
+  **routage des logs** : un forum (un post étiqueté par catégorie ou par jour) ou un salon
+  texte, avec une route par groupe et par catégorie (23 catégories en 8 groupes). Les deux
+  s'éditent depuis le tableau de bord du propriétaire du serveur (sections Automod / Logs) et
+  depuis l'onglet bot de l'admin sous le sélecteur de serveur, où une bulle **Défauts
+  globaux** règle ce que suit tout serveur sans config propre ; le module Alertes de l'admin
+  peut aussi nommer un **forum des alertes** pour que chaque type d'alerte admin devienne un
+  post étiqueté.
 - **Community Charity** — chaque mois une part des revenus éligibles va à une association
-  choisie par la communauté, payée manuellement. Le vote du mois se choisit dans la liste des
+  choisie par la communauté, payée manuellement. C'est un **interrupteur** admin (Admin →
+  Ko-fi & financement → Cagnotte solidaire) : éteint, `/charity` dit que le programme ne tourne
+  pas, la palette de commandes cache l'entrée, le sitemap l'omet et chaque route publique de
+  la cagnotte (`/charity/current`, `/charity/contribute`, `/v1/charity`) répond 404
+  `charity_disabled`. Le vote du mois se choisit dans la liste des
   sondages plutôt qu'en collant un id, et un don crédite la cagnotte **net des frais de carte**
   (le montant exact des frais lu depuis Stripe) ; le donateur voit les frais et est prévenu que
   les dons sont définitifs avant de payer.
@@ -257,7 +277,11 @@
   son README plutôt que de laisser des instructions pour des fichiers qu'elle n'a pas
   envoyés.
 - **Serveur** — dashboard perf en direct (totaux CPU/RAM/disque/uptime + valeurs au
-  survol + alertes Discord) ; Advanced server management (DB viewer avec journal
+  survol + alertes Discord), et les **chiffres quotidiens** (CPU, mémoire, disque, latence
+  par jour) qui formaient le bloc « Métriques système » de la page de statut publique —
+  désormais réservés à l'admin, chaque graphique comparé à la période de même durée juste
+  avant (delta % par métrique, la hausse colorée comme une dégradation) ; le `/status`
+  public ne les porte plus. Advanced server management (DB viewer avec journal
   d'audit, gestionnaire de fichiers, Docker, redémarrage/power) derrière un droit
   server-control + step-up 2FA.
 - **Journal de sécurité** — tentatives de connexion, IPs connectées, actions admin ;
@@ -290,6 +314,25 @@
   cet écran. L’équipe peut en planifier une avec un motif obligatoire ; la personne reçoit le
   motif, la date et un lien pour nous contacter — pas un bouton d’annulation, car une
   fermeture décidée par l’équipe ne s’annule pas de son côté.
+- **Paiements en attente** (Hébergement & facturation) — chaque checkout Stripe est inscrit
+  dans un registre à l'ouverture et terminé par le webhook. L'onglet liste ceux encore
+  ouverts (avec leur âge) et ceux terminés récemment ; **Réconcilier maintenant** demande à
+  Stripe ce qu'il est advenu de chaque checkout de plus de 15 minutes et livre ce qui a été
+  payé (**Inclure les récents** fait pareil pour ceux ouverts il y a quelques secondes, quand
+  on sait que le webhook était en panne). La même réconciliation tourne au démarrage et toutes
+  les dix minutes toute seule ; un paiement pris et non livré atterrit aussi sur la page
+  Erreurs et notifie les super-admins.
+- **Assistant produit de la marketplace** — Nouveau / Modifier un produit est un assistant en
+  quatre étapes (Base → Fichiers & livraison → Prix → Aperçu & publication). Chaque étape se
+  valide sur Suivant avec l'erreur sous le champ ; les étapes visitées sont cliquables, les
+  autres non ; chaque frappe est gardée dans la session de l'onglet, donc un clic à côté du
+  modal ne perd rien (**Enregistrer le brouillon** le garde explicitement, et une réouverture
+  dit « reprise où tu en étais » avec une option Abandonner). Rien ne part vers l'API avant
+  Publier à la dernière étape.
+- **Page de retour de l'acheteur** — après un paiement marketplace, le dashboard affiche
+  « Confirmation de ton paiement » et interroge une route de statut en lecture seule jusqu'à
+  ce que le webhook ait livré, puis montre la clé / le contenu / le lien sur place. L'URL de
+  retour elle-même n'accorde rien.
 
 ## Aspect & ressenti
 - **Orbe héro Three.js** — se construit à partir de ses éclats à l'intro, spirale au
@@ -324,6 +367,27 @@
   délai, au survol ; en boucle ou non), un panneau **Calques** (nom, verrou, masquage,
   ordre), rotation, ombre, effets au survol, lien sur tout le bloc, alignement du texte, pas
   de grille au choix et des presets pour démarrer ; des **formes** (douze, en SVG inline avec remplissage / dégradé / contour / libellé), du **SVG collé** passé par un assainisseur à liste blanche, douze **motifs** répétés, une **feuille de style de page** confinée à la page (url() externes, @import et expression() refusés et signalés), des classes et un style en ligne par bloc, l’**éditeur B.MD** complet pour les blocs texte, copier / coller, zoom, et l’import de fichiers `.css` / `.svg`.
+  Le studio est **une page à part entière** en `/studio/<project|showcase>/<id>/<index>`
+  (ouverte par « Ouvrir le studio » dans les réglages de la page ; l’adresse sans index liste
+  les planches de cette page) : une barre haute (retour, nom du document, état
+  d’enregistrement, annuler / rétablir, le sélecteur planche claire / sombre / téléphone, les
+  aperçus, Enregistrer), un volet gauche (palette de **Blocs**, **Calques**, **Composants**),
+  la planche, et un volet droit (propriétés). À partir de 1024 px les trois sont côte à côte ;
+  en dessous, la planche prend toute la largeur et les deux volets deviennent des feuilles en
+  bas, choisies dans une rangée d’onglets Blocs · Planche · Propriétés. Les modifications
+  restent en **brouillon dans l’onglet** jusqu’à Enregistrer (qui écrit toute la config de la
+  page par la même route que le formulaire des réglages), et quitter avec des changements non
+  enregistrés demande d’abord. L’**aperçu** rend la planche avec le moteur public dans un
+  cadre ordinateur, tablette (820 px) ou téléphone (390 px, empilé), rejoue les animations
+  d’entrée à la demande, et peut montrer la **page projet entière** avec le brouillon dans son
+  onglet. **Composants** : sélectionner des blocs, « Enregistrer comme composant » (nom +
+  vignette), et l’onglet Composants les liste par compte ; insérer place une copie liée,
+  **Détacher** la délie, **Mettre à jour toutes les copies** reconstruit chaque copie de la page
+  depuis la définition enregistrée, **Redéfinir depuis la sélection** remplace la définition.
+  Clavier : Suppr, Ctrl+Z / Ctrl+Y, Ctrl+D dupliquer, Ctrl+A, Ctrl+C / V, Ctrl+S enregistrer,
+  flèches pour décaler d’un pas de grille et Maj+flèches de dix ; plus guides d’alignement et
+  aimantation, sélection multiple au lasso, ordre de superposition, verrou / masquage, grille
+  affichable et zoom (ajuster / 100 % / + / -).
 - **Équipes & contact** — une équipe (une adresse de contact, des rôles, des invitations par
   BC id / e-mail / pseudo, une page publique en `/t/<slug>`) gère les dépôts, catalogues et
   pools que son propriétaire y rattache ; un bouton **Contacter** sur chaque dépôt, catalogue,

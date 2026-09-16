@@ -75,7 +75,7 @@ export default function DomainPanel({ kind, id }) {
             : gate.reason === 'not_hosted' ? t('dom.gate.ext', 'This repo lives on your own server, so it already answers at your own address — that is the thing a domain here would point to.')
             : t('dom.gate.other', 'Not available for this one.')}
         </p>
-        {gate.reason === 'free_plan' && <a href="/hosting" className="inline-block mt-3"><Button size="sm" variant="secondary">{t('dom.gate.see', 'See the plans')}</Button></a>}
+        {gate.reason === 'free_plan' && <a href="/hosting#plans" className="inline-block mt-3"><Button size="sm" variant="secondary">{t('dom.gate.see', 'See the plans')}</Button></a>}
       </Card>
     );
   }

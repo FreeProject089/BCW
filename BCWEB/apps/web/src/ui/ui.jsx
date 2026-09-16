@@ -2,7 +2,7 @@
 // use the Dialog + Toast providers below. Icons come from lucide-react.
 import { createContext, useContext, useEffect, useState, useCallback, useRef, useId, forwardRef } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Check, AlertTriangle, Info, Loader2, Eye, EyeOff, ChevronDown, Undo2, Star, MoreHorizontal } from 'lucide-react';
+import { X, Check, AlertTriangle, Info, Loader2, Eye, EyeOff, ChevronDown, Undo2, Star, MoreHorizontal, Plus, Minus } from 'lucide-react';
 import { useI18n } from '../i18n.jsx';
 import { getUndoDisabled, getForceConfirm } from '../lib/prefs.js';
 
@@ -225,15 +225,28 @@ function splitClasses(cls) {
 }
 
 /**
- * A number field with its own up/down buttons.
+ * A number field with its own − and + buttons.
  *
  * The native spinner is an 8px grey stub that looks different in every browser, cannot be
  * themed, and on a phone cannot be hit at all. These are two real buttons that call the
  * field's own stepUp/stepDown (so `min`, `max` and `step` are honoured exactly as typing
  * would) and then raise `input` so React's onChange runs — the DOM value changed behind
  * React's back, and telling it is what makes a controlled field follow.
+ *
+ * Two shapes, chosen by the field's own width (a container query in index.css, `.num-wrap`):
+ * side by side — [−] [value] [+], each button the field's full height and 28px wide — when
+ * there is room, and a stacked column at the end when the field is narrower than 9rem, so
+ * a 64px field still shows its digits. They are drawn on hover and focus, and always on a
+ * touch screen, where there is no hover to reveal them. Layout is logical-side, so an RTL
+ * page mirrors it for free.
+ *
+ * Keyboard arrows are the browser's own. The wheel is ours: browsers step a focused number
+ * field on wheel only while it is ALSO under the pointer, and some not at all — so a focused
+ * field steps on wheel here, and an unfocused one lets the page scroll, which is the split a
+ * form full of numbers needs (React's onWheel is passive, hence the manual listener).
  */
 const NumberInput = forwardRef(({ className, plain: _p, ...p }, ref) => {
+  const { t } = useI18n();
   const inner = useRef(null);
   const setRef = (el) => { inner.current = el; if (typeof ref === 'function') ref(el); else if (ref) ref.current = el; };
   const [wrapCls, innerCls] = splitClasses(className);
@@ -244,13 +257,31 @@ const NumberInput = forwardRef(({ className, plain: _p, ...p }, ref) => {
     el.dispatchEvent(new Event('input', { bubbles: true }));
     el.focus({ preventScroll: true });
   };
+  useEffect(() => {
+    const el = inner.current;
+    if (!el) return undefined;
+    const onWheel = (e) => {
+      if (document.activeElement !== el || e.deltaY === 0) return;
+      e.preventDefault();
+      bump(e.deltaY < 0 ? 1 : -1);
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
+  // tabIndex -1 and a swallowed mousedown: the buttons are a pointer convenience, the field
+  // itself is the keyboard control (arrows), and a click must not steal its focus.
+  const btn = (dir) => (
+    <button type="button" tabIndex={-1} className={dir > 0 ? 'num-inc' : 'num-dec'}
+      aria-label={dir > 0 ? t('num.inc', 'Increase') : t('num.dec', 'Decrease')}
+      onMouseDown={(e) => e.preventDefault()} onClick={() => bump(dir)}>
+      {dir > 0 ? <Plus /> : <Minus />}
+    </button>
+  );
   return (
     <span className={`num-wrap ${wrapCls}`}>
+      {btn(-1)}
       <input ref={setRef} {...p} type="number" className={`input num-input ${innerCls}`} />
-      <span className="num-btns" aria-hidden>
-        <button type="button" tabIndex={-1} onMouseDown={(e) => e.preventDefault()} onClick={() => bump(1)}><ChevronDown style={{ transform: 'rotate(180deg)' }} /></button>
-        <button type="button" tabIndex={-1} onMouseDown={(e) => e.preventDefault()} onClick={() => bump(-1)}><ChevronDown /></button>
-      </span>
+      {btn(1)}
     </span>
   );
 });

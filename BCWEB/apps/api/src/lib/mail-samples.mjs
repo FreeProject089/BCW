@@ -13,7 +13,7 @@
 // a preview containing a real-looking token invites somebody to click it, and a screenshot of
 // this page should never be a leak.
 
-import { mailShell, withMailId } from './mail.mjs';
+import { captureBuiltinBody, mailShell, withMailId } from './mail.mjs';
 
 const SITE = (process.env.SITE_URL || 'https://bettercommunity.ch').replace(/\/+$/, '');
 const link = (path) => `${SITE}${path}`;
@@ -251,6 +251,13 @@ export const MAIL_GROUPS = [
 
 /** One sample's HTML, or null. `scheme` is the shell's own light/dark switch — an author
  *  checking a mail needs to see the version their reader's client will pick. */
+/** The built-in body HTML of an editable sample — what the admin edits instead of rewriting. */
+export function builtinBody(id) {
+    const s = MAIL_SAMPLES.find((x) => x.id === id);
+    if (!s || !s.editable) return null;
+    return captureBuiltinBody(s.id, () => s.build({ mailId: s.id }));
+}
+
 export function renderSample(id, scheme = 'auto') {
     const s = MAIL_SAMPLES.find((x) => x.id === id);
     if (!s) return null;

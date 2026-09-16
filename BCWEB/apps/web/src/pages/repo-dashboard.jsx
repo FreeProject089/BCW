@@ -836,7 +836,7 @@ function SettingsTab({ r, reload }) {
                   </Button>
                 </>
               ) : (
-                <a href="/hosting"><Button size="sm" variant="secondary">{t('rd.size.buy', 'Get more space')}</Button></a>
+                <a href="/hosting#plans"><Button size="sm" variant="secondary">{t('rd.size.buy', 'Get more space')}</Button></a>
               ))}
             </div>
             <Button size="sm" variant="secondary" disabled={sizeBusy || Math.abs(quotaGB - (r.storageQuotaBytes / GiB)) < 0.01}

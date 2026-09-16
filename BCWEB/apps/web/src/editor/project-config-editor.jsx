@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { studioPath, handoffKey } from '../lib/studio-page.js';
 import {
   ChevronDown, Plus, Trash2, GripVertical, Star, Link2, Download, Image as ImageIcon,
   Film, Play, ListTodo, ScrollText, Users, ShieldCheck, Upload, Eye, ExternalLink, Github, Network, Boxes, Copy, CalendarDays, Sparkles, LayoutTemplate,
@@ -436,6 +438,23 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
   // inside a settings column meant designing at 1200px in 600px of room.
   const [studioAt, setStudioAt] = useState(null);
   const [tabAt, setTabAt] = useState(null);
+  const navigate = useNavigate();
+  /**
+   * Open a canvas in the studio PAGE (/studio/:kind/:id/:index — pages/studio.jsx).
+   *
+   * The config this form holds may not be saved yet, so it is handed over through
+   * sessionStorage and the page starts from it; the page then saves the whole config through
+   * the same PUT this form's Save uses, with that one canvas replaced. When the form does not
+   * know which page it edits (no `slug`), the old in-place modal is used instead — a studio
+   * that cannot save is not an improvement on one that opens small.
+   */
+  const openStudio = (i) => {
+    if (!slug) { setStudioAt(i); return; }
+    const kind = isShowcase ? 'showcase' : 'project';
+    try { sessionStorage.setItem(handoffKey(kind, slug), JSON.stringify({ config: c, name: slug, at: Date.now() })); }
+    catch { /* no storage: the page fetches the saved config instead */ }
+    navigate(studioPath(kind, slug, i));
+  };
   // Who is allowed to turn the studio on. The SERVER is the authority (guardStudioFlag keeps
   // a grantee's flag out of the stored config whatever they send); this only decides whether
   // to draw a switch that would not work for them.
@@ -1116,7 +1135,7 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
                   <span className="text-[11px] text-[var(--faint)] tabular-nums whitespace-nowrap">
                     {t('pce.canvases.n', '{n} block(s)').replace('{n}', (cv.blocks || []).length)}
                   </span>
-                  <Button size="sm" variant="ghost" onClick={() => setStudioAt(i)}><LayoutTemplate size={13} /> {t('pce.canvases.edit', 'Open the studio')}</Button>
+                  <Button size="sm" variant="ghost" onClick={() => openStudio(i)}><LayoutTemplate size={13} /> {t('pce.canvases.edit', 'Open the studio')}</Button>
                   <Button size="sm" variant="ghost" className="!text-error" onClick={() => put(list.filter((_, n) => n !== i))} title={t('common.remove', 'Remove')}>×</Button>
                 </div>
               ))}

@@ -5,6 +5,7 @@ import { grantAutoBadges } from './social.mjs';
 import crypto from 'node:crypto';
 import { zipReadAll, zipEntry } from '../lib/native.mjs';
 import { db, requireRole, optionalAuth, slugify, notify, hasFreeTierClaim, recordFreeTierClaim, resolveClientIdentity, policyBans, policyWhitelist, getGlobalAccessPolicy, catalogLog, logAudit, requireVerifiedEmail, safeEqual } from '../lib/lib.mjs';
+import { recordPendingCheckout } from '../lib/pending-checkout.mjs';
 import { issueSanction } from '../lib/sanctions.mjs';
 import { presignGet, getObject, deleteObject } from '../lib/storage.mjs';
 import { validatePlugin, fetchPluginBytes } from '../lib/plugin.mjs';
@@ -507,6 +508,9 @@ export default async function catalogRoutes(app) {
         metadata: { type: 'catalog_hosting', itemId: item.id, userId: req.user.uid, ...(coupon ? { campaignId: coupon.campaign.id } : {}) },
         success_url: `${siteUrl}/dashboard?hosting=ok`, cancel_url: `${siteUrl}/dashboard?hosting=cancel`,
       });
+      // The in-flight ledger the crash reconciler walks (lib/stripe-reconcile.mjs). Best-effort:
+      // a session that exists but is not recorded is the old behaviour, not a failed checkout.
+      await recordPendingCheckout(p, { kind: session.metadata?.type || 'catalog_hosting', sessionId: session.id, userId: req.user.uid, payload: session.metadata || null }).catch(() => {});
       return reply.code(201).send({ item, checkoutUrl: session.url, hostingCents: hostCents });
     }
     await p.submission.create({ data: { itemId: item.id, ownerId: req.user.uid, type: 'NEW', status: 'PENDING' } });
@@ -815,6 +819,9 @@ export default async function catalogRoutes(app) {
         metadata: { type: 'catalog_hosting_update', itemId: item.id, userId: req.user.uid, ...(coupon ? { campaignId: coupon.campaign.id } : {}) },
         success_url: `${siteUrl}/dashboard?hosting=ok`, cancel_url: `${siteUrl}/dashboard?hosting=cancel`,
       });
+      // The in-flight ledger the crash reconciler walks (lib/stripe-reconcile.mjs). Best-effort:
+      // a session that exists but is not recorded is the old behaviour, not a failed checkout.
+      await recordPendingCheckout(p, { kind: session.metadata?.type || 'catalog_hosting_update', sessionId: session.id, userId: req.user.uid, payload: session.metadata || null }).catch(() => {});
       return { item: updated, checkoutUrl: session.url, hostingCents: hostCents };
     }
 

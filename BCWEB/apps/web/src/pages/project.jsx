@@ -313,14 +313,24 @@ function CountdownPanel({ announcement, onReveal }) {
   return <CountdownBlock announcement={announcement} cd={cd} done={cd.done} bare />;
 }
 
-export default function ProjectPage() {
-  const { key } = useParams();
+/**
+ * @param {object} [props.preview]  the studio's "page preview": `{ key, config, tab }` renders
+ *        THIS component with a config it was handed instead of one it fetched, so the author
+ *        sees the page exactly as a visitor will — same tabs, same renderer — with the draft
+ *        canvas in place. Absent on the real route.
+ */
+export default function ProjectPage({ preview = null }) {
+  const params = useParams();
+  const key = preview?.key ?? params.key;
   const { t } = useI18n();
   const { user } = useAuth();
   const [sp, setSp] = useSearchParams();
-  const wantTab = sp.get('tab') || 'overview';
+  const wantTab = sp.get('tab') || preview?.tab || 'overview';
   const [showVersions, setShowVersions] = useState(false);
-  const { data, loading, err } = useFetch(() => api.get(`/projects/${key}`), [key]);
+  const previewConfig = preview?.config || null;
+  const { data, loading, err } = useFetch(() => (previewConfig
+    ? Promise.resolve({ config: previewConfig, showBlogTab: false })
+    : api.get(`/projects/${key}`)), [key, previewConfig]);
   // The project's marketplace — the tab only appears when it actually sells something.
   const market = useFetch(() => api.get(`/marketplace/products?projectKey=${encodeURIComponent(key)}`).catch(() => ({ products: [] })), [key]);
   const marketProducts = market.data?.products || [];
@@ -1340,12 +1350,17 @@ function ShowcaseLegal({ legal, lang }) {
 }
 
 // A showcase project page — same tabs as BMM/BSM, driven entirely by admin config.
-export function ShowcaseProjectPage() {
-  const { slug } = useParams();
+/** `preview` — see ProjectPage: `{ project, tab }`, the studio's page preview with a draft config. */
+export function ShowcaseProjectPage({ preview = null }) {
+  const params = useParams();
+  const slug = preview?.project?.slug ?? params.slug;
   const { t, lang } = useI18n();
   const [sp, setSp] = useSearchParams();
   const [showVersions, setShowVersions] = useState(false);
-  const { data, loading, err, refetch } = useFetch(() => api.get(`/showcase/${slug}`), [slug]);
+  const previewProject = preview?.project || null;
+  const { data, loading, err, refetch } = useFetch(() => (previewProject
+    ? Promise.resolve({ project: previewProject })
+    : api.get(`/showcase/${slug}`)), [slug, previewProject]);
   // The storefront existed only on the fixed project pages, so a product attached to a
   // showcase page — which the admin form now makes possible — had nowhere to be sold. Keyed
   // on the showcase id, which is what the product carries. `?.` because this runs before the
@@ -1398,7 +1413,7 @@ export function ShowcaseProjectPage() {
     marketProducts.length > 0 && ['market', t('proj.market', 'Marketplace'), ShoppingBag],
   ].filter(Boolean);
   // Default to the countdown tab when one is present and no explicit tab chosen.
-  const activeTab = pickTab(sp.get('tab') || (inlineCountdown ? 'countdown' : 'overview'), tabs);
+  const activeTab = pickTab(sp.get('tab') || preview?.tab || (inlineCountdown ? 'countdown' : 'overview'), tabs);
   return (
     <div>
       <div className="flex flex-col md:flex-row md:items-center gap-5 mb-8">

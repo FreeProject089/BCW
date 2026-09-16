@@ -171,7 +171,25 @@ and sends are admin-triggered only (no auto-send on publish).
 | GET | `/me/payments` · `/me/payments/:id` | user | Local payment ledger. |
 | GET | `/me/payments/:id/stripe-link` | user | Resolve the genuine Stripe hosted-invoice / receipt URL for a payment. |
 | POST | `/me/subscriptions/:id/cancel` | user | Stop auto-renew (`cancel_at_period_end`) or resume (`{resume:true}`), ownership-checked. |
-| POST | `/hosting/webhook` | webhook | Stripe webhook (provisions repos/boosts/carts on payment, subscription cycles, refunds — signature-verified). |
+| POST | `/hosting/webhook` | webhook | Stripe webhook (provisions repos/boosts/carts on payment, subscription cycles, refunds — signature-verified). Also handles `checkout.session.async_payment_succeeded` (a delayed method clearing later — same delivery as `completed`) and `checkout.session.expired` (a held marketplace pool key goes back). |
+| GET | `/marketplace/checkout/:sessionId/status` | user | **Read-only.** What the buyer's return page polls: `{status: pending \| paid \| delivered \| failed, purchase?}`. Ownership-checked (the session must be the caller's). It never delivers — delivery happens in the webhook only. 404 when the session is unknown or somebody else's. |
+| GET | `/admin/payments/pending` | manage_hosting | The `PendingCheckout` ledger: every open Stripe checkout (oldest first, with its age in minutes) plus the most recently finished rows. `?limit=` (1–500, default 100). |
+| POST | `/admin/payments/reconcile` | manage_hosting | Run the reconciler now. Body `{olderThanMin?}` (default 15, `0` = include checkouts opened seconds ago). Returns `{ok, olderThanMin, summary: {scanned, delivered, alreadyDelivered, failed, stillPending, alerts, errors}}`. 503 `stripe_not_configured` without a key. Audited as `payments.reconcile`. |
+
+**Paid-but-undelivered, and how it is closed.** Every route that opens a Stripe Checkout
+(marketplace, hosting, cart, boost, pool, catalog hosting, charity, MYO, showcase listing,
+bot) writes a `PendingCheckout` row (`kind`, `sessionId` UNIQUE, `status`) the instant the
+session exists. The webhook flips the row to `delivered` (money settled) or `failed`
+(expired). If the webhook never ran — API down, endpoint misconfigured — the row stays
+`pending`, and `lib/stripe-reconcile.mjs` chases it: at boot (rows older than 1 min), from
+the sweeper every ~10 min (older than 15 min), or from the admin button. For each stale row
+it retrieves the session from Stripe and **replays the same webhook handler**
+(`dispatchStripeEvent`) against it, so there is one delivery path, not two; every branch is
+idempotent (marketplace: UNIQUE `checkoutSessionId`, `paymentIntentId` recorded). A paid row
+the webhook had not provisioned raises an `ErrorEvent` (source `reconcile`) and notifies every
+SUPERADMIN; a row found delivered twice does the same; a row the live webhook did deliver
+while the ledger lagged is corrected quietly. The return URL (`/dashboard?market=ok&session_id=…`)
+grants nothing: the dashboard polls the status route above until it reads `delivered`.
 
 ## 10. Announcements & notifications (`announcements.mjs`, part of `misc.mjs`)
 | Method | Path | Auth | Purpose |
@@ -215,6 +233,8 @@ and sends are admin-triggered only (no auto-send on publish).
 | GET | `/admin/bot/emoji-keys` · `/admin/bot/emoji/:key.png` · `/admin/bot/emoji-pack.zip` | admin | The bot's button icons: the key list, one PNG, the whole pack. An admin's own mapping in `economy.icons` overrides a key. |
 | GET | `/bot/emoji/keys` · `/bot/emoji/:key.png` | bot | The same icon set for the bot itself: at boot it uploads every key as an **application emoji** (`bc_<key>_<version>`), re-uploads the ones whose drawing changed, and never draws a unicode emoji. |
 | POST | `/admin/bot/actions` · `/me/discord/guilds/:id/actions` | mod / owner | Now also `role_add` / `role_remove` with `roleId` (+ `guildId` for the admin route). An owner may only name a role the heartbeat lists for that guild. |
+| GET / PUT | `/me/discord/guilds/:id` | owner | A server the caller owns or manages. The GET returns its `moderation` (the automod rules + ladder, `features/automod.mjs`) and `logRouting` (`features/logs.mjs`), plus the live `roles` / `channels` from the heartbeat; the PUT accepts `moderation` and `logs` through the bounded `MODERATION_SCHEMA` / `LOGS_SCHEMA` (every number bounded, every action an enum, unknown keys stripped) and MERGES them into `bot.config.guilds[id]` — an owner reaches nothing beyond their own subtrees. |
+| PUT | `/bot/guilds/:id/features` | bot | The same two subtrees written from Discord (`/logs setup`, `/logs route`): `{ actorDiscordId, patch: { moderation?, logs? } }`, same schemas, same owner-or-linked-manager check. |
 | GET | `/bot/economy/purchases/:discordId` | bot | The member's purchases — the `/inventory` command. |
 | GET | `/bot/economy/season` | bot | The season schedule, the state row (season number, last reset, history) and the next reset — for the bot's announcement and its "season N" line. |
 | POST | `/bot/economy/casino` | bot | One seat against the house: `{ discordId, game, bet, multiplier, note? }`. Limits from `betLimits()` (`maxBet: 0` = no cap, sent as `max: null`), edge from `edgePctFor()` (per game, else global), payout from `payoutFor()` — the edge taxes profit only. Crash's multiplier already carries the edge (`crashPoint()`), so it is passed through untaxed. |
@@ -283,6 +303,8 @@ and sends are admin-triggered only (no auto-send on publish).
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
 | GET | `/admin/server/metrics` · `/alerts` · `/deps-config` | admin | Live CPU/RAM/disk metrics, alert log, dependency list. |
+| GET | `/admin/server/metrics/daily?days=` | `manage_server` / admin | The daily rollup (CPU, memory, disk, latency averages + peaks per day) for the window, with the same-length window immediately before it: `series`, `current`, `previous`, `change` (per metric: `current`, `previous`, `abs`, `pct` — null against an empty previous window, never 0) and `coverage`. The public status page's former "System metrics" block; `/status` no longer carries `metrics`. Arithmetic in `lib/metrics-compare.mjs`. |
+| GET | `/admin/server/metrics/compare?days=` | admin | Long-range comparison out to a year (averages, peaks, load, latency, network, downtime, uptime %) against the period before. |
 | POST | `/admin/server/sample-now` · PUT `/deps-config` | admin | Force a sample / edit deps. |
 | GET/POST | `/bot/alerts/unannounced` · `/bot/alerts/announced` | bot | Alert-announce queue for the bot. |
 
@@ -333,7 +355,7 @@ Named, scoped keys the account owner mints for the public API. Every `/v1/*` rou
 | GET | `/v1/polls` | `polls:read` | Polls open to you, and how you answered. |
 | POST | `/v1/polls/:id/vote` | `polls:write` | Answer a poll. Replaces a previous answer, like the site. |
 | GET | `/v1/polls/:id` | `polls:read` | One PUBLIC poll by id — open **or closed** — with every option id (what `/vote` takes), the multi-question form (question ids + choice ids), `myVotes`, and the tally once it may be seen (after you answer, or when closed / `results: always`). Unlisted and private polls answer 404. |
-| GET | `/v1/charity` | `charity:read` | The Community Charity pot this month — the same shape the landing widget reads: association, percent, totals, the vote's id + open flag, and `design` (the landing card's look: `mode` default/custom, frame `width`/`height`, `ink`, `align`, the `backdrop`/`overflow`/`sticker` image URLs with `bleed`, `stickerSize`, `stickerCorner`, `stickerOffset`). |
+| GET | `/v1/charity` | `charity:read` | Off → 404 `charity_disabled` (see §44). The Community Charity pot this month — the same shape the landing widget reads: association, percent, totals, the vote's id + open flag, and `design` (the landing card's look: `mode` default/custom, frame `width`/`height`, `ink`, `align`, the `backdrop`/`overflow`/`sticker` image URLs with `bleed`, `stickerSize`, `stickerCorner`, `stickerOffset`). |
 | GET | `/v1/economy` | `economy:read` | Your Discord level, XP (this level / to next), points, activity counts and the XP rates. |
 | GET | `/v1/economy/purchases` | `economy:read` | What you bought in the points shop, with any code handed over and its `delivered`/`pending` status. |
 | GET | `/v1/badges` | `badges:read` | The badges on your profile, with `earnedAt` and whether staff or a rule (`how`) granted them. |
@@ -581,6 +603,13 @@ A conversation with the owner and team behind a repo, a catalogue, a profile or 
 | GET / POST | `/threads/t/:token` · `/threads/t/:token/messages` | the token | The anonymous sender's side. |
 | GET | `/admin/threads?status=&q=` · `/admin/threads/:id` | `manage_reports` | The queue (`flagged` first) and one thread with hidden messages, sender e-mail and IP. |
 | POST | `/admin/threads/:id/close` · `/block` · `/messages/:mid/hide` · `/unhide` | `manage_reports` | Moderation; block adds the sender to the blocklist and blocks every thread they opened. |
+| GET / POST | `/me/teams/limits` · `/me/teams/slot/checkout` | session | How many teams the account owns vs may own (`teams.maxOwned` + bought slots; staff uncapped) and the slot price; the checkout is a one-off Stripe payment (`metadata.type = team_slot`) — the webhook writes a `TEAM_SLOT` Payment (idempotent on the session) and increments `User.extraTeamSlots`. `POST /me/teams` answers 409 `too_many_teams` with `{ owned, limit, slot }`. |
+| GET / POST / DELETE | `/me/teams/:id/invites` · `/me/teams/:id/invites/:inviteId` · `/teams/join/:token` | owner/admin · anyone signed in | Invitation links (`/teams/join/<token>`, a role, optional expiry and max uses, ≤ 10 open per team). `GET /teams/join/:token` says what team and whether the link still works; `POST` joins as an active member (50-member cap). |
+| GET | `/f/:token` · `/f/:token/info` | token (+ the owner's session for a deliverable) | A file behind a link that stops working (`ExpiringFile`): a MYO deliverable (30 days after delivery or 7 after the first download, whichever first — the first download is written into the conversation as the proof), a mail attachment (`attachDays`). `info` says status / until when / downloads; the download redirects to the bytes, or answers 410 `expired` / 403 `forbidden`. The sweeper deletes the object a week after the date; archiving a MYO request revokes its links and deletes its attachments. |
+| GET / PUT | `/admin/mail/custom-templates` | admin | The composer's own templates `[{ id, label, subject, body, audience, cta? }]` (≤ 30), in the mail's markdown. `POST /admin/mail/send` also takes `attachments: [{ url, name, size }]` (MEDIA uploads), `attachDays` (1–90) and `attachMode: link|inline` (≤ 8 MB total inline). `GET /admin/mail/gallery` returns `builtin[id]`, the built-in body of each editable mail, to edit in place. |
+| GET | `/admin/search?q=` | staff | One box over the dashboard's data: accounts, server repos, community catalogues, teams, conversations, reports, sanctions, commissions, blog posts, docs, FAQ, polls, promo codes, other projects — each group only when the caller holds its capability, ≤ 6 rows per group, with the admin `href` to open. The sidebar's search ranks screens locally (FR/EN synonyms, accents, typos) and shows these below. |
+| GET / POST | `/admin/media-flags?status=&page=` · `/admin/media-flags/:id` | `manage_reports` | Lookalike pictures: uploads whose perceptual hash (64-bit DCT pHash) is within the configured Hamming distance of — or byte-identical to — a picture another account holds; both pictures per flag; `{ status: cleared\|actioned\|pending, note? }` resolves one. |
+| GET / PUT / POST | `/admin/media-hashes/stats` · `/settings` · `/scan` · `/:id/preview` | `manage_reports` | Counts and the `{ threshold, enabled }` setting (`media.phash`); `scan` hashes a batch now (`{ backfill: true }` also registers older public-media objects); `preview` serves the picture (a short-lived storage link, the avatar URL, or the bytes of an image inside an archive). Rows are created at presign time and hashed by the sweeper. |
 | GET / PUT | `/admin/threads/config` | `manage_reports` | `enabled`, `userPerHour/Day`, `anonPerHour/Day`, `messagesPerHour`, `maxBody`, `blockedEmails[]`, `blockedUserIds[]`. |
 
 ## 31. Custom roles & project grants (`roles.mjs`)
@@ -626,6 +655,33 @@ The forward-auth endpoint the edge calls to gate the BMM telemetry dashboard, an
 | GET | `/telemetry/authorize` | — | Forward-auth probe the edge calls before serving the dashboard. |
 | GET | `/admin/telemetry-access/users` | superadmin | Who may reach the dashboard. |
 | PUT | `/admin/telemetry-access/:userId` | superadmin | Grant or revoke dashboard access. |
+| GET | `/internal/telemetry/identity?creatorId=` | `x-link-secret` | **Server-to-server, for the telemetry service.** Whether a BMM creator id (the hex of an install's ed25519 public key — the telemetry payload carries NO account id) is linked to an account: `{ linked, userId, email, displayName, locale, creatorIds }`. `creatorIds` is every id linked to the same account, so a GDPR request filed for one install covers all of them. Secret = `LINK_LOOKUP_SECRET` (the service's `BC_LINK_SECRET`). |
+| POST | `/internal/telemetry/notify` | `x-link-secret` | **Server-to-server.** Send the GDPR confirmation mail: `{ kind: export\|delete, outcome: done\|rejected, requestId, creatorId, creatorIds?, to: { userId } \| { email }, counts?, erased?, attachment?: { filename, base64 } (zip, ≤ 18 MB base64), tooLarge? }`. `to.userId` is resolved to the account's CURRENT address here, in the account's language — the address never leaves BCWEB; `to.email` is what an unlinked install typed. Answers `{ ok, sent }`, or `{ ok:false, reason }` (`email_disabled`, `account_not_found`…) so the service records "not notified" instead of guessing. |
+| POST | `/me/telemetry/data-request` | user | File a GDPR request for one of MY linked BMM installs, `{ creatorId, kind: export\|delete }` (Settings → Cookies & privacy → BMM telemetry). The creator id must be in the caller's `CreatorLink`s — that is the proof — and the request is proxied to the telemetry service (`TELEMETRY_INTERNAL_URL` + the public `TELEMETRY_API_KEY`) with `source: bcweb`; the confirmation (export attached) goes to the account's e-mail, nothing is typed. `{ ok, id, duplicate }`; 403 `not_your_creator_id`, 503 `telemetry_not_configured`, 502 `telemetry_unreachable`. 10/h. Audited `telemetry.data_request`. |
+
+**GDPR flow, end to end.** A request is (creator id, kind) and reaches the telemetry
+service's `data_requests` table from three places: BMM (Settings › Privacy, with a typed
+address), a signed-in account here (the route above, no address), or the dashboard's
+Data-requests screen (an admin filing for someone who wrote in). The service asks
+`/internal/telemetry/identity` when filing and again when processing: a linked account never
+carries a typed address (the mail goes to the account, which is what stops anyone redirecting
+someone else's export), an unlinked install must give one. Exports are processed within a
+minute (one zip per person: `README.txt`, `tables/<name>.json`, `replays/<session>.bmmreplay`,
+`export.json`, attached when ≤ 12 MB); erasures wait the review delay (`TELEMETRY_DELETE_DELAY_H`,
+live-editable) unless an admin processes them, then delete from the same table list the export
+reads, remove geo rows nobody else shares, and anonymise the request row (`erased:<hash>`).
+Every outcome is written to the service's audit log and mailed through `/internal/telemetry/notify`.
+
+**Sampling.** The dashboard's Settings screen (or `GET/PUT /admin/telemetry/config` above,
+key `sampling`) holds a total cap plus a percentage per element kind (`events`, `replay`,
+`errors`, `perf`, `benchmarks`, `logs`). The decision is deterministic per install and per kind
+(`fnv1a32("creatorId:kind") % 10000 < pct × 100`), delivered to BMM in every `/batch` answer
+and on the service's `GET /config`; the service applies the same rule on ingest. It reduces
+what is collected and never touches what is already stored.
+
+**Map.** The dashboard's Geography screen draws OpenStreetMap raster tiles (no API key —
+standard OSM tiles in light, CARTO dark-matter from the same OSM data in dark, attribution
+always shown) and clusters user points server-free in MapLibre; locations stay approximate.
 
 ## 34. Developer tools (`devtools.mjs`)
 The inspector, the maps the admin dashboard draws from, and two checkers that read an artifact
@@ -910,5 +966,24 @@ content type is a hint and never the decision: servers send `text/html` over man
 `checkRepoHealth(repo, fetcher = safeFetch)` takes its fetcher so this is testable — safeFetch
 refuses loopback addresses, the SSRF guard doing its job, so a probe against a local test server
 gets a refusal that reads as broken code.
+
+## 44. Community Charity (`charity.mjs`)
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/charity/current` | — | This month's pot: association, percent, totals, the vote (id + open), `design`. Cached 30 s. **Switched off → 404 `charity_disabled`** (`{ error, enabled:false }`), the same answer as `/charity/contribute` and `/v1/charity` — a feature that is off is not there. |
+| POST | `/charity/contribute` | optional user | Start a gift checkout `{ amountCents }` (anonymous allowed). Validation first (`too_small`…), then the switch (404 `charity_disabled`), then Stripe (503 `stripe_not_configured`). |
+| GET / PUT | `/admin/charity` | `manage_donations` | The config (`enabled`, `percent` ≤ 50, `currency`, `association`, the landing `design`) + this month's pot and the revenue preview. Admin → Ko-fi & funding → Community Charity. |
+| PUT | `/admin/charity/pot` · POST `/close` | `manage_donations` | Edit the month's pot (linked vote, association, status, proof) / freeze BetterCommunity's share. |
+
+## 45. Studio components (`studio.mjs`)
+The studio (`/studio/:kind/:id/:index` on the web) lets an author keep a group of canvas blocks
+as a named component and drop copies on other pages. The list is personal — one JSON value per
+user in the key/value settings store (`studio.components:<userId>`), no table of its own — and
+is read whole when the studio opens and written whole on every change.
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/me/studio/components` | user | Your saved components: `{ components: [{ id, name, w, h, blocks[], createdAt }] }`. |
+| PUT | `/me/studio/components` | user | Replace the list. At most 60 components of 40 blocks each, 512 KB in all (413 `too_large`); a bad shape is 400 `invalid_input`; duplicate ids collapse to the first. Block contents are free-form canvas JSON — the renderer normalises them (`apps/web/src/lib/canvas.js`). |
 
 *Generated from `apps/api/src/routes/` (last refreshed 2026-08-13 — sections 18-33 added: every route module that previously had no section at all, plus the signed-in devices endpoints in §1; §34 added 2026-08-27 with the inspector’s format table; §§35-36 added 2026-08-29 for the page builder and the content export; §37 (webhooks) and the 2026-09-05 rows in §§5, 13, 15, 18 — commit import, the site shop + inventory, app icons, `/v1/polls/:id`, `/v1/charity`, `/v1/economy`, `/v1/badges`. Paths, methods and the Auth column were extracted from the source rather than written from memory). For request/response shapes, read the corresponding route module — each is small and commented.*

@@ -1,5 +1,5 @@
 {
-  "maxAdminOnlyRoutes": 99,
+  "maxAdminOnlyRoutes": 101,
   "reach": {
     "manage_analytics": [
       "/admin/analytics"
@@ -48,7 +48,8 @@
       "/admin/history"
     ],
     "manage_hosting": [
-      "/admin/hosting"
+      "/admin/hosting",
+      "/admin/payments"
     ],
     "manage_legal": [
       "/admin/legal"
@@ -71,6 +72,8 @@
     ],
     "manage_reports": [
       "/admin/feedback",
+      "/admin/media-flags",
+      "/admin/media-hashes",
       "/admin/reports",
       "/admin/rights",
       "/admin/threads"
@@ -84,6 +87,7 @@
       "/admin/security"
     ],
     "manage_server": [
+      "/admin/server",
       "/admin/status"
     ],
     "manage_showcase": [

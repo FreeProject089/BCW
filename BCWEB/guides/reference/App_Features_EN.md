@@ -111,10 +111,14 @@
   real page at reveal time; per-page visibility gate.
 - **Scheduled updates** — stage project content to go live at a future date/time (lazy,
   no cron), cancellable.
+- **Teams: links and slots** — an owner or admin mints invitation links (role, expiry, max uses) that anyone signed in can open to join; an account owns up to the admin's limit of teams (Hosting settings → Teams), and one more is a one-off Stripe payment for a permanent slot.
+- **Files that expire** — one mechanism (`/f/<token>`) for Make Your Own deliverables (30 days after delivery or 7 after the first download; the first download is the proof, written into the conversation; archives keep no attachments), mail attachments (dated links, or inline when small) and any file handed out for a while. Mail: the composer keeps the admin's own templates and the gallery lets a built-in wording be edited in place instead of rewritten; the header logo sits on a white plate.
+- **Admin search** — the dashboard sidebar's box finds screens by label, synonym (FR/EN), accent-insensitive prefix or a one-letter typo, ranked from the admin guide's own text, and below them the data itself (accounts, repos, catalogues, teams, conversations, reports, sanctions, commissions, posts, docs, FAQ, polls, codes) through `/admin/search`.
+- **Lookalike pictures** — every uploaded image (and the images inside uploaded archives, and linked avatars) gets a perceptual hash; one within a few bits of another account's picture, or byte-identical to it, lands in Admin → Moderation → Lookalike pictures with both pictures side by side, to clear or act on.
 - **Discord bot** — multi-role gated access with per-role requirements + `/refreshroles`,
   Ko-fi tip announcements, server-perf alerts, moderation, welcome, join-to-create
   voice, blog announcements. The `/casino` has **live tables** (a six-car race with the car
-  picked from a dropdown, a stake-weighted pot, and a shared roll of any single-player game)
+  picked from a dropdown — a Paddock-Manager simulation run fast: the admin picks the circuit (a built-in, a generated one per race, or one imported as JSON), the laps, the cars' colours, equal machines or a realistic grid, incidents and pit stops, under Discord bot → Economy → Casino → Race — a stake-weighted pot, and a shared roll of any single-player game)
   that other members join from the same message; with two or more seated the table settles
   **between the players** — the losers' stakes are the pot, split by stake × multiplier,
   edge on the share only — and the admin sets the **house edge per game** and a max bet where
@@ -124,8 +128,21 @@
   every command is inert there — and an `/appeal` command (which still answers in a blocked
   server) returns the block's reference plus a link to the contact page. Welcome/bye banners
   take a **custom background** uploaded on the spot, kept as a site-hosted (moderatable) image.
+  **Automod** — eleven data-driven rules (spam, mass mentions, invites, links, words, caps,
+  zalgo, attachments, account age, selfbot, raid), each with an on/off, an action
+  (log / delete / warn / timeout / kick / ban, quarantine for account age) and its thresholds
+  under "Advanced", plus exemptions (roles, channels, users, moderators) and a warn decay — and
+  **log routing**: a forum (one tagged post per category or per day) or a text channel, with
+  a route per group and per category (23 categories in 8 groups). Both are edited from the
+  server owner's own dashboard (Automod / Logs sections) and from the admin bot tab under the
+  server picker, where a **Global defaults** bubble edits what every server without its own
+  config follows; the admin's Alerts module can also name an **alerts forum** so every admin
+  alert kind becomes a tagged post.
 - **Community Charity** — each month a share of eligible revenue goes to a community-chosen
-  association, paid manually. The month's vote is picked from the poll list rather than a
+  association, paid manually. It is an admin **switch** (Admin → Ko-fi & funding → Community
+  Charity): off, `/charity` says the programme is not running, the command palette hides the
+  entry, the sitemap leaves it out and every public charity route (`/charity/current`,
+  `/charity/contribute`, `/v1/charity`) answers 404 `charity_disabled`. The month's vote is picked from the poll list rather than a
   pasted id, and a gift credits the pot **net of the card-processing fee** (the exact fee read
   from Stripe); the giver is shown the fee and told donations are final before paying.
 - **Ko-fi** — a funding-goal widget pinned at the bottom of the homepage, donor-linked
@@ -231,7 +248,10 @@
   declarations and a `tsconfig.json`, the JS one cuts the type section out of its README
   rather than leaving instructions for files it did not send.
 - **Server** — live perf dashboard (CPU/RAM/disk/uptime totals + hover values +
-  Discord alerts); Advanced server management (DB viewer with audit log, file manager,
+  Discord alerts), and the **daily figures** (CPU, memory, disk, latency by day) that used to
+  be the public status page's "System metrics" block — now admin-only, each chart compared
+  with the same-length period before it (delta % per metric, up coloured as worse); the
+  public `/status` no longer carries them. Advanced server management (DB viewer with audit log, file manager,
   Docker, restart/power) behind a server-control grant + step-up 2FA.
 - **Security log** — login attempts, connected IPs, admin actions; DB-viewer reads are
   logged and audit tables are tamper-protected.
@@ -264,6 +284,22 @@
   one with a required reason; the person is emailed the reason, the date and a link to
   contact us — not a one-click undo, since a closure staff decided is not one the holder
   reverses themselves.
+- **Pending payments** (Hosting & billing) — every Stripe checkout is written to a ledger
+  when it opens and finished by the webhook. The tab lists the ones still open (with their
+  age) and the recently finished ones; **Reconcile now** asks Stripe what happened to every
+  checkout older than 15 minutes and delivers what was paid for (**Include recent** does the
+  same for checkouts opened seconds ago, for when the webhook was known to be down). The same
+  reconciler runs at boot and every ten minutes on its own; a payment taken and not delivered
+  also lands on the Errors page and notifies super-admins.
+- **Marketplace product wizard** — New / Edit product is a four-step wizard (Basics →
+  Files & delivery → Pricing → Preview & publish). Each step validates on Next with the
+  error under the field; visited steps are clickable, unvisited ones are not; every
+  keystroke is kept in this tab's session so a mis-click outside the modal loses nothing
+  (**Save draft** keeps it explicitly, and a re-open says "picked up where you left off"
+  with a Discard option). Nothing reaches the API before Publish on the last step.
+- **Buyer's return page** — after a marketplace payment the dashboard says "Confirming your
+  payment" and polls a read-only status route until the webhook has delivered, then shows
+  the key / content / link right there. The return URL itself grants nothing.
 
 ## Look & feel
 - **Three.js hero orb** — builds itself from shards on intro, spirals as you scroll
@@ -294,6 +330,24 @@
   zoom, pulse, float, custom keyframes; on show, on load, after a delay, on hover; looped or
   not), a **Layers** panel (name, lock, hide, reorder), rotation, shadow, hover effects, a
   block-wide link, text alignment, a chosen grid step and presets to start from; **shapes** (twelve, as inline SVG with fill / gradient / stroke / label), **pasted SVG** through an allow-list sanitiser, twelve **tiling patterns**, a **page stylesheet** scoped to the page (external url(), @import and expression() refused and reported), per-block classes and inline style, the full **B.MD editor** for text blocks, copy / paste, zoom, and `.css` / `.svg` imports.
+  The studio is **a page of its own** at `/studio/<project|showcase>/<id>/<index>` (opened
+  from "Open the studio" in the page settings; the address without an index lists that
+  page's canvases): a top bar (back, document name, save state, undo / redo, the light / dark
+  / phone board switch, the previews, Save), a left pane (**Blocks** palette, **Layers**,
+  **Components**), the canvas, and a right pane (properties). From 1024px the three sit side
+  by side; below, the canvas takes the width and the two panels are bottom sheets picked from
+  a Blocks · Canvas · Properties tab row. Edits are kept as a **draft in the tab** until Save
+  (which writes the whole page config through the same route the settings form uses), and
+  leaving with unsaved changes asks first. **Preview** renders the canvas with the public
+  renderer in a desktop, tablet (820px) or phone (390px, stacked) frame, replays the entrance
+  animations on demand, and can show the **whole project page** with the draft in its tab.
+  **Components**: select blocks, "Save as component" (name + thumbnail), and the Components
+  tab lists them per account; insert places a linked copy, **Detach** unlinks it, **Update all
+  copies** rebuilds every copy on the page from the saved definition, **Redefine from
+  selection** replaces the definition. Keyboard: Del, Ctrl+Z / Ctrl+Y, Ctrl+D duplicate,
+  Ctrl+A, Ctrl+C / V, Ctrl+S save, arrows nudge one grid step and Shift+arrows ten; plus
+  alignment guides and snapping, marquee multi-select, z-order, lock / hide, a grid toggle and
+  zoom (fit / 100% / + / -).
 - **Teams & contact** — a team (one contact address, roles, invitations by BC id / e-mail /
   name, a public page at `/t/<slug>`) manages the repos, catalogues and pools its owner
   attaches; a **Contact** button on every repo, catalogue, profile and team opens a

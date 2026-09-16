@@ -62,6 +62,16 @@ export async function deleteObject(key) {
   try { await internal.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: key })); } catch { /* best effort */ }
 }
 
+/** Every object under a prefix, as `{ key, size }`, page by page. */
+export async function* listObjects(prefix) {
+  let token;
+  do {
+    const res = await internal.send(new ListObjectsV2Command({ Bucket: BUCKET, Prefix: prefix, ContinuationToken: token }));
+    for (const o of res.Contents || []) yield { key: o.Key, size: Number(o.Size || 0) };
+    token = res.IsTruncated ? res.NextContinuationToken : undefined;
+  } while (token);
+}
+
 /** Sum object sizes (and count) under a key prefix — for the storage dashboard. */
 export async function prefixUsage(prefix) {
   let bytes = 0, count = 0, token;

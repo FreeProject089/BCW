@@ -9,6 +9,7 @@ import { db, requireRole, requireEditor, logAudit, clientIp, hasCap, projectGran
 import { presignGet, putObject, deleteObject } from '../lib/storage.mjs';
 import { sendMail, mailShell, emailEnabled } from '../lib/mail.mjs';
 import { stripe, ensureCustomer } from './hosting.mjs';
+import { recordPendingCheckout, purchaseStatusForSession } from '../lib/pending-checkout.mjs';
 
 // What a product HANDS OVER. The first five were the whole of it, and between them they
 // could not sell the most ordinary thing a project sells — a file. The workaround was to paste
@@ -636,7 +637,12 @@ export default async function marketplaceRoutes(app) {
       // of the same name and the second silently wins, taking the metadata with it.
       ...(recurring ? { subscription_data: { metadata: md, ...(routed?.subscription_data || {}) } } : {}),
       ...(routed?.payment_intent_data ? { payment_intent_data: routed.payment_intent_data } : {}),
-      success_url: `${siteUrl}/dashboard?market=ok`,
+      // The return URL carries the session id and NOTHING is granted on it: the dashboard
+      // uses it only to ask GET /marketplace/checkout/:sessionId/status whether the webhook
+      // has delivered yet. Stripe substitutes the placeholder itself, so the id cannot be
+      // guessed into the URL by anyone who did not open this session (and the status route
+      // checks ownership anyway).
+      success_url: `${siteUrl}/dashboard?market=ok&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${siteUrl}/dashboard?market=cancel`,
       });
     } catch (e) {
@@ -652,7 +658,24 @@ export default async function marketplaceRoutes(app) {
         data: { reservedFor: session.id },
       }).catch(() => { /* the TTL is the backstop */ });
     }
-    return { url: session.url };
+    // The in-flight ledger the crash reconciler walks (lib/stripe-reconcile.mjs): if the
+    // webhook never runs for this session, this row is the only thing that knows a buyer may
+    // have paid. Best-effort — a session that exists but is not recorded is the old behaviour.
+    await recordPendingCheckout(p, { kind: 'marketplace', sessionId: session.id, userId: req.user.uid, payload: md }).catch(() => {});
+    return { url: session.url, sessionId: session.id };
+  });
+
+  // ── Buyer: has the webhook delivered my checkout yet? ────────────────────────────────────
+  //
+  // READ-ONLY by construction. The return page polls this until it reads `delivered`; it is
+  // never the thing that delivers. Delivery happens in the webhook (or the reconciler
+  // replaying the webhook), and this route only reports what those wrote — so a forged or
+  // replayed return URL can show a spinner and nothing else.
+  app.get('/marketplace/checkout/:sessionId/status', { preHandler: requireRole() }, async (req, reply) => {
+    const p = await db();
+    const r = await purchaseStatusForSession(p, { sessionId: String(req.params.sessionId || ''), userId: req.user.uid });
+    if (!r) return reply.code(404).send({ error: 'not_found' });
+    return r;
   });
 
   // ── Buyer: my purchases for a project ───────────────────────────────────────

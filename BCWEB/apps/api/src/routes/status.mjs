@@ -1,14 +1,15 @@
 // The public status page.
 //
 // Everything it reports already existed and was admin-only: five services are probed on every
-// monitor tick, ServiceOutage records when each one broke and recovered, and ServerMetricDaily
-// holds the machine's own numbers. What was missing was a way for anybody outside the admin to
-// see any of it.
+// monitor tick, and ServiceOutage records when each one broke and recovered. What was missing
+// was a way for anybody outside the admin to see any of it.
 //
 // What is NOT exposed here, deliberately: the infra map, the dependency configuration, thresholds,
 // hostnames, ports, and the cause strings on an outage — those name internals and sometimes
 // secrets. A status page says what is broken and since when. It does not say how the machine
-// is wired.
+// is wired. The machine's own daily numbers (CPU, memory, disk, latency) were published here
+// for a while as a "System metrics" block; they say more about the box than about the service,
+// so they moved to the admin's Performance tab (`/admin/server/metrics/daily`).
 
 import { z } from 'zod';
 import { randomBytes } from 'node:crypto';
@@ -26,7 +27,7 @@ export default async function statusRoutes(app) {
     const now = new Date();
     const since = new Date(now.getTime() - WINDOW_DAYS * 864e5);
 
-    const [probes, enabled, outages, daily] = await Promise.all([
+    const [probes, enabled, outages] = await Promise.all([
       // A probe failure must not take the status page down with it — the page saying "we cannot
       // tell" is worth more than a 500.
       checkDependencies(p).catch(() => ({})),
@@ -36,7 +37,6 @@ export default async function statusRoutes(app) {
         orderBy: { startedAt: 'desc' },
         include: { notes: { where: { publicNote: true }, orderBy: { createdAt: 'asc' } } },
       }),
-      p.serverMetricDaily.findMany({ where: { day: { gte: since } }, orderBy: { day: 'asc' } }),
     ]);
 
     const keys = DEP_KEYS.filter((k) => enabled[k] !== false);
@@ -79,12 +79,7 @@ export default async function statusRoutes(app) {
       windowDays: WINDOW_DAYS,
       services,
       incidents,
-      // The machine's own numbers, by day. Averages only: peaks are an operations concern and
-      // publishing them invites reading a spike as an outage when nothing broke.
-      metrics: daily.map((d) => ({
-        day: d.day, cpu: Math.round(d.cpuAvg * 10) / 10, mem: Math.round(d.memAvg * 10) / 10,
-        disk: Math.round(d.diskAvg * 10) / 10, latencyMs: d.latencyAvg,
-      })),
+      // No `metrics` any more — see the header. The daily figures are an admin read now.
       generatedAt: now,
     };
   });

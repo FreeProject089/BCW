@@ -1,11 +1,10 @@
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { CheckCircle2, AlertTriangle, XCircle, MinusCircle, Bell, Activity } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, XCircle, MinusCircle, Bell } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { useAsync, Loading } from './pages.jsx';
 import { Card, Button, Input, Badge, useToast } from '../ui/ui.jsx';
-import MetricChart from '../ui/metric-chart.jsx';
 
 // The public status page.
 //
@@ -52,8 +51,6 @@ export default function StatusPage() {
   const { t } = useI18n(); const toast = useToast();
   const [sp] = useSearchParams();
   const { data, err, loading, reload } = useAsync(() => api.get('/status'), []);
-  const [table, setTable] = useState(false);   // the figures behind the charts
-  const [range, setRange] = useState(30);       // days of metrics on the charts
   const [email, setEmail] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -173,64 +170,6 @@ export default function StatusPage() {
           </ul>
         )}
       </Card>
-
-      <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
-        <h2 className="text-[11px] uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Activity size={12} /> {t('st.metrics', 'System metrics')}</h2>
-        {(d.metrics || []).length > 7 && (
-          <div className="flex rounded-lg border border-[var(--line)] overflow-hidden text-[11px]">
-            {[7, 30, 90].filter((n) => n <= 7 || (d.metrics || []).length > (n === 30 ? 7 : 30)).map((n) => (
-              <button key={n} type="button" onClick={() => setRange(n)} className={`px-2.5 py-1 ${range === n ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{t('st.m.days', '{n} d').replace('{n}', String(n))}</button>
-            ))}
-          </div>
-        )}
-      </div>
-      <Card className="p-4 mb-6">
-        {!(d.metrics || []).length ? (
-          <div className="text-[13px] text-[var(--muted)]">{t('st.nometrics', 'No daily figures recorded yet.')}</div>
-        ) : (<>
-          {/* Four charts, never one with four lines: a percentage and a millisecond figure on
-              one pair of axes is the most common way to make a chart say something untrue. */}
-          <div className="grid sm:grid-cols-2 gap-x-8 gap-y-6">
-            {[['CPU', 'cpu', '%', 85], [t('st.m.mem', 'Memory'), 'mem', '%', 90],
-              [t('st.m.disk', 'Disk'), 'disk', '%', 90], [t('st.m.lat', 'Latency'), 'latencyMs', ' ms', null]].map(([label, key, unit, warn]) => (
-              <MetricChart key={key} title={label} unit={unit} warnAt={warn}
-                labels={{ avg: t('st.m.avg', 'avg'), min: t('st.m.min', 'min'), peak: t('st.m.peak', 'peak'), warn: t('st.m.warnat', 'warn at') }}
-                points={d.metrics.slice(-range).map((m) => ({ label: String(m.day).slice(0, 10), value: m[key] }))} />
-            ))}
-          </div>
-          {/* The table has not gone anywhere. A chart is the answer to "is it climbing"; the
-              exact number on the 4th is a different question, and a screen reader needs the
-              numbers rather than the shape. */}
-          <button onClick={() => setTable((v) => !v)} className="mt-3 text-[11px] text-[var(--muted)] hover:text-[var(--text)]">
-            {table ? t('st.m.hidetable', 'Hide the figures') : t('st.m.showtable', 'Show the figures')}
-          </button>
-          {table && (
-          <div className="overflow-x-auto mt-2">
-            <table className="text-[12px] w-full">
-              <thead><tr className="text-[var(--faint)] text-start">
-                <th className="font-normal pb-1">{t('st.m.day', 'Day')}</th>
-                <th className="font-normal pb-1 text-end">CPU</th>
-                <th className="font-normal pb-1 text-end">{t('st.m.mem', 'Memory')}</th>
-                <th className="font-normal pb-1 text-end">{t('st.m.disk', 'Disk')}</th>
-                <th className="font-normal pb-1 text-end">{t('st.m.lat', 'Latency')}</th>
-              </tr></thead>
-              <tbody>
-                {d.metrics.slice(-range).reverse().map((m) => (
-                  <tr key={String(m.day)} className="border-t border-[var(--line)]">
-                    <td className="py-1">{String(m.day).slice(0, 10)}</td>
-                    <td className="py-1 text-end tabular-nums">{m.cpu}%</td>
-                    <td className="py-1 text-end tabular-nums">{m.mem}%</td>
-                    <td className="py-1 text-end tabular-nums">{m.disk}%</td>
-                    <td className="py-1 text-end tabular-nums">{m.latencyMs != null ? `${m.latencyMs} ms` : '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          )}
-        </>)}
-      </Card>
-
       <Card className="p-4">
         <div className="text-sm font-semibold mb-1 flex items-center gap-2"><Bell size={15} className="text-[var(--primary-2)]" /> {t('st.sub.title', 'Get told when something breaks')}</div>
         <p className="text-[12px] text-[var(--muted)] mb-3">{t('st.sub.desc', 'One message when a service goes down, one when it comes back. Nothing else — and every message carries a link to stop them.')}</p>

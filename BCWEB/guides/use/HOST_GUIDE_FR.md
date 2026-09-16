@@ -46,13 +46,21 @@ cet espace de façon fongible.
 
 ## 4. Facturation
 
-- Terme **prépayé** (1/3/6/12/24 mois, plus long = plus de remise) ou **renouvellement**
-  mensuel automatique. Les premiers `hostingFreeGB` de stockage sont gratuits ; seul le
-  surplus (plus l'upload/CPU supplémentaire) est facturé. Les **codes promo** peuvent donner
-  une remise ou de l'hébergement gratuit.
-- Cycle de vie : un pool qui expire t'avertit d'abord ; un défaut donne **72 h de grâce**
-  avant que les dépôts soient suspendus et les catalogues masqués. Renouvelle (ou corrige le
-  paiement) pour tout restaurer.
+- Terme **prépayé** : n'importe quel nombre entier de mois entre le minimum et le maximum
+  fixés par l'admin, selon son pas (par défaut 1 à 36, de 1 en 1 — Admin → Hébergement →
+  *Terme prépayé*). Choisis-le au curseur ou tape-le ; le prix est exact (mois × mensuel) et
+  la remise passe des paliers à 3 / 6 / 12 / 24 mois (−5 / −10 / −20 / −35 %, un terme entre
+  deux paliers prend le palier inférieur). Chaque ligne du panier peut se **renouveler
+  automatiquement** : le même terme est refacturé à son échéance, comme un vrai abonnement
+  résiliable depuis Facturation (seulement jusqu'à 12 mois ; un cadeau ne se renouvelle
+  jamais). Les premiers `hostingFreeGB` de stockage sont gratuits ; seul le surplus (plus
+  l'upload/CPU supplémentaire) est facturé. Les **codes promo** peuvent donner une remise ou de
+  l'hébergement gratuit.
+- Cycle de vie : un pool qui expire t'avertit d'abord (72 h avant par défaut). Quand un terme
+  se termine, les dépôts sont **suspendus et les catalogues masqués immédiatement** — rien
+  n'est servi, pas même à toi — et la suppression est programmée après le délai de grâce :
+  **72 h** par défaut, une semaine après un paiement de renouvellement échoué (deux réglages
+  admin). Renouvelle (ou corrige le paiement) pendant ce délai pour tout retrouver tel quel.
 
 **À faire :** active le renouvellement auto si le contenu compte, et surveille l'avertissement
 d'expiration. **À éviter :** laisser un terme payé expirer en croyant que rien ne se passe.

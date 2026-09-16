@@ -50,6 +50,8 @@ import { rawStatusLabel, DotDropdown } from './repos.jsx';
 import { analyseTrend, robustCeiling } from '../lib/trend.js';
 import { AdminRepos, AdminPools } from './repos-admin.jsx';
 import { TotpQuickFill } from './twofa-fill.jsx';
+import { AutomodEditor, LogsEditor, normAutomod, normLogs } from './discord-automod.jsx';
+import { PerfDailyMetrics } from './admin-server-metrics.jsx';
 import { MarkdownEditor } from '../editor/markdown-editor.jsx';
 // The built-in legal text, so the import button copies the SAME words the public page
 // renders. A second hand-typed copy here is how the two would drift apart.
@@ -57,13 +59,19 @@ import { LEGAL } from './legal.jsx';
 import { Badges, BadgeIcon } from '../ui/Badges.jsx';
 import { ReportThread, ReportComposer, ReportModal } from '../ui/report.jsx';
 import { AdminMyo } from './admin-myo.jsx';
+import { AdminPendingPayments } from './admin-payments.jsx';
+import { ProductWizard } from '../ui/product-wizard.jsx';
 import { AdminApi } from './admin-api.jsx';
 import { AdminSanctions, ContentSanctionForm, Evidence } from './admin-sanctions.jsx';
 import AdminStatusPage from './admin-statuspage.jsx';
 import { AdminPolls } from './admin-polls.jsx';
+import { RaceConfig } from './admin-race.jsx';
+import { GUIDE } from './admin-guide.jsx';
+import { ADMIN_SCREENS_REF } from '../lib/admin-screens-ref.js';
 import { AdminReactions } from './admin-reactions.jsx';
 import AdminGuide from './admin-guide.jsx';
 import { AdminThreads } from './admin-threads.jsx';
+import { AdminMediaFlags } from './admin-media-flags.jsx';
 import ReplayPlayer from '../ui/ReplayPlayer.jsx';
 import { useAsync, Loading, useUndoableDelete, useUndoableToggle, useUndoableSave, useElementWidth, statusTone, KIND_ICON, KIND_LABEL, kindLabel, kindsFor, CATALOG_PROJECTS, csvCell, downloadCsv, toCsv, fmtRemaining, seededAvatar, JsonEditor, highlightJson, highlightCode, SideDash, useThreadStream } from './pages.jsx';
 
@@ -119,6 +127,22 @@ function hexOf(v) {
 }
 
 /* ─────────────────────────  Admin  ───────────────────────── */
+// What the sidebar's search knows about each screen beyond its label: the admin guide's
+// title, body and bullet points (EN + FR) and the per-screen reference, so "Ko-fi" finds
+// Funding and "72 hours" finds Hosting settings. Built once — the guide is static.
+const ADMIN_SEARCH_KEYWORDS = (() => {
+  const out = {};
+  const add = (id, ...parts) => { out[id] = `${out[id] || ''} ${parts.filter(Boolean).join(' ')}`.slice(0, 4000); };
+  for (const sec of GUIDE) for (const g of sec.items || []) {
+    add(g.id, g.title?.en, g.title?.fr, g.body?.en, g.body?.fr, ...(g.points || []).flatMap((p) => [p.en, p.fr]));
+  }
+  for (const [id, screens] of Object.entries(ADMIN_SCREENS_REF)) {
+    for (const sc of screens) add(sc.id, sc.name?.en, sc.name?.fr, sc.what?.en, sc.what?.fr, ...(sc.controls || []).flatMap((c) => [c.label?.en, c.label?.fr]));
+    add(id, ...screens.flatMap((sc) => [sc.name?.en, sc.name?.fr]));
+  }
+  return out;
+})();
+
 export function Admin() {
   const { user } = useAuth(); const dialog = useDialog(); const toast = useToast(); const { t } = useI18n();
   const [modQ, setModQ] = useState(''); const [modQApplied, setModQApplied] = useState('');
@@ -215,6 +239,7 @@ export function Admin() {
         can('manage_reports') && { id: 'reports', label: t('adm.tab.reports', 'Reports'), icon: AlertTriangle, badge: pc.reports || undefined },
         can('manage_reports') && { id: 'rights', label: t('adm.tab.rights', 'Rights notices'), icon: Scale, badge: pc.rights || undefined },
         can('manage_reports') && { id: 'feedback', label: t('adm.tab.feedback', 'Feedback & crashes'), icon: BugIcon, badge: pc.feedback || undefined },
+        can('manage_reports') && { id: 'lookalikes', label: t('adm.tab.lookalikes', 'Lookalike pictures'), icon: ImageIcon },
         { id: 'messages', label: t('adm.tab.messages', 'Messages'), icon: Mail, badge: pc.contact || undefined },
         can('manage_legal') && { id: 'legal', label: t('adm.tab.legal', 'Legal'), icon: FileText },
         can('manage_sanctions') && { id: 'sanctions', label: t('adm.tab.sanctions', 'Sanctions'), icon: Gavel, badge: pc.contests || undefined },
@@ -267,6 +292,7 @@ export function Admin() {
         { id: 'pools', label: t('adm.tab.pools', 'Storage pools'), icon: HardDrive },
         { id: 'transfers', label: t('adm.tab.transfers', 'Ownership'), icon: ArrowRightLeft },
         can('manage_hosting') && { id: 'hosting', label: t('adm.tab.hosting', 'Free hosting'), icon: Rocket },
+        can('manage_hosting') && { id: 'payments', label: t('adm.tab.payments', 'Pending payments'), icon: CreditCard },
       ].filter(Boolean) },
     isAdmin && { id: 'plans', label: t('adm.tab.plans2', 'Hosting plans'), icon: CreditCard },
 
@@ -274,7 +300,13 @@ export function Admin() {
     can('manage_promotions') && { id: 'promotions', label: t('adm.tab.promotions', 'Promotions & codes'), icon: Megaphone },
     can('manage_events') && { id: 'events', label: t('adm.tab.events', 'Events'), icon: Sparkles },
     can('manage_myo') && { id: 'myo', label: t('adm.tab.myo', 'Commissions'), icon: Wand2, badge: pc.myo || undefined },
-    can('manage_donations') && { id: 'kofi', label: t('adm.tab.kofi', 'Ko-fi & funding'), icon: KofiIcon },
+    // Community Charity used to be a card at the foot of Home page; it is money that is not a
+    // sale, like Ko-fi, and it needed its own place to be found. Same capability as Ko-fi.
+    can('manage_donations') && { id: 'kofi', label: t('adm.tab.kofi', 'Ko-fi & funding'), icon: KofiIcon,
+      sub: [
+        { id: 'kofi', label: t('adm.tab.kofi2', 'Ko-fi'), icon: KofiIcon },
+        { id: 'charity', label: t('adm.tab.charity', 'Community Charity'), icon: Heart },
+      ] },
 
     { heading: t('adm.h.integrations', 'Integrations') },
     isAdmin && { id: 'sso', label: t('adm.tab.sso', 'SSO / OAuth'), icon: Shield },
@@ -319,9 +351,10 @@ export function Admin() {
   // next heading / the end) — so a granted non-admin sees only their sections.
   const tabs = raw.filter((it, i) => !it.heading || (raw[i + 1] && !raw[i + 1].heading));
   return (
-    <SideDash icon={ShieldCheck} title={t('adm.title', 'Admin')} subtitle={t('adm.subtitle', 'Moderation, catalogs, hosting, analytics and settings.')} tabs={tabs}>
+    <SideDash icon={ShieldCheck} title={t('adm.title', 'Admin')} subtitle={t('adm.subtitle', 'Moderation, catalogs, hosting, analytics and settings.')} tabs={tabs}
+      searchKeywords={ADMIN_SEARCH_KEYWORDS} remoteSearch={(q) => api.get(`/admin/search?q=${encodeURIComponent(q)}`)}>
       {(s) => (<>
-        {s === 'homepage' && <><SceneEditor /><ShowcaseEditor /><HomePageEditor /><CharityAdminCard /></>}
+        {s === 'homepage' && <><SceneEditor /><ShowcaseEditor /><HomePageEditor /></>}
         {s === 'languages' && <><LanguagesCard /><BotI18nCard /></>}
         {s === 'moderation' && <div>
           <h2 className="font-semibold mb-3 flex items-center gap-2"><Inbox size={16} /> {t('mod.queue', 'Moderation queue')}</h2>
@@ -399,6 +432,7 @@ export function Admin() {
         </div>}
         {s === 'needs' && <AdminNeedsAttention data={pending.data} loading={pending.loading} onReload={pending.reload} />}
         {s === 'messages' && <><AdminMessages /><AdminThreads /></>}
+        {s === 'lookalikes' && <AdminMediaFlags />}
         {s === 'legal' && <AdminLegal />}
         {s === 'users' && <AdminUsers />}
         {s === 'planusers' && <AdminPlanUsers />}
@@ -424,8 +458,10 @@ export function Admin() {
         {s === 'mail' && <AdminMail />}
         {s === 'history' && <AdminHistory />}
         {s === 'hosting' && <AdminFreeHost />}
+        {s === 'payments' && <AdminPendingPayments />}
         {s === 'promotions' && <><AdminCampaigns /><div className="mt-8"><AdminPromo /></div></>}
         {s === 'kofi' && <AdminKofi />}
+        {s === 'charity' && <CharityAdminCard />}
         {s === 'events' && <AdminEvents />}
         {s === 'myo' && <AdminMyo />}
         {s === 'sso' && <AdminSso />}
@@ -2363,6 +2399,9 @@ function AdminServerPerf() {
       {/* Placed straight under the live numbers: "is this normal" is the question the live
           numbers provoke, and it is the one they cannot answer. */}
       <div className="mb-4"><PerfCompare /></div>
+      {/* The daily charts that used to sit on the public status page, with the same window
+          before them — an operations view, not a public one. */}
+      <div className="mb-4"><PerfDailyMetrics /></div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
         {kpi('CPU', latest ? `${latest.cpuPct.toFixed(0)}%` : '—', Cpu, cpuTone, 'cpuPct')}
@@ -7550,6 +7589,14 @@ function MailGallery({ t }) {
                     <Textarea rows={5} className="font-mono !text-[12px]" value={draft.body} onChange={(e) => setDraft({ ...draft, body: e.target.value })}
                       placeholder={'<p>Hi!</p>{{body}}<p>— the team</p>'} />
                   </Field>
+                  {/* Edit the sentence, do not rewrite the mail: the built-in body, captured on
+                      the sender's own path, lands in the box to be changed in place. */}
+                  {data?.builtin?.[current.id] && (
+                    <div className="flex flex-wrap gap-2 -mt-1 mb-1">
+                      <Button size="sm" variant="ghost" onClick={() => setDraft({ ...draft, body: data.builtin[current.id] })}>{t('adm.mail.tpl.loadBuiltin', 'Start from the current wording')}</Button>
+                      <Button size="sm" variant="ghost" onClick={() => setDraft({ ...draft, body: '{{body}}' })}>{t('adm.mail.tpl.wrap', 'Wrap the built-in text instead')}</Button>
+                    </div>
+                  )}
                   <p className="text-[11px] text-[var(--muted)] mt-1.5 leading-snug">
                     {t('adm.mail.tpl.help', '{{body}} is the message the app builds — the name, the link, the amount. Wrapping it keeps all of that; removing it replaces the message entirely, which is allowed and is a decision. HTML is kept as written.')}
                   </p>
@@ -7667,6 +7714,15 @@ function AdminMail() {
   const [scheme, setScheme] = useState('light');  // light | dark
   const [ctaLabel, setCtaLabel] = useState('');
   const [ctaUrl, setCtaUrl] = useState('');
+  // Files: uploaded to our storage, then sent as dated links (the default — the mail stays
+  // small and a forwarded copy stops working on the date chosen) or inline when small.
+  const [attachments, setAttachments] = useState([]);   // [{ url, name, size }]
+  const [attachDays, setAttachDays] = useState(14);
+  const [attachMode, setAttachMode] = useState('link');
+  const [uploadingFile, setUploadingFile] = useState(false);
+  // The admin's own templates, beside the built-in starting points.
+  const customTpl = useAsync(() => api.get('/admin/mail/custom-templates'), []);
+  const saveCustomTemplates = async (list) => { try { await api.put('/admin/mail/custom-templates', { templates: list }); await customTpl.reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
   // Named recipients, and the poll segment. Both are "audiences" the query-based ones cannot
   // express: a handful of specific people, and everyone who gave a particular answer.
   const [picked, setPicked] = useState([]);       // [{ id, displayName, email }]
@@ -7732,6 +7788,7 @@ function AdminMail() {
         pollId: (audience === 'poll' || audience === 'pollchoice') ? pollId || undefined : undefined,
         choiceId: audience === 'pollchoice' ? choiceId || undefined : undefined,
         cta: ctaLabel.trim() && ctaUrl.trim() ? { label: ctaLabel.trim(), url: ctaUrl.trim() } : null,
+        attachments: attachments.length ? attachments : undefined, attachDays, attachMode,
       });
       toast.success(testOnly
         ? t('adm.mail.tested2', 'Test sent to {email}.').replace('{email}', me?.email || '')
@@ -7824,6 +7881,56 @@ function AdminMail() {
             )}
           </div>
           <p className="text-[11px] text-[var(--faint)] mt-1">{t('adm.mail.tpl.note', 'A starting point, not a finished email — the placeholders are yours to replace.')}</p>
+          {/* Yours: saved from the composer, in the mail's markdown (the B.MD subset the shell
+              renders). Start from scratch, from a built-in, or from one of these. */}
+          <div className="flex flex-wrap gap-1.5 mt-2 items-center">
+            <span className="text-[11px] text-[var(--faint)]">{t('adm.mail.ctpl', 'Your templates')}</span>
+            {(customTpl.data?.templates || []).map((tpl) => (
+              <span key={tpl.id} className="inline-flex items-center gap-1 rounded-full border border-[var(--line)] text-xs">
+                <button type="button" className="px-2.5 py-1 text-[var(--muted)] hover:text-[var(--text)]" onClick={() => { setSubject(tpl.subject || ''); setBody(tpl.body || ''); if (tpl.audience) setAudience(tpl.audience); setCtaLabel(tpl.cta?.label || ''); setCtaUrl(tpl.cta?.url || ''); }}>{tpl.label}</button>
+                <button type="button" className="pe-2 text-[var(--faint)] hover:text-error" aria-label={t('common.remove', 'Remove')} onClick={async () => { if (await dialog.confirm({ title: t('adm.mail.ctpl.del', 'Delete this template?'), danger: true })) saveCustomTemplates((customTpl.data?.templates || []).filter((x) => x.id !== tpl.id)); }}><X size={11} /></button>
+              </span>
+            ))}
+            <button type="button" disabled={!subject.trim() && !body.trim()} className="px-2.5 py-1 rounded-full text-xs border border-dashed border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] disabled:opacity-50"
+              onClick={async () => {
+                const label = await dialog.prompt({ title: t('adm.mail.ctpl.name', 'Template name'), defaultValue: subject.slice(0, 40) });
+                if (!label) return;
+                const list = (customTpl.data?.templates || []).filter((x) => x.label !== label);
+                saveCustomTemplates([...list, { id: `${Date.now().toString(36)}`, label: String(label).slice(0, 60), subject, body, audience, cta: ctaLabel.trim() && ctaUrl.trim() ? { label: ctaLabel.trim(), url: ctaUrl.trim() } : null }].slice(-30));
+              }}>{t('adm.mail.ctpl.save', '+ Save the current mail as a template')}</button>
+          </div>
+        </div>
+
+        {/* Attachments */}
+        <div className="mt-3 rounded-xl border border-[var(--line)] p-3">
+          <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">{t('adm.mail.att', 'Files')}</div>
+          <div className="flex flex-wrap gap-2 items-center">
+            {attachments.map((a) => (
+              <span key={a.url} className="inline-flex items-center gap-1 rounded-full border border-[var(--line)] px-2.5 py-1 text-xs">{a.name}{a.size ? ` · ${Math.max(1, Math.round(a.size / 1024))} KB` : ''}<button type="button" aria-label={t('common.remove', 'Remove')} onClick={() => setAttachments(attachments.filter((x) => x.url !== a.url))}><X size={11} /></button></span>
+            ))}
+            <label className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs border border-dashed border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] cursor-pointer">
+              <Upload size={12} /> {uploadingFile ? t('common.uploading', 'Uploading…') : t('adm.mail.att.add', 'Add a file')}
+              <input type="file" className="hidden" disabled={uploadingFile || attachments.length >= 8} onChange={async (e) => {
+                const f = e.target.files?.[0]; e.target.value = ''; if (!f) return;
+                setUploadingFile(true);
+                try { const url = await uploadMedia(f); setAttachments([...attachments, { url, name: f.name, size: f.size }]); }
+                catch { toast.error(t('common.failed', 'Failed.')); }
+                finally { setUploadingFile(false); }
+              }} />
+            </label>
+          </div>
+          {attachments.length > 0 && (
+            <div className="grid sm:grid-cols-2 gap-3 mt-3">
+              <Field label={t('adm.mail.att.mode', 'How')} className="!mb-0">
+                <Select value={attachMode} onChange={(e) => setAttachMode(e.target.value)}>
+                  <option value="link">{t('adm.mail.att.link', 'Links that expire (recommended)')}</option>
+                  <option value="inline">{t('adm.mail.att.inline', 'Attached to the mail (≤ 8 MB total)')}</option>
+                </Select>
+              </Field>
+              {attachMode === 'link' && <Field label={t('adm.mail.att.days', 'Links valid for (days)')} className="!mb-0"><Input type="number" min={1} max={90} value={attachDays} onChange={(e) => setAttachDays(Math.max(1, Math.min(90, Number(e.target.value) || 14)))} /></Field>}
+            </div>
+          )}
+          <p className="text-[11px] text-[var(--faint)] mt-1.5">{t('adm.mail.att.note', 'A link is one /f/… address per file, listed under “Files” at the end of the message; after the date it answers “expired” and the file is removed. A forwarded mail therefore stops carrying the file.')}</p>
         </div>
 
         <div className="mt-3 space-y-3">
@@ -14423,8 +14530,9 @@ function AdminBot() {
     welcome: structuredClone(cfg.welcome || {}),
     joinToCreate: structuredClone(cfg.joinToCreate || {}),
     gating: structuredClone(cfg.gating || {}),
+    logs: structuredClone(cfg.logs || {}),
   });
-  const resetServer = () => setCfg((c) => { const next = structuredClone(c); if (next.guilds) delete next.guilds[scope]; return next; });
+  const resetServer =() => setCfg((c) => { const next = structuredClone(c); if (next.guilds) delete next.guilds[scope]; return next; });
   const jtcLobbies = scopeObj.joinToCreate?.lobbies || (scopeObj.joinToCreate?.lobbyChannelId ? [{ lobbyChannelId: scopeObj.joinToCreate.lobbyChannelId, categoryId: scopeObj.joinToCreate.categoryId, tempCategoryName: scopeObj.joinToCreate.tempCategoryName }] : []);
   const purgeChans = scopeObj.moderation?.purgeChannelIds || (scopeObj.moderation?.purgeChannelId ? [scopeObj.moderation.purgeChannelId] : []);
   const scopeName = scope ? (guildList.find((gg) => gg.id === scope)?.name || scope) : t('db.scope.pick', 'Pick a server');
@@ -14680,6 +14788,12 @@ function AdminBot() {
           <Field label={t('db.f.alertch2', 'Incidents channel id (optional)')} hint={t('db.f.alertch2.h', 'A service going unreachable, error bursts, and any future alert type. Leave empty to send everything to the performance channel.')}>
             <Input value={g('alerts.generalChannelId')} onChange={(e) => set('alerts.generalChannelId', e.target.value)} placeholder={t('db.f.chanid', 'Channel ID')} />
           </Field>
+          {/* Optional, like the incidents channel: set, every admin alert kind becomes a tagged
+              forum post (features/logs.mjs ALERT_KINDS); unset, the two channels above keep
+              doing exactly what they did. */}
+          <Field label={t('db.f.alertforum', 'Alerts forum id (optional)')} hint={t('db.f.alertforum.h', 'A forum channel: every admin alert kind (perf, incident, Ko-fi, payments, contact, legal, moderation, announcements) becomes a tagged post there instead of a loose message. Empty = the channels above, as before.')}>
+            <Input value={g('alerts.forumId')} onChange={(e) => set('alerts.forumId', e.target.value.replace(/[^0-9]/g, '').slice(0, 32))} placeholder={t('lg.forumph', 'Forum ID')} />
+          </Field>
           </div>
         </ModuleCard>
         </div>
@@ -14862,6 +14976,7 @@ function AdminBot() {
                     ))}
                   </div>
                 </div>
+                {live.race !== false && <RaceConfig eco={eco} set={set} Switch={BotSwitch} />}
               </div>
             );
           })()}
@@ -15041,6 +15156,11 @@ function AdminBot() {
       <SectionTitle icon={Server} title={t('db.sec.perserver', 'Per-server configuration')} sub={t('db.sec.perserver.sub', 'Moderation, welcome, join-to-create and gated roles — set independently for each server the bot is in.')} />
       {/* Scope selector — a bot-dashboard server picker (avatars + custom-config dot) */}
       <div className="flex gap-2 mb-3 overflow-x-auto no-scrollbar pb-1">
+        {/* The top-level feature config is what every server WITHOUT its own follows (the bot's
+            resolveGuildConfig). It is a real thing to edit — automod defaults, log routing
+            defaults — so it gets a bubble like a server does. */}
+        <ServerBubble name={t('db.scope.global', 'Global defaults')} sub={t('db.scope.global.sub', 'applied to any server without its own config')}
+          active={scope === ''} dot={false} onClick={() => setScope('')} />
         {guildList.map((gg) => (
           <ServerBubble key={gg.id} name={gg.name} icon={gg.icon} sub={gg.members != null ? t('db.scope.members', '{n} members').replace('{n}', gg.members) : t('db.scope.server', 'server')}
             active={scope === gg.id} dot={!!cfg.guilds?.[gg.id]} onClick={() => setScope(gg.id)} />
@@ -15084,12 +15204,8 @@ function AdminBot() {
         </div>
       )}
 
-      {!scope ? (
-        <div className="text-sm text-[var(--faint)] rounded-xl border border-dashed border-[var(--line)] p-6 text-center">
-          <Server size={22} className="mx-auto mb-2 opacity-50" />
-          {t('db.scope.none', 'Pick a server above. Each server carries its own moderation, welcome, join-to-create and gated-roles settings — nothing here is shared between servers.')}
-        </div>
-      ) : !isCustomized ? (
+      {/* '' is the Global defaults scope (always "customized": it IS the top-level config). */}
+      {scope && !isCustomized ? (
         <div className="text-sm text-[var(--faint)] rounded-xl border border-dashed border-[var(--line)] p-6 text-center">
           <Server size={22} className="mx-auto mb-2 opacity-50" />
           {t('db.scope.prompt2', 'This server is not configured yet. Press "Configure this server" above — its owner can also do it from their own dashboard.')}
@@ -15105,6 +15221,21 @@ function AdminBot() {
             <Field label={t('db.f.nopost', 'No-post channels')} hint={t('db.f.nopost.h', 'Posting here kicks the user + purges their messages. A channel id is unique to its server.')}>
               <ChannelIdList ids={purgeChans} onChange={(v) => sset('moderation.purgeChannelIds', v)} placeholder={t('db.f.chanph', 'Channel ID — press Enter')} />
             </Field>
+            {/* The automod rules (features/automod.mjs), through the SAME editor the owner's
+                dashboard uses — one shape, two doors. Global scope = the defaults a server
+                without its own config follows. */}
+            <div className="pt-3 mt-1 border-t border-[var(--line)]">
+              <p className="text-[11px] text-[var(--faint)] mb-2">{t('db.automod.h', 'Automod — the rules below apply to this server; its owner can also tune them from their own dashboard.')}</p>
+              <AutomodEditor value={normAutomod(scopeObj.moderation?.automod)} onChange={(v) => sset('moderation.automod', v)} roles={scopeGuild?.roles} channels={scopeGuild?.channels} />
+            </div>
+          </ModuleCard>
+          </div>
+
+          {/* Log routing (features/logs.mjs) — per server like moderation; the top-level `logs`
+              is the default for a server without its own. */}
+          <div className={scopeObj.logs?.enabled !== false ? 'md:col-span-2' : ''}>
+          <ModuleCard id="sec-logs" icon={FileText} title={t('db.mod.logs', 'Logs')} desc={t('db.mod.logs.d', 'Where this server logs: a forum with one post per category or per day, or a text channel — routable per group and per category.')} enabled={scopeObj.logs?.enabled !== false} onToggle={(v) => sset('logs', { ...normLogs(scopeObj.logs), enabled: v })}>
+            <LogsEditor value={normLogs(scopeObj.logs)} onChange={(v) => sset('logs', v)} channels={scopeGuild?.channels} hideEnable />
           </ModuleCard>
           </div>
 
@@ -22974,7 +23105,6 @@ function AdminMarketplace() {
   const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
   const { user: me } = useAuth();
   const isSuper = me?.role === 'SUPERADMIN';
-  const [explain, setExplain] = useState(false);
   const { data, loading, reload } = useAsync(() => api.get('/admin/marketplace/products'), []);
   // The two kinds of page a product can belong to. Both are needed and only one was reachable:
   // the form asked for a typed "project key", so attaching a product to a SHOWCASE page was
@@ -23038,7 +23168,8 @@ function AdminMarketplace() {
       if (draft.id) await api.patch(`/admin/marketplace/products/${draft.id}`, body);
       else await api.post('/admin/marketplace/products', body);
       toast.success(t('common.saved', 'Saved.')); setDraft(null); reload();
-    } catch { toast.error(t('common.failed', 'Failed.')); }
+      return true;
+    } catch { toast.error(t('common.failed', 'Failed.')); return false; }
   };
   const del = async (pr) => { if (!await dialog.confirm({ title: t('mkadm.del', 'Delete this product?'), message: pr.name, danger: true })) return; try { await api.del(`/admin/marketplace/products/${pr.id}`); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
   // Product files sit on the same disk the hosting page sells by the gigabyte, and until now
@@ -23120,135 +23251,23 @@ function AdminMarketplace() {
         </div>
       )}
       {draft && (
-        <Modal open onClose={() => setDraft(null)} title={draft.id ? t('mkadm.edit', 'Edit product') : t('mkadm.new', 'New product')}>
-          <div className="space-y-3">
-            <div className="grid sm:grid-cols-2 gap-3">
-              <Field label={t('mkadm.f.name', 'Name')}><Input value={draft.name} onChange={(e) => set('name', e.target.value)} /></Field>
-              <Field label={t('mkadm.f.project2', 'Sold on which page')} hint={t('mkadm.f.project2.h', 'Where the product appears. A product with no page is a product nobody can find.')}>
-                <Select value={targetOf(draft)} onChange={(e) => setTarget(e.target.value)}>
-                  <option value="">{t('mkadm.f.pick', '— pick a page —')}</option>
-                  {targets.filter((x) => x.group === 'project').length > 0 && (
-                    <optgroup label={t('mkadm.g.projects', 'Projects')}>
-                      {targets.filter((x) => x.group === 'project').map((x) => <option key={x.v} value={x.v}>{x.label}</option>)}
-                    </optgroup>
-                  )}
-                  {targets.filter((x) => x.group === 'showcase').length > 0 && (
-                    <optgroup label={t('mkadm.g.showcase', 'Other projects')}>
-                      {targets.filter((x) => x.group === 'showcase').map((x) => <option key={x.v} value={x.v}>{x.label}</option>)}
-                    </optgroup>
-                  )}
-                </Select>
-              </Field>
+        <ProductWizard
+          draft={draft} setDraft={setDraft}
+          onClose={() => setDraft(null)}
+          onPublish={save}
+          targets={targets} targetOf={targetOf} setTarget={setTarget}
+          isSuper={isSuper} defaultFeeBp={data?.defaultFeeBp ?? 1000}
+          renderExplainer={(v) => <DeliveryExplainer v={v} />}
+          feePointer={<SettingsPointer keys={['marketplace.feePercentBp']}>{t('mkadm.fee.default', 'Change the site-wide default')}</SettingsPointer>}
+          filePointer={<SettingsPointer className="mt-1.5" keys={['marketplace.storageMB']}>{t('mkadm.f.file.where', 'Where product files are stored, and how much room is left')}</SettingsPointer>}
+          fileSlot={(
+            <div className="flex items-center gap-2 flex-wrap">
+              <input type="file" className="hidden" ref={mkFileRef} onChange={(e) => uploadProductFile(e.target.files?.[0])} />
+              <Button size="sm" onClick={() => mkFileRef.current?.click()} disabled={mkUp}>{mkUp ? <Spinner /> : <><UploadIcon size={13} /> {t('mkadm.f.file.pick', 'Choose a file')}</>}</Button>
+              <span className="text-xs text-[var(--muted)]">{draft.fileName || t('mkadm.f.file.none', 'No file attached yet.')}</span>
             </div>
-            <Field label={t('mkadm.f.desc', 'Description')}><Textarea rows={2} value={draft.description} onChange={(e) => set('description', e.target.value)} /></Field>
-            <div className="grid sm:grid-cols-3 gap-3">
-              <Field label={t('mkadm.f.price', 'Price (0 = free)')}><Input type="number" min="0" step="0.01" value={draft.priceCents / 100} onChange={(e) => set('priceCents', Math.round((Number(e.target.value) || 0) * 100))} /></Field>
-              <Field label={t('mkadm.f.currency', 'Currency')}><Input value={draft.currency} onChange={(e) => set('currency', e.target.value)} /></Field>
-              <Field label={t('mkadm.f.stock', 'Stock (blank = ∞)')}><Input type="number" min="0" value={draft.stock} onChange={(e) => set('stock', e.target.value)} /></Field>
-            </div>
-            {/* One-off or recurring. The consequence is spelled out beside the choice rather
-                than left to be discovered: a subscription re-runs the DELIVERY every cycle,
-                so a pool product on a monthly plan empties its pool twelve times faster than
-                whoever filled it expected. */}
-            <div className="grid sm:grid-cols-2 gap-3">
-              <Field label={t('mkadm.f.billing', 'Billing')} hint={t(`mkadm.bill.d.${draft.billing || 'one_time'}`, (BILLING_MODES.find((m) => m.v === (draft.billing || 'one_time')) || {}).desc || '')}>
-                <Select value={draft.billing || 'one_time'} onChange={(e) => set('billing', e.target.value)}>
-                  {BILLING_MODES.map((m) => <option key={m.v} value={m.v}>{t(`mkadm.bill.l.${m.v}`, m.label)}</option>)}
-                </Select>
-              </Field>
-              {draft.billing === 'subscription' && (
-                <Field label={t('mkadm.f.interval', 'Billed every')} hint={t('mkadm.f.interval.h', 'Changing this, the price or the currency mints a new Stripe price; people already subscribed keep the one they signed up on.')}>
-                  <Select value={String(draft.intervalMonths || 1)} onChange={(e) => set('intervalMonths', Number(e.target.value))}>
-                    <option value="1">{t('mkadm.iv.1', 'month')}</option>
-                    <option value="3">{t('mkadm.iv.3', '3 months')}</option>
-                    <option value="6">{t('mkadm.iv.6', '6 months')}</option>
-                    <option value="12">{t('mkadm.iv.12', 'year')}</option>
-                  </Select>
-                </Field>
-              )}
-            </div>
-            <Field label={t('mkadm.f.delivery', 'Delivery')} hint={t(mkdKey(draft.deliveryKind, 'd'), (DELIVERY_BY_V[draft.deliveryKind] || {}).desc || '')}>
-              <Select value={draft.deliveryKind} onChange={(e) => set('deliveryKind', e.target.value)}>
-                {DELIVERY_KINDS.map((o) => <option key={o.v} value={o.v}>{t(mkdKey(o.v, 'l'), o.label)}</option>)}
-              </Select>
-            </Field>
-            {/* Folded by default: the picker's own hint is the one-liner, and this is the
-                paragraph you want the first three times and never again. */}
-            <button type="button" onClick={() => setExplain((x) => !x)} className="text-[11px] text-[var(--primary-2)] hover:underline inline-flex items-center gap-1">
-              <HelpCircle size={12} /> {explain ? t('mkadm.exp.hide', 'Hide the explanation') : t('mkadm.exp.show', 'What do these mean?')}
-            </button>
-            {explain && (
-              <div className="space-y-2">
-                <DeliveryExplainer v={draft.deliveryKind} />
-                <details className="text-[11px]">
-                  <summary className="cursor-pointer text-[var(--muted)] hover:text-[var(--text)]">{t('mkadm.exp.all', 'Compare all eight')}</summary>
-                  <div className="mt-2 space-y-2">
-                    {DELIVERY_KINDS.filter((d) => d.v !== draft.deliveryKind).map((d) => <DeliveryExplainer key={d.v} v={d.v} />)}
-                  </div>
-                </details>
-              </div>
-            )}
-            {draft.deliveryKind === 'content' && <Field label={t('mkadm.f.content', 'Content delivered')}><Textarea rows={2} value={draft.content} onChange={(e) => set('content', e.target.value)} /></Field>}
-            {draft.deliveryKind === 'key_static' && <Field label={t('mkadm.f.static', 'Fixed key')}><Input value={draft.staticKey} onChange={(e) => set('staticKey', e.target.value)} /></Field>}
-            {draft.deliveryKind === 'role' && <Field label={t('mkadm.f.role', 'Discord role id')}><Input value={draft.roleId} onChange={(e) => set('roleId', e.target.value)} /></Field>}
-            {draft.deliveryKind === 'key_external' && <><Field label={t('mkadm.f.exturl', 'External generator URL')}><Input value={draft.externalUrl} onChange={(e) => set('externalUrl', e.target.value)} placeholder="https://…/generate" /></Field><Field label={t('mkadm.f.extsecret', 'Shared secret (HMAC)')} hint={t('mkadm.f.extsecret.h', 'Sent as X-BC-Signature = HMAC-SHA256(body). Blank keeps the current one.')}><Input value={draft.externalSecret} onChange={(e) => set('externalSecret', e.target.value)} /></Field></>}
-            {draft.deliveryKind === 'key_license' && <p className="text-xs text-[var(--muted)] rounded-lg border border-[var(--line)] p-2.5">{t('mkadm.f.license.h', 'Nothing to set: every buyer gets a key nobody else has, minted at purchase and recorded on it. Unlimited supply, unlike a pool, and traceable, unlike a fixed key.')}</p>}
-            {draft.deliveryKind === 'link' && <Field label={t('mkadm.f.link', 'Link handed over')} hint={t('mkadm.f.link.h', 'Shown as a button after the purchase. Use this for a page you control; for a file, the File delivery keeps the address from being forwardable.')}><Input value={draft.linkUrl} onChange={(e) => set('linkUrl', e.target.value)} placeholder="https://…" /></Field>}
-            {draft.deliveryKind === 'file' && (
-              draft.id
-                ? <Field label={t('mkadm.f.file', 'File handed over')} hint={t('mkadm.f.file.h', 'Held in the platform’s own storage. Each download is a fresh link that expires in ten minutes, so it cannot be passed on to somebody who did not buy it.')}>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <input type="file" className="hidden" ref={mkFileRef} onChange={(e) => uploadProductFile(e.target.files?.[0])} />
-                    <Button size="sm" onClick={() => mkFileRef.current?.click()} disabled={mkUp}>{mkUp ? <Spinner /> : <><UploadIcon size={13} /> {t('mkadm.f.file.pick', 'Choose a file')}</>}</Button>
-                    <span className="text-xs text-[var(--muted)]">{draft.fileName || t('mkadm.f.file.none', 'No file attached yet.')}</span>
-                  </div>
-                  {/* The one question this field always raised and never answered. */}
-                  <SettingsPointer className="mt-1.5" keys={['marketplace.storageMB']}>{t('mkadm.f.file.where', 'Where product files are stored, and how much room is left')}</SettingsPointer>
-                </Field>
-                /* A product has to exist before a file can hang off it — the upload posts to
-                   /admin/marketplace/products/<id>/file, and there is no id until the first save. */
-                : <p className="text-xs text-warning rounded-lg border border-[var(--line)] p-2.5">{t('mkadm.f.file.first', 'Save the product first, then re-open it to attach the file.')}</p>
-            )}
-            {/* Where the thing they bought is USED. Every delivery kind gets these, because
-                every delivery kind has the same gap: a key is a string until somebody says
-                which site to paste it into, and a file is a download until somebody says
-                which app opens it. Shown on the storefront BEFORE the sale too \u2014 "and then
-                what" is a question people want answered first. */}
-            <div className="rounded-lg border border-[var(--line)] p-3 space-y-3">
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t('mkadm.redeem.h', 'Where the buyer uses it')}</div>
-              <Field label={t('mkadm.f.redeemurl', 'Link to your site or app')} hint={t('mkadm.f.redeemurl.h', 'The page that redeems the key, the app to open, the docs. Shown as a button on the product and on the purchase.')}>
-                <Input value={draft.redeemUrl || ''} onChange={(e) => set('redeemUrl', e.target.value)} placeholder="https://\u2026" />
-              </Field>
-              <Field label={t('mkadm.f.redeemnote', 'How to use it')} hint={t('mkadm.f.redeemnote.h', 'One or two sentences. Sign in, open Settings, paste the key \u2014 that kind of thing.')}>
-                <Textarea rows={2} value={draft.redeemNote || ''} onChange={(e) => set('redeemNote', e.target.value)} />
-              </Field>
-            </div>
-            {/* The margin. Read-only for an ADMIN, and it says why rather than simply being
-                greyed out: a control that refuses without explaining reads as broken. The
-                route enforces this too \u2014 hiding a field is not a permission check. */}
-            <div className="rounded-lg border border-[var(--line)] p-3 space-y-2">
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t('mkadm.fee.h', 'Platform margin')}</div>
-              {isSuper ? (
-                <Field
-                  label={t('mkadm.f.fee', 'Our cut on this product (%)')}
-                  hint={t('mkadm.f.fee.h', 'Blank = the site default ({d}%). Set 0 on our own products so we do not charge ourselves. The split is written onto each sale as it was at that moment, so changing this never rewrites what was already paid.').replace('{d}', ((data?.defaultFeeBp ?? 1000) / 100).toFixed(2).replace(/\.?0+$/, ''))}
-                >
-                  <Input type="number" min="0" max="100" step="0.01"
-                    value={draft.feePercentBp === '' || draft.feePercentBp == null ? '' : Number(draft.feePercentBp) / 100}
-                    onChange={(e) => set('feePercentBp', e.target.value === '' ? '' : Math.round((Number(e.target.value) || 0) * 100))}
-                    placeholder={((data?.defaultFeeBp ?? 1000) / 100).toString()} />
-                </Field>
-              ) : (
-                <p className="text-[11px] text-[var(--muted)]">
-                  {t('mkadm.fee.ro', 'This product is charged {n}%. Only a super-admin can change it, here or anywhere else.').replace('{n}', (((draft.feePercentBp ?? data?.defaultFeeBp ?? 1000)) / 100).toString())}
-                </p>
-              )}
-              {isSuper && <SettingsPointer keys={['marketplace.feePercentBp']}>{t('mkadm.fee.default', 'Change the site-wide default')}</SettingsPointer>}
-            </div>
-            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.active} onChange={(e) => set('active', e.target.checked)} /> {t('mkadm.f.active', 'Active (visible in the storefront)')}</label>
-            <div className="flex justify-end gap-2"><Button variant="ghost" onClick={() => setDraft(null)}>{t('common.cancel', 'Cancel')}</Button><Button variant="primary" onClick={save}>{t('common.save', 'Save')}</Button></div>
-          </div>
-        </Modal>
+          )}
+        />
       )}
       {keysFor && (
         <Modal open onClose={() => setKeysFor(null)} title={t('mkadm.addkeys', 'Add keys')}>
@@ -24070,27 +24089,25 @@ function AdminSettings() {
           many were off-screen, so the tabs past "Pricing" were effectively invisible. A
           native select shows the whole list at once, in the picker the phone already has,
           and marks which tabs hold unsaved edits. */}
-      <div className="sm:hidden mb-3">
-        <Select value={tab} onChange={(e) => setTab(e.target.value)} aria-label={t('hs.tab.pick', 'Settings section')}>
-          {HS_TABS.map((tb) => (
-            <option key={tb.gk} value={tb.gk}>
-              {t(`hs.g.${tb.gk}`, tb.title)}{dirtyIn(tb.gk) > 0 ? ` \u00b7 ${t('hs.tab.dirtyn', '{n} unsaved').replace('{n}', dirtyIn(tb.gk))}` : ''}
-            </option>
-          ))}
-        </Select>
-      </div>
-      <div className="hidden sm:flex gap-1 mb-4 border-b border-[var(--line)] overflow-x-auto no-scrollbar -mx-1 px-1">
-        {HS_TABS.map((tb) => {
-          const on = tab === tb.gk;
-          return (
-            <button key={tb.gk} type="button" onClick={() => setTab(tb.gk)}
-              className={`shrink-0 flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 -mb-px whitespace-nowrap transition ${on ? 'border-[var(--primary)] text-[var(--text)]' : 'border-transparent text-[var(--muted)] hover:text-[var(--text)]'}`}>
-              <tb.icon size={14} className={on ? 'text-[var(--primary-2)]' : 'text-[var(--faint)]'} />
-              {t(`hs.g.${tb.gk}`, tb.title)}
-              {dirtyIn(tb.gk) > 0 && <span className="w-1.5 h-1.5 rounded-full bg-[var(--primary)]" title={t('hs.tab.dirty', 'unsaved changes in this tab')} />}
-            </button>
-          );
-        })}
+      {/* One dropdown at every width now, not a phone select beside a desktop strip. Even on a
+          desktop the strip was ten tabs behind a sideways scroll in a column this narrow. The
+          app's own Dropdown (opaque `--bg-solid` menu, keyboard-driven) shows the whole list
+          at once with its icons, and names the tabs that hold unsaved edits. State and the
+          ?hs= URL behaviour are untouched \u2014 only the control changed. */}
+      <div className="mb-4 flex items-center gap-2 flex-wrap">
+        <span className="text-xs text-[var(--muted)]">{t('hs.tab.pick', 'Settings section')}</span>
+        <Dropdown value={tab} onChange={(v) => setTab(v)} className="min-w-[240px]"
+          options={HS_TABS.map((tb) => ({
+            value: tb.gk,
+            icon: <tb.icon size={14} className={tab === tb.gk ? 'text-[var(--primary-2)]' : 'text-[var(--faint)]'} />,
+            label: (
+              <span className="inline-flex items-center gap-1.5">
+                {t(`hs.g.${tb.gk}`, tb.title)}
+                {dirtyIn(tb.gk) > 0 && <span className="w-1.5 h-1.5 rounded-full bg-[var(--primary)]" title={t('hs.tab.dirty', 'unsaved changes in this tab')} />}
+                {dirtyIn(tb.gk) > 0 && <span className="text-[10px] text-[var(--faint)]">{t('hs.tab.dirtyn', '{n} unsaved').replace('{n}', dirtyIn(tb.gk))}</span>}
+              </span>
+            ),
+          }))} />
       </div>
       {/* One box, every tab. Matches the label, the description AND the setting key, because
           an admin who arrived from the API or a support thread has the key and not the

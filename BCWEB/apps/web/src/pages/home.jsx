@@ -693,7 +693,7 @@ export function Home({ draft = null }) {
              user ? t('home.step1.done', "You're set — view profile") : t('home.step1.cta', 'Sign up free'), !!user],
             [Upload, t('home.step2'), t('home.step2.d'), '/catalog',
              step2done ? t('home.step2.done', 'Seen — go back to the catalogue') : t('home.step2.cta', 'Browse the catalog'), step2done],
-            [Rocket, t('home.step3'), t('home.step3.d'), progress?.hosting ? '/dashboard' : '/hosting',
+            [Rocket, t('home.step3'), t('home.step3.d'), progress?.hosting ? '/dashboard' : '/hosting#plans',
              progress?.hosting ? t('home.step3.done', 'Hosting is live — open your dashboard') : t('home.step3.cta', 'See hosting plans'), !!progress?.hosting],
           ].map(([I, title, d, to, cta, done], i) => (
             <li key={title} className="relative pb-9 last:pb-0">

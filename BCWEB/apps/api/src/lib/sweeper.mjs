@@ -4,6 +4,8 @@
 // Their files are kept until that moment, then this job hard-deletes the rows and
 // their object-storage bytes. Runs periodically from the API process.
 import { db, notify, catalogLog, clearAccountLockCache, hostingGrace, humanHours } from './lib.mjs';
+import { sweepMediaHashes } from './media-hash.mjs';
+import { sweepExpiringFiles } from './expiring-files.mjs';
 import { sweepAutoBadges } from '../routes/social.mjs';
 import { sweepEconomyHistory, drawDueSiteGiveaways } from './economy-shop.mjs';
 import { sweepAttention } from './attention.mjs';
@@ -309,7 +311,7 @@ async function sweepExpiredSubscriptions(p, log) {
           if (r.status !== 'SUSPENDED') await p.serverRepo.update({ where: { id: r.id }, data: { status: 'SUSPENDED', deleteAt } });
         }
         await p.subscription.update({ where: { id: sub.id }, data: { status: 'expired' } });
-        await notify(p, repo.ownerId, 'hosting_stopped', `Your hosting term for "${repo.name}"${repo.groupId ? ' (and its pool)' : ''} has ended — it's suspended and will be deleted in ${window} unless you renew. It stays readable in the meantime, so you can download a copy.`);
+        await notify(p, repo.ownerId, 'hosting_stopped', `Your hosting term for "${repo.name}"${repo.groupId ? ' (and its pool)' : ''} has ended — it's suspended and will be deleted in ${window} unless you renew. Renewing brings it straight back; after the window its files are gone for good.`);
         handled++;
       } else {
         // Orphan sub (neither anchor) — just mark expired so it stops being scanned.
@@ -772,7 +774,21 @@ export function startSweeper(app) {
       // A season ends on its schedule, not when somebody remembers the button.
       await runSeasonIfDue(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'season reset failed'));
       await sweepStaleMyoRequests(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'MYO auto-archive sweep failed'));
+      // Checkouts the webhook never finished (the API was down when Stripe called). Dynamic
+      // import: the reconciler pulls in the webhook → hosting.mjs, which already has to
+      // dynamic-import THIS module; a static import here would close that cycle.
+      await (async () => {
+        const sk = await stripe();
+        if (!sk) return;
+        const { reconcilePendingCheckouts } = await import('./stripe-reconcile.mjs');
+        await reconcilePendingCheckouts(p, { stripe: sk, log: app.log });
+      })().catch((e) => app.log.warn({ e: String(e) }, 'pending checkout reconciliation failed'));
       await pruneApiRequests(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'api request prune failed'));
+      // Pictures uploaded since the last tick get their perceptual hash and, if they look
+      // like another account's, a flag for staff.
+      await sweepMediaHashes(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'media hash sweep failed'));
+      // Links past their date lose their object a week later; the row stays as the proof.
+      await sweepExpiringFiles(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'expiring files sweep failed'));
       await sampleAndAlert(p, app.log);
       await runEventScheduler(p).catch((e) => app.log.warn({ e: String(e) }, 'event scheduler failed'));
       // Threshold badges ("30 days old", "level 10") once a day: the rule may have been created

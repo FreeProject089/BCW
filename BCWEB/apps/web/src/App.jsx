@@ -80,6 +80,7 @@ const DevTools = lazyChunk(() => import('./pages/dev-tools.jsx'));
 const DevMarkdown = lazyChunk(() => import('./pages/dev-markdown.jsx'));
 const DevBmd = lazyChunk(() => import('./pages/dev-bmd.jsx'));
 const DevEditor = lazyChunk(() => import('./pages/dev-editor.jsx'));
+const StudioPage = lazyChunk(() => import('./pages/studio.jsx'));
 // The 404 page carries the Orb Fall canvas game — a whole game, in the entry chunk, for a
 // route almost nobody reaches. Split out it is worth 9 KB gzip, which is what the bundle
 // budget was over by, and it costs a Suspense flash on a page that is already a surprise.
@@ -112,10 +113,12 @@ const Hosting = named(() => import('./pages/hosting.jsx'), 'Hosting');
 const Legal = named(() => import('./pages/legal.jsx'), 'Legal');
 const LegalIndex = named(() => import('./pages/legal.jsx'), 'LegalIndex');
 const LegalArchive = named(() => import('./pages/legal.jsx'), 'LegalArchive');
+const FileLink = lazyChunk(() => import('./pages/file-link.jsx'));
 const Contact = named(() => import('./pages/contact.jsx'), 'Contact');
 const ReportPage = named(() => import('./pages/report.jsx'), 'ReportPage');
 const AnonThreadPage = lazyChunk(() => import('./pages/threads.jsx'));
 const TeamPage = lazyChunk(() => import('./pages/teams.jsx'));
+const TeamJoin = named(() => import('./pages/teams.jsx'), 'TeamJoin');
 const Settings = named(() => import('./pages/account-pages.jsx'), 'Settings');
 const Authorize = named(() => import('./pages/account-pages.jsx'), 'Authorize');
 const VerifyEmail = named(() => import('./pages/account-pages.jsx'), 'VerifyEmail');
@@ -453,7 +456,7 @@ const NOTIF_LINK = {
   hosting_started: '/dashboard?s=repos', hosting_online: '/dashboard?s=repos', hosting_stopped: '/dashboard?s=repos', hosting_expiring: '/dashboard?s=repos',
   feature_active: '/dashboard?s=repos', server_alert: '/admin?s=serverperf',
   creator_linked: '/profile', discord_linked: '/profile',
-  kofi_reward: '/dashboard', promo_redeemed: '/dashboard', discount: '/hosting', free_hosting: '/dashboard?s=repos', free_pool: '/dashboard?s=repos', free_boost: '/dashboard?s=repos',
+  kofi_reward: '/dashboard', promo_redeemed: '/dashboard', discount: '/hosting#plans', free_hosting: '/dashboard?s=repos', free_pool: '/dashboard?s=repos', free_boost: '/dashboard?s=repos',
 };
 
 function NavNotifications() {
@@ -1443,6 +1446,7 @@ export default function App() {
               <Route path="/contact" element={<Contact />} />
               <Route path="/report" element={<ReportPage />} />
               <Route path="/messages/t/:token" element={<AnonThreadPage />} />
+              <Route path="/teams/join/:token" element={<TeamJoin />} />
               <Route path="/t/:slug" element={<TeamPage />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/2fa" element={<TwoFactor />} />
@@ -1450,6 +1454,7 @@ export default function App() {
               {/* Archived versions. Linked from the admin editor and from an acceptance
                   record, so this route is what makes those references resolve. */}
               <Route path="/legal/archive/:id" element={<LegalArchive />} />
+              <Route path="/f/:token" element={<FileLink />} />
               <Route path="/legal/about" element={<Legal page="about" />} />
               <Route path="/legal/privacy" element={<Legal page="privacy" />} />
               <Route path="/legal/terms" element={<Legal page="terms" />} />
@@ -1468,6 +1473,11 @@ export default function App() {
               <Route path="/refunds" element={<Navigate to="/legal/refunds" replace />} />
               <Route path="/dashboard" element={<Protected><Dashboard /></Protected>} />
               <Route path="/admin" element={<Protected role={['MOD', 'ADMIN']}><Admin /></Protected>} />
+              {/* The studio on its own surface (pages/studio.jsx): the page it edits is
+                  admin-gated, so the same gate as /admin — a role, or a project grant. It
+                  draws itself over the shell (position: fixed), so it sits inside <main>
+                  like every other route without needing a second layout. */}
+              <Route path="/studio/:kind/:id/:index?" element={<Protected role={['MOD', 'ADMIN']}><StudioPage /></Protected>} />
               <Route path="*" element={<NotFound />} />
             </Routes>
             </Suspense>

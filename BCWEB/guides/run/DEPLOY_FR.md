@@ -87,10 +87,19 @@ l'app doit s'afficher en HTTPS.
 1. Dans le dashboard Stripe, récupère ta **clé secrète** → `STRIPE_SECRET_KEY`.
 2. Crée un endpoint webhook vers
    `https://community.example.com/hosting/webhook` (un alias `/webhook` marche aussi).
-   Abonne au minimum : `checkout.session.completed`, `invoice.paid`,
+   Abonne au minimum : `checkout.session.completed`,
+   `checkout.session.async_payment_succeeded`, `checkout.session.expired`, `invoice.paid`,
    `invoice.payment_failed`, `customer.subscription.deleted`, `charge.refunded`.
 3. Copie le **secret de signature** de l'endpoint (`whsec_…`) → `STRIPE_WEBHOOK_SECRET`.
 4. `docker compose up -d api` pour recharger.
+
+> **Si le webhook était en panne pendant qu'on payait :** rien n'est perdu. Chaque checkout
+> est inscrit dans un registre `PendingCheckout` à l'ouverture ; au démarrage, et toutes les
+> dix minutes, l'API demande à Stripe ce qu'il est advenu de ceux encore ouverts et les termine
+> par le même code que le webhook. Admin → **Hébergement & facturation → Paiements en
+> attente** montre le registre et a un bouton **Réconcilier maintenant** pour les impatients.
+> Un paiement qu'il a fallu terminer ainsi est signalé sur la page Erreurs admin (source
+> `reconcile`) et notifié aux super-admins.
 
 > **Sans `STRIPE_WEBHOOK_SECRET`, le webhook renvoie 503** — aucun paiement n'est
 > enregistré ni provisionné. L'onglet admin **Discord bot → Payments** affiche un

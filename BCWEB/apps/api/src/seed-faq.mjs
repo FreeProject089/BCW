@@ -96,8 +96,12 @@ const FAQ = [
     categoryFr: 'Publier et héberger',
     question: 'Is Server Repo hosting a recurring charge?',
     questionFr: 'L’hébergement de Dépôt Serveur est-il un abonnement ?',
-    answer: 'A **repo** is **prepaid per term** — you pick a size, and there\'s no recurring charge to cancel; deleting it just stops future renewals. A hosted **catalog** subscription is different — it *is* recurring. A deleted repo is kept for 72 hours before its files go, so you can undo.',
-    answerFr: 'Un **dépôt** est **prépayé par terme** — tu choisis une taille, et il n\'y a pas d\'abonnement à résilier ; le supprimer arrête juste les renouvellements. Un abonnement de **catalogue** hébergé, lui, *est* récurrent. Un dépôt supprimé est gardé 72 heures avant que ses fichiers partent, tu peux donc annuler.',
+    // Checked against routes/hosting.mjs + stripe-webhook.mjs: a hosting line with
+    // auto-renew (ON by default in the cart, allowed up to 12 months) becomes a real Stripe
+    // subscription that bills the same term again, so "no recurring charge to cancel" was
+    // false. The 72-hour keep on a self-delete is hard-coded in routes/repos.mjs.
+    answer: 'It can be either. A storage pool is **prepaid per term** — any number of months the site allows (1 to 36 by default), paid once, longer terms cheaper per month. In the cart you choose whether it **auto-renews**: on, and the same term is billed again when it ends as a real subscription you can cancel from Billing at any time (the term already paid still runs to its end; terms over 12 months never auto-renew); off, and nothing is charged again — the pool is suspended when the term ends and deleted after the grace window unless you renew. A hosted **catalog** subscription is always recurring. A repo you delete yourself is kept for 72 hours before its files go, so you can undo.',
+    answerFr: 'Ça peut être l\'un ou l\'autre. Un pool de stockage est **prépayé par terme** — n\'importe quel nombre de mois que le site autorise (1 à 36 par défaut), réglé en une fois, les termes longs coûtant moins cher par mois. Dans le panier, tu choisis s\'il se **renouvelle automatiquement** : activé, le même terme est refacturé à son échéance comme un vrai abonnement, résiliable à tout moment depuis Facturation (le terme déjà payé va jusqu\'à son terme ; au-delà de 12 mois, jamais de renouvellement auto) ; désactivé, plus rien n\'est prélevé — le pool est suspendu à la fin du terme et supprimé après le délai de grâce sauf si tu renouvelles. Un abonnement de **catalogue** hébergé, lui, est toujours récurrent. Un dépôt que tu supprimes toi-même est gardé 72 heures avant que ses fichiers partent, tu peux donc annuler.',
   },
   {
     category: 'Publishing & hosting', order: 220,
@@ -170,8 +174,10 @@ const FAQ = [
     categoryFr: 'Publier et héberger',
     question: 'What happens to my content when a hosting term ends?',
     questionFr: 'Qu\'arrive-t-il à mon contenu à la fin d\'un terme d\'hébergement ?',
-    answer: 'You get one warning per term before it runs out. If it ends without renewal, the pool shrinks by that subscription\'s share and whatever no longer fits is **suspended** — repos stop serving, catalog items stop being listed — with a **72-hour** window before anything is deleted. Renewing inside the window restores all of it. If the pool is fed by several subscriptions and only one ends, everything that still fits stays online.',
-    answerFr: 'Tu reçois un avertissement par terme avant l\'échéance. S\'il se termine sans renouvellement, le pool rétrécit de la part de cet abonnement et ce qui ne rentre plus est **suspendu** — les dépôts cessent de servir, les éléments de catalogue de s\'afficher — avec **72 heures** avant toute suppression. Renouveler dans cette fenêtre restaure tout. Si le pool est alimenté par plusieurs abonnements et qu\'un seul se termine, tout ce qui tient encore reste en ligne.',
+    // lib/sweeper.mjs + lib/lib.mjs hostingGrace: warnBeforeHours 72, graceLapseHours 72,
+    // graceUnpaidHours 168 — all three admin settings, hence "by default".
+    answer: 'You get one warning per term before it runs out (72 hours ahead by default). If it ends without renewal, the pool shrinks by that subscription\'s share and whatever no longer fits is **suspended** — repos stop serving, catalog items stop being listed, for you as well — with a grace window before anything is deleted: **72 hours** by default, a week when a renewal card failed rather than a term simply ending. Renewing inside the window restores all of it. If the pool is fed by several subscriptions and only one ends, everything that still fits stays online.',
+    answerFr: 'Tu reçois un avertissement par terme avant l\'échéance (72 heures avant par défaut). S\'il se termine sans renouvellement, le pool rétrécit de la part de cet abonnement et ce qui ne rentre plus est **suspendu** — les dépôts cessent de servir, les éléments de catalogue de s\'afficher, pour toi aussi — avec un délai de grâce avant toute suppression : **72 heures** par défaut, une semaine quand c\'est une carte de renouvellement qui a échoué plutôt qu\'un terme qui s\'est simplement terminé. Renouveler dans cette fenêtre restaure tout. Si le pool est alimenté par plusieurs abonnements et qu\'un seul se termine, tout ce qui tient encore reste en ligne.',
   },
 
   {

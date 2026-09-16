@@ -400,7 +400,7 @@ function HostCatalog({ onBack }) {
           ) : (
             <Field label={t('sub2.pool', 'Storage pool')} hint={t('sub2.pool.hint', 'A managed catalog draws from a storage pool — the same space your repos use.')}>
               {pools == null ? <Spinner /> : pools.length === 0 ? (
-                <div className="text-sm text-[var(--muted)]">{t('sub2.pool.none', 'You have no storage pool yet.')} <Link to="/hosting" className="text-[var(--primary-2)] underline">{t('sub2.pool.buy', 'Get one on the Hosting page')}</Link>.</div>
+                <div className="text-sm text-[var(--muted)]">{t('sub2.pool.none', 'You have no storage pool yet.')} <Link to="/hosting#plans" className="text-[var(--primary-2)] underline">{t('sub2.pool.buy', 'Get one on the Hosting page')}</Link>.</div>
               ) : (
                 <>
                   <Select value={groupId} onChange={(e) => setGroupId(e.target.value)}>
@@ -491,7 +491,7 @@ export function Submit() {
                 said so — someone with a repo to share was offered catalogs twice and their
                 actual case never. A LINK, not a third inline form: the hosting page already
                 carries pools, quotas and payment, and a duplicate here would drift. */}
-            <Link to="/hosting" className="text-start p-5 rounded-2xl border border-[var(--line)] hover:border-[var(--primary)] transition sm:col-span-2 block">
+            <Link to="/hosting#plans" className="text-start p-5 rounded-2xl border border-[var(--line)] hover:border-[var(--primary)] transition sm:col-span-2 block">
               <div className="w-11 h-11 rounded-xl bg-[var(--primary)]/10 grid place-items-center mb-3"><Rocket size={20} className="text-[var(--primary-2)]" /></div>
               <div className="font-semibold">{t('sub2.repo', 'Host a Server-Repo')}</div>
               <div className="text-sm text-[var(--muted)] mt-1">{t('sub2.repo.d', 'The mods themselves, served for BMM to sync from — with a stable URL, access control (password, keys, allow lists) and storage pools. Opens the hosting page.')}</div>

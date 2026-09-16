@@ -2,8 +2,8 @@
 // public card at /t/:slug. A team's members manage what is attached alongside its owner;
 // billing stays with the owner.
 import { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { Users, Plus, UserPlus, Trash2, LogOut, Crown, Mail, Phone, Globe, Link2, Package, HardDrive, Layers, ArrowRightLeft, Check, X } from 'lucide-react';
+import { useParams, Link, useNavigate } from 'react-router-dom';
+import { Users, Plus, UserPlus, Trash2, LogOut, Crown, Mail, Phone, Globe, Link2, Package, HardDrive, Layers, ArrowRightLeft, Check, X, Copy, ShoppingBag } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { useAuth } from './auth.jsx';
@@ -40,6 +40,15 @@ function TeamDetail({ team, reload }) {
   const [edit, setEdit] = useState(false); const [busy, setBusy] = useState(false);
   const [invite, setInvite] = useState(''); const [inviteRole, setInviteRole] = useState('member');
   const { data: pub, reload: reloadPub } = useAsync(() => api.get(`/teams/${team.slug}`), [team.slug, team.updatedAt]);
+  // Invitation links: one address anyone signed in can open to join with the chosen role.
+  const links = useAsync(() => (['owner', 'admin'].includes(team.myRole) ? api.get(`/me/teams/${team.id}/invites`) : Promise.resolve({ invites: [] })), [team.id]);
+  const [linkRole, setLinkRole] = useState('member'); const [linkDays, setLinkDays] = useState(7);
+  const makeLink = async () => {
+    try { const r = await api.post(`/me/teams/${team.id}/invites`, { role: linkRole, days: linkDays || null }); links.reload(); await copyLink(r.invite.url); }
+    catch (x) { toast.error(x.data?.error === 'too_many_invites' ? t('tm.link.toomany', 'Ten open links already — revoke one first.') : t('common.failed', 'Failed.')); }
+  };
+  const copyLink = async (path) => { try { await navigator.clipboard.writeText(`${window.location.origin}${path}`); toast.success(t('tm.link.copied', 'Link copied.')); } catch { toast.success(`${window.location.origin}${path}`); } };
+  const revokeLink = async (id) => { await api.delete(`/me/teams/${team.id}/invites/${id}`).catch(() => toast.error(t('common.failed', 'Failed.'))); links.reload(); };
   const { data: mine } = useAsync(() => Promise.all([api.get('/me/repos').catch(() => ({ repos: [] })), api.get('/me/catalogs').catch(() => ({ catalogs: [] })), api.get('/me/hosting/groups').catch(() => ({ groups: [] }))]), []);
   const canAdmin = ['owner', 'admin'].includes(team.myRole);
   const isOwner = team.myRole === 'owner';
@@ -128,13 +137,36 @@ function TeamDetail({ team, reload }) {
             </li>
           ))}
         </ul>
-        {canAdmin && (
+        {canAdmin && (<>
           <div className="mt-3 flex gap-2 items-end flex-wrap">
             <Field label={t('tm.invite', 'Invite')} hint={t('tm.invite.h', 'A BC id, an e-mail or an exact display name. They must accept.')} className="flex-1 min-w-[14rem]"><Input value={invite} onChange={(e) => setInvite(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && doInvite()} /></Field>
             <Select value={inviteRole} className="!w-auto" onChange={(e) => setInviteRole(e.target.value)}><option value="member">{t('tm.role.member', 'member')}</option><option value="admin">{t('tm.role.admin', 'admin')}</option></Select>
             <Button variant="primary" loading={busy} onClick={doInvite}><UserPlus size={14} /> {t('tm.invite.btn', 'Invite')}</Button>
           </div>
-        )}
+            <div className="mt-3 rounded-xl border border-[var(--line)] p-3">
+              <div className="text-[12px] font-semibold mb-1.5 flex items-center gap-1.5"><Link2 size={13} /> {t('tm.link.h', 'Invitation links')}</div>
+              <p className="text-[11px] text-[var(--faint)] mb-2">{t('tm.link.d', 'Anyone signed in who opens the link joins with the role below. A link can expire and be revoked; up to ten open at once.')}</p>
+              <div className="flex flex-wrap gap-2 items-end">
+                <Field label={t('tm.link.role', 'Role')} className="!mb-0"><Select value={linkRole} onChange={(e) => setLinkRole(e.target.value)}><option value="member">{t('tm.role.member', 'Member')}</option><option value="admin">{t('tm.role.admin', 'Admin')}</option></Select></Field>
+                <Field label={t('tm.link.days', 'Valid for (days, 0 = no limit)')} className="!mb-0"><Input type="number" min={0} max={90} value={linkDays} onChange={(e) => setLinkDays(Math.max(0, Math.min(90, Number(e.target.value) || 0)))} /></Field>
+                <Button size="sm" onClick={makeLink}><Plus size={13} /> {t('tm.link.new', 'New link')}</Button>
+              </div>
+              {(links.data?.invites || []).length > 0 && (
+                <ul className="mt-2 space-y-1">
+                  {links.data.invites.map((l) => (
+                    <li key={l.id} className="flex items-center gap-2 text-[12px] flex-wrap">
+                      <Badge>{t(ROLE_KEY[l.role] || 'tm.role.member', l.role)}</Badge>
+                      <span className="text-[var(--muted)]">{l.expiresAt ? t('tm.link.until', 'until {d}').replace('{d}', new Date(l.expiresAt).toLocaleDateString()) : t('tm.link.nolimit', 'no expiry')} · {t('tm.link.uses', '{n} use(s)').replace('{n}', l.uses)}{!l.usable ? ` · ${t('tm.link.dead', 'expired')}` : ''}</span>
+                      <span className="ms-auto flex gap-1">
+                        <Button size="sm" variant="ghost" onClick={() => copyLink(l.url)}><Copy size={12} /> {t('tm.link.copy', 'Copy')}</Button>
+                        <Button size="sm" variant="ghost" className="!text-error" onClick={() => revokeLink(l.id)}><X size={12} /></Button>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </>)}
       </Card>
 
       {canAdmin && (
@@ -163,6 +195,14 @@ export function MyTeams() {
   const { data, loading, reload } = useAsync(() => api.get('/me/teams'), []);
   const [creating, setCreating] = useState(false); const [busy, setBusy] = useState(false);
   const [openId, setOpenId] = useState(null);
+  const limits = useAsync(() => api.get('/me/teams/limits'), [data]);
+  const lim = limits.data;
+  const atLimit = !!lim && !lim.staff && lim.owned >= lim.limit;
+  const money = (c, cur) => `${(c / 100).toFixed(2)} ${String(cur || 'eur').toUpperCase()}`;
+  const buySlot = async () => {
+    try { const r = await api.post('/me/teams/slot/checkout', {}); if (r.url) window.location.href = r.url; }
+    catch (x) { toast.error(x.data?.error === 'payments_disabled' || x.data?.error === 'stripe_not_configured' ? t('tm.slot.off', 'Payments are not available right now.') : t('common.failed', 'Failed.')); }
+  };
   const teams = data?.teams || [];
   const invited = teams.filter((x) => x.myStatus === 'invited');
   const active = teams.filter((x) => x.myStatus === 'active');
@@ -174,8 +214,17 @@ export function MyTeams() {
       <div className="flex items-center gap-2 mb-2 flex-wrap">
         <Users size={16} className="text-[var(--primary-2)]" />
         <div className="font-semibold">{t('tm.title', 'Teams')}</div>
-        <Button size="sm" variant="primary" className="ms-auto" onClick={() => setCreating(true)}><Plus size={13} /> {t('tm.create', 'Create a team')}</Button>
+        {atLimit
+          ? <Button size="sm" variant="primary" className="ms-auto" onClick={buySlot}><ShoppingBag size={13} /> {t('tm.slot.buy', 'One more team — {p}').replace('{p}', lim ? money(lim.slot.cents, lim.slot.currency) : '')}</Button>
+          : <Button size="sm" variant="primary" className="ms-auto" onClick={() => setCreating(true)}><Plus size={13} /> {t('tm.create', 'Create a team')}</Button>}
       </div>
+      {lim && !lim.staff && (
+        <p className="text-[11px] text-[var(--faint)] mb-2">
+          {t('tm.limit', 'You own {n} of {m} team(s).').replace('{n}', lim.owned).replace('{m}', lim.limit)}
+          {lim.extra ? ` ${t('tm.limit.extra', '({e} bought)').replace('{e}', lim.extra)}` : ''}
+          {atLimit ? ` ${t('tm.limit.more', 'One more is a one-off payment of {p} and is yours for good.').replace('{p}', money(lim.slot.cents, lim.slot.currency))}` : ''}
+        </p>
+      )}
       <p className="text-[12.5px] text-[var(--muted)] mb-3">{t('tm.desc', 'A team manages repos, catalogues and storage pools together and has one contact address. Visitors reach the team from what it publishes.')}</p>
       {invited.length > 0 && (
         <div className="mb-3 rounded-xl border border-[var(--primary)]/40 p-3 space-y-2">
@@ -237,6 +286,37 @@ export default function TeamPage() {
           <Card className="p-4"><div className="font-semibold mb-2 flex items-center gap-1.5"><Layers size={14} /> {t('tm.catalogs', 'Catalogues')}</div>{tm.catalogs.length ? <ul className="space-y-1 text-sm">{tm.catalogs.map((c) => <li key={c.id}><Link to={`/c/${c.slug}`} className="hover:text-[var(--primary-2)]">{c.name}</Link></li>)}</ul> : <div className="text-[12px] text-[var(--faint)]">—</div>}</Card>
         </div>
       )}
+    </div>
+  );
+}
+
+/** /teams/join/:token — an invitation link's landing: the team, the role, Join. */
+export function TeamJoin() {
+  const { token } = useParams();
+  const { t } = useI18n(); const toast = useToast(); const navigate = useNavigate();
+  const { user } = useAuth();
+  const { data, loading, error } = useAsync(() => api.get(`/teams/join/${encodeURIComponent(token)}`), [token, user?.id]);
+  const [busy, setBusy] = useState(false);
+  const join = async () => {
+    setBusy(true);
+    try { await api.post(`/teams/join/${encodeURIComponent(token)}`, {}); toast.success(t('tm.join.ok', 'You are in.')); navigate('/dashboard?s=teams'); }
+    catch (x) { toast.error(x.data?.error === 'invite_invalid' ? t('tm.join.invalid', 'This link no longer works.') : x.data?.error === 'team_full' ? t('tm.full', 'The team is full.') : t('common.failed', 'Failed.')); }
+    finally { setBusy(false); }
+  };
+  if (loading && !data) return <div className="py-16 text-center"><Spinner /></div>;
+  if (error || !data) return <div className="max-w-md mx-auto py-16"><EmptyState icon={Users} title={t('tm.join.none', 'This invitation does not exist.')} /></div>;
+  return (
+    <div className="max-w-md mx-auto py-12">
+      <Card className="p-5 space-y-3 text-center">
+        <Users size={28} className="mx-auto text-[var(--primary-2)]" />
+        <div className="font-semibold text-lg">{data.team?.name}</div>
+        {data.team?.description && <p className="text-sm text-[var(--muted)]">{data.team.description}</p>}
+        <p className="text-sm">{t('tm.join.as', 'You are invited to join as {r}.').replace('{r}', t(ROLE_KEY[data.role] || 'tm.role.member', data.role))}</p>
+        {!data.usable ? <p className="text-sm text-[var(--muted)]">{t('tm.join.invalid', 'This link no longer works.')}</p>
+          : data.alreadyMember ? <Link to="/dashboard?s=teams"><Button variant="primary">{t('tm.join.already', 'You are already a member — open the team')}</Button></Link>
+          : !data.signedIn ? <Link to={`/auth?next=${encodeURIComponent(`/teams/join/${token}`)}`}><Button variant="primary">{t('tm.join.signin', 'Sign in to join')}</Button></Link>
+          : <Button variant="primary" disabled={busy} onClick={join}>{busy ? <Spinner /> : <Check size={14} />} {t('tm.join.btn', 'Join the team')}</Button>}
+      </Card>
     </div>
   );
 }

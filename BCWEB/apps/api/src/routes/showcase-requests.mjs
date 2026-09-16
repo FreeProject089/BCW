@@ -15,6 +15,7 @@
 // That is stated on the form too, not just here.
 import { z } from 'zod';
 import { db, requireRole, requireVerifiedEmail, logAudit, clientIp } from '../lib/lib.mjs';
+import { recordPendingCheckout } from '../lib/pending-checkout.mjs';
 import { getObject, deleteObject } from '../lib/storage.mjs';
 import { stripe } from './hosting.mjs';
 
@@ -214,6 +215,9 @@ export default async function showcaseRequestRoutes(app) {
       success_url: `${siteUrl}/projects?request=ok`,
       cancel_url: `${siteUrl}/projects?request=cancel`,
     });
+    // The in-flight ledger the crash reconciler walks (lib/stripe-reconcile.mjs). Best-effort:
+    // a session that exists but is not recorded is the old behaviour, not a failed checkout.
+    await recordPendingCheckout(p, { kind: session.metadata?.type || 'showcase_request', sessionId: session.id, userId: req.user.uid, payload: session.metadata || null }).catch(() => {});
     return reply.code(201).send({ request: ser(withContact), checkoutUrl: session.url });
   });
 

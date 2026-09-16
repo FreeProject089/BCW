@@ -1,7 +1,8 @@
 import os from 'node:os';
 import { ALERT_THRESHOLDS, ALERT_THRESHOLD_KEYS, readThresholds, serverVerdict } from '../lib/thresholds.mjs';
 import { z } from 'zod';
-import { db, requireRole, botAuth } from '../lib/lib.mjs';
+import { db, requireRole, requireCap, botAuth } from '../lib/lib.mjs';
+import { windowBounds, summariseDaily, compareDaily, dailyPoint } from '../lib/metrics-compare.mjs';
 import { checkSslExpiry, checkDependenciesTimed, cgroupMemory, sampleAndAlert, getDepsConfig, DEP_KEYS, DEP_LABELS, readNetBytes, getBandwidthByCat, getRepoUploadKbps, getRepoRateStats, sampleRepoRates } from '../lib/monitor.mjs';
 import { realDiskStats } from './hosting.mjs';
 
@@ -51,6 +52,39 @@ function cachedProbes(p) {
 export default async function serverPerfRoutes(app) {
   // Warm the probe cache at boot so the first admin visit already has deps/SSL populated.
   db().then((p) => refreshProbes(p)).catch(() => {});
+  // ── The daily figures, with the period before ──────────────────────────────
+  //
+  // This used to be the public status page's "System metrics" block: four charts of the
+  // machine's daily CPU, memory, disk and latency. A visitor to a status page wants to know
+  // whether the site is up, not how warm the CPU was on Tuesday — and the figures said more
+  // about the machine than a public page should. They live here now, for the people who tune
+  // it, with the one thing the public block never had: the same window immediately before,
+  // and the change per metric. `manage_server` is the guard the status-page admin routes
+  // already use — this is the same section, read the same way.
+  app.get('/admin/server/metrics/daily', { preHandler: requireCap('manage_server', 'ADMIN') }, async (req) => {
+    const p = await db();
+    const { days, today, startCur, startPrev, previousTo } = windowBounds(req.query?.days);
+    const [current, previous, oldest] = await Promise.all([
+      p.serverMetricDaily.findMany({ where: { day: { gte: startCur } }, orderBy: { day: 'asc' } }),
+      p.serverMetricDaily.findMany({ where: { day: { gte: startPrev, lt: startCur } }, orderBy: { day: 'asc' } }),
+      p.serverMetricDaily.findFirst({ orderBy: { day: 'asc' }, select: { day: true } }),
+    ]);
+    const cur = summariseDaily(current);
+    const prev = summariseDaily(previous);
+    return {
+      days, from: startCur, to: today, previousFrom: startPrev, previousTo,
+      series: current.map(dailyPoint),
+      current: cur, previous: prev,
+      // Null when there is nothing before: a change against nothing is not a change of zero.
+      change: cur && prev ? compareDaily(cur, prev) : null,
+      coverage: {
+        since: oldest?.day || null,
+        daysHeld: oldest ? Math.round((today - new Date(oldest.day)) / 864e5) + 1 : 0,
+        complete: !!oldest && new Date(oldest.day) <= startPrev,
+      },
+    };
+  });
+
   // ── Long-range comparison ───────────────────────────────────────────────────
   //
   // Answers "how does this week compare with the one before", out to a year. It reads the DAILY

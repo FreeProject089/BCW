@@ -276,6 +276,8 @@ model User {
   @@index([closedEmailHash])
   @@index([priorUserId])
   dataKey           UserDataKey?
+  /// Teams this account may own beyond the admin's limit (`teams.maxOwned`) — one per paid slot.
+  extraTeamSlots   Int       @default(0)
 }
 
 // A GitHub/Discord identity linked to a website account — powers "Continue with
@@ -2774,6 +2776,8 @@ enum PaymentKind {
   /// existing rows keep their ordinal. It buys a REVIEW, not a listing — which is why a
   /// refund question can arise on this kind and does not on the others.
   SHOWCASE_LISTING
+  /// One more team than the admin's limit allows — a one-off payment, appended last.
+  TEAM_SLOT
 }
 
 // Billing history / invoices (one-time feature promotions, hosting charges…).
@@ -4102,11 +4106,48 @@ model ProjectProductPurchase {
   // claimed and sold incremented twice for a single payment. Null for a free claim, which
   // has no session.
   checkoutSessionId String? @unique
+  // The Stripe PaymentIntent the money actually moved through, recorded on delivery. The
+  // session id names the checkout; the payment_intent names the CHARGE, and a refund or a
+  // reconciliation ("was this really paid?") needs the charge, not the checkout. Null for a
+  // free claim (no charge) and for a subscription (the money moves through invoices).
+  paymentIntentId String?
   createdAt  DateTime       @default(now())
 
   @@index([buyerId, createdAt])
   @@index([productId, createdAt])
   @@index([stripeSubId])
+}
+
+/// A Stripe Checkout the DB knows is in flight but has NOT yet been finished by the webhook.
+///
+/// One row is written the instant a checkout session is created, whatever it is for
+/// (marketplace, hosting, a pool, a boost, charity, MYO, a showcase listing…). The webhook is
+/// still the source of truth: when it delivers, it flips the row to `delivered`; when Stripe
+/// expires the session, to `failed`. What the row buys is the crash case — the webhook never
+/// ran (the API was down, the endpoint was misconfigured, the delivery timed out) — because
+/// then a row sits at `pending` for ever with nobody watching. lib/stripe-reconcile.mjs walks
+/// the stale ones, asks Stripe what really happened, and finishes exactly what the webhook
+/// would have, replaying the same handler so there is one delivery path and not two.
+model PendingCheckout {
+  id        String   @id @default(cuid())
+  /// The `metadata.type` the checkout carried (marketplace, cart, charity, feature, …), so a
+  /// summary can group by kind and a reader can tell what a stuck row was for.
+  kind      String
+  /// The Stripe checkout session id. UNIQUE so a session is tracked once — a resent creation
+  /// or a double-record is a no-op rather than a second stuck row.
+  sessionId String   @unique
+  userId    String?
+  /// The checkout metadata, verbatim — enough for a human triaging a stuck row to see what it
+  /// was and who it belonged to without leaving the admin screen.
+  payload   Json?
+  /// pending → paid (completed but the money has not cleared, e.g. a delayed bank debit) →
+  /// delivered (the webhook, or the reconciler, provisioned it) | failed (expired / abandoned).
+  status    String   @default("pending")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, createdAt])
+  @@index([kind])
 }
 
 // ── Rights notices & protected works ─────────────────────────────────────────
@@ -4220,6 +4261,7 @@ model Team {
   catalogs     CommunityCatalog[]
   groups       HostingGroup[]
   threads      ContactThread[]   @relation("ThreadTeam")
+  invites      TeamInvite[]
   createdAt    DateTime          @default(now())
   updatedAt    DateTime          @updatedAt
 
@@ -4289,4 +4331,115 @@ model ContactThreadMessage {
   createdAt DateTime      @default(now())
 
   @@index([threadId])
+}
+
+// ── Perceptual hashes of uploaded pictures (copyright / lookalike detection) ─────────
+// One row per picture we hold — an uploaded image, an image inside an uploaded archive, a
+// linked avatar — with its pHash (64-bit DCT hash: two rows within a small Hamming distance
+// LOOK the same) and sha256 (byte-identical). Rows are created at presign time (so the owner
+// is known) and hashed by the sweeper once the bytes are in storage.
+model MediaHash {
+  id          String      @id @default(cuid())
+  /// The object-storage key, `<key>#<entry>` for an image inside an archive, or the avatar URL.
+  key         String      @unique
+  /// upload | archive | archive-entry | avatar | team-avatar
+  kind        String
+  ownerId     String?
+  /// What the picture belongs to, when known: user | team | catalog | blog | proof | myo …
+  refType     String?
+  refId       String?
+  contentType String      @default("")
+  bytes       Int         @default(0)
+  sha256      String?
+  /// 16 hex chars; null when the bytes are not a raster image.
+  phash       String?
+  width       Int?
+  height      Int?
+  /// pending | hashed | skipped | failed
+  status      String      @default("pending")
+  error       String?
+  hashedAt    DateTime?
+  createdAt   DateTime    @default(now())
+  flags       MediaFlag[] @relation("FlagSubject")
+  matches     MediaFlag[] @relation("FlagMatch")
+
+  @@index([status, createdAt])
+  @@index([phash])
+  @@index([sha256])
+  @@index([ownerId])
+}
+
+/// A picture that looks like (or is byte-identical to) one another account uploaded earlier.
+/// Staff clear it (a false positive, or the same person on two accounts) or act on it.
+model MediaFlag {
+  id           String    @id @default(cuid())
+  hash         MediaHash @relation("FlagSubject", fields: [hashId], references: [id], onDelete: Cascade)
+  hashId       String
+  match        MediaHash @relation("FlagMatch", fields: [matchId], references: [id], onDelete: Cascade)
+  matchId      String
+  distance     Int
+  /// near | exact
+  reason       String    @default("near")
+  /// pending | cleared | actioned
+  status       String    @default("pending")
+  note         String    @default("")
+  resolvedById String?
+  resolvedAt   DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@unique([hashId, matchId])
+  @@index([status, createdAt])
+}
+
+// ── Files handed out by a link that stops working ─────────────────────────────────
+// One row per link: a Make Your Own deliverable (a month after delivery, or a week after
+// the first download — whichever comes first), a file attached to an admin mail, a
+// platform asset with a shelf life. `/f/<token>` resolves it; past its date the link answers
+// 410 and the sweeper removes the object. Reusable: any feature that hands out a file for a
+// while creates a row here instead of a public URL.
+model ExpiringFile {
+  id                String    @id @default(cuid())
+  token             String    @unique
+  /// The object-storage key, or an http(s) URL to redirect to.
+  key               String
+  fileName          String    @default("")
+  contentType       String    @default("")
+  bytes             Int       @default(0)
+  /// myo | mail | asset
+  kind              String
+  refId             String?
+  /// Who may download: null = anyone holding the token.
+  ownerId           String?
+  expiresAt         DateTime?
+  /// The link also dies this many days after the FIRST download (null = no such rule).
+  downloadAfterDays Int?
+  firstDownloadAt   DateTime?
+  downloads         Int       @default(0)
+  maxDownloads      Int?
+  revokedAt         DateTime?
+  /// Set once the sweeper has deleted the object behind an expired link.
+  purgedAt          DateTime?
+  createdBy         String?
+  createdAt         DateTime  @default(now())
+
+  @@index([kind, refId])
+  @@index([expiresAt])
+}
+
+/// A shareable invitation link to a team: anyone signed in who opens `/teams/join/<token>`
+/// joins with `role`, until the link expires, is revoked or has been used `maxUses` times.
+model TeamInvite {
+  id        String    @id @default(cuid())
+  token     String    @unique
+  team      Team      @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  teamId    String
+  role      String    @default("member") // admin | member
+  createdBy String
+  expiresAt DateTime?
+  maxUses   Int?
+  uses      Int       @default(0)
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([teamId])
 }

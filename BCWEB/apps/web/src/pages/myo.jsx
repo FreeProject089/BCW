@@ -386,8 +386,17 @@ function DeliverableCard({ d, t }) {
         <Badge tone={d.includesSource ? 'green' : ''}>{d.includesSource ? t('myo.src.with', 'source included') : t('myo.src.without', 'no source')}</Badge>
       </div>
       {d.note && <p className="text-sm text-[var(--muted)] mb-2 whitespace-pre-wrap">{d.note}</p>}
+      {d.expiry && (
+        <p className="text-[11px] text-[var(--faint)] mb-2">
+          {d.expiry.status === 'ok'
+            ? t('myo.deliver.until', 'Download link valid until {d} — a month after delivery, or 7 days after your first download, whichever comes first.').replace('{d}', d.expiry.expiresAt ? new Date(d.expiry.expiresAt).toLocaleDateString() : '—')
+            : t('myo.deliver.expired', 'The download link expired on {d}; the file has been removed.').replace('{d}', d.expiry.expiresAt ? new Date(d.expiry.expiresAt).toLocaleDateString() : '—')}
+          {d.expiry.downloads ? ` · ${t('myo.deliver.dl', 'downloaded {n} time(s)').replace('{n}', d.expiry.downloads)}` : ''}
+        </p>
+      )}
+      {d.removed && <p className="text-[11px] text-[var(--faint)] mb-2">{t('myo.deliver.removed', 'File removed when the request was archived: {f}').replace('{f}', d.fileName || '')}</p>}
       <div className="flex flex-wrap gap-2">
-        {d.fileUrl && <a href={d.fileUrl} download={d.fileName || undefined}><Button size="sm" variant="primary"><Download size={14} /> {t('myo.download', 'Download')}{d.fileName ? ` · ${d.fileName}` : ''}</Button></a>}
+        {d.fileUrl && d.expiry?.status !== 'expired' && d.expiry?.status !== 'purged' && d.expiry?.status !== 'revoked' && <a href={d.fileUrl.startsWith('/f/') ? d.fileUrl : d.fileUrl} target={d.fileUrl.startsWith('/f/') ? undefined : '_blank'} rel="noreferrer" download={d.fileUrl.startsWith('/f/') ? undefined : (d.fileName || undefined)}><Button size="sm" variant="primary"><Download size={14} /> {t('myo.download', 'Download')}{d.fileName ? ` · ${d.fileName}` : ''}</Button></a>}
         {d.linkUrl && <a href={d.linkUrl} target="_blank" rel="noreferrer"><Button size="sm" variant="default"><ExternalLink size={14} /> {t('myo.openlink', 'Open link')}</Button></a>}
       </div>
     </Card>

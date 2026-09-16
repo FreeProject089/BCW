@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { getObject, deleteObject } from '../lib/storage.mjs';
 import { randomInt } from 'node:crypto';
 import { db, requireRole, requireCap, logAudit, safeEqual, botAuth, BOT_SECRET, notify, httpUrl } from '../lib/lib.mjs';
+import { recordPendingCheckout } from '../lib/pending-checkout.mjs';
 import { canConfigureGuild, patchFromDiscord } from '../lib/bot-guild-access.mjs';
 import { issueWarn } from '../lib/warns.mjs';
 import { memberCapacity, capacityStatus, logModeration, memberPolicy, inactiveWhere, evictForRoom } from '../lib/discord-storage.mjs';
@@ -2562,6 +2563,9 @@ export default async function botRoutes(app) {
       success_url: `${siteUrl}/dashboard?banner=ok`,
       cancel_url: `${siteUrl}/dashboard?banner=cancel`,
     });
+    // The in-flight ledger the crash reconciler walks (lib/stripe-reconcile.mjs). Best-effort:
+    // a session that exists but is not recorded is the old behaviour, not a failed checkout.
+    await recordPendingCheckout(p, { kind: session.metadata?.type || 'banner_unlock', sessionId: session.id, userId: req.user.uid, payload: session.metadata || null }).catch(() => {});
     return { url: session.url };
   });
 

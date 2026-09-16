@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { recordUpload } from '../lib/media-hash.mjs';
 import { randomUUID } from 'crypto';
 import { db, requireRole } from '../lib/lib.mjs';
 import { presignPut, getObject } from '../lib/storage.mjs';
@@ -133,6 +134,8 @@ export default async function uploadRoutes(app) {
 
     const safe = filename.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80);
     const key = lim.prefix ? `${lim.prefix}/${randomUUID()}-${safe}` : `uploads/${req.user.uid}/${randomUUID()}-${safe}`;
+    // The picture register (lib/media-hash.mjs): the owner is known here and nowhere later.
+    await recordUpload(await db(), { key, ownerId: req.user.uid, kind: 'upload', refType: kind.toLowerCase(), contentType, bytes: size });
     const url = await presignPut(key, contentType);
     // Prefixed kinds (blog/) return a stable public URL served by the media proxy.
     const mediaUrl = lim.prefix ? `/api/media/${key}` : null;

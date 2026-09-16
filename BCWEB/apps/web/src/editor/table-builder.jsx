@@ -11,7 +11,7 @@
 // wrong by hand.
 import { useState } from 'react';
 import { Table as TableIcon } from 'lucide-react';
-import { Button, Modal, Select } from '../ui/ui.jsx';
+import { Button, Modal, Select, Input } from '../ui/ui.jsx';
 import { useI18n } from '../i18n.jsx';
 
 import { MAX_C, MAX_R, buildTable } from '../lib/table-md.js';
@@ -71,13 +71,13 @@ export default function TableBuilder({ open, onClose, onInsert }) {
         <div className="flex flex-wrap items-end gap-3">
           <label className="text-xs text-[var(--faint)] flex flex-col gap-1">
             {t('tb.cols', 'Columns')}
-            <input type="number" min={1} max={MAX_C} value={cols} onChange={(e) => setCols(Math.max(1, Math.min(MAX_C, Number(e.target.value) || 1)))}
-              className="input !w-20 !py-1 !text-sm" />
+            <Input type="number" min={1} max={MAX_C} value={cols} onChange={(e) => setCols(Math.max(1, Math.min(MAX_C, Number(e.target.value) || 1)))}
+              className="!w-24 !py-1 !text-sm" />
           </label>
           <label className="text-xs text-[var(--faint)] flex flex-col gap-1">
             {t('tb.rows', 'Rows')}
-            <input type="number" min={0} max={MAX_R} value={rows} onChange={(e) => setRows(Math.max(0, Math.min(MAX_R, Number(e.target.value) || 0)))}
-              className="input !w-20 !py-1 !text-sm" />
+            <Input type="number" min={0} max={MAX_R} value={rows} onChange={(e) => setRows(Math.max(0, Math.min(MAX_R, Number(e.target.value) || 0)))}
+              className="!w-24 !py-1 !text-sm" />
           </label>
           <label className="text-xs text-[var(--faint)] flex flex-col gap-1">
             {t('tb.align', 'Align')}

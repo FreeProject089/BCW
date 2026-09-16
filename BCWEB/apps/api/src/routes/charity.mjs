@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { db, requireRole, optionalAuth, logAudit, requireCap } from '../lib/lib.mjs';
+import { recordPendingCheckout } from '../lib/pending-checkout.mjs';
 import { clientIp } from '../lib/geo.mjs';
 import { emitWebhookAll } from '../lib/webhooks.mjs';
 import { stripe } from './hosting.mjs';
@@ -99,10 +100,17 @@ export default async function charityRoutes(app) {
   // Public: the current month's pot — BetterCommunity's frozen share + the community's gifts,
   // summed, plus the configured percent/association. Read by the landing widget (Phase 3) and
   // the contribute modal. Returns zeros (not an error) before any pot exists this month.
+  //
+  // Switched off → 404 `charity_disabled`, not a 200 saying `enabled:false`. The page and the
+  // widget treat the two the same (nothing to show), but a 404 is what a client that never
+  // read this file expects from a feature that is not there — and it is the same answer the
+  // contribute route and `/v1/charity` give, so "off" is one status code everywhere.
   app.get('/charity/current', async (req, reply) => {
     const p = await db();
+    const cur = await charityCurrent(p);
+    if (!cur.enabled) return reply.code(404).send({ error: 'charity_disabled', enabled: false });
     reply.header('Cache-Control', 'public, max-age=30');
-    return charityCurrent(p);
+    return cur;
   });
 
   // Public (auth optional — an anonymous gift is allowed): start a contribution checkout. The
@@ -116,7 +124,8 @@ export default async function charityRoutes(app) {
 
     const p = await db();
     const config = await loadConfig(p);
-    if (!config.enabled) return reply.code(403).send({ error: 'charity_disabled' });
+    // 404, like `/charity/current`: the programme is not running, so there is nothing to give to.
+    if (!config.enabled) return reply.code(404).send({ error: 'charity_disabled', enabled: false });
 
     const sk = await stripe({ forPurchase: true });
     if (!sk) return reply.code(503).send({ error: 'stripe_not_configured' });
@@ -134,6 +143,9 @@ export default async function charityRoutes(app) {
       success_url: `${siteUrl}/?charity=thanks`,
       cancel_url: `${siteUrl}/?charity=cancel`,
     });
+    // The in-flight ledger the crash reconciler walks (lib/stripe-reconcile.mjs). Best-effort:
+    // a session that exists but is not recorded is the old behaviour, not a failed checkout.
+    await recordPendingCheckout(p, { kind: session.metadata?.type || 'charity', sessionId: session.id, userId: req.user?.uid || null, payload: session.metadata || null }).catch(() => {});
     return { url: session.url };
   });
 

@@ -4,6 +4,7 @@ import { sendMail, mailShell, escapeHtml, emailEnabled } from '../lib/mail.mjs';
 import { provisionHostingPool, recomputePoolBytes } from './hosting.mjs';
 import { redeemPromoAtomic } from './promo.mjs';
 import { fulfilProduct, feeForProduct, splitFee, sellerMirror, releasePoolKeys } from './marketplace.mjs';
+import { syncPendingFromEvent } from '../lib/pending-checkout.mjs';
 
 // Encapsulated plugin: a raw-body JSON parser scoped here only, so Stripe's
 // signature can be verified against the exact bytes (the rest of the API keeps
@@ -46,23 +47,38 @@ export function refundPlanFor(session, purchase) {
   } };
 }
 
-export default async function stripeWebhook(app) {
-  app.addContentTypeParser('application/json', { parseAs: 'buffer' }, (_req, body, done) => done(null, body));
-
-  const handler = async (req, reply) => {
-    const secret = process.env.STRIPE_WEBHOOK_SECRET;
-    const sk = process.env.STRIPE_SECRET_KEY ? (await import('stripe')).default : null;
-    if (!sk || !secret) return reply.code(503).send({ error: 'stripe_not_configured' });
-    const stripe = new sk(process.env.STRIPE_SECRET_KEY);
-
-    let event;
-    try { event = stripe.webhooks.constructEvent(req.body, req.headers['stripe-signature'], secret); }
-    catch (e) { return reply.code(400).send({ error: 'bad_signature', detail: String(e.message) }); }
-
-    const p = await db();
-    if (event.type === 'checkout.session.completed') {
+/**
+ * Everything the webhook does once the signature is verified and the event parsed — extracted
+ * so the crash-recovery reconciler (lib/stripe-reconcile.mjs) can finish a checkout the live
+ * webhook never got to, by REPLAYING the same code against a session it fetched from Stripe.
+ * There is one delivery/provisioning path, not two, which is the whole point of the split.
+ *
+ * `p`, `stripe` and `event` are passed in; `log` is a bare logger (log, app.log, or the
+ * console). Returns `{ received: true }` or throws — a throw is a real failure the caller (the
+ * route) turns into a non-200 so Stripe retries, or the reconciler records and moves on.
+ */
+export async function dispatchStripeEvent({ p, stripe, event, log = console }) {
+    // A card/bank payment that clears LATER (async_payment_succeeded) has to deliver exactly as
+    // an instant one does; the only difference is the event name, so it is folded in here and
+    // every branch below reads `evtType`.
+    const evtType = event.type === 'checkout.session.async_payment_succeeded' ? 'checkout.session.completed' : event.type;
+    if (evtType === 'checkout.session.completed') {
       const s = event.data.object;
       const meta = s.metadata || {};
+
+      // One extra team: credit the slot once per session (the Payment row is the receipt and
+      // the idempotency key — a replayed event finds it and does nothing).
+      if (meta.type === 'team_slot' && meta.userId) {
+        if (s.payment_status && s.payment_status !== 'paid' && s.payment_status !== 'no_payment_required') return;
+        const dup = await p.payment.findFirst({ where: { stripeSessionId: s.id }, select: { id: true } });
+        if (dup) return;
+        const user = await p.user.findUnique({ where: { id: meta.userId }, select: { id: true } });
+        if (!user) return;
+        await p.payment.create({ data: { userId: user.id, kind: 'TEAM_SLOT', description: 'One extra team', amountCents: Number(s.amount_total) || 0, currency: String(s.currency || 'eur'), stripeSessionId: s.id } });
+        await p.user.update({ where: { id: user.id }, data: { extraTeamSlots: { increment: 1 } } });
+        await notify(p, user.id, 'promo_redeemed', 'Your extra team slot is ready — you can create one more team.', { href: '/dashboard?s=teams' }).catch(() => {});
+        return;
+      }
 
       // Shopping-cart checkout: provision every line (hosted repos + boosts), record a
       // Payment per line, redeem any applied promo codes, then drop the PendingCart.
@@ -144,7 +160,7 @@ export default async function stripeWebhook(app) {
                     const price = await stripe.prices.create({ currency: 'usd', unit_amount: Math.max(50, l.baseCents || plan.priceMonthlyCents * l.months), recurring: { interval: 'month', interval_count: l.months }, product_data: { name: `${plan.name} hosting (auto-renew)` } });
                     const sub = await stripe.subscriptions.create({ customer: s.customer, items: [{ price: price.id }], default_payment_method: savedPm, trial_end: trialEnd, proration_behavior: 'none', metadata: { kind: 'hosting', groupId: group.id, userId: cart.userId } });
                     await p.subscription.updateMany({ where: { hostingGroupId: group.id }, data: { stripeSubId: sub.id } });
-                  } catch (e) { req.log?.warn?.({ err: e?.message }, 'cart auto-renew sub create failed'); }
+                  } catch (e) { log?.warn?.({ err: e?.message }, 'cart auto-renew sub create failed'); }
                 }
                 provisioned++;
               } else if (l.kind === 'boost') {
@@ -163,11 +179,11 @@ export default async function stripeWebhook(app) {
                     const price = await stripe.prices.create({ currency: 'usd', unit_amount: Math.max(50, l.finalCents || l.baseCents || 50), recurring: { interval: 'day', interval_count: l.days }, product_data: { name: `Feature "${repo.name}" (auto-renews every ${l.days} days)` } });
                     const sub = await stripe.subscriptions.create({ customer: s.customer, items: [{ price: price.id }], default_payment_method: savedPm, trial_end: trialEnd, proration_behavior: 'none', metadata: { type: 'feature', kind: 'feature', repoId: repo.id, userId: cart.userId, days: String(l.days) } });
                     await p.featureSubscription.upsert({ where: { stripeSubId: sub.id }, create: { userId: cart.userId, serverRepoId: repo.id, stripeSubId: sub.id, days: l.days, status: 'active', currentPeriodEnd: until }, update: { status: 'active', currentPeriodEnd: until } });
-                  } catch (e) { req.log?.warn?.({ err: e?.message }, 'cart boost auto-renew sub create failed'); }
+                  } catch (e) { log?.warn?.({ err: e?.message }, 'cart boost auto-renew sub create failed'); }
                 }
                 provisioned++;
               }
-            } catch (e) { req.log?.warn?.({ err: e?.message }, 'cart line provision failed'); }
+            } catch (e) { log?.warn?.({ err: e?.message }, 'cart line provision failed'); }
           }
           for (const code of promoCodes) await redeemPromoAtomic(p, code, cart.userId, async () => ({ detail: 'cart checkout' })).catch(() => {});
           await p.pendingCart.delete({ where: { id: cart.id } }).catch(() => {});
@@ -197,7 +213,7 @@ export default async function stripeWebhook(app) {
             const fee = pi?.latest_charge?.balance_transaction?.fee;
             if (typeof fee === 'number' && fee >= 0) net = Math.max(0, gross - fee);
           }
-        } catch (e) { req.log?.warn?.({ err: e?.message }, 'charity fee lookup failed — crediting gross'); }
+        } catch (e) { log?.warn?.({ err: e?.message }, 'charity fee lookup failed — crediting gross'); }
         if (net > 0) {
           const pot = await p.charityPot.upsert({
             where: { month }, update: {}, create: { month, currency: s.currency || 'chf' },
@@ -453,6 +469,18 @@ export default async function stripeWebhook(app) {
       if (meta.type === 'marketplace' && meta.productId && meta.userId) {
         const product = await p.projectProduct.findUnique({ where: { id: meta.productId } });
         if (product) {
+          // The webhook is the source of truth, and "the session completed" is NOT "the money
+          // arrived". A delayed method (some bank debits, vouchers) completes the session with
+          // payment_status 'unpaid' and clears LATER as checkout.session.async_payment_succeeded
+          // — delivering a key now would hand over stock for a payment that may still fail. Wait
+          // for it. 'no_payment_required' is a genuinely-settled zero/100%-off session, so it
+          // delivers. An absent field (an old test event) is treated as paid, unchanged.
+          if (s.payment_status && s.payment_status !== 'paid' && s.payment_status !== 'no_payment_required') {
+            return { received: true };
+          }
+          // The charge the money actually moved through, kept on the row for a refund or an
+          // audit. Null on a subscription (billed by invoice, no session payment_intent).
+          const paymentIntentId = typeof s.payment_intent === 'string' ? s.payment_intent : (s.payment_intent?.id || null);
           // Idempotency, and the order it has to happen in.
           //
           // This used to read for an existing purchase and then create one. Nothing stood
@@ -478,7 +506,7 @@ export default async function stripeWebhook(app) {
               // actually charged rather than the product's current price: the two differ the
               // moment somebody edits the price between checkout and the webhook, and the
               // invoice is the thing a payout has to agree with.
-              checkoutSessionId: s.id, delivery: { sessionId: s.id },
+              checkoutSessionId: s.id, paymentIntentId, delivery: { sessionId: s.id },
               // Taken from the metadata the CHECKOUT wrote, not looked up now. The payee can
               // be changed between a session opening and its payment clearing, and what the
               // purchase has to record is the account this charge actually routed to — empty
@@ -597,7 +625,7 @@ export default async function stripeWebhook(app) {
         await p.payment.create({ data: { userId, hostingGroupId: group.id, kind: 'HOSTING', description: `${plan.name} storage pool — ${months} month${months > 1 ? 's' : ''}`, amountCents: 0, currency: 'usd', stripeSessionId: s.id } }).catch(() => {});
         await notify(p, userId, 'hosting_started', `Your storage pool "${group.name}" is ready — prepaid for ${months} month${months > 1 ? 's' : ''}. Add repos or catalogs to it.`);
       }
-    } else if (event.type === 'invoice.paid') {
+    } else if (evtType === 'invoice.paid') {
       // Recurring HOSTING renewal. The FIRST invoice (billing_reason
       // 'subscription_create') is skipped — checkout.session.completed already
       // provisioned it. Only 'subscription_cycle' renewals land here.
@@ -689,7 +717,7 @@ export default async function stripeWebhook(app) {
           } });
         }
       }
-    } else if (event.type === 'invoice.payment_failed') {
+    } else if (evtType === 'invoice.payment_failed') {
       // A recurring renewal charge failed. Stripe's dunning will retry; on final
       // failure customer.subscription.deleted fires (→ suspend, handled below). Here
       // we just warn the owner so they can fix their card in time.
@@ -701,15 +729,15 @@ export default async function stripeWebhook(app) {
           if (repo) await notify(p, repo.ownerId, 'hosting_stopped', `Auto-renewal payment for "${repo.name}" failed — update your card in “Manage billing” soon, or hosting will be suspended.`);
         }
       }
-    } else if (event.type === 'checkout.session.expired') {
+    } else if (evtType === 'checkout.session.expired') {
       // An abandoned checkout gives its held pool key back at once, rather than waiting out
       // the reservation TTL. The TTL stays as the backstop for a session Stripe never tells
       // us about; this is the case it can tell us about, so it should not cost an hour of a
       // finite pool.
       const released = await releasePoolKeys(p, event.data.object?.id).catch(() => 0);
-      if (released) app.log.info({ session: event.data.object?.id, released }, 'released held pool key(s)');
+      if (released) log.info?.({ session: event.data.object?.id, released }, 'released held pool key(s)');
       return { received: true };
-    } else if (event.type === 'account.updated') {
+    } else if (evtType === 'account.updated') {
       // A connected account's state changed — onboarding finished, a document was accepted,
       // or Stripe disabled it.
       //
@@ -728,7 +756,7 @@ export default async function stripeWebhook(app) {
       // this too, and so would any Connect account created outside the marketplace.
       if (row) await p.marketplaceSeller.update({ where: { id: row.id }, data: sellerMirror(acct) });
       return { received: true };
-    } else if (event.type === 'charge.refunded') {
+    } else if (evtType === 'charge.refunded') {
       // A charge was (partially or fully) refunded. Record a lightweight refund
       // event for the Discord bot to announce (see bot.mjs /bot/payments/*). Keyed
       // by charge id + refunded amount so successive partial refunds are distinct.
@@ -766,7 +794,7 @@ export default async function stripeWebhook(app) {
           }
         }
       } catch { /* best-effort: never fail a webhook over a warning */ }
-    } else if (event.type === 'customer.subscription.deleted') {
+    } else if (evtType === 'customer.subscription.deleted') {
       const subId = event.data.object.id;
       // A cancelled/ended FEATURE boost: mark it so it stops renewing. The repo keeps
       // its current featuredUntil and simply lapses to normal when it passes — no
@@ -822,6 +850,29 @@ export default async function stripeWebhook(app) {
       }
     }
     return { received: true };
+}
+
+export default async function stripeWebhook(app) {
+  app.addContentTypeParser('application/json', { parseAs: 'buffer' }, (_req, body, done) => done(null, body));
+
+  const handler = async (req, reply) => {
+    const secret = process.env.STRIPE_WEBHOOK_SECRET;
+    const sk = process.env.STRIPE_SECRET_KEY ? (await import('stripe')).default : null;
+    if (!sk || !secret) return reply.code(503).send({ error: 'stripe_not_configured' });
+    const stripe = new sk(process.env.STRIPE_SECRET_KEY);
+
+    let event;
+    try { event = stripe.webhooks.constructEvent(req.body, req.headers['stripe-signature'], secret); }
+    catch (e) { return reply.code(400).send({ error: 'bad_signature', detail: String(e.message) }); }
+
+    const p = await db();
+    const result = await dispatchStripeEvent({ p, stripe, event, log: req.log });
+    // Keep the PendingCheckout ledger in step with what the webhook just did, so the reconciler
+    // does not re-open a session the live webhook already finished. Best-effort: the ledger is
+    // a safety net, and failing to update it must never turn a delivered sale into a 500 that
+    // makes Stripe retry a delivery that already happened.
+    try { await syncPendingFromEvent(p, event); } catch (e) { req.log?.warn?.({ e: String(e?.message || e) }, 'pending-checkout ledger sync failed'); }
+    return result;
   };
 
   // Register both the canonical path and a `/webhook` alias, so a `stripe listen

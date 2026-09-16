@@ -3,6 +3,7 @@ import { normaliseGiftTarget } from '../lib/gift.mjs';
 import { flagEnabled } from '../lib/flags.mjs';
 import { statfsSync } from 'node:fs';
 import { db, requireRole, notify, hasFreeTierClaim, recordFreeTierClaim, grantPlan, GRANT_PLAN_NAME, logAudit, clientIp, hostingGrace, requireCap } from '../lib/lib.mjs';
+import { recordPendingCheckout } from '../lib/pending-checkout.mjs';
 import { sendMail, mailShell, escapeHtml } from '../lib/mail.mjs';
 import { validatePromo, redeemPromoAtomic } from './promo.mjs';
 import { getActiveCampaign, applyCampaign } from './campaigns.mjs';
@@ -219,9 +220,57 @@ export async function recomputePoolBytes(p, groupId) {
   }
 }
 
-// Prepaid term options: more months → bigger discount (1yr recommended).
-export const TERM_MONTHS = [1, 3, 6, 12, 24];
-const TERM_DISCOUNT = { 1: 0, 3: 0.05, 6: 0.10, 12: 0.20, 24: 0.35 };
+// ── Prepaid term ─────────────────────────────────────────────────────────────
+//
+// The term used to be one of five fixed numbers (1/3/6/12/24). It is now any number of
+// months between an admin-set minimum and maximum, on an admin-set step — the three
+// `hosting.term*Months` settings, read live. The client sends a number; the server is the
+// only place that decides whether that number is allowed, and it prices it exactly
+// (months × monthly price, then the tier discount below, then the scarcity multiplier).
+export const TERM_DEFAULTS = { min: 1, max: 36, step: 1 };
+export const TERM_LIMIT_MONTHS = 120; // nothing on the platform sells more than ten years
+/** The admin's term bounds, clamped to something that cannot break checkout: integers,
+ *  1 ≤ min ≤ max ≤ 120, step ≥ 1. A setting that is missing, empty or nonsense falls back
+ *  to its default rather than to "no term is valid". */
+export function termBounds(s) {
+  const int = (k, d) => { const n = Math.round(Number(s?.[k])); return Number.isFinite(n) && n > 0 ? n : d; };
+  let min = Math.min(TERM_LIMIT_MONTHS, int('hosting.termMinMonths', TERM_DEFAULTS.min));
+  let max = Math.min(TERM_LIMIT_MONTHS, int('hosting.termMaxMonths', TERM_DEFAULTS.max));
+  const step = Math.min(TERM_LIMIT_MONTHS, int('hosting.termStepMonths', TERM_DEFAULTS.step));
+  if (max < min) max = min;
+  return { min, max, step };
+}
+/** Is `months` a term this site sells? Integer, inside [min, max], and on the step grid
+ *  counted from min (min=1 step=3 → 1, 4, 7…; min=3 step=3 → 3, 6, 9…). Returns null when
+ *  it is, else an error object the route sends back as a 400 — with the bounds, so a client
+ *  that sent a stale number can correct itself. */
+export function termCheck(bounds, months) {
+  const m = Number(months);
+  const bad = (reason) => ({ error: 'invalid_term', reason, ...bounds });
+  if (!Number.isInteger(m)) return bad('not_integer');
+  if (m < bounds.min) return bad('below_min');
+  if (m > bounds.max) return bad('above_max');
+  if ((m - bounds.min) % bounds.step !== 0) return bad('off_step');
+  return null;
+}
+// Discount tiers: from N months up, this fraction off. The exact tiers the five buttons
+// carried, generalised — 7 months earns the 6-month rate, 30 months the 24-month one — so
+// no term that was sold before prices differently now, and nothing between two tiers is
+// priced worse than the tier below it.
+export const TERM_DISCOUNT_TIERS = [[24, 0.35], [12, 0.20], [6, 0.10], [3, 0.05]];
+export function termDiscount(months) {
+  const m = Number(months) || 0;
+  for (const [from, off] of TERM_DISCOUNT_TIERS) if (m >= from) return off;
+  return 0;
+}
+// The tier thresholds that are actually purchasable under these bounds (plus the minimum),
+// for a client that wants to show "12 months → −20%" style quick picks.
+export function termPresets(bounds) {
+  const out = new Set([bounds.min]);
+  for (const [from] of TERM_DISCOUNT_TIERS) if (!termCheck(bounds, from)) out.add(from);
+  if (!termCheck(bounds, bounds.max)) out.add(bounds.max);
+  return [...out].sort((a, b) => a - b);
+}
 // Scarcity: as allocated storage nears usable capacity, prices rise slightly and the
 // per-repo CPU / upload caps offered to new customers tighten.
 export function capacityFactors(cap) {
@@ -234,7 +283,7 @@ export function capacityFactors(cap) {
   return { fill: +fill.toFixed(3), priceMult, maxUploadMbps, maxCpuShare };
 }
 export function termTotalCents(monthlyCents, months, priceMult) {
-  return Math.round(monthlyCents * months * (1 - (TERM_DISCOUNT[months] ?? 0)) * priceMult);
+  return Math.round(monthlyCents * months * (1 - termDiscount(months)) * priceMult);
 }
 
 // ── Telling people their price is going to change ────────────────────────────
@@ -567,7 +616,12 @@ export default async function hostingRoutes(app) {
 
   app.get('/hosting/plans', async () => {
     const p = await db();
-    return { plans: await p.hostingPlan.findMany({ where: { active: true }, orderBy: { storageGB: 'asc' } }) };
+    const bounds = termBounds(await settings(p));
+    return {
+      plans: await p.hostingPlan.findMany({ where: { active: true }, orderBy: { storageGB: 'asc' } }),
+      // The term the page lets people pick — bounds from the admin, tiers from the code.
+      term: { ...bounds, presets: termPresets(bounds), tiers: TERM_DISCOUNT_TIERS.map(([from, off]) => ({ from, off })) },
+    };
   });
 
   /**
@@ -801,11 +855,17 @@ export default async function hostingRoutes(app) {
     const q = req.query || {};
     const monthly = priceCents(s, Number(q.storageGB || 0), Number(q.uploadMbps || 0), Number(q.cpuShare || 0));
     const cf = capacityFactors(await capacityStatus(p));
-    const byTerm = Object.fromEntries(TERM_MONTHS.map((m) => {
+    const bounds = termBounds(s);
+    const presets = termPresets(bounds);
+    const byTerm = Object.fromEntries(presets.map((m) => {
       const total = termTotalCents(monthly, m, cf.priceMult);
-      return [m, { months: m, totalCents: total, perMonthCents: Math.round(total / m), discount: TERM_DISCOUNT[m] }];
+      return [m, { months: m, totalCents: total, perMonthCents: Math.round(total / m), discount: termDiscount(m) }];
     }));
-    return { baseMonthlyCents: monthly, priceMonthlyCents: Math.round(monthly * cf.priceMult), factors: cf, terms: TERM_MONTHS, byTerm };
+    // `?months=N` prices that exact term too (a slider asks for 7, not for a preset).
+    const asked = Number(q.months);
+    const forMonths = Number.isInteger(asked) && !termCheck(bounds, asked)
+      ? { months: asked, totalCents: termTotalCents(monthly, asked, cf.priceMult), discount: termDiscount(asked) } : null;
+    return { baseMonthlyCents: monthly, priceMonthlyCents: Math.round(monthly * cf.priceMult), factors: cf, terms: presets, byTerm, term: { ...bounds, presets, tiers: TERM_DISCOUNT_TIERS.map(([from, off]) => ({ from, off })) }, forMonths };
   });
 
   // Start a hosting subscription → Stripe Checkout. Capacity-guarded.
@@ -818,8 +878,9 @@ export default async function hostingRoutes(app) {
       // Custom plan: user picks their own size / upload. CPU is no longer a product
       // dimension — a fixed default share is applied server-side.
       custom: z.object({ storageGB: z.number().int().min(1).max(500), uploadMbps: z.number().min(1).max(1000), cpuShare: z.number().min(0.1).max(8).optional() }).optional(),
-      // Prepaid term (months): 1 (min), 12 (recommended), or 3/6/24 for bigger discounts.
-      months: z.number().int().refine((m) => TERM_MONTHS.includes(m), 'invalid_term').default(1),
+      // Prepaid term (months). The shape is checked here; whether THIS number is a term the
+      // site sells (admin min/max/step) is checked below, once settings are in hand.
+      months: z.number().int().min(1).max(TERM_LIMIT_MONTHS).default(1),
       // Optional admin promo code (a 'discount' code — % off and/or first months free).
       promoCode: z.string().max(40).optional(),
       // Auto-renew: bill recurrently every `months` (a real Stripe subscription) so
@@ -834,6 +895,10 @@ export default async function hostingRoutes(app) {
     if (await p.creatorLink.count({ where: { userId: req.user.uid } }) === 0) return reply.code(403).send({ error: 'creator_link_required' });
     const cap = await capacityStatus(p);
     if (!cap.enabled) return reply.code(403).send({ error: 'hosting_disabled' });
+    // Never the client's word for it: a stale page, or a hand-written request, can ask for
+    // any number of months. Refused BEFORE the custom plan row is minted below.
+    const termErr = termCheck(termBounds(await settings(p)), b.data.months);
+    if (termErr) return reply.code(400).send(termErr);
 
     // Resolve the plan: an existing one, or a hidden plan minted from custom specs.
     let plan;
@@ -915,7 +980,7 @@ export default async function hostingRoutes(app) {
     // the term fits Stripe's 1-year max interval. Otherwise a one-time prepaid charge.
     const recurring = b.data.autoRenew && !promo && !campaignLabel && months <= 12;
     const md = { userId: req.user.uid, planId: plan.id, repoName: b.data.repoName, hostMode: b.data.mode, months: String(months), promoCode: promo?.code || '' };
-    const productName = `${plan.name} hosting — ${recurring ? `auto-renews every ${months} month${months > 1 ? 's' : ''}` : `${months} month${months > 1 ? 's' : ''}`}${TERM_DISCOUNT[months] ? ` (−${Math.round(TERM_DISCOUNT[months] * 100)}%)` : ''}${campaignLabel}${promoLabel}`;
+    const productName = `${plan.name} hosting — ${recurring ? `auto-renews every ${months} month${months > 1 ? 's' : ''}` : `${months} month${months > 1 ? 's' : ''}`}${termDiscount(months) ? ` (−${Math.round(termDiscount(months) * 100)}%)` : ''}${campaignLabel}${promoLabel}`;
     const session = await sk.checkout.sessions.create(recurring ? {
       mode: 'subscription', customer,
       line_items: [{ quantity: 1, price_data: {
@@ -946,6 +1011,9 @@ export default async function hostingRoutes(app) {
     // grant-code endpoint) — best-effort in the sense that a lost race here just
     // means the code shows as exhausted for this checkout; the Stripe session
     // this user already got still honours the discount they saw at checkout time.
+    // The in-flight ledger the crash reconciler walks (lib/stripe-reconcile.mjs). Best-effort:
+    // a session that exists but is not recorded is the old behaviour, not a failed checkout.
+    await recordPendingCheckout(p, { kind: session.metadata?.type || 'hosting', sessionId: session.id, userId: req.user.uid, payload: session.metadata || null }).catch(() => {});
     if (promo) await redeemPromoAtomic(p, promo.code, req.user.uid, async () => ({ detail: `discount at hosting checkout (${plan.name})` })).catch(() => {});
     return { url: session.url };
   });
@@ -999,6 +1067,9 @@ export default async function hostingRoutes(app) {
       success_url: `${siteUrl}/dashboard?feature=ok`,
       cancel_url: `${siteUrl}/dashboard?feature=cancel`,
     });
+    // The in-flight ledger the crash reconciler walks (lib/stripe-reconcile.mjs). Best-effort:
+    // a session that exists but is not recorded is the old behaviour, not a failed checkout.
+    await recordPendingCheckout(p, { kind: session.metadata?.type || 'feature', sessionId: session.id, userId: req.user.uid, payload: session.metadata || null }).catch(() => {});
     return { url: session.url };
   });
 
@@ -1011,7 +1082,7 @@ export default async function hostingRoutes(app) {
   // used alone. Discount codes only (free-hosting/boost grants are redeemed separately).
   const cartItemSchema = z.array(z.discriminatedUnion('kind', [
     z.object({ kind: z.literal('hosting'), mode: z.enum(['single', 'multi']).default('single'), repoName: z.string().min(2).max(60),
-      months: z.number().int().refine((m) => TERM_MONTHS.includes(m), 'invalid_term').default(1),
+      months: z.number().int().min(1).max(TERM_LIMIT_MONTHS).default(1),
       autoRenew: z.boolean().optional(),
       planId: z.string().optional(),
       custom: z.object({ storageGB: z.number().int().min(1).max(500), uploadMbps: z.number().min(1).max(1000) }).optional(),
@@ -1050,8 +1121,12 @@ export default async function hostingRoutes(app) {
     const s = await settings(p);
     const featurePriceFn = (days) => Math.round(Number(s['pricing.featurePerDayCents'] ?? 50) * days);
     const lines = []; let neededStorageGB = 0;
+    const bounds = termBounds(s);
     for (const it of data.items) {
       if (it.kind === 'hosting') {
+        // Same rule as the single checkout: the term is the admin's to bound, not the cart's.
+        const termErr = termCheck(bounds, it.months);
+        if (termErr) return termErr;
         let plan;
         if (it.custom) {
           if (it.custom.uploadMbps > cf.maxUploadMbps) return { error: 'over_limit', maxUploadMbps: cf.maxUploadMbps };
@@ -1123,7 +1198,7 @@ export default async function hostingRoutes(app) {
     if (giftErr) return reply.code(400).send({ error: giftErr });
     const p = await db();
     const r = await resolveCart(p, req, b.data, { persistPlans: false });
-    if (r.error) return reply.code(r.error.startsWith('promo_') ? 400 : 409).send(r);
+    if (r.error) return reply.code(r.error.startsWith('promo_') || r.error === 'invalid_term' ? 400 : 409).send(r);
     return { lines: r.lines.map((l) => ({ name: l.name, baseCents: l.baseCents, finalCents: l.finalCents, kind: l.kind })), subtotalCents: r.subtotal, discountCents: r.discount, totalCents: r.total, appliedCodes: r.appliedCodes, combinedPct: r.combinedPct, freeMonths: r.freeMonths };
   });
 
@@ -1178,6 +1253,9 @@ export default async function hostingRoutes(app) {
     });
     // Promo redemption happens in the webhook AFTER payment succeeds (not here) so an
     // abandoned cart doesn't burn a redemption.
+    // The in-flight ledger the crash reconciler walks (lib/stripe-reconcile.mjs). Best-effort:
+    // a session that exists but is not recorded is the old behaviour, not a failed checkout.
+    await recordPendingCheckout(p, { kind: session.metadata?.type || 'cart', sessionId: session.id, userId: req.user.uid, payload: session.metadata || null }).catch(() => {});
     return { url: session.url };
   });
 

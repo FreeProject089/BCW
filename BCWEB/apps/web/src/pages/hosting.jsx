@@ -1,11 +1,12 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import {
-  Rocket, Upload, CheckCircle2, XCircle, HardDrive, Gauge, Zap, Sliders, Receipt, Plus, Mail, RefreshCw, X, ChevronDown, AlertTriangle, Ticket, CreditCard, Gift, Layers, ShoppingCart, Save, MessageSquare, Server, Boxes,
+  Rocket, Upload, CheckCircle2, XCircle, HardDrive, Gauge, Zap, Sliders, Receipt, Plus, Mail, RefreshCw, X, ChevronDown, AlertTriangle, Ticket, CreditCard, Gift, Layers, ShoppingCart, Save, MessageSquare, Server, Boxes, Check, Globe, Star, CalendarClock,
 } from 'lucide-react';
 import { Button, Card, Badge, Input, Select, PageHeader, Spinner, Modal, bestByteUnit, bytesInUnit, useDialog, useToast } from '../ui/ui.jsx';
 import { api } from '../lib/api.js';
+import { normaliseTerm, discountFor, snapTerm, termTotalCents, nextTier } from '../lib/hosting-term.js';
 import { useAuth } from './auth.jsx';
 import { useIntro } from '../ui/IntroContext.jsx';
 import { useI18n } from '../i18n.jsx';
@@ -24,47 +25,80 @@ function useAsync(fn, deps = []) {
 const Loading = () => <div className="flex items-center gap-2 text-[var(--muted)] py-10 min-h-[10rem]"><Spinner /> Loading…</div>;
 
 /* ─────────────────────────  Hosting  ───────────────────────── */
-// Custom, themeable dropdown for the prepaid billing term (replaces the segmented
-// cards). Shows the picked term + its discount, and flags the best-value option.
 /**
- * The billing term — five numbers, all visible.
+ * The billing term — any number of months the admin allows.
  *
- * It was a dropdown: a gradient tile, the label, a "Best value" pill and a sentence about the
- * saving, to choose between 1, 3, 6, 12 and 24. Two clicks and a popup to pick one of five
- * short options, and four of the five invisible until you opened it — which is the one thing
- * a pricing control must not do, because the whole point is comparing them.
+ * It was five buttons (1 / 3 / 6 / 12 / 24). Five is what the discount table had rows for,
+ * not what anyone asked for: somebody paying until the end of a school year wants 9, and the
+ * server now prices 9 exactly (nine × monthly, at the 6-month rate). So the control is the
+ * number itself — a slider for the sweep, a stepper for the exact figure — bounded by what
+ * `GET /hosting/plans` says the site sells (`term.min/max/step`, set by the admin). The tier
+ * chips under it are the old five, kept as shortcuts because they are where the price steps.
  *
- * A row of five, each carrying its own discount. Scrolls rather than wraps on a narrow
- * screen, so the options stay one line and stay comparable.
+ * The sentence beside the number is the point of the whole control: "12 months → $X (−20 %)",
+ * priced against a real plan, live, so the discount is a number and not a promise.
  */
-function TermSelect({ months, setMonths, termDisc, t }) {
-  const opts = [1, 3, 6, 12, 24];
-  const disc = (m) => Math.round((termDisc[m] || 0) * 100);
-  // The months are the answer to "how long", so they lead. "1 yr" replacing "12 mo" made two
-  // of the five options measured in a different unit from the other three, which is exactly
-  // the row where somebody is comparing them.
-  const years = (m) => (m === 12 ? t('hosting.1yr', '1 yr') : m === 24 ? t('hosting.2yr', '2 yr') : '');
+function TermControl({ months, setMonths, term, sample, t }) {
+  const { min, max, step, presets, tiers } = term;
+  const pick = (m) => setMonths(snapTerm(term, m));
+  const disc = Math.round(discountFor(tiers, months) * 100);
+  const next = nextTier(term, months);
+  const total = sample ? termTotalCents(sample.priceMonthlyCents, months, tiers) : null;
+  const label = (m) => `${m} ${m === 1 ? t('hosting.month1', 'month') : t('hosting.months', 'months')}`;
   return (
-    <div role="radiogroup" aria-label={t('hosting.term', 'Billing term')} className="grid grid-cols-3 sm:grid-cols-5 gap-2">
-      {opts.map((m) => {
-        const active = m === months;
-        const d = disc(m);
-        return (
-          <button key={m} type="button" role="radio" aria-checked={active} onClick={() => setMonths(m)}
-            className={`rounded-xl border px-3 py-3 text-center transition-colors ${active
-              ? 'border-[var(--primary)] bg-[var(--primary)]/[0.07]'
-              : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
-            <div className={`text-[14px] font-bold leading-none ${active ? 'text-[var(--primary-2)]' : ''}`}>{m} {t('hosting.mo', 'mo')}</div>
-            {/* Nothing at all where there is no discount. "full price" under the one-month
-                option was a label invented to keep the slot occupied, and it read like a
-                warning about the option it sat under. */}
-            <div className="mt-1.5 h-[18px] flex items-center justify-center gap-1.5">
-              {years(m) && <span className="text-[11px] text-[var(--faint)]">{years(m)}</span>}
-              {d > 0 && <span className="text-[10.5px] font-bold text-success bg-success-bg border border-success-border rounded-full px-1.5 py-0.5 leading-none">−{d}%</span>}
-            </div>
-          </button>
-        );
-      })}
+    <div>
+      <div className="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
+        <div className="min-w-0">
+          <div className="flex items-baseline justify-between gap-3 text-sm mb-2">
+            <span className="text-[var(--muted)] flex items-center gap-1.5"><CalendarClock size={14} /> {t('hosting.term', 'Billing term')}</span>
+            <span className="font-semibold tabular-nums">{label(months)}{disc > 0 && <span className="ms-2 text-[10.5px] font-bold text-success bg-success-bg border border-success-border rounded-full px-1.5 py-0.5 leading-none align-middle">−{disc}%</span>}</span>
+          </div>
+          <input type="range" min={min} max={max} step={step} value={months} className="bcw-range"
+            aria-label={t('hosting.term', 'Billing term')} aria-valuetext={label(months)}
+            onChange={(e) => pick(e.target.value)} />
+          <div className="flex justify-between text-[11px] text-[var(--faint)] mt-1 tabular-nums"><span>{label(min)}</span><span>{label(max)}</span></div>
+        </div>
+        {/* The exact figure. Typing 500 lands on the maximum, typing 5 on a step of 3 lands
+            on the nearest term that exists — the server would refuse anything else anyway,
+            and a control that lets you pick a number you cannot buy is a trap. */}
+        <label className="text-xs text-[var(--muted)] flex flex-col gap-1 sm:w-40">
+          {t('hosting.term.exact', 'Or type it')}
+          <span className="flex items-center gap-1.5">
+            <Input type="number" min={min} max={max} step={step} value={months} className="!w-28"
+              aria-label={t('hosting.term.months', 'Months')}
+              onChange={(e) => { const v = e.target.value; if (v !== '') pick(v); }}
+              onBlur={(e) => pick(e.target.value)} />
+            <span className="text-[var(--faint)] whitespace-nowrap">{t('hosting.mo', 'mo')}</span>
+          </span>
+        </label>
+      </div>
+      {presets.length > 1 && (
+        <div className="flex flex-wrap gap-1.5 mt-3" role="group" aria-label={t('hosting.term.presets', 'Common terms')}>
+          {presets.map((m) => {
+            const d = Math.round(discountFor(tiers, m) * 100);
+            const active = m === months;
+            return (
+              <button key={m} type="button" aria-pressed={active} onClick={() => pick(m)}
+                className={`rounded-full border px-2.5 py-1 text-[12px] leading-none transition-colors tabular-nums ${active ? 'border-[var(--primary)] bg-[var(--primary)]/[0.08] text-[var(--primary-2)] font-semibold' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
+                {m} {t('hosting.mo', 'mo')}{d > 0 && <span className={`ms-1 ${active ? '' : 'text-success'}`}>−{d}%</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {/* Live, against a real plan. `sample` is the recommended plan (or the cheapest paid
+          one), so the sentence is the same one the card under it will show. */}
+      <div className="mt-3 text-[13px] flex flex-wrap items-center gap-x-2 gap-y-1">
+        {total != null && (
+          <span>
+            <span className="text-[var(--muted)]">{sample.name}:</span>{' '}
+            <span className="font-semibold tabular-nums">{label(months)} → ${(total / 100).toFixed(2)}</span>
+            {disc > 0 && <span className="text-success font-semibold"> (−{disc}%)</span>}
+            {months > 1 && <span className="text-[var(--faint)]"> · ${(total / 100 / months).toFixed(2)} {t('hosting.permo', '/mo')}</span>}
+          </span>
+        )}
+        {next && <span className="text-[var(--faint)]">{t('hosting.term.next', '{n} months would be −{pct}%.').replace('{n}', next.months).replace('{pct}', Math.round(next.off * 100))}</span>}
+      </div>
     </div>
   );
 }
@@ -266,18 +300,36 @@ function WaitlistBox({ user, freeTier = false, defaultGB = 5 }) {
   );
 }
 
-// The prepaid term discounts. Module scope because TermBar, the plan cards and the
-// configurator all price against the same table, and it never depends on state.
-const TERM_DISC = { 1: 0, 3: 0.05, 6: 0.10, 12: 0.20, 24: 0.35 };
-
 export function Hosting() {
   const { user } = useAuth(); const nav = useNavigate(); const dialog = useDialog(); const toast = useToast(); const { t } = useI18n();
+  const location = useLocation();
   const plans = useAsync(() => api.get('/hosting/plans'), []);
   const cap = useAsync(() => api.get('/hosting/capacity'), []);
   // Every purchase is now a storage POOL you fill freely with repos and/or catalogs —
   // the single-repo layout toggle was removed. `mode` stays 'multi' throughout.
   const [mode] = useState('multi');
-  const [months, setMonths] = useState(12); // prepaid term (1yr recommended)
+  // The term the site sells — bounds and discount tiers from the server, never a table here.
+  // Read from the same request as the plans so the two cannot disagree.
+  const term = useMemo(() => normaliseTerm(plans.data?.term), [plans.data]);
+  const [months, setMonthsRaw] = useState(12); // prepaid term (1yr recommended)
+  const setMonths = (m) => setMonthsRaw(snapTerm(term, m));
+  // The admin's bounds arrive after the first render; a default of 12 on a site that sells
+  // 3-to-6 would otherwise price a term the checkout is about to refuse.
+  useEffect(() => { if (plans.data?.term) setMonthsRaw((m) => snapTerm(term, m)); }, [plans.data, term]);
+  // `/hosting#plans` from anywhere — a CTA on another page, the hero button, a pasted link —
+  // lands on the plans. The browser does this on its own only for a full page load with the
+  // section already in the DOM; an in-app navigation renders the page first and the plans
+  // grid only after the request answers, so the scroll waits for both. `location.key`
+  // changes on every navigation, so clicking the same link twice scrolls twice.
+  useEffect(() => {
+    if (location.hash !== '#plans' || plans.loading) return;
+    // setTimeout, not requestAnimationFrame: a background tab never gets a frame, and the
+    // scroll would be lost the moment the tab came forward. Instant, not the page's smooth
+    // default: a smooth scroll aims at where the heading was when it started, and the hero
+    // above is still settling its height at that moment — measured landing 350px past it.
+    const id = setTimeout(() => document.getElementById('plans')?.scrollIntoView({ block: 'start', behavior: 'instant' }), 0);
+    return () => clearTimeout(id);
+  }, [location.hash, location.key, plans.loading]);
   const [promo, setPromo] = useState(null); // validated promo code for the simple plan-card checkout
   const [autoRenew, setAutoRenew] = useState(true); // recurring subscription vs one-time prepaid
   // ── Shopping cart: buy several repos + boosts in one prepaid checkout ──
@@ -307,11 +359,7 @@ export function Hosting() {
     x.uid === uid ? { ...x, giftTo, ...(giftTo ? { autoRenew: false } : {}) } : x)));
   const clearCart = () => setCart([]);
   const cartCount = cart.length;
-  const termTotal = (monthlyCents) => {
-    let total = Math.round(monthlyCents * months * (1 - (TERM_DISC[months] || 0)));
-    if (promo?.percentOff) total = Math.round(total * (1 - promo.percentOff / 100));
-    return total;
-  };
+  const termTotal = (monthlyCents) => termTotalCents(monthlyCents, months, term.tiers, promo?.percentOff || 0);
   const checkout = async (body) => {
     if (!user) return nav('/auth');
     const repoName = await dialog.prompt({ title: mode === 'multi' ? t('hosting.pool.title', 'New storage pool') : t('hosting.repo.title', 'Host a repo'), label: mode === 'multi' ? t('hosting.pool.label', 'Pool name') : t('hosting.repo.label', 'Repository name'), placeholder: mode === 'multi' ? t('hosting.pool.ph', 'my-pool') : t('hosting.repo.ph', 'my-awesome-repo'), okLabel: t('hosting.continue', 'Continue to payment') });
@@ -335,6 +383,11 @@ export function Hosting() {
   // Read once and passed down: the hero, the comparison and the free card all quote the
   // same plan, and three separate `.find()` calls is three places to drift.
   const freePlan = (plans.data?.plans || []).find((pl) => pl.priceMonthlyCents === 0) || null;
+  const paidPlans = (plans.data?.plans || []).filter((pl) => pl.priceMonthlyCents > 0);
+  // The plan the page recommends, and the one the term control prices its example against:
+  // the 25 GB one when there is one (the size most people end up with), else the middle of
+  // the range. One decision, used by the pill on the card AND the sentence above it.
+  const samplePlan = paidPlans.find((pl) => pl.storageGB === 25) || paidPlans[Math.floor((paidPlans.length - 1) / 2)] || null;
   const c = cap.data?.capacity;
   // Is the free plan actually TAKEABLE right now? Three separate ways it is not: no free
   // plan exists at all (an admin can delete it), the free ceiling is full, or the disk is.
@@ -394,10 +447,14 @@ export function Hosting() {
               <Gift size={20} className="text-success shrink-0" />
               <div className="flex-1 min-w-0">
                 <div className="font-semibold text-[15px]">{t('hosting.freeplan.title', 'Just want to try it out?')}</div>
-                <div className="text-[13px] text-[var(--muted)] mt-0.5">{t('hosting.freeplan.sub', 'Host a small repo at no cost — {gb} GB storage, {mbps} Mbps upload, forever free.').replace('{gb}', free.storageGB).replace('{mbps}', (free.uploadLimitKbps / 1024).toFixed(1))}</div>
+                {/* "forever free" was not what the code does: the free pool is provisioned
+                    for the term picked above, like a paid one, and has to be renewed — at no
+                    cost — when it runs out (POST /me/hosting/groups/:id/renew prices it to
+                    zero and applies it on the spot). Free, yes; without an end date, no. */}
+                <div className="text-[13px] text-[var(--muted)] mt-0.5">{t('hosting.freeplan.sub2', 'Host a small repo at no cost — {gb} GB storage, {mbps} Mbps upload, no card.').replace('{gb}', free.storageGB).replace('{mbps}', (free.uploadLimitKbps / 1024).toFixed(1))}</div>
                 <div className="text-[12px] text-[var(--faint)] mt-1">{freeTierSoldOut
                   ? t('hosting.freeplan.soldout.d', 'The free allowance is fully taken right now. It is metered on its own, so the paid sizes below are unaffected — leave your name and we will tell you the moment one frees up.')
-                  : t('hosting.freeplan.note', 'One free repo per account. You can always upgrade the size later — the free floor still applies, so you only ever pay for what\'s above it.')}</div>
+                  : t('hosting.freeplan.note2', 'One free repo per account (and per linked creator id). It runs for the term chosen above and renewing it costs nothing. You can always upgrade the size later — the free floor still applies, so you only ever pay for what\'s above it.')}</div>
               </div>
               <Button variant="primary" className="!bg-success hover:!bg-success !border-transparent shrink-0" disabled={freeDisabled} onClick={() => checkout({ planId: free.id })}>
                 <Gift size={16} /> {freeTierSoldOut ? t('hosting.freeplan.soldout', 'Free plan sold out') : freeDisabled ? t('hosting.nospace', 'Not enough space') : t('hosting.freeplan.cta', 'Get it free')}</Button>
@@ -428,29 +485,47 @@ export function Hosting() {
           the custom build alike. It used to sit inside the configurator, which sat UNDER the
           cards: changing it repriced four cards nobody was looking at. A control belongs
           above the numbers it moves. */}
-      <TermBar months={months} setMonths={setMonths} />
+      <TermBar months={months} setMonths={setMonths} term={term} sample={samplePlan} />
 
-      {/* A swipe on a phone, a grid on a desktop.
-          Four pricing cards stacked vertically is four screens of scrolling to compare two
-          numbers, and comparison is the entire job of a pricing card. Below sm they sit in one
-          scroll-snap row at 78% of the viewport — wide enough to read, narrow enough that the
-          next card's edge is visible, which is what tells a thumb there is more. From sm up
-          nothing changes: it is the same grid it was. */}
-      {plans.loading ? <Loading /> : <div className="flex sm:grid gap-5 lg:gap-6 items-stretch overflow-x-auto snap-x snap-mandatory sm:overflow-visible -mx-4 px-4 sm:mx-0 sm:px-0 pb-2 sm:pb-0 no-scrollbar sm:grid-cols-2 lg:grid-cols-4">
-        {(plans.data?.plans || []).filter((pl) => pl.priceMonthlyCents > 0).map((pl) => {
+      {/* One column on a phone, two from sm, three from lg, four from xl. It was a
+          scroll-snap row at 78 % of the viewport below sm; a thumb found the next card, but
+          the feature list each card now carries needs the full width to be read, and a card
+          you have to swipe back to is a card you cannot compare. `min-w-0` on every cell:
+          a long plan name is the one thing in here that can push a grid track wider than
+          its column, and it is the one thing an admin types freely. */}
+      {plans.loading ? <Loading /> : <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 lg:gap-5 items-stretch">
+        {paidPlans.map((pl) => {
           // A plan can be individually unavailable (not enough free space for ITS
           // size) even while the pool isn't fully soldOut — disable just that card.
           const planDisabled = soldOut || (!!c && pl.storageGB > c.freeGB);
-          const recommended = pl.storageGB === 25;
-          // One column of type, left-aligned, in reading order: which plan, how big, how
-          // fast, how much, take it. The old card was centred and stacked an icon, a name, a
-          // number, and the caption "STORAGE" under the number — in a card whose column
-          // heading already said storage — then hovered up 1.5 units and grew 4% when
-          // recommended, so the row of four never sat still.
+          const recommended = pl.id === samplePlan?.id;
+          const bytes = (pl.storageGB || 0) * (1024 ** 3); const u = bestByteUnit(bytes);
+          const storageLabel = `${Number(bytesInUnit(bytes, u).toFixed(2))} ${u}`;
+          const mbps = (pl.uploadLimitKbps / 1024).toFixed(0);
+          // Price anchoring: the un-discounted monthly rate struck through beside the
+          // (lower) prepaid rate, and a "−N%" pill — the saving reads at a glance.
+          const total = termTotal(pl.priceMonthlyCents);
+          const eff = total / 100 / months;
+          const base = pl.priceMonthlyCents / 100;
+          const save = months > 1 ? Math.round((1 - eff / base) * 100) : 0;
+          // What the plan includes, as a list a reader can tick through — the two numbers
+          // that differ between plans first, then the three things every paid pool has,
+          // then the boosts, which an admin can attach to a plan and which were invisible
+          // on the old card even when they were the reason to pick it.
+          const boosts = pl.boostsPerPeriod > 0
+            ? (pl.boostPeriodMonths > 1
+              ? t('hosting.card.boosts', '{n} featured boosts ({d} days each) every {m} months').replace('{n}', pl.boostsPerPeriod).replace('{d}', pl.boostDays ?? 7).replace('{m}', pl.boostPeriodMonths)
+              : t('hosting.card.boosts1', '{n} featured boosts ({d} days each) every month').replace('{n}', pl.boostsPerPeriod).replace('{d}', pl.boostDays ?? 7))
+            : null;
+          const features = [
+            [HardDrive, t('hosting.card.storage', '{s} of storage, split how you like').replace('{s}', storageLabel), true],
+            [Zap, t('hosting.card.upload', '{m} Mbps upload').replace('{m}', mbps), true],
+            [Layers, t('hosting.card.pool', 'Repos and catalogues in one pool'), true],
+            [Globe, t('hosting.card.domain', 'Your own domain, per repo or catalogue'), true],
+            [Star, boosts || t('hosting.card.noboosts', 'Boosts bought separately'), !!boosts],
+          ];
           return (
-          <div key={pl.id} role="button" tabIndex={0} aria-disabled={planDisabled} onClick={() => !planDisabled && addHosting({ planId: pl.id })}
-            onKeyDown={(e) => { if (e.key === 'Enter' && !planDisabled) addHosting({ planId: pl.id }); }}
-            className={`card relative flex flex-col p-5 transition-colors shrink-0 w-[78%] snap-center sm:w-auto sm:shrink ${planDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:border-[var(--ring)]'} ${recommended && !planDisabled ? '!border-[var(--primary)] bg-[var(--primary)]/[0.04]' : ''}`}>
+          <div key={pl.id} className={`card relative flex flex-col p-5 min-w-0 transition-colors ${planDisabled ? 'opacity-60' : ''} ${recommended && !planDisabled ? '!border-[var(--primary)] bg-[var(--primary)]/[0.04] shadow-[0_0_0_1px_var(--primary)]' : ''}`}>
             {/* A filled pill rather than a word floating in the padding — four cards with a
                 gap at the top of three of them read as three cards missing something. The
                 other three keep an invisible copy so the bodies stay on the same line. */}
@@ -459,37 +534,36 @@ export function Hosting() {
                 {t('hosting.popular2', 'RECOMMENDED')}
               </span>
             </div>
-            <div className="text-[13px] text-[var(--muted)] truncate" title={pl.name}>{pl.name}</div>
-            {(() => { const bytes = (pl.storageGB || 0) * (1024 ** 3); const u = bestByteUnit(bytes); return (
-            <div className="text-[2.15rem] font-extrabold leading-none mt-1">{Number(bytesInUnit(bytes, u).toFixed(2))}<span className="text-base font-semibold text-[var(--muted)]"> {u}</span></div>
-            ); })()}
-            <div className="text-[12.5px] text-[var(--muted)] mt-2 flex items-center gap-1.5"><Zap size={13} className="text-[var(--faint)]" />{(pl.uploadLimitKbps / 1024).toFixed(0)} Mbps {t('hosting.uploadword', 'upload')}</div>
-            {(() => {
-              // Price anchoring: the un-discounted monthly rate struck through beside the
-              // (lower) prepaid rate, and a "−N%" pill — the saving reads at a glance
-              // instead of being buried in the "billed for 12 mo" line.
-              const eff = termTotal(pl.priceMonthlyCents) / 100 / months;
-              const base = pl.priceMonthlyCents / 100;
-              const save = months > 1 ? Math.round((1 - eff / base) * 100) : 0;
-              return (
-                /* Pinned to the bottom: plan names wrap differently, and without this the
-                    four prices sat at four different heights in a row whose entire job is
-                    comparing them. */
-                <div className="mt-auto pt-5 border-t border-[var(--line)]">
-                  <div className="flex items-end gap-1.5 flex-wrap">
-                    {save > 0 && <span className="text-[13px] text-[var(--faint)] line-through mb-0.5">${base.toFixed(2)}</span>}
-                    <span className="text-2xl font-bold leading-none">${eff.toFixed(2)}</span>
-                    <span className="text-[13px] text-[var(--muted)] mb-0.5">{t('hosting.permo', '/mo')}</span>
-                    {save > 0 && <span className="text-[10px] font-bold text-success bg-success-bg border border-success-border rounded-full px-1.5 py-0.5 mb-0.5">−{save}%</span>}
-                  </div>
-                  <div className="text-[11.5px] text-[var(--faint)] mt-1.5">
-                    {months > 1 ? `$${(termTotal(pl.priceMonthlyCents) / 100).toFixed(2)} ${t('hosting.billedfor', 'billed for')} ${months} ${t('hosting.mo', 'mo')}` : t('hosting.billedmonthly', 'billed monthly')}
-                  </div>
-                </div>
-              );
-            })()}
-            <Button variant={recommended && !planDisabled ? 'primary' : 'default'} disabled={planDisabled} className="w-full mt-5" onClick={(e) => { e.stopPropagation(); addHosting({ planId: pl.id }); }}>
-              {planDisabled ? t('hosting.nospace', 'Not enough space') : <><ShoppingCart size={15} /> {t('cart.add', 'Add to cart')}</>}</Button>
+            <div className="text-[15px] font-semibold truncate" title={pl.name}>{pl.name}</div>
+            {/* The price, right under the name: it is what the card is for. Prepaid, so
+                "$X /mo" is the effective rate and the line under it is what is actually
+                charged, once, for the term chosen above. */}
+            <div className="mt-2 flex items-end gap-1.5 flex-wrap">
+              {save > 0 && <span className="text-[13px] text-[var(--faint)] line-through mb-0.5 tabular-nums">${base.toFixed(2)}</span>}
+              <span className="text-[2rem] font-extrabold leading-none tabular-nums">${eff.toFixed(2)}</span>
+              <span className="text-[13px] text-[var(--muted)] mb-0.5">{t('hosting.permo', '/mo')}</span>
+              {save > 0 && <span className="text-[10px] font-bold text-success bg-success-bg border border-success-border rounded-full px-1.5 py-0.5 mb-0.5">−{save}%</span>}
+            </div>
+            <div className="text-[12px] text-[var(--muted)] mt-1.5 tabular-nums">
+              {months > 1
+                ? t('hosting.card.period', '{total} for {n} months, paid up front').replace('{total}', `$${(total / 100).toFixed(2)}`).replace('{n}', months)
+                : t('hosting.card.period1', '{total} for one month, paid up front').replace('{total}', `$${(total / 100).toFixed(2)}`)}
+            </div>
+            <ul className="mt-4 pt-4 border-t border-[var(--line)] flex flex-col gap-2">
+              {features.map(([Icon, label, yes]) => (
+                <li key={label} className={`flex items-start gap-2 text-[13px] leading-snug min-w-0 ${yes ? '' : 'text-[var(--faint)]'}`}>
+                  {yes ? <Check size={15} className="text-success shrink-0 mt-[1px]" aria-hidden /> : <Icon size={15} className="shrink-0 mt-[1px]" aria-hidden />}
+                  <span className="min-w-0">{label}</span>
+                </li>
+              ))}
+            </ul>
+            {/* Pinned to the bottom: feature lists differ in length (boosts or not), and
+                without this the four buttons sat at four heights in a row whose job is
+                comparing them. */}
+            <div className="mt-auto pt-5">
+              <Button variant={recommended && !planDisabled ? 'primary' : 'default'} disabled={planDisabled} className="w-full" onClick={() => addHosting({ planId: pl.id })}>
+                {planDisabled ? t('hosting.nospace', 'Not enough space') : <><ShoppingCart size={15} /> {t('cart.add', 'Add to cart')}</>}</Button>
+            </div>
           </div>
           ); })}
       </div>}
@@ -500,14 +574,14 @@ export function Hosting() {
       <SubLead icon={Sliders}
         title={t('hosting.cfg.title', 'Pick your size — the price follows')}
         sub={t('hosting.cfg.sub', 'One pool, filled with whatever you like: one repo, several, catalogs, or a mix. Resize the split whenever you want.')} />
-      <PoolConfigurator months={months} termDisc={TERM_DISC} soldOut={soldOut} capacity={c}
+      <PoolConfigurator months={months} tiers={term.tiers} soldOut={soldOut} capacity={c}
         onAdd={(custom) => addHosting({ custom, label: t('cart.custom', 'Custom {gb} GB').replace('{gb}', custom.storageGB) })} />
 
       {/* Boost an existing repo — added to the same cart (one-time, priced per day). */}
       {user && (myRepos.data?.repos || []).some((r) => r.hosted || r.listed) && (<>
         <SubLead icon={Rocket}
           title={t('hosting.boost.t', 'Already hosting something?')}
-          sub={t('hosting.boost.s', 'Put one of them in front of more people for a few days. One-off, priced per day, same cart.')} />
+          sub={t('hosting.boost.s2', 'Put one of them in front of more people for a few days. Priced per day, in the same cart — it re-bills only if you leave auto-renew ticked on that line.')} />
         <BoostAddCard repos={(myRepos.data?.repos || []).filter((r) => r.hosted || r.listed)} onAdd={addBoost} />
       </>)}
       </section>
@@ -740,15 +814,14 @@ function CartPanel({ open, setOpen, cart, count, removeItem, setItemAutoRenew, s
  * shops in. The estimate is deliberately coarse and labelled as an estimate — it is a sense
  * of scale, not a promise.
  */
-function PoolConfigurator({ months, termDisc, soldOut, capacity, onAdd }) {
+function PoolConfigurator({ months, tiers, soldOut, capacity, onAdd }) {
   const { t } = useI18n();
   const [spec, setSpec] = useState({ storageGB: 20, uploadMbps: 8 });
   const [price, setPrice] = useState(null);
   const [factors, setFactors] = useState(null);
   const [promo, setPromo] = useState(null);
-  const disc = termDisc[months] || 0;
-  const afterTerm = price == null ? null : Math.round(price * months * (1 - disc));
-  const termTotal = afterTerm == null ? null : promo?.percentOff ? Math.round(afterTerm * (1 - promo.percentOff / 100)) : afterTerm;
+  const disc = discountFor(tiers, months);
+  const termTotal = price == null ? null : termTotalCents(price, months, tiers, promo?.percentOff || 0);
   useEffect(() => {
     const id = setTimeout(() => {
       api.get(`/hosting/price?${new URLSearchParams({ storageGB: spec.storageGB, uploadMbps: spec.uploadMbps })}`)
@@ -866,15 +939,20 @@ function SubLead({ icon: Icon, title, sub }) {
  * A full-width row rather than a field tucked in a corner: it is the one control on the page
  * that changes every price at once, and it now sits above all of them.
  */
-function TermBar({ months, setMonths }) {
+function TermBar({ months, setMonths, term, sample }) {
   const { t } = useI18n();
   return (
     <Card className="p-4 sm:p-5 mb-7">
-      <div className="flex items-baseline justify-between gap-3 flex-wrap mb-3">
-        <div className="font-semibold text-[14.5px]">{t('hosting.termbar.t3', 'How long you pay for, up front')}</div>
-        <div className="text-[12.5px] text-[var(--muted)]">{t('hosting.termbar.s3', 'Every price below follows this. Nothing renews on its own.')}</div>
+      <div className="mb-4">
+        <div className="font-semibold text-[14.5px]">{t('hosting.termbar.t4', 'How long you pay for, up front')}</div>
+        {/* True to the code, in three sentences: what the term is, what auto-renew does
+            (it is ON by default in the cart, so "nothing renews on its own" was false), and
+            what happens when it runs out (suspended at once, deleted after the grace). */}
+        <p className="text-[12.5px] text-[var(--muted)] mt-1 leading-relaxed max-w-3xl">
+          {t('hosting.termbar.s4', 'Every price below is for this many months, paid once at checkout — the longer the term, the less each month costs. In the cart you choose whether it auto-renews: on, and the same term is billed again when it ends (cancel any time from Billing; terms over 12 months never auto-renew); off, and nothing is charged again — the pool is suspended the day the term ends and deleted after a grace period (72 hours by default, a week after a failed payment) unless you renew it.')}
+        </p>
       </div>
-      <TermSelect months={months} setMonths={setMonths} termDisc={TERM_DISC} t={t} />
+      <TermControl months={months} setMonths={setMonths} term={term} sample={sample} t={t} />
     </Card>
   );
 }
@@ -1098,10 +1176,18 @@ function HostingFaq() {
   const { t } = useI18n();
   const [open, setOpen] = useState(null);
   const qs = [
+    // Checked against the code, not the previous answer. The sweeper (lib/sweeper.mjs)
+    // suspends AND schedules deletion in the same pass — one window, not two — and a
+    // SUSPENDED repo answers 404 to everyone, its owner included (hosting-content.mjs), so
+    // "stays online and downloadable" and "hand it to another account" (no such route)
+    // were both wrong.
     [t('hosting.faq.q1', 'What happens if I stop paying?'),
-     t('hosting.faq.a1b', 'Nothing is deleted when a term ends. The pool goes read-only: the repos stay online and downloadable, the catalogues stop being listed, and you can still fetch a copy of everything or hand it to another account. That lasts 72 hours by default, and only then does deletion get scheduled — with its own 72-hour window on top, which you can still cancel. Renewing at any point in either window puts it all straight back, unchanged.')],
+     t('hosting.faq.a1c', 'When a term ends without auto-renew — or a renewal payment fails — the pool is suspended straight away: its repos stop being served and its catalogues stop being listed, for everyone, you included. Nothing is deleted yet. Deletion is scheduled after a grace period (72 hours by default; a week when it was a failed card rather than a decision), and renewing at any point before then puts everything back exactly as it was. You are warned before the term runs out, so download a copy while it is still up — nothing is served while it is suspended.')],
+    // There is no pool-resize route: bigger is "buy more and merge" (POST /me/hosting/groups/
+    // merge) or a solo repo's in-place upgrade (a new prepaid term); smaller does not exist
+    // and nothing is credited. "Pro rata" and "credits the difference" were invented.
     [t('hosting.faq.q2b', 'Can I take a bigger one later? A smaller one?'),
-     t('hosting.faq.a2b', 'Both, at any time, and it takes effect immediately — a bigger pool is charged pro rata for the rest of the term, a smaller one credits the difference. The floor is what the pool already holds: you cannot shrink below the files that are in it, so delete first if you mean to go under. Nothing moves address, so no link you have shared stops working.')],
+     t('hosting.faq.a2c', 'Bigger, yes: buy another pool and merge the two into one — the space adds up, and the bigger plan\'s rate applies from the next renewal — or upgrade a single repo in place with a new prepaid term for its new size. Smaller, no: a paid pool is never shrunk or refunded mid-term. Let a subscription run out instead, or simply re-split the space between the repos and catalogues inside the pool, which is free and immediate. Nothing changes address either way, so no link you have shared stops working.')],
     [t('hosting.faq.q3b', 'What is the difference between a repo and a catalogue?'),
      t('hosting.faq.a3', 'A repo is the FILES themselves, at a fixed address something can sync from. A catalogue is a LIST people browse and install from. Publishing your own work usually wants a repo; gathering other people’s usually wants a catalogue. A pool holds both, so you do not have to decide now.')],
     [t('hosting.faq.q4b', 'Can I put several repos in one pool?'),

@@ -9,6 +9,27 @@
 // checks were written a dozen times and would each have needed the same second clause.
 
 export const TEAM_ROLES = ['owner', 'admin', 'member'];
+
+// How many teams an account may OWN: the admin's `teams.maxOwned` (3 unless set) plus the
+// slots it bought (`User.extraTeamSlots`, one per TEAM_SLOT payment). Staff are not capped.
+export const TEAM_LIMIT_DEFAULTS = { maxOwned: 3, slotPriceCents: 500, slotCurrency: 'eur' };
+export function teamLimitFor(settings = {}, user = {}) {
+  const base = Number.isFinite(Number(settings['teams.maxOwned'])) ? Math.max(0, Math.floor(Number(settings['teams.maxOwned']))) : TEAM_LIMIT_DEFAULTS.maxOwned;
+  const extra = Math.max(0, Math.floor(Number(user.extraTeamSlots) || 0));
+  return { base, extra, limit: base + extra };
+}
+export function teamSlotPrice(settings = {}) {
+  const cents = Number(settings['teams.slotPriceCents']);
+  const currency = String(settings['teams.slotCurrency'] || TEAM_LIMIT_DEFAULTS.slotCurrency).toLowerCase().replace(/[^a-z]/g, '').slice(0, 3) || 'eur';
+  return { cents: Number.isFinite(cents) && cents >= 50 ? Math.floor(cents) : TEAM_LIMIT_DEFAULTS.slotPriceCents, currency };
+}
+/** Whether an invite link still admits someone. */
+export function inviteUsable(inv, now = new Date()) {
+  if (!inv || inv.revokedAt) return false;
+  if (inv.expiresAt && new Date(inv.expiresAt).getTime() <= now.getTime()) return false;
+  if (inv.maxUses && inv.uses >= inv.maxUses) return false;
+  return true;
+}
 const STAFF = ['ADMIN', 'SUPERADMIN'];
 
 export const isStaff = (user) => !!user && STAFF.includes(user.role);

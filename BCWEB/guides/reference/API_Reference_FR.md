@@ -177,7 +177,26 @@ e-mail, et les envois sont déclenchés par admin uniquement (pas d'auto-envoi �
 | GET | `/me/payments` · `/me/payments/:id` | user | Registre de paiements local. |
 | GET | `/me/payments/:id/stripe-link` | user | Résoudre la vraie URL de facture/reçu hébergée par Stripe pour un paiement. |
 | POST | `/me/subscriptions/:id/cancel` | user | Arrêter l'auto-renew (`cancel_at_period_end`) ou reprendre (`{resume:true}`), propriété vérifiée. |
-| POST | `/hosting/webhook` | webhook | Webhook Stripe (provisionne repos/boosts/paniers au paiement, cycles d'abonnement, remboursements — signature vérifiée). |
+| POST | `/hosting/webhook` | webhook | Webhook Stripe (provisionne repos/boosts/paniers au paiement, cycles d'abonnement, remboursements — signature vérifiée). Traite aussi `checkout.session.async_payment_succeeded` (un moyen de paiement différé qui s'encaisse plus tard — même livraison que `completed`) et `checkout.session.expired` (une clé de pool marketplace réservée est rendue). |
+| GET | `/marketplace/checkout/:sessionId/status` | user | **Lecture seule.** Ce que la page de retour de l'acheteur interroge : `{status: pending \| paid \| delivered \| failed, purchase?}`. Propriété vérifiée (la session doit être celle de l'appelant). Ne livre jamais — la livraison se fait dans le webhook uniquement. 404 si la session est inconnue ou appartient à quelqu'un d'autre. |
+| GET | `/admin/payments/pending` | manage_hosting | Le registre `PendingCheckout` : chaque checkout Stripe ouvert (le plus ancien d'abord, avec son âge en minutes) plus les lignes terminées les plus récentes. `?limit=` (1–500, défaut 100). |
+| POST | `/admin/payments/reconcile` | manage_hosting | Lancer la réconciliation maintenant. Corps `{olderThanMin?}` (défaut 15, `0` = inclure les checkouts ouverts il y a quelques secondes). Renvoie `{ok, olderThanMin, summary: {scanned, delivered, alreadyDelivered, failed, stillPending, alerts, errors}}`. 503 `stripe_not_configured` sans clé. Audité en `payments.reconcile`. |
+
+**Payé mais non livré, et comment on le referme.** Chaque route qui ouvre un Stripe Checkout
+(marketplace, hébergement, panier, boost, pool, hébergement de catalogue, cagnotte, MYO,
+listing vitrine, bot) écrit une ligne `PendingCheckout` (`kind`, `sessionId` UNIQUE, `status`)
+à l'instant où la session existe. Le webhook passe la ligne à `delivered` (argent encaissé) ou
+`failed` (expirée). Si le webhook n'a jamais tourné — API à l'arrêt, endpoint mal configuré —
+la ligne reste `pending`, et `lib/stripe-reconcile.mjs` la rattrape : au démarrage (lignes de
+plus d'1 min), depuis le sweeper toutes les ~10 min (plus de 15 min), ou depuis le bouton
+admin. Pour chaque ligne en retard, il récupère la session chez Stripe et **rejoue le même
+handler que le webhook** (`dispatchStripeEvent`), donc un seul chemin de livraison, pas deux ;
+chaque branche est idempotente (marketplace : `checkoutSessionId` UNIQUE, `paymentIntentId`
+enregistré). Une ligne payée que le webhook n'avait pas provisionnée lève un `ErrorEvent`
+(source `reconcile`) et notifie chaque SUPERADMIN ; une ligne livrée deux fois fait pareil ;
+une ligne que le webhook avait bien livrée pendant que le registre traînait est corrigée sans
+bruit. L'URL de retour (`/dashboard?market=ok&session_id=…`) n'accorde rien : le dashboard
+interroge la route de statut ci-dessus jusqu'à lire `delivered`.
 
 ## 10. Annonces & notifications (`announcements.mjs`, partie de `misc.mjs`)
 | Méthode | Chemin | Auth | But |
@@ -221,6 +240,8 @@ e-mail, et les envois sont déclenchés par admin uniquement (pas d'auto-envoi �
 | GET | `/admin/bot/emoji-keys` · `/admin/bot/emoji/:key.png` · `/admin/bot/emoji-pack.zip` | admin | Les icônes des boutons du bot : la liste des clés, un PNG, tout le pack à téléverser sur la page Emojis de l'app. Associées dans `economy.icons`. |
 | GET | `/bot/emoji/keys` · `/bot/emoji/:key.png` | bot | Le même jeu d’icônes pour le bot lui-même : au démarrage il téléverse chaque clé comme **emoji d’application** (`bc_<clé>_<version>`), remplace celles dont le dessin a changé, et ne dessine jamais d’emoji unicode. |
 | POST | `/admin/bot/actions` · `/me/discord/guilds/:id/actions` | mod / owner | Aussi `role_add` / `role_remove` avec `roleId` (+ `guildId` pour la route admin). Un propriétaire ne peut nommer qu'un rôle listé par le heartbeat pour ce serveur. |
+| GET / PUT | `/me/discord/guilds/:id` | owner | Un serveur que l'appelant possède ou gère. Le GET renvoie sa `moderation` (règles automod + échelle, `features/automod.mjs`) et `logRouting` (`features/logs.mjs`), plus les `roles` / `channels` en direct du heartbeat ; le PUT accepte `moderation` et `logs` via les schémas bornés `MODERATION_SCHEMA` / `LOGS_SCHEMA` (chaque nombre borné, chaque action un enum, clés inconnues retirées) et les FUSIONNE dans `bot.config.guilds[id]` — un propriétaire n'atteint rien au-delà de ses propres sous-arbres. |
+| PUT | `/bot/guilds/:id/features` | bot | Les deux mêmes sous-arbres écrits depuis Discord (`/logs setup`, `/logs route`) : `{ actorDiscordId, patch: { moderation?, logs? } }`, mêmes schémas, même contrôle propriétaire-ou-gestionnaire-lié. |
 | GET | `/bot/economy/purchases/:discordId` | bot | Les achats du membre — la commande `/inventory`. |
 | GET | `/bot/economy/season` | bot | Le calendrier de saison, l’état (numéro, dernière remise à zéro, historique) et la prochaine — pour l’annonce du bot et sa ligne « saison N ». |
 | POST | `/bot/economy/casino` | bot | Un siège contre la maison : `{ discordId, game, bet, multiplier, note? }`. Limites via `betLimits()` (`maxBet: 0` = pas de plafond, envoyé `max: null`), avantage via `edgePctFor()` (par jeu, sinon global), gain via `payoutFor()` — l’avantage ne taxe que le profit. Le multiplicateur de Crash porte déjà l’avantage (`crashPoint()`), il passe sans seconde taxe. |
@@ -289,6 +310,8 @@ e-mail, et les envois sont déclenchés par admin uniquement (pas d'auto-envoi �
 | Méthode | Chemin | Auth | But |
 |---|---|---|---|
 | GET | `/admin/server/metrics` · `/alerts` · `/deps-config` | admin | Métriques CPU/RAM/disque en direct, journal d'alertes, liste de dépendances. |
+| GET | `/admin/server/metrics/daily?days=` | `manage_server` / admin | Le cumul quotidien (moyennes + pics CPU, mémoire, disque, latence par jour) pour la fenêtre, avec la fenêtre de même durée juste avant : `series`, `current`, `previous`, `change` (par métrique : `current`, `previous`, `abs`, `pct` — null face à une fenêtre précédente vide, jamais 0) et `coverage`. L'ancien bloc « Métriques système » de la page de statut publique ; `/status` ne porte plus `metrics`. Arithmétique dans `lib/metrics-compare.mjs`. |
+| GET | `/admin/server/metrics/compare?days=` | admin | Comparaison longue portée jusqu'à un an (moyennes, pics, charge, latence, réseau, indisponibilité, uptime %) contre la période d'avant. |
 | POST | `/admin/server/sample-now` · PUT `/deps-config` | admin | Forcer un échantillon / éditer les deps. |
 | GET/POST | `/bot/alerts/unannounced` · `/bot/alerts/announced` | bot | File d'annonce d'alertes pour le bot. |
 
@@ -339,7 +362,7 @@ Clés nommées et limitées, créées par le propriétaire du compte pour l’AP
 | GET | `/v1/polls` | `polls:read` | Les sondages qui te sont ouverts, et ta réponse. |
 | POST | `/v1/polls/:id/vote` | `polls:write` | Répondre à un sondage. Remplace la réponse précédente, comme sur le site. |
 | GET | `/v1/polls/:id` | `polls:read` | Un sondage PUBLIC par id — ouvert **ou clos** — avec chaque id d'option (ce que prend `/vote`), la forme multi-questions (ids de question + de choix), `myVotes`, et le décompte dès qu'il peut être vu (après ta réponse, ou clos / `results: always`). Les sondages non listés et privés répondent 404. |
-| GET | `/v1/charity` | `charity:read` | La cagnotte Community Charity du mois — la même forme que le widget d'accueil : association, pourcentage, totaux, id + état ouvert du vote, et `design` (l'apparence de la carte d'accueil : `mode` default/custom, `width`/`height` du cadre, `ink`, `align`, les URL d'images `backdrop`/`overflow`/`sticker` avec `bleed`, `stickerSize`, `stickerCorner`, `stickerOffset`). |
+| GET | `/v1/charity` | `charity:read` | Éteinte → 404 `charity_disabled` (voir §44). La cagnotte Community Charity du mois — la même forme que le widget d'accueil : association, pourcentage, totaux, id + état ouvert du vote, et `design` (l'apparence de la carte d'accueil : `mode` default/custom, `width`/`height` du cadre, `ink`, `align`, les URL d'images `backdrop`/`overflow`/`sticker` avec `bleed`, `stickerSize`, `stickerCorner`, `stickerOffset`). |
 | GET | `/v1/economy` | `economy:read` | Ton niveau Discord, ton XP (ce niveau / jusqu'au suivant), tes points, tes compteurs d'activité et les taux d'XP. |
 | GET | `/v1/economy/purchases` | `economy:read` | Ce que tu as acheté en boutique de points, avec le code remis le cas échéant et son statut `delivered`/`pending`. |
 | GET | `/v1/badges` | `badges:read` | Les badges de ton profil, avec `earnedAt` et si c'est le staff ou une règle (`how`) qui les a accordés. |
@@ -587,6 +610,13 @@ Une conversation avec le propriétaire et l’équipe derrière un dépôt, un c
 | GET / POST | `/threads/t/:token` · `/threads/t/:token/messages` | le jeton | Le côté de l’expéditeur anonyme. |
 | GET | `/admin/threads?status=&q=` · `/admin/threads/:id` | `manage_reports` | La file (`flagged` d’abord) et un fil avec messages masqués, e-mail et IP de l’expéditeur. |
 | POST | `/admin/threads/:id/close` · `/block` · `/messages/:mid/hide` · `/unhide` | `manage_reports` | Modération ; bloquer ajoute l’expéditeur à la liste et bloque chaque fil qu’il a ouvert. |
+| GET / POST | `/me/teams/limits` · `/me/teams/slot/checkout` | session | Combien d’équipes le compte possède et peut posséder (`teams.maxOwned` + places achetées ; le personnel n’est pas plafonné) et le prix d’une place ; le checkout est un paiement Stripe unique (`metadata.type = team_slot`) — le webhook écrit un Payment `TEAM_SLOT` (idempotent sur la session) et incrémente `User.extraTeamSlots`. `POST /me/teams` répond 409 `too_many_teams` avec `{ owned, limit, slot }`. |
+| GET / POST / DELETE | `/me/teams/:id/invites` · `/me/teams/:id/invites/:inviteId` · `/teams/join/:token` | propriétaire/admin · toute personne connectée | Liens d’invitation (`/teams/join/<jeton>`, un rôle, expiration et nombre d’usages optionnels, ≤ 10 ouverts par équipe). `GET /teams/join/:token` dit quelle équipe et si le lien marche encore ; `POST` rejoint comme membre actif (plafond 50 membres). |
+| GET | `/f/:token` · `/f/:token/info` | jeton (+ la session du propriétaire pour une livraison) | Un fichier derrière un lien qui cesse de fonctionner (`ExpiringFile`) : une livraison MYO (30 jours après la livraison ou 7 après le premier téléchargement, au premier des deux — le premier téléchargement est écrit dans la conversation comme preuve), une pièce jointe de mail (`attachDays`). `info` donne l’état / jusqu’à quand / les téléchargements ; le téléchargement redirige vers les octets, ou répond 410 `expired` / 403 `forbidden`. Le balayeur supprime l’objet une semaine après la date ; archiver une demande MYO révoque ses liens et supprime ses pièces jointes. |
+| GET / PUT | `/admin/mail/custom-templates` | admin | Les modèles du compositeur `[{ id, label, subject, body, audience, cta? }]` (≤ 30), dans le markdown des mails. `POST /admin/mail/send` accepte aussi `attachments: [{ url, name, size }]` (envois MEDIA), `attachDays` (1–90) et `attachMode: link|inline` (≤ 8 Mo au total en pièce jointe). `GET /admin/mail/gallery` renvoie `builtin[id]`, le corps intégré de chaque mail modifiable, à éditer sur place. |
+| GET | `/admin/search?q=` | staff | Une seule boîte sur les données du tableau de bord : comptes, Server-Repos, catalogues communautaires, équipes, conversations, signalements, sanctions, commandes, articles, docs, FAQ, sondages, codes promo, autres projets — chaque groupe seulement si l’appelant a sa capacité, ≤ 6 lignes par groupe, avec le `href` admin pour ouvrir. La recherche de la barre latérale classe les écrans localement (synonymes FR/EN, accents, fautes) et affiche ceci dessous. |
+| GET / POST | `/admin/media-flags?status=&page=` · `/admin/media-flags/:id` | `manage_reports` | Images ressemblantes : envois dont l’empreinte perceptuelle (pHash DCT 64 bits) est à moins de la distance de Hamming configurée — ou identique octet pour octet — d’une image détenue par un autre compte ; les deux images par signalement ; `{ status: cleared\|actioned\|pending, note? }` en résout un. |
+| GET / PUT / POST | `/admin/media-hashes/stats` · `/settings` · `/scan` · `/:id/preview` | `manage_reports` | Compteurs et le réglage `{ threshold, enabled }` (`media.phash`) ; `scan` calcule un lot maintenant (`{ backfill: true }` enregistre aussi les anciens objets du média public) ; `preview` sert l’image (lien de stockage court, URL d’avatar, ou les octets d’une image dans une archive). Les lignes naissent à la présignature et sont calculées par le balayeur. |
 | GET / PUT | `/admin/threads/config` | `manage_reports` | `enabled`, `userPerHour/Day`, `anonPerHour/Day`, `messagesPerHour`, `maxBody`, `blockedEmails[]`, `blockedUserIds[]`. |
 
 ## 31. Custom roles & project grants (`roles.mjs`)
@@ -632,6 +662,36 @@ L’endpoint de forward-auth appelé par l’edge pour protéger le tableau de b
 | GET | `/telemetry/authorize` | — | Sonde de forward-auth appelée par l’edge avant de servir le tableau de bord. |
 | GET | `/admin/telemetry-access/users` | superadmin | Qui peut atteindre le tableau de bord. |
 | PUT | `/admin/telemetry-access/:userId` | superadmin | Accorder ou révoquer l’accès au tableau de bord. |
+| GET | `/internal/telemetry/identity?creatorId=` | `x-link-secret` | **Serveur à serveur, pour le service télémétrie.** Si un creator id BMM (l’hex de la clé publique ed25519 d’une installation — la charge télémétrie ne porte AUCUN id de compte) est lié à un compte : `{ linked, userId, email, displayName, locale, creatorIds }`. `creatorIds` est chaque id lié au même compte : une demande RGPD déposée pour une installation les couvre toutes. Secret = `LINK_LOOKUP_SECRET` (le `BC_LINK_SECRET` du service). |
+| POST | `/internal/telemetry/notify` | `x-link-secret` | **Serveur à serveur.** Envoyer le mail de confirmation RGPD : `{ kind: export\|delete, outcome: done\|rejected, requestId, creatorId, creatorIds?, to: { userId } \| { email }, counts?, erased?, attachment?: { filename, base64 } (zip, ≤ 18 Mo en base64), tooLarge? }`. `to.userId` est résolu ici en l’adresse ACTUELLE du compte, dans la langue du compte — l’adresse ne quitte jamais BCWEB ; `to.email` est ce qu’une installation non liée a saisi. Répond `{ ok, sent }`, ou `{ ok:false, reason }` (`email_disabled`, `account_not_found`…) pour que le service note « non notifié » au lieu de deviner. |
+| POST | `/me/telemetry/data-request` | user | Déposer une demande RGPD pour une de MES installations BMM liées, `{ creatorId, kind: export\|delete }` (Paramètres → Cookies & confidentialité → Télémétrie BMM). Le creator id doit figurer dans les `CreatorLink` de l’appelant — c’est la preuve — et la demande est relayée au service télémétrie (`TELEMETRY_INTERNAL_URL` + la clé publique `TELEMETRY_API_KEY`) avec `source: bcweb` ; la confirmation (export joint) part vers l’e-mail du compte, rien n’est saisi. `{ ok, id, duplicate }` ; 403 `not_your_creator_id`, 503 `telemetry_not_configured`, 502 `telemetry_unreachable`. 10/h. Audité `telemetry.data_request`. |
+
+**Le flux RGPD, de bout en bout.** Une demande est (creator id, type) et atteint la table
+`data_requests` du service télémétrie depuis trois endroits : BMM (Paramètres › Confidentialité,
+avec une adresse saisie), un compte connecté ici (la route ci-dessus, sans adresse), ou l’écran
+Data requests du tableau de bord (un admin qui dépose pour quelqu’un qui a écrit). Le service
+interroge `/internal/telemetry/identity` au dépôt puis au traitement : un compte lié ne porte
+jamais d’adresse saisie (le mail part vers le compte, ce qui empêche quiconque de détourner
+l’export d’un autre), une installation non liée doit en donner une. Les exports sont traités
+dans la minute (un zip par personne : `README.txt`, `tables/<nom>.json`,
+`replays/<session>.bmmreplay`, `export.json`, joint s’il fait ≤ 12 Mo) ; les effacements
+attendent le délai de revue (`TELEMETRY_DELETE_DELAY_H`, modifiable en direct) sauf traitement
+par un admin, puis suppriment dans la même liste de tables que celle lue par l’export, retirent
+les lignes géo que personne d’autre ne partage, et anonymisent la ligne de demande
+(`erased:<hash>`). Chaque issue est écrite dans le journal d’audit du service et envoyée par
+`/internal/telemetry/notify`.
+
+**Échantillonnage.** L’écran Settings du tableau de bord (ou `GET/PUT /admin/telemetry/config`
+ci-dessus, clé `sampling`) tient un plafond total plus un pourcentage par type d’élément
+(`events`, `replay`, `errors`, `perf`, `benchmarks`, `logs`). La décision est déterministe par
+installation et par type (`fnv1a32("creatorId:kind") % 10000 < pct × 100`), livrée à BMM dans
+chaque réponse `/batch` et sur le `GET /config` du service ; le service applique la même règle à
+l’ingestion. Cela réduit ce qui est collecté et ne touche jamais ce qui est déjà stocké.
+
+**Carte.** L’écran Geography du tableau de bord dessine des tuiles raster OpenStreetMap (sans
+clé — tuiles OSM standard en clair, CARTO dark-matter issu des mêmes données OSM en sombre,
+attribution toujours affichée) et regroupe les points utilisateurs en grappes côté MapLibre ;
+les positions restent approximatives.
 
 ## 34. Outils développeur (`devtools.mjs`)
 L'inspecteur, les cartes qu'affiche le tableau de bord admin, et deux vérificateurs qui lisent un
@@ -936,5 +996,25 @@ serveurs envoient assez souvent `text/html` sur un manifeste et `application/jso
 `checkRepoHealth(repo, fetcher = safeFetch)` prend son fetcher pour être testable — safeFetch
 refuse les adresses loopback, la garde SSRF faisant son travail, donc une sonde vers un serveur
 de test local reçoit un refus qui se lit comme du code cassé.
+
+## 44. Cagnotte solidaire (`charity.mjs`)
+| Méthode | Chemin | Auth | But |
+|---|---|---|---|
+| GET | `/charity/current` | — | La cagnotte du mois : association, pourcentage, totaux, le vote (id + ouvert), `design`. Cache 30 s. **Éteinte → 404 `charity_disabled`** (`{ error, enabled:false }`), la même réponse que `/charity/contribute` et `/v1/charity` — une fonction éteinte n'est pas là. |
+| POST | `/charity/contribute` | user optionnel | Démarre un checkout de don `{ amountCents }` (anonyme permis). Validation d'abord (`too_small`…), puis l'interrupteur (404 `charity_disabled`), puis Stripe (503 `stripe_not_configured`). |
+| GET / PUT | `/admin/charity` | `manage_donations` | La config (`enabled`, `percent` ≤ 50, `currency`, `association`, le `design` de l'accueil) + la cagnotte du mois et l'aperçu des revenus. Admin → Ko-fi & financement → Cagnotte solidaire. |
+| PUT | `/admin/charity/pot` · POST `/close` | `manage_donations` | Éditer la cagnotte du mois (vote lié, association, statut, preuve) / geler la part de BetterCommunity. |
+
+## 45. Composants du studio (`studio.mjs`)
+Le studio (`/studio/:kind/:id/:index` côté web) permet à un auteur de garder un groupe de blocs
+de planche sous un nom et d'en déposer des copies sur d'autres pages. La liste est personnelle —
+une valeur JSON par utilisateur dans le magasin clé/valeur des réglages
+(`studio.components:<userId>`), sans table dédiée — lue entière à l'ouverture du studio et
+réécrite entière à chaque changement.
+
+| Méthode | Chemin | Auth | But |
+|---|---|---|---|
+| GET | `/me/studio/components` | user | Tes composants enregistrés : `{ components: [{ id, name, w, h, blocks[], createdAt }] }`. |
+| PUT | `/me/studio/components` | user | Remplace la liste. Au plus 60 composants de 40 blocs chacun, 512 Ko en tout (413 `too_large`) ; une forme invalide donne 400 `invalid_input` ; les ids en double se replient sur le premier. Le contenu des blocs est du JSON de planche libre — le moteur le normalise (`apps/web/src/lib/canvas.js`). |
 
 *Généré depuis `apps/api/src/routes/` (dernière mise à jour 2026-08-13 — sections 18-33 ajoutées : tous les modules de routes qui n'avaient aucune section, plus les endpoints des appareils connectés au §1 ; §34 ajoutée le 2026-08-27 avec la table des formats de l’inspecteur ; §§35-36 ajoutées le 2026-08-29 pour le constructeur de pages et l’export du contenu ; §37 (webhooks) et les lignes du 2026-09-05 aux §§5, 13, 15, 18 — import de commits, boutique + inventaire du site, icônes d'apps, `/v1/polls/:id`, `/v1/charity`, `/v1/economy`, `/v1/badges`. Les chemins, méthodes et la colonne Auth ont été extraits du source, pas écrits de mémoire). Pour les formes de requête/réponse, lire le module de route correspondant — chacun est court et commenté.*

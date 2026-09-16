@@ -78,6 +78,11 @@ const settings = {
   'pricing.perUploadMbpsCents': 20,
   'pricing.perCpuShareCents': 400,
   'pricing.featurePerDayCents': 50,   // paid "featured listing" promotion, per day
+  // Prepaid hosting term: any whole number of months in [min, max], stepping by `step`.
+  // routes/hosting.mjs `termBounds` falls back to these same numbers when a row is missing.
+  'hosting.termMinMonths': 1,
+  'hosting.termMaxMonths': 36,
+  'hosting.termStepMonths': 1,
   'features.hostingEnabled': true,
   // Seeded true so the admin screen shows a real state rather than an empty checkbox.
   // The code treats a MISSING row as enabled too, so an existing install that upgrades

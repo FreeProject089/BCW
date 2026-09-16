@@ -51,8 +51,12 @@ test('termTotalCents: each prepaid tier applies its exact discount', () => {
   assert.equal(termTotalCents(1000, 24, 1), 15600); // 24 * 1000 * (1 - 0.35)
 });
 
-test('termTotalCents: an unknown term length falls back to NO discount (not a crash)', () => {
-  assert.equal(termTotalCents(1000, 7, 1), 7000);
+// The term is any number of months now (admin-bounded), so 7 is not "unknown": it earns the
+// tier below it — the 6-month rate — and never the rate of a tier it has not reached. A term
+// with no tier under it at all (2) is full price, and nothing here crashes.
+test('termTotalCents: a term between two tiers takes the tier below it, never worse', () => {
+  assert.equal(termTotalCents(1000, 7, 1), 6300); // 7 * 1000 * (1 - 0.10)
+  assert.equal(termTotalCents(1000, 2, 1), 2000);
 });
 
 test('termTotalCents: the scarcity price multiplier scales the whole total', () => {
