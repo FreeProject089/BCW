@@ -361,7 +361,7 @@ export function Admin() {
           <BmmInspector />
           <CodebaseMaps />
           <div className="flex flex-wrap gap-2 mb-3">
-            <div className="relative flex-1 min-w-[200px]"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
+            <div className="relative flex-1 min-w-[200px]"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" />
               <Input className="!ps-9" placeholder={t('mod.search.ph', 'Search by item name, author or email…')} value={modQ} onChange={(e) => setModQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && setModQApplied(modQ)} /></div>
             <Button variant="primary" onClick={() => setModQApplied(modQ)}><Search size={15} /> {t('mod.search', 'Search')}</Button>
             <Dropdown value={modKind} onChange={setModKind} options={[
@@ -766,7 +766,7 @@ function AdminUsers() {
       <p className="text-sm text-[var(--muted)] mb-4">{t('au.desc', 'Search by user id, Unique BC id (BC-XXXX-XXXX), display name, email, a linked creator id, or a linked Discord (username / id). Click a user to see full details.')}</p>
       <div className="flex gap-2 mb-5">
         <div className="relative flex-1">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" />
           <Input className="!ps-9" placeholder={t('au.search.ph', 'id / display name / email / creator id / Discord…')} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && search()} />
         </div>
         <Button variant="primary" disabled={busy} onClick={search}>{busy ? <Spinner /> : <><Search size={15} /> {t('au.search', 'Search')}</>}</Button>
@@ -1092,7 +1092,7 @@ function AdminPlanUsers() {
         );
       })()}
       <div className="flex flex-wrap gap-2 items-center mb-3">
-        <div className="relative flex-1 min-w-[200px]"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
+        <div className="relative flex-1 min-w-[200px]"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" />
           <Input className="!ps-8 !py-1.5 !text-sm" placeholder={t('pu.search', 'Search a customer, name, email, creator id…')} value={q}
             onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && setQApplied(q.trim())} /></div>
         <Button size="sm" onClick={() => setQApplied(q.trim())}>{t('pu.searchbtn', 'Search')}</Button>
@@ -1600,7 +1600,7 @@ function AdminSecurity() {
       </div>
 
       <div className="flex flex-wrap gap-2 mb-3">
-        <div className="relative flex-1 min-w-[200px]"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
+        <div className="relative flex-1 min-w-[200px]"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" />
           <Input className="!ps-9" placeholder={tab === 'logins' ? t('sec.search.logins', 'Search email, IP or account…') : t('sec.search.audit', 'Search actor, action, detail or IP…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
         {tab === 'logins' && (
           <Select className="!w-auto" value={loginFilter} onChange={(e) => setLoginFilter(e.target.value)}>
@@ -2729,15 +2729,22 @@ function AdminServerPerf() {
           {/* The count was a muted grey "· 7" — fine as a size, useless as a signal. Simple mode
               keeps this section closed, so an UNACKNOWLEDGED alert has to be visible on the
               header itself or a collapsed section is hiding a live problem. */}
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5">
-            {t('sp.alerts', 'Recent alerts')}
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5 flex-wrap">
+            {t('sp.alerts', 'Alerts')}
             {(() => {
               const all = alerts.data?.alerts || [];
+              const c = alerts.data?.counts;
               if (!all.length) return null;
-              const unacked = all.filter((a) => !a.ackAt).length;
-              return unacked
-                ? <Badge tone="red"><AlertTriangle size={9} /> {t('sp.al.unacked', '{n} unacknowledged').replace('{n}', unacked)}</Badge>
-                : <span className="text-[var(--muted)] normal-case tracking-normal">· {all.length}</span>;
+              // Ordered by what makes somebody open the section. A count of unacknowledged
+              // rows says how much reading is left; a count of ONGOING ones says whether
+              // anything is broken, and only the second is a reason to look now. Simple mode
+              // keeps this section closed, so both have to survive on the header itself.
+              return (<>
+                {c?.criticalOngoing > 0 && <Badge tone="red"><OctagonAlert size={9} /> {t('sp.al.critnow', '{n} critical, still happening').replace('{n}', c.criticalOngoing)}</Badge>}
+                {c?.ongoing > c?.criticalOngoing && <Badge tone="amber"><AlertTriangle size={9} /> {t('sp.al.ongoingn', '{n} still happening').replace('{n}', c.ongoing - c.criticalOngoing)}</Badge>}
+                {!c?.ongoing && <Badge tone="green"><CheckCircle2 size={9} /> {t('sp.al.allclear', 'Nothing ongoing')}</Badge>}
+                {c?.unacked > 0 && <span className="text-[var(--muted)] normal-case tracking-normal">{t('sp.al.unacked', '{n} unacknowledged').replace('{n}', c.unacked)}</span>}
+              </>);
             })()}
           </h3>
           <ChevronDown size={15} className={`text-[var(--faint)] transition-transform ${sec.alerts ? '' : '-rotate-90'}`} />
@@ -2747,13 +2754,21 @@ function AdminServerPerf() {
           if (!list.length) return <EmptyState icon={CheckCircle2} title={t('sp.alerts.none', 'No alerts')} sub={t('sp.alerts.nonesub', 'Nothing has crossed a threshold yet.')} />;
           // Collapse repeats of the exact same alert (kind+message) into one row with a
           // count + first/last seen, so a long outage doesn't read as a wall of dupes.
+          // A group is ongoing if ANY sighting in it is: the oldest row is the one that is
+          // still open, and hiding that behind the newest would say "over" about a live
+          // problem, which is the one mistake this list cannot afford.
           const groups = [];
           const byKey = new Map();
           for (const a of list) {
             const key = `${a.kind}::${a.message}`;
-            if (byKey.has(key)) { const g = byKey.get(key); g.count++; g.firstAt = a.createdAt; }
-            else { const g = { ...a, count: 1, firstAt: a.createdAt, lastAt: a.createdAt }; byKey.set(key, g); groups.push(g); }
+            if (byKey.has(key)) {
+              const g = byKey.get(key);
+              g.count++; g.firstAt = a.createdAt;
+              if (!a.resolvedAt) g.resolvedAt = null;
+            } else { const g = { ...a, count: 1, firstAt: a.createdAt, lastAt: a.createdAt }; byKey.set(key, g); groups.push(g); }
           }
+          const live = groups.filter((g) => !g.resolvedAt);
+          const done = groups.filter((g) => g.resolvedAt);
           const copyAll = async () => {
             const log = [
               `BetterCommunity server-perf alerts`,
@@ -2774,8 +2789,18 @@ function AdminServerPerf() {
               )}
               <Button size="sm" variant="ghost" onClick={copyAll}><Copy size={12} /> {t('sp.al.copyall', 'Copy all')}</Button>
             </div>
+            {/* Two lists, not one sorted list. "Is anything broken" and "what happened
+                lately" are different questions, and a heading answers the first one even
+                when the second is forty rows long. */}
             <div className="space-y-1.5 max-h-96 overflow-auto pe-1 -me-1">
-              {groups.map((g) => <AlertRow key={g.id} a={g} />)}
+              {live.length > 0 && (<>
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--error)] pt-0.5">{t('sp.al.live', 'Still happening')} · {live.length}</div>
+                {live.map((g) => <AlertRow key={g.id} a={g} />)}
+              </>)}
+              {done.length > 0 && (<>
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] pt-2">{t('sp.al.past', 'Over')} · {done.length}</div>
+                {done.map((g) => <AlertRow key={g.id} a={g} />)}
+              </>)}
             </div>
           </>);
         })())}
@@ -3158,7 +3183,7 @@ function FileManager() {
         </div>
       ) : (
         <>
-          <div className="relative mb-2"><Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
+          <div className="relative mb-2"><Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" />
             <Input className="!ps-8 !py-1.5 !text-xs" placeholder={t('fm.filter', 'Filter this folder…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
           <div className="divide-y divide-[var(--line)] max-h-80 overflow-auto scroll-thin">
             {entries.length ? entries.map((e) => (
@@ -3259,7 +3284,7 @@ function DbViewer() {
       {!tables ? <Loading /> : (
         <div className="grid sm:grid-cols-[180px_1fr] gap-3">
           <div>
-            <div className="relative mb-1.5"><Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
+            <div className="relative mb-1.5"><Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" />
               <Input className="!ps-7 !py-1 !text-xs" placeholder={t('dbv.filtertables', 'Filter tables…')} value={tableQ} onChange={(e) => setTableQ(e.target.value)} /></div>
             <div className="max-h-80 overflow-auto scroll-thin space-y-0.5">
               {visibleTables.map((t) => (
@@ -4777,7 +4802,7 @@ function AdminAccess({ isSuperAdmin }) {
         <p className="text-sm text-[var(--muted)] mb-3">{isSuperAdmin ? t('acc.desc.super', 'Find a user to manage their role, server-control access and blog-post access — all in one place. Search by user id, display name, email, a linked creator id, or a linked Discord.') : t('acc.desc.admin', 'Find a user to manage blog-post access, all in one place. Search by user id, display name, email, a linked creator id, or a linked Discord.')}</p>
         {isSuperAdmin && <PowerHolders onOpen={openHolder} />}
         <div className="flex gap-2 mb-3">
-          <div className="relative flex-1"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
+          <div className="relative flex-1"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" />
             <Input className="!ps-9" placeholder={t('au.search.ph', 'id / display name / email / creator id / Discord…')} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && search()} /></div>
           <Button variant="primary" disabled={busy} onClick={search}>{busy ? <Spinner /> : <><Search size={15} /> {t('acc.search', 'Search')}</>}</Button>
         </div>
@@ -5463,7 +5488,7 @@ function AdminNewsletter() {
         {mode === 'pick' && (loading ? <Loading /> : <div className="rounded-xl border border-[var(--line)] overflow-hidden">
           <div className="flex items-center gap-2 p-2 border-b border-[var(--line)] bg-[var(--surface-2)]">
             <label className="flex items-center gap-2 text-sm text-[var(--muted)] cursor-pointer select-none"><input type="checkbox" checked={allShownPicked} onChange={toggleAllShown} /> {t('nl.pick.all', 'Select all shown')}</label>
-            <div className="relative flex-1 min-w-[160px]"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" /><Input className="!ps-8 !py-1.5 text-sm" placeholder={t('nl.pick.search', 'Filter by email…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
+            <div className="relative flex-1 min-w-[160px]"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" /><Input className="!ps-8 !py-1.5 text-sm" placeholder={t('nl.pick.search', 'Filter by email…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
           </div>
           <div className="max-h-64 overflow-y-auto divide-y divide-[var(--line)]">
             {shown.length ? shown.map((s) => (
@@ -7161,7 +7186,7 @@ function AdminHistory() {
       </p>
 
       <div className="flex flex-wrap gap-2 items-center mb-3">
-        <div className="relative flex-1 min-w-[200px]"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
+        <div className="relative flex-1 min-w-[200px]"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" />
           <Input className="!ps-8 !py-1.5 !text-sm" placeholder={t('hist.search', 'Search action, detail, person, ID/hash…')} value={q}
             onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (setTake(60), setQApplied(q))} /></div>
         <Button size="sm" variant="primary" onClick={() => { setTake(60); setQApplied(q); }}><Search size={14} /> {t('common.search', 'Search')}</Button>
@@ -8767,7 +8792,7 @@ function AdminAssets() {
           <>
             <div className="flex flex-wrap items-center gap-2 mb-3">
               <div className="relative flex-1 min-w-[180px]">
-                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" />
                 <Input className="!ps-9" placeholder={t('assets.search', 'Search by name\u2026')} value={q} onChange={(e) => setQ(e.target.value)} />
               </div>
               {/* Only the kinds actually present. A row of filters for categories that are all
@@ -15633,7 +15658,7 @@ function EconomyHistoryCard({ currency }) {
   return (
     <ModuleCard id="sec-eco-history" icon={History} title={t('db.eco.histcard', 'Point history')} desc={t('db.eco.histcard.d', 'Every movement: purchases, casino plays, gifts between members, level-ups and staff grants. Retention is set on the Levels & economy page.')} onToggle={null}>
       <div className="flex gap-2 flex-wrap">
-        <div className="relative flex-1 min-w-[160px]"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" /><Input className="!ps-9 !py-1.5 !text-sm" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && reload()} placeholder={t('db.eco.search', 'Search a member…')} /></div>
+        <div className="relative flex-1 min-w-[160px]"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" /><Input className="!ps-9 !py-1.5 !text-sm" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && reload()} placeholder={t('db.eco.search', 'Search a member…')} /></div>
         <Select className="!w-auto !py-1.5 !text-sm" value={kind} onChange={(e) => setKind(e.target.value)}><option value="">{t('db.eco.lk.all', 'Everything')}</option>{Object.keys(LEDGER_KIND).map((k) => <option key={k} value={k}>{label(k)}</option>)}</Select>
         <Button size="sm" variant="ghost" onClick={reload}><RefreshCw size={13} /></Button>
       </div>
@@ -15894,7 +15919,7 @@ function AdminBotMembers() {
           </Button>
         </div>
         <div className="flex gap-2 mb-4">
-          <div className="relative flex-1"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
+          <div className="relative flex-1"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" />
             <Input className="!ps-9" placeholder={t('bm.search', 'Search by Discord id or username…')} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && load(false)} /></div>
           <Button variant="primary" disabled={busy} onClick={() => load(false)}>{busy ? <Spinner /> : <><Search size={15} /> {t('bm.searchbtn', 'Search')}</>}</Button>
         </div>
@@ -16034,7 +16059,7 @@ function EconomyLedger({ currency }) {
         </div>
       )}
       <div className="relative mb-2">
-        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
+        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" />
         <Input className="!ps-9" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && load(q)} placeholder={t('db.eco.search', 'Search a member…')} />
       </div>
       {!data ? <Spinner /> : data.members.length === 0 ? (
@@ -16284,7 +16309,7 @@ function AdminStorage() {
         <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
           <div className="text-sm font-medium">{t('as.hostedrepos', 'Hosted repos')} <span className="text-[var(--faint)] font-normal">({(d.topRepos || []).length})</span></div>
           {(d.topRepos || []).length > 2 && (
-            <div className="relative w-full sm:w-56"><Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
+            <div className="relative w-full sm:w-56"><Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" />
               <Input className="!ps-8 !py-1.5 !text-sm" placeholder={t('as.searchnameowner', 'Search name or owner…')} value={repoQ} onChange={(e) => setRepoQ(e.target.value)} /></div>
           )}
         </div>
@@ -16302,7 +16327,7 @@ function AdminStorage() {
         <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
           <div className="text-sm font-medium flex items-center gap-2"><Trash2 size={14} className="text-error" /> {t('as.pendingdel', 'Pending deletions (72h grace)')}{pending > 0 && <Badge tone="red">{pending}</Badge>}</div>
           {pending > 2 && (
-            <div className="relative w-full sm:w-56"><Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
+            <div className="relative w-full sm:w-56"><Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" />
               <Input className="!ps-8 !py-1.5 !text-sm" placeholder={t('as.searchnameownerkind', 'Search name, owner or kind…')} value={pendQ} onChange={(e) => setPendQ(e.target.value)} /></div>
           )}
         </div>
@@ -16628,7 +16653,7 @@ function WebVitals() {
       </div>
       {/* Path filter (à la Rybbit "Filtre"). Narrows every KPI + breakdown to a page. */}
       <div className="flex flex-wrap items-center gap-2 mb-4">
-        <div className="relative flex-1 min-w-[200px]"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
+        <div className="relative flex-1 min-w-[200px]"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" />
           <Input className="!ps-8 !py-1.5 text-sm" placeholder={t('an.wv.filterph', 'Filter by page path (e.g. /catalog)…')} value={filterInput} onChange={(e) => setFilterInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && setPathFilter(filterInput.trim())} /></div>
         <Button size="sm" variant="ghost" onClick={() => setPathFilter(filterInput.trim())}><Search size={14} /> {t('ev.filter', 'Filter')}</Button>
         {pathFilter && <button onClick={() => { setPathFilter(''); setFilterInput(''); }} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs tint-primary text-[var(--accent-ink)] border b-primary"><span className="font-mono">{pathFilter}</span> <X size={12} /></button>}
@@ -17907,7 +17932,7 @@ function AdminErrors() {
         </div>
       )}
       <div className="flex flex-wrap gap-2 mb-4">
-        <div className="relative flex-1 min-w-[220px]"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
+        <div className="relative flex-1 min-w-[220px]"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" />
           <Input className="!ps-9" placeholder={t('er.pathph', 'Filter by page path…')} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && setQApplied(q.trim())} /></div>
         <Dropdown value={source} onChange={setSource} options={[
           { value: '', label: t('er.src.all', 'All sources') },
@@ -17921,7 +17946,7 @@ function AdminErrors() {
       {/* Second row: the two controls that turn a list into a debugging tool — find the trace
           you are thinking of, and decide whether "worst" means newest or loudest. */}
       <div className="flex flex-wrap gap-2 mb-4 items-center">
-        <div className="relative flex-1 min-w-[220px]"><FileText size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
+        <div className="relative flex-1 min-w-[220px]"><FileText size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" />
           <Input className="!ps-9" placeholder={t('er.needleph', 'Search the message and the stack trace…')} value={needle} onChange={(e) => setNeedle(e.target.value)} /></div>
         <Dropdown value={sort} onChange={setSort} options={[
           { value: 'recent', label: t('er.sort.recent', 'Most recent') },
@@ -18583,25 +18608,55 @@ function AnnouncementSection({ value, onChange }) {
 // { kind, message, createdAt }, so "detail" = the human-readable expansion of that.
 // i18n keys per alert kind — resolved in AlertRow (a module const can't call the hook).
 const ALERT_KIND = {
-  cpu: { l: 'sp.al.cpu', lf: 'High CPU', d: 'sp.al.cpu.d', df: 'CPU usage crossed the alert threshold (>90%).', tone: 'text-warning' },
-  mem: { l: 'sp.al.mem', lf: 'High memory', d: 'sp.al.mem.d', df: 'Memory usage crossed the alert threshold (>90%).', tone: 'text-warning' },
-  disk: { l: 'sp.al.disk', lf: 'Low disk', d: 'sp.al.disk.d', df: 'Disk usage crossed the alert threshold (>90%).', tone: 'text-error' },
-  service_down: { l: 'sp.al.svc', lf: 'Service unreachable', d: 'sp.al.svc.d', df: 'A dependency (DB, storage, bot, Stripe…) failed its health check.', tone: 'text-error' },
+  cpu: { l: 'sp.al.cpu', lf: 'High CPU', d: 'sp.al.cpu.d', df: 'CPU usage crossed the alert threshold (>90%).' },
+  mem: { l: 'sp.al.mem', lf: 'High memory', d: 'sp.al.mem.d', df: 'Memory usage crossed the alert threshold (>90%).' },
+  disk: { l: 'sp.al.disk', lf: 'Low disk', d: 'sp.al.disk.d', df: 'Disk usage crossed the alert threshold (>90%).' },
+  service_down: { l: 'sp.al.svc', lf: 'Service unreachable', d: 'sp.al.svc.d', df: 'A dependency (DB, storage, bot, Stripe…) failed its health check.' },
+  storage: { l: 'sp.al.sto', lf: 'Storage pool filling', d: 'sp.al.sto.d', df: 'A hosting pool is close to its size limit. It stops accepting uploads when it is full.' },
+  capacity: { l: 'sp.al.cap', lf: 'Capacity', d: 'sp.al.cap.d', df: 'Most of the space this server says it can sell is already allocated.' },
+  capacity_oversold: { l: 'sp.al.over', lf: 'Oversold', d: 'sp.al.over.d', df: 'More storage is on sale than the volume can hold. A write will fail before the ceiling is reached.' },
+  telemetry_storage: { l: 'sp.al.tel', lf: 'Telemetry storage', d: 'sp.al.tel.d', df: 'The BMM telemetry database is close to the limit set for it.' },
+  errors: { l: 'sp.al.err', lf: 'Errors', d: 'sp.al.err.d', df: 'A burst of errors, or a kind of failure not seen in the last week.' },
+  web_vitals: { l: 'sp.al.wv', lf: 'Slow for visitors', d: 'sp.al.wv.d', df: 'A share of real page loads were rated "poor" by the browser itself.' },
 };
+// Severity is a word, an icon and a colour, never a colour alone: the previous list painted
+// "the disk is 94 % full" and "a third of page loads were slow" with the same red triangle,
+// so there was nothing to sort by and nothing to skim.
+const ALERT_SEV = {
+  critical: { icon: OctagonAlert, tone: 'text-error', badge: 'red', l: 'sp.sev.crit', lf: 'Critical' },
+  warning: { icon: AlertTriangle, tone: 'text-warning', badge: 'amber', l: 'sp.sev.warn', lf: 'Warning' },
+  info: { icon: Info, tone: 'text-[var(--accent-ink)]', badge: '', l: 'sp.sev.info', lf: 'For information' },
+};
+const sevOf = (a) => ALERT_SEV[a?.severity] || ALERT_SEV.warning;
 function AlertRow({ a }) {
   const { t } = useI18n(); const toast = useToast();
   const [open, setOpen] = useState(false);
   const k = ALERT_KIND[a.kind];
-  const info = k ? { label: t(k.l, k.lf), desc: t(k.d, k.df), tone: k.tone } : { label: a.kind, desc: t('sp.al.generic', 'Threshold alert.'), tone: 'text-error' };
+  const sev = sevOf(a);
+  const SevIcon = sev.icon;
+  const info = k ? { label: t(k.l, k.lf), desc: t(k.d, k.df) } : { label: a.kind, desc: t('sp.al.generic', 'Threshold alert.') };
+  // Still happening, or over. This is the distinction the list was missing entirely: an
+  // incident from two weeks ago that fixed itself looked exactly like the outage happening
+  // right now, and "acknowledged" did not help, because that only says a human looked.
+  const ongoing = !a.resolvedAt;
   const when = new Date(a.createdAt);
   const ago = (() => { const s = Math.max(0, (Date.now() - when.getTime()) / 1000); if (s < 60) return t('sp.ago.now', 'just now'); if (s < 3600) return t('sp.ago.m', '{n}m ago').replace('{n}', Math.floor(s / 60)); if (s < 86400) return t('sp.ago.h', '{n}h ago').replace('{n}', Math.floor(s / 3600)); return t('sp.ago.d', '{n}d ago').replace('{n}', Math.floor(s / 86400)); })();
   const copy = (e) => { e.stopPropagation(); navigator.clipboard?.writeText(`[${a.kind}] ${a.message} — ${when.toLocaleString()}`); toast.success(t('common.copied', 'Copied.')); };
   return (
-    <Card className="p-0 overflow-hidden">
-      <button onClick={() => setOpen((v) => !v)} className="w-full p-3 flex items-center gap-3 text-start hover:bg-[var(--surface-2)] transition">
-        <AlertTriangle size={15} className={`${info.tone} shrink-0`} />
-        <Badge tone={info.tone.includes('red') ? 'red' : 'amber'} className="shrink-0">{info.label}</Badge>
-        <span className="flex-1 min-w-0 text-[var(--muted)] truncate" title={a.message}>{a.message}</span>
+    // A resolved row is deliberately quieter, and an ongoing critical one carries a rule on
+    // its leading edge: the eye finds the live problems before it reads a word.
+    <Card className={`p-0 overflow-hidden ${ongoing ? `border-s-[3px] ${a.severity === 'critical' ? 'border-s-[var(--error)]' : a.severity === 'info' ? 'border-s-[var(--primary)]' : 'border-s-[var(--warning)]'}` : 'opacity-75'}`}>
+      {/* Two rows on a phone, one from sm: five things beside each other in 360px is how the
+          message ends up as three visible characters. */}
+      <button onClick={() => setOpen((v) => !v)} className="w-full p-3 flex flex-wrap sm:flex-nowrap items-center gap-x-3 gap-y-1.5 text-start hover:bg-[var(--surface-2)] transition">
+        <SevIcon size={15} className={`${ongoing ? sev.tone : 'text-[var(--faint)]'} shrink-0`} />
+        <Badge tone={ongoing ? sev.badge : ''} className="shrink-0">{t(sev.l, sev.lf)}</Badge>
+        <span className="shrink-0 text-[11px] text-[var(--muted)]">{info.label}</span>
+        {/* The one word somebody is actually scanning for. */}
+        {ongoing
+          ? <Badge tone="red" className="shrink-0">{t('sp.al.ongoing', 'Still happening')}</Badge>
+          : <span className="shrink-0 text-[11px] text-[var(--faint)]">{t('sp.al.over', 'Over')}</span>}
+        <span className="w-full sm:w-auto sm:flex-1 min-w-0 text-[var(--muted)] truncate order-last sm:order-none" title={a.message}>{a.message}</span>
         {a.count > 1 && <Badge className="shrink-0 tabular-nums">×{a.count}</Badge>}
         <button onClick={copy} className="text-[var(--faint)] hover:text-[var(--accent-ink)] shrink-0" title={t('common.copy', 'Copy')}><Copy size={13} /></button>
         <span className="text-[11px] text-[var(--faint)] shrink-0 tabular-nums">{ago}</span>
@@ -18617,6 +18672,12 @@ function AlertRow({ a }) {
               ? <><span>{t('sp.al.occ', 'Occurrences:')} <b className="text-[var(--muted)]">{a.count}</b></span><span>{t('sp.al.lastlbl', 'Last:')} {when.toLocaleString()}</span>{a.firstAt && <span>{t('sp.al.firstlbl', 'First:')} {new Date(a.firstAt).toLocaleString()}</span>}</>
               : <span>{t('sp.al.whenlbl', 'When:')} {when.toLocaleString()}</span>}
             <span>{ago}</span>
+            {/* Said explicitly, because "resolved" and "acknowledged" are two different
+                facts and the list used to show only the second. */}
+            {a.resolvedAt
+              ? <span className="text-[var(--success)]">{t('sp.al.resolvedat', 'Stopped: {d}').replace('{d}', new Date(a.resolvedAt).toLocaleString())}</span>
+              : <span className="text-[var(--error)]">{t('sp.al.stillon', 'The condition is still true.')}</span>}
+            {a.ackAt && <span>{t('sp.al.ackedat', 'Seen: {d}').replace('{d}', new Date(a.ackAt).toLocaleString())}</span>}
           </div>
         </div>
       )}
@@ -20765,7 +20826,7 @@ function AdminCatalogs() {
         <SettingsPointer className="mb-3" keys={['pricing.catalogHostPerMBCents']}>{t('cc.admin.ptr.price', 'What the excess costs')}</SettingsPointer>
         <p className="text-sm text-[var(--muted)]">{t('cc.admin.desc2', 'Owner-hosted catalogs. Suspend takes one offline for everyone; unlist just removes it from the public browser (its URL still works); delete purges it. Examine reads the hosted files without running anything.')}</p>
       </div>
-      <div className="relative"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" /><Input className="!ps-9" placeholder={t('cc.admin.search2', 'Search name, owner, email or creator id…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
+      <div className="relative"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" /><Input className="!ps-9" placeholder={t('cc.admin.search2', 'Search name, owner, email or creator id…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
       {loading ? <Loading /> : rows.length ? <div className="space-y-1.5">
         {rows.map((c) => { const cur = c.status === 'SUSPENDED' ? 'suspended' : c.listed ? 'online' : 'offline'; const cr = (c.creators || [])[0];
         // Stack on phones: the status select + Examine + delete sat beside the text, so on a
@@ -21020,7 +21081,7 @@ function AdminBadgeHolders({ badge, onClose }) {
   return (
     <Modal open onClose={onClose} title={t('ab.holders.t', 'Grant: {n}').replace('{n}', badge.name)} icon={Users} width="max-w-lg">
       <Field label={t('ab.grantto2', 'Grant to, search by name, e-mail, id or BC id')} className="mb-2">
-        <div className="relative"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" /><Input className="!ps-9" value={who} onChange={(e) => setWho(e.target.value)} placeholder="BC-XXXX-XXXX · name · user@example.com" autoFocus /></div>
+        <div className="relative"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" /><Input className="!ps-9" value={who} onChange={(e) => setWho(e.target.value)} placeholder="BC-XXXX-XXXX · name · user@example.com" autoFocus /></div>
       </Field>
       {who.trim().length >= 2 && (
         <div className="rounded-lg border border-[var(--line)] mb-3 max-h-56 overflow-auto divide-y divide-[var(--line)]">
@@ -23547,7 +23608,7 @@ function LocaleStringEditor({ locale, core, allKeys, onClose }) {
               <div className="flex justify-end gap-2"><Button size="sm" variant="ghost" onClick={() => { setImporting(false); setImportText(''); }}>{t('common.cancel', 'Cancel')}</Button><Button size="sm" variant="primary" onClick={applyImport}>{t('lc.import.apply', 'Load')}</Button></div>
             </div>
           )}
-          <div className="relative"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
+          <div className="relative"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" />
             <Input className="!ps-9" placeholder={scope === 'all' ? t('lc.searchall', 'Search all strings…') : t('lc.searchkeys', 'Search the core strings…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
           <p className="text-xs text-[var(--faint)]">{scope === 'all' ? t('lc.hint.all', 'Every string in the app. Anything left blank falls back to English.') : t('lc.hint', 'The most visible strings. Anything left blank falls back to English.')} · {t('lc.showing', 'showing {a} of {b}').replace('{a}', keys.length).replace('{b}', matching.length)}</p>
           <div className="max-h-[48vh] overflow-auto space-y-2.5 pe-1">
@@ -23900,7 +23961,7 @@ function BotI18nCard() {
               <Input className="!py-1 !text-xs w-16" placeholder="it" maxLength={5} value={custom} onChange={(e) => setCustom(e.target.value.toLowerCase())} />
               <Button size="sm" variant="ghost" disabled={!/^[a-z]{2}$/.test(custom) || langs.includes(custom)} onClick={() => { setLang(custom); setDraft({}); setCustom(''); }}><Plus size={13} /> {t('bi.addlang', 'Add a language')}</Button>
             </div>
-            <div className="relative flex-1 min-w-[12rem]"><Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" /><Input className="!ps-8 !py-1.5 !text-sm" placeholder={t('bi.search', 'Search a key or a text…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
+            <div className="relative flex-1 min-w-[12rem]"><Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" /><Input className="!ps-8 !py-1.5 !text-sm" placeholder={t('bi.search', 'Search a key or a text…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
             <span className="text-[11px] text-[var(--faint)]">{t('bi.missing', '{n} of {k} keys without a text in {l}').replace('{n}', missing).replace('{k}', keys.length).replace('{l}', lang.toUpperCase())}</span>
             <Button size="sm" variant="primary" disabled={!changed || busy} onClick={save}>{busy ? <Spinner /> : <Save size={13} />} {t('bi.save', 'Save {n}').replace('{n}', changed)}</Button>
           </div>
