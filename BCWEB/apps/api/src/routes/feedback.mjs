@@ -111,6 +111,165 @@ function cmpVersion(a, b) {
   return 0;
 }
 
+/* ── The same crash, however many people hit it ───────────────────────────────────────────
+ *
+ * `fingerprint` does NOT answer this. It is a DEDUPE key: supplied by the client or hashed
+ * from the title plus the first 2 KB of the body, and only ever compared inside one sender's
+ * dedupe window. Two people hitting the identical bug produce two different fingerprints the
+ * moment either of their machines puts a different path, a different pointer or a different
+ * mod name in the text — which is always.
+ *
+ * So the grouping key is derived from the STACK, and from nothing else. Frames are stripped
+ * of everything that varies between two machines running the same build:
+ *
+ *   · absolute paths → the base name, because C:\Users\alice\… and /home/bob/… are one frame;
+ *   · :line:col → dropped, because a point release moves every line in the file;
+ *   · 0x… addresses and Rust's ::h<16 hex> symbol hashes → dropped, they differ per build;
+ *   · the frame's ordinal (`12:`) → dropped, it shifts when anything above it inlines.
+ *
+ * Only the TOP frames count (SIG_FRAMES). Deep in a stack every crash looks alike — main,
+ * the runtime, the event loop — so a signature over the whole trace groups everything that
+ * ever crashed into one bucket. The top is where the crash actually is.
+ *
+ * When there is no stack at all the group falls back to a normalised MESSAGE and says so
+ * (`weak: true`). That is a materially worse grouping and the screen has to admit it rather
+ * than present it as the same thing.
+ */
+const SIG_FRAMES = 8;
+
+/**
+ * Frames that are the CRASH MACHINERY rather than the crash.
+ *
+ * This is not a nicety, it is what makes the grouping work at all. BMM captures its
+ * backtrace inside `generate_report`, called from the panic hook — so the top of every single
+ * BMM backtrace is identical: the backtrace crate, `std::panicking`, the hook, and BMM's own
+ * crash module. A signature over the literal top eight frames puts every crash BMM has ever
+ * produced into one group, which looks like a working feature and tells you nothing.
+ *
+ * So a LEADING run of these is dropped, and the signature starts at the first frame that
+ * belongs to the program. Only leading: the same names further down are real, and cutting
+ * them there would merge unrelated crashes that happen to unwind through a panic.
+ */
+const NOISE_FRAME_RE = new RegExp([
+  'backtrace::', 'std::panicking', 'core::panicking', 'rust_begin_unwind', '__rust_',
+  'std::sys_common::backtrace', 'std::sys::backtrace', '::commands::crash::',
+  'generate_report', 'panic_hook', 'set_hook',
+  'captureStackTrace', '^Error$', 'node:internal/process/promises',
+].join('|'));
+
+/** Rust's `thread '…' panicked at src/x.rs:1:2:`, JS `at fn (file:1:2)`, and plain frames. */
+const FRAME_RE = /^\s*(?:\d+:\s*)?(?:at\s+)?(.+)$/;
+
+/**
+ * A `             at src/commands/mods.rs:412` line, which is not a frame.
+ *
+ * Rust's backtrace printer puts the symbol on one line and its source location on the next,
+ * indented. Counted as frames of their own, those locations DOUBLE the stack and — worse —
+ * break the skipping of the panic-hook prefix, because `mod.rs` is not a machinery symbol
+ * even though it is the machinery's own file. It belongs to the line above it.
+ *
+ * A JavaScript `at fn (file:1:2)` is a real frame and is deliberately not matched: this is
+ * only a bare location, with no callee and no parentheses.
+ */
+function isLocationOnly(line) {
+  return /^\s+at\s+\S+$/.test(String(line)) && !/[()]/.test(line);
+}
+
+/** Does this line look like a stack frame rather than prose? */
+function looksLikeFrame(line) {
+  const s = String(line);
+  if (!s.trim()) return false;
+  if (/^\s*(?:at\s|\d+:\s)/.test(s)) return true;               // JS "at …", Rust "12: …"
+  if (/^\s*\S+\.(?:rs|js|mjs|cjs|ts|jsx|tsx|dll|so|dylib|exe):\d+/.test(s)) return true;
+  if (/::[A-Za-z_]\w*/.test(s) && !/\s{2,}\S+\s+\S+\s+\S+\s+\S+/.test(s)) return true; // rust path
+  return false;
+}
+
+/** One frame, with everything that differs between two machines taken out of it. */
+export function normaliseFrame(line) {
+  let s = String(line).replace(FRAME_RE, '$1').trim();
+  s = s.replace(/\(([^)]*)\)\s*$/, ' $1');                      // "fn (file:1:2)" → "fn file:1:2"
+  s = s.replace(/0x[0-9a-fA-F]+/g, '');                         // addresses
+  s = s.replace(/::h[0-9a-f]{4,20}\b/g, '');                    // Rust symbol hashes
+  s = s.replace(/[A-Za-z]:[\\/][^\s:]*[\\/]/g, '');             // C:\Users\alice\…\
+  s = s.replace(/(?:^|[\s(])\/[^\s:]*\//g, ' ');                // /home/bob/…/
+  s = s.replace(/:\d+(?::\d+)?\b/g, '');                        // :line:col
+  s = s.replace(/<[^>]{0,40}>/g, '<>');                         // generics, <anonymous>
+  s = s.replace(/-[0-9a-f]{8,}\b/g, '');                        // vite/webpack chunk hashes
+  s = s.replace(/\s+/g, ' ').trim();
+  return s;
+}
+
+/**
+ * The stack text a report carries, wherever the sender put it.
+ *
+ * BMM has no single agreed field, so every place one has been seen is checked and the first
+ * non-empty one wins. The BODY is last on purpose: it is prose plus a trace, and a dedicated
+ * field is always the better source when there is one.
+ */
+export function stackTextOf(row) {
+  const m = row?.meta && typeof row.meta === 'object' ? row.meta : {};
+  for (const k of ['stack', 'stackTrace', 'stack_trace', 'backtrace', 'panic', 'trace']) {
+    const v = m[k];
+    if (typeof v === 'string' && v.trim()) return v;
+    if (Array.isArray(v) && v.length) return v.join('\n');
+  }
+  if (m.error && typeof m.error === 'object' && typeof m.error.stack === 'string') return m.error.stack;
+  return String(row?.body || '');
+}
+
+/** A message with the variable parts taken out, for reports that carry no stack at all. */
+function normaliseMessage(s) {
+  return String(s || '')
+    .replace(/[A-Za-z]:[\\/][^\s"']+/g, '<path>')
+    .replace(/\/[^\s"']{4,}/g, '<path>')
+    .replace(/0x[0-9a-fA-F]+/g, '<addr>')
+    .replace(/\b\d[\d.]*\b/g, '<n>')
+    .replace(/["'][^"']{0,80}["']/g, '<s>')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 200);
+}
+
+/**
+ * `{ sig, weak, frames }` for one report. Exported so the test suite can assert that two
+ * traces from two machines land in one bucket and two different bugs do not.
+ */
+export function stackSignature(row) {
+  // Already derived from the crash BUNDLE by whoever opened it (see
+  // POST /admin/feedback/:id/crashsig). That reading saw the real backtrace; this one is
+  // looking at prose the sender typed, so the bundle always wins.
+  const idx = row?.meta && typeof row.meta === 'object' ? row.meta._crash : null;
+  if (idx && typeof idx.sig === 'string' && idx.sig) {
+    return { sig: idx.sig, weak: !!idx.weak, frames: Array.isArray(idx.frames) ? idx.frames : [], source: 'bundle' };
+  }
+  const text = stackTextOf(row);
+  const all = [];
+  for (const line of String(text).split('\n')) {
+    if (isLocationOnly(line) && all.length) {
+      const loc = normaliseFrame(line);
+      if (loc) all[all.length - 1] = `${all[all.length - 1]} ${loc}`;
+      continue;
+    }
+    if (!looksLikeFrame(line)) continue;
+    const n = normaliseFrame(line);
+    // A frame that normalises away to nothing (a bare address, a lone path) carries no
+    // grouping information; keeping it would make the signature depend on how many of them
+    // the runtime happened to print.
+    if (n.length < 3) continue;
+    all.push(n);
+    if (all.length >= SIG_FRAMES * 4) break;
+  }
+  let cut = 0;
+  while (cut < all.length && NOISE_FRAME_RE.test(all[cut])) cut++;
+  // Every frame was machinery: that is a stack, just not one with a program in it. Better to
+  // sign what is there than to fall back to the message and call it weak.
+  const frames = (cut < all.length ? all.slice(cut) : all).slice(0, SIG_FRAMES);
+  if (frames.length) return { sig: sha1(frames.join('\n')).slice(0, 16), weak: false, frames, source: 'text' };
+  const msg = normaliseMessage(row?.title || String(row?.body || '').split('\n')[0]);
+  return { sig: `m${sha1(msg).slice(0, 15)}`, weak: true, frames: [], message: msg, source: 'message' };
+}
+
 const safeName = (n) => String(n || 'file').replace(/[^\w.-]+/g, '_').slice(0, 80) || 'file';
 const attachmentIn = z.object({
   name: z.string().min(1).max(160),
@@ -272,6 +431,15 @@ export default async function feedbackRoutes(app) {
     }
 
     const meta = d.meta && typeof d.meta === 'object' ? JSON.parse(JSON.stringify(d.meta).slice(0, 16_000)) : undefined;
+    // The creator id as SENT, kept for the record even when it proved nothing.
+    //
+    // This line used to read a bare `creatorId` that was never declared anywhere in the
+    // module: a ReferenceError inside the handler, so every single submission — feedback,
+    // bug and crash alike — answered 500 after the attachments had already been written to
+    // storage. It parses, it lints, and it throws at the one moment nobody is watching. The
+    // column is `String @default("")`, so an unproven or absent header stores the empty
+    // string rather than null.
+    const creatorId = String(req.headers['x-creator-id'] || '').slice(0, 200).toLowerCase();
     const row = await p.feedback.create({ data: {
       id, projectKey: key, kind: d.kind, title: d.title.slice(0, 200), body: d.body, appVersion: d.appVersion, os: d.os, meta: meta ?? undefined,
       attachments: stored, fingerprint, userId, email: d.email, creatorId, ipHash: ipHash(ip),
@@ -391,6 +559,131 @@ export default async function feedbackRoutes(app) {
       counts: Object.fromEntries(byStatus.map((s) => [s.status, s._count._all])),
       versions: versions.map((v) => ({ version: v.appVersion, n: v._count._all })),
     };
+  });
+
+  /* ── Crashes, grouped ──────────────────────────────────────────────────────────────────
+   *
+   * The list answers "what arrived"; this answers "what is BROKEN", which is a different
+   * question and the one the inbox could not be made to answer by sorting it. One group is
+   * one crash: how many reports, how many DISTINCT senders, over what period, on which
+   * versions and which systems.
+   *
+   * "Distinct senders" counts accounts where there is one and salted IP hashes otherwise, so
+   * it is a floor, not a headcount: one person on two networks counts twice, a household
+   * behind one address counts once, and a report with neither counts as its own. The screen
+   * says "at least N" for exactly that reason.
+   *
+   * A bounded window, like the severity sort: crashes are grouped in memory because the
+   * signature is derived, not stored in a column that could be grouped on in SQL.
+   */
+  const CRASH_WINDOW = 3000;
+  app.get('/admin/feedback/crashes', { preHandler: READ }, async (req) => {
+    const p = await db();
+    const q = req.query || {};
+    const days = Math.min(365, Math.max(1, parseInt(q.days, 10) || 30));
+    const where = { kind: 'crash', createdAt: { gte: new Date(Date.now() - days * 86_400_000) } };
+    if (q.project) where.projectKey = String(q.project).slice(0, 40);
+    if (q.version) where.appVersion = String(q.version).slice(0, 40);
+    if (q.status && STATUSES.includes(q.status)) where.status = q.status;
+    const total = await p.feedback.count({ where });
+    const rows = await p.feedback.findMany({ where, orderBy: { createdAt: 'desc' }, take: CRASH_WINDOW });
+
+    const groups = new Map();
+    let indexed = 0;
+    for (const r of rows) {
+      const s = stackSignature(r);
+      if (s.source === 'bundle') indexed++;
+      let g = groups.get(s.sig);
+      if (!g) {
+        g = {
+          sig: s.sig, weak: s.weak, source: s.source, frames: s.frames.slice(0, SIG_FRAMES),
+          title: r.title || s.message || '', reports: 0, occurrences: 0,
+          first: r.createdAt, last: r.createdAt,
+          versions: new Map(), os: new Map(), senders: new Set(), statuses: new Map(),
+          sampleId: r.id, ids: [],
+        };
+        groups.set(s.sig, g);
+      }
+      // The best title in the group wins: a signature is shared by reports whose titles are
+      // "crash", "it closed" and the actual panic line, and the last of those is the one an
+      // admin can act on.
+      if ((r.title || '').length > (g.title || '').length) g.title = r.title;
+      // A group built from bundles must SAY so even if the first row it met had none.
+      if (s.source === 'bundle' && g.source !== 'bundle') { g.source = 'bundle'; g.weak = s.weak; g.frames = s.frames.slice(0, SIG_FRAMES); g.sampleId = r.id; }
+      g.reports++;
+      g.occurrences += Math.max(1, r.count || 1);
+      if (r.createdAt < g.first) g.first = r.createdAt;
+      if (r.createdAt > g.last) g.last = r.createdAt;
+      const bump = (m, k) => { if (k) m.set(k, (m.get(k) || 0) + 1); };
+      bump(g.versions, r.appVersion);
+      bump(g.os, r.os);
+      bump(g.statuses, r.status);
+      g.senders.add(r.userId ? `u:${r.userId}` : r.ipHash ? `i:${r.ipHash}` : `r:${r.id}`);
+      if (g.ids.length < 200) g.ids.push(r.id);
+    }
+    const pair = (m) => [...m.entries()].sort((a, b) => b[1] - a[1]).map(([k, n]) => ({ k, n }));
+    const out = [...groups.values()].map((g) => ({
+      sig: g.sig, weak: g.weak, source: g.source, frames: g.frames, title: g.title,
+      reports: g.reports, occurrences: g.occurrences, people: g.senders.size,
+      first: g.first, last: g.last,
+      versions: pair(g.versions), os: pair(g.os), statuses: Object.fromEntries(pair(g.statuses).map((x) => [x.k, x.n])),
+      sampleId: g.sampleId, ids: g.ids,
+    }));
+    // People first, then occurrences: a crash two hundred people met once outranks one a
+    // single person met two hundred times, which is usually one broken install.
+    out.sort((a, b) => b.people - a.people || b.occurrences - a.occurrences || new Date(b.last) - new Date(a.last));
+    return {
+      groups: out, days, scanned: rows.length, total,
+      windowed: total > rows.length, windowSize: CRASH_WINDOW,
+      indexed, unindexed: rows.length - indexed,
+    };
+  });
+
+  /**
+   * The signature a browser derived from the attached crash BUNDLE, written onto the report.
+   *
+   * The server never OPENS the zip. It is the sender's machine in a bottle — personal paths,
+   * a game library, sometimes a token in a log line — and unzipping arbitrary archives in the
+   * API is a decompression bomb waiting for a slow afternoon. The admin screen reads it
+   * locally, with the same reader the developer tool uses, and posts back the one entry that
+   * decides the grouping: `stacktrace.txt`.
+   *
+   * The SERVER computes the signature from it, and that is the point of doing it this way
+   * round. A signature computed in the browser would be a second implementation of the
+   * normalising rules, and the day the two drift the same crash quietly splits into two
+   * groups with nothing to report it. The raw text is used for the hash and thrown away; what
+   * is stored is normalised frames, which have had the paths taken out of them already.
+   *
+   * Sending the trace to us discloses nothing new: the archive it came out of is sitting in
+   * our own object storage, submitted as an attachment.
+   *
+   * It is stored under `meta._crash`, a reserved key on a column that already exists, so the
+   * grouping gets better every time somebody opens a crash and nothing had to be migrated.
+   */
+  const crashSigIn = z.object({
+    stack: z.string().max(400_000),
+    reason: z.string().max(400).optional().default(''),
+    version: z.string().max(40).optional().default(''),
+  });
+  app.post('/admin/feedback/:id/crashsig', { preHandler: READ }, async (req, reply) => {
+    const b = crashSigIn.safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input', detail: b.error.issues?.[0]?.message });
+    const p = await db();
+    const r = await p.feedback.findUnique({ where: { id: req.params.id }, select: { meta: true, title: true, body: true } });
+    if (!r) return reply.code(404).send({ error: 'not_found' });
+    // Signed on the BUNDLE's trace, with the report's own title only as the last-resort
+    // fallback inside stackSignature — never on `meta`, which is where the answer will be
+    // written and would otherwise be read back as its own input.
+    const s = stackSignature({ meta: {}, title: b.data.reason || r.title, body: b.data.stack });
+    const meta = r.meta && typeof r.meta === 'object' && !Array.isArray(r.meta) ? { ...r.meta } : {};
+    // Only `_crash` is writable here. Everything else in `meta` is what the SENDER said, and
+    // a staff endpoint that could rewrite it would make the report unciteable.
+    meta._crash = {
+      sig: s.sig, weak: s.weak, frames: s.frames.slice(0, SIG_FRAMES),
+      reason: b.data.reason, version: b.data.version, at: new Date().toISOString(),
+    };
+    await p.feedback.update({ where: { id: req.params.id }, data: { meta } });
+    return { ok: true, crash: meta._crash };
   });
 
   app.get('/admin/feedback/:id', { preHandler: READ }, async (req, reply) => {

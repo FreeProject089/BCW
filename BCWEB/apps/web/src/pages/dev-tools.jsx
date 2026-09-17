@@ -2,6 +2,11 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { FileJson, Activity, ArrowLeft, CheckCircle2, AlertTriangle, XCircle, FlaskConical , Link2 as LinkIcon, ShieldCheck, Copy, Network, Lock, Wrench, ChevronDown, Search } from 'lucide-react';
 import BmmInspector from '../ui/bmm-inspector.jsx';
+// The crash-bundle reader. A plain import, not a lazy one: this page is already a route
+// chunk of its own, and the tool carries no library — the zip work is the platform's
+// DecompressionStream through lib/zip-read.js, which admin.jsx already loads. Nothing here
+// reaches the entry chunk.
+import CrashBundleTool from './dev-crash.jsx';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { Card, Button, Input, Textarea, Badge, Field, Spinner, EmptyState, useToast , Select } from '../ui/ui.jsx';
@@ -716,6 +721,10 @@ export default function DevTools() {
         // Entirely in the page: it reads a published vocabulary and checks text. Nothing is
         // uploaded, which matters for a file that may hold somebody's shell script.
         { id: 'bmmscript', label: t('dvt.bms.title', 'Check a .bmmscript'), el: <BmmScriptChecker /> },
+        // No account, and no server route at all. A crash bundle is the sender's machine in
+        // a bottle, so the one thing this tool must not do is make a copy of it on our disk
+        // — which is also why it cannot be gated behind a login it does not need.
+        { id: 'crash', label: t('dcr.title', 'Read a BMM crash bundle'), el: <CrashBundleTool />, wide: true },
       ],
     },
   ];
