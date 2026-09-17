@@ -273,6 +273,7 @@ export default function DevMarkdown() {
         <h1 className="text-3xl sm:text-4xl font-extrabold leading-tight">
           {t('devmd.title', 'B.MD, better.markdown')}
         </h1>
+        {/* wall-of-text: documentation, the paragraph is the content. */}
         <p className="mt-3 text-[15px] leading-relaxed text-[var(--muted)]">
           {t('devmd.lede3', 'A block system on GitHub-flavoured Markdown — callouts, cards, tabs, steps, columns, brand buttons, file downloads, a roadmap, opening hours, API cards, embeds, live values, diagrams, maths. It is a React component you install or copy into your project, and it is the same one every page on this site renders with.')}
         </p>
@@ -358,6 +359,7 @@ export default function DevMarkdown() {
       {/* ── Install ── */}
       <section className="space-y-3">
         <h2 className="text-lg font-semibold flex items-center gap-2"><Package size={16} /> {t('devmd.install', 'Put it in your project')}</h2>
+        {/* wall-of-text: documentation, the paragraph is the content. */}
         <p className="text-sm text-[var(--muted)] max-w-2xl">
           {t('devmd.install.1b', 'B.MD is the `@bettercommunity/bmd` package (packages/bmd in the repo: sources, a README, docs/ block by block, a CHANGELOG). Install it with its peer dependencies — or copy its src/ folder — the renderer, its nesting and shorthand pre-passes, the emoji table, the brand marks and one stylesheet. There is no package to publish and nothing to configure to get the first document on screen.')}
         </p>
@@ -396,6 +398,7 @@ export default function DevMarkdown() {
       {/* ── Theming ── */}
       <section className="space-y-3">
         <h2 className="text-lg font-semibold flex items-center gap-2"><Palette size={16} /> {t('devmd.theme', 'Make it yours')}</h2>
+        {/* wall-of-text: documentation, the paragraph is the content. */}
         <p className="text-sm text-[var(--muted)] max-w-2xl">
           {t('devmd.theme.1', 'The stylesheet defines no colours of its own — it reads variables you already have, or that you can write in ten lines. Change them and every block follows: callouts, cards, buttons, the step rail, the table of contents. There is no theme prop and no !important anywhere, so overriding one rule in your own stylesheet just works.')}
         </p>
@@ -405,8 +408,10 @@ export default function DevMarkdown() {
       {/* ── Security ── */}
       <section className="space-y-3">
         <h2 className="text-lg font-semibold flex items-center gap-2"><ShieldCheck size={16} /> {t('devmd.sec', 'It renders text other people wrote')}</h2>
+        {/* wall-of-text: documentation, the paragraph is the content. */}
         <div className="text-sm text-[var(--muted)] max-w-2xl space-y-2">
           <p>{t('devmd.sec.1', 'Raw HTML in a document is allowed and then sanitised against a schema that permits exactly what the block system emits and nothing else: no script tags, no on* handlers, no javascript: URLs. An iframe survives sanitising and is then filtered again to YouTube only, so an author cannot smuggle an arbitrary frame into a page.')}</p>
+          {/* wall-of-text: documentation, the paragraph is the content. */}
           <p>{t('devmd.sec.2', 'Two choices worth knowing before you change them. KaTeX runs after the sanitiser — it has to, its output would be stripped as unknown markup — and that is safe because it renders from the text of a math node with trust left false, which is what disables the commands that can emit markup. And single-dollar inline maths is off: remark-math reads "$5 and $10" as a formula, which is a silent failure on any site that quotes a price.')}</p>
         </div>
       </section>

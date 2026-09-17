@@ -4,7 +4,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import {
   Rocket, Upload, CheckCircle2, XCircle, HardDrive, Gauge, Zap, Sliders, Receipt, Plus, Mail, RefreshCw, X, ChevronDown, AlertTriangle, Ticket, CreditCard, Gift, Layers, ShoppingCart, Save, MessageSquare, Server, Boxes, Check, Globe, Star, CalendarClock,
 } from 'lucide-react';
-import { Button, Card, Badge, Input, Select, PageHeader, Spinner, Modal, bestByteUnit, bytesInUnit, useDialog, useToast } from '../ui/ui.jsx';
+import { Button, Card, Badge, Input, Select, PageHeader, Spinner, Modal, bestByteUnit, bytesInUnit, useDialog, useToast, Explain } from '../ui/ui.jsx';
 import { api } from '../lib/api.js';
 import { normaliseTerm, discountFor, snapTerm, termTotalCents, nextTier } from '../lib/hosting-term.js';
 import { useAuth } from './auth.jsx';
@@ -962,12 +962,20 @@ function TermBar({ months, setMonths, term, sample }) {
     <Card className="p-4 sm:p-5 mb-7">
       <div className="mb-4">
         <div className="font-semibold text-[14.5px]">{t('hosting.termbar.t4', 'How long you pay for, up front')}</div>
-        {/* True to the code, in three sentences: what the term is, what auto-renew does
-            (it is ON by default in the cart, so "nothing renews on its own" was false), and
-            what happens when it runs out (suspended at once, deleted after the grace). */}
+        {/* The sentence that changes what you click stays; the two that describe what
+            happens LATER fold. Somebody choosing a term needs to know the price below is for
+            that many months and that longer is cheaper per month; renewal and what happens at
+            the end are the next decision, made in the cart, and printing them here put a
+            five-line paragraph above every price on the page.
+            Nothing is cut: both sentences are true to the code, which is worth saying because
+            an earlier version of them was not (auto-renew is ON by default in the cart, and
+            the pool is suspended at once rather than at the end of the grace). */}
         <p className="text-[12.5px] text-[var(--muted)] mt-1 leading-relaxed max-w-3xl">
-          {t('hosting.termbar.s4', 'Every price below is for this many months, paid once at checkout — the longer the term, the less each month costs. In the cart you choose whether it auto-renews: on, and the same term is billed again when it ends (cancel any time from Billing; terms over 12 months never auto-renew); off, and nothing is charged again — the pool is suspended the day the term ends and deleted after a grace period (72 hours by default, a week after a failed payment) unless you renew it.')}
+          {t('hosting.termbar.s5', 'Every price below is for this many months, paid once at checkout. The longer the term, the less each month costs.')}
         </p>
+        <Explain className="text-[12.5px] mt-1.5 max-w-3xl">
+          {t('hosting.termbar.s4b', 'In the cart you choose whether it auto-renews. On, the same term is billed again when it ends, and you can cancel any time from Billing; a term over 12 months never auto-renews. Off, nothing is charged again: the pool is suspended the day the term ends, and deleted after a grace period (72 hours by default, a week after a failed payment) unless you renew it.')}
+        </Explain>
       </div>
       <TermControl months={months} setMonths={setMonths} term={term} sample={sample} t={t} />
     </Card>

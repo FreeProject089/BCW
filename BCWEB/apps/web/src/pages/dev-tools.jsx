@@ -9,7 +9,7 @@ import BmmInspector from '../ui/bmm-inspector.jsx';
 import CrashBundleTool from './dev-crash.jsx';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
-import { Card, Button, Input, Textarea, Badge, Field, Spinner, EmptyState, useToast , Select } from '../ui/ui.jsx';
+import { Card, Button, Input, Textarea, Badge, Field, Spinner, EmptyState, useToast , Select, Explain } from '../ui/ui.jsx';
 // useAsync lives in pages.jsx. It was USED before it was imported here and the build still
 // passed — esbuild does not resolve free identifiers, so a missing import is a runtime
 // ReferenceError, not a build error. A green build says nothing about this.
@@ -378,9 +378,7 @@ function BmmScriptChecker() {
 }`} />
 
       {!loading && !vocab && (
-        <p className="mt-3 text-[12px] text-[var(--muted)]">
-          {t('dvt.bms.novocab', 'BMM has not published its vocabulary yet, so only the shape is checked. In BMM run `node scripts/gen-bmms-reference.mjs`, then upload dist-assets/bmms-vocabulary.json as the platform asset `bmms-vocabulary.json`. This reads it rather than keeping its own list of action names, which would be wrong the next time an action is added.')}
-        </p>
+        <Explain className="mt-3 text-[12px]">{t('dvt.bms.novocab', 'BMM has not published its vocabulary yet, so only the shape is checked. In BMM run `node scripts/gen-bmms-reference.mjs`, then upload dist-assets/bmms-vocabulary.json as the platform asset `bmms-vocabulary.json`. This reads it rather than keeping its own list of action names, which would be wrong the next time an action is added.')}</Explain>
       )}
 
       {result && (

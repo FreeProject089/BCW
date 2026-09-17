@@ -13,7 +13,7 @@ import {
 import { Bug as BugIcon } from 'lucide-react';
 // The `all` sub-tab on Hosting settings; nothing else here needs a plain list glyph.
 import { List } from 'lucide-react';
-import { Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, EmptyState, Spinner, Modal, ActionBar, ByteSize, formatBytes, useDialog, useToast, copyText, ColorInput } from '../ui/ui.jsx';
+import { Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, EmptyState, Spinner, Modal, ActionBar, ByteSize, formatBytes, useDialog, useToast, copyText, ColorInput, Explain } from '../ui/ui.jsx';
 import { AppLogo } from '../ui/brand.jsx';
 import Markdown, { IconGlyph, ShowcaseIcon } from '../ui/md.jsx';
 import IconPicker from '../editor/icon-picker.jsx';
@@ -5218,7 +5218,7 @@ function RoleManager({ roles }) {
                     <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1">{t('rm.scope.showcases', 'Other projects')}</div>
                     <div className="flex flex-wrap gap-1.5">{(elements.data?.showcases || []).map((sc) => { const on = scopeSlugs.includes(sc.slug); return <button key={sc.slug} type="button" onClick={() => setScopeSlugs((k) => on ? k.filter((x) => x !== sc.slug) : [...k, sc.slug])} className={`px-2.5 py-1 rounded-lg border text-xs ${on ? 'border-[var(--primary)] tint-primary text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)]'}`}>{sc.name}</button>; })}</div>
                   </div>}
-                  <p className="text-[11px] text-[var(--faint)]">{t('rm.scope.h2', 'A member of this role gets the ticked rights on these elements only — page content like a per-project grant, blog posts like a blog permission, and the marketplace of those projects. Publishing, pinning, visibility and announcements stay with managers; the margin we take and the account sales are paid into stay with a super-admin.')}</p>
+                  <Explain className="text-[11px]">{t('rm.scope.h2', 'A member of this role gets the ticked rights on these elements only — page content like a per-project grant, blog posts like a blog permission, and the marketplace of those projects. Publishing, pinning, visibility and announcements stay with managers; the margin we take and the account sales are paid into stay with a super-admin.')}</Explain>
                 </div>
               )}
             </div>
@@ -6253,6 +6253,9 @@ function ClosureBanner({ user, onChanged, form, setForm }) {
           </button>
         ))}
       </div>
+      {/* wall-of-text: a warning about what a destructive action is about to do. Folding
+          it would put the consequences one click further away than the button that causes
+          them, which is the wrong way round. */}
       <p className="text-[11px] text-warning">
         {t('ud.cl.teardown', 'Scheduling it suspends their repositories, catalogs and items immediately — nothing is deleted, and calling it off puts each one back in the state it was in. On the date: subscriptions cancelled, everything deleted with its storage, pools removed. Nothing is transferred — if any of it should survive, move it to another account first.')}
       </p>
@@ -14013,7 +14016,7 @@ function MemberDatabaseCard({ cfg, set }) {
         </div>
         <BotSwitch checked={on} onChange={(v) => set('memberStorage.enabled', v)} />
       </div>
-      <p className="text-[11px] text-[var(--muted)] mb-3 max-w-3xl">{t('db.mdb.sub', 'One database for every server the bot is in — the full roster of each, refreshed every 30 minutes, with the roles, join date and last activity. Servers do not choose; their owners see their own list. Linked members are always kept; at the cap, inactive unlinked members are removed to make room (if eviction is on) — otherwise the database stops growing.')}</p>
+      <Explain className="text-[11px] mb-3 max-w-3xl">{t('db.mdb.sub', 'One database for every server the bot is in — the full roster of each, refreshed every 30 minutes, with the roles, join date and last activity. Servers do not choose; their owners see their own list. Linked members are always kept; at the cap, inactive unlinked members are removed to make room (if eviction is on) — otherwise the database stops growing.')}</Explain>
 
       {/* The scan bar: when the roster was last written, and the two actions, each of which
           visibly does something — a spinner while it runs, a timestamp / toast when it is done. */}
@@ -19052,7 +19055,7 @@ function SeoHealthCard() {
         </div>
         <Button size="sm" variant="ghost" disabled={busy} onClick={run}><RefreshCw size={13} className={busy ? 'animate-spin' : ''} /> {busy ? t('seoh.checking', 'Checking…') : t('seoh.recheck', 'Re-check')}</Button>
       </div>
-      <p className="text-[11px] text-[var(--faint)] mb-3">{t('seoh.sub', 'What search engines get from this site, checked live: the sitemap and robots files, the ownership tokens, and — per key page — the title, description and image the resolver serves. The same text feeds the tab title, the <head> tags and the pasted-link card, so a fix in “Link previews, per page” below repairs all three at once.')}</p>
+      <Explain className="text-[11px] mb-3">{t('seoh.sub', 'What search engines get from this site, checked live: the sitemap and robots files, the ownership tokens, and — per key page — the title, description and image the resolver serves. The same text feeds the tab title, the <head> tags and the pasted-link card, so a fix in “Link previews, per page” below repairs all three at once.')}</Explain>
       {!state ? <Spinner /> : (
         <>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2 mb-3">
@@ -21405,7 +21408,7 @@ function ProtectedWorks() {
   const doScan = async () => { setScan({ busy: true }); try { setScan(await api.post('/admin/rights/scan', {})); reload(); } catch { setScan({ error: true }); } };
   return (
     <div className="space-y-3">
-      <p className="text-sm text-[var(--muted)]">{t('rn.w.d', 'A registered work is matched against every file that lands and every listing that is created — by SHA-256 first (the work itself), then by a name pattern (a guess a person confirms), then by the address it was taken from. A hit opens a notice in the queue. This is the stay-down duty (Swiss CopA 39d) as code — the nearest a self-hosted service gets to what Content ID or Rights Manager do inside their own platforms.')}</p>
+      <Explain className="text-sm">{t('rn.w.d', 'A registered work is matched against every file that lands and every listing that is created — by SHA-256 first (the work itself), then by a name pattern (a guess a person confirms), then by the address it was taken from. A hit opens a notice in the queue. This is the stay-down duty (Swiss CopA 39d) as code — the nearest a self-hosted service gets to what Content ID or Rights Manager do inside their own platforms.')}</Explain>
       <div className="flex gap-2 flex-wrap">
         <Button size="sm" variant="primary" onClick={() => setDraft(blank)}><Plus size={14} /> {t('rn.w.add', 'Register a work')}</Button>
         <Button size="sm" onClick={doScan} disabled={scan?.busy}>{scan?.busy ? <Spinner /> : <Search size={14} />} {t('rn.w.scan', 'Scan everything hosted now')}</Button>
@@ -23850,7 +23853,7 @@ function BotI18nCard() {
   return (
     <Card className="mt-6 p-5">
       <h2 className="font-semibold mb-1 flex items-center gap-2"><MessageSquare size={16} className="text-[var(--accent-ink)]" /> {t('bi.title', 'Discord bot')}</h2>
-      <p className="text-sm text-[var(--muted)] mb-3">{t('bi.sub', 'Every text the bot shows — buttons, cards, the casino, the onboarding — per language. The bot ships English, French, German and Spanish; edit any of them here, or add a language by code (missing keys fall back to English). A server’s manager picks the bot’s language on the welcome card (/setup); “auto” follows each member’s own Discord language.')}</p>
+      <Explain className="text-sm mb-3">{t('bi.sub', 'Every text the bot shows — buttons, cards, the casino, the onboarding — per language. The bot ships English, French, German and Spanish; edit any of them here, or add a language by code (missing keys fall back to English). A server’s manager picks the bot’s language on the welcome card (/setup); “auto” follows each member’s own Discord language.')}</Explain>
       {loading ? <Spinner /> : !keys.length ? (
         <div className="text-sm text-[var(--faint)]">{t('bi.nobase', 'The bot has not reported its dictionary yet, it does on its first heartbeat after starting. Start the bot, then reload.')}</div>
       ) : (

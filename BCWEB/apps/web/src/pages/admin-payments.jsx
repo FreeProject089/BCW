@@ -9,7 +9,7 @@ import { useState } from 'react';
 import { RefreshCw, Clock, CheckCircle2, XCircle, AlertTriangle, CreditCard } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
-import { Card, Button, Badge, useToast } from '../ui/ui.jsx';
+import { Card, Button, Badge, useToast, Explain } from '../ui/ui.jsx';
 import { useAsync, Loading } from './pages.jsx';
 
 const TONE = { pending: '', paid: 'warning', delivered: 'success', failed: 'error' };
@@ -66,7 +66,7 @@ export function AdminPendingPayments() {
           <Button size="sm" variant="ghost" disabled={running} onClick={() => run(0)} title={t('adpay.runall.h', 'Same, including checkouts opened seconds ago. Use it when you know the webhook was down.')}>{t('adpay.runall', 'Include recent')}</Button>
         </div>
       </div>
-      <p className="text-sm text-[var(--muted)] mb-4 max-w-2xl">{t('adpay.sub', 'Every Stripe checkout is written here when it opens and finished by the webhook. A row that stays open after payment means the webhook never ran; the reconciler (at boot, every ten minutes, or the button) asks Stripe and delivers what was paid for. Paid-but-undelivered cases also raise an alert on the Errors page and notify super-admins.')}</p>
+      <Explain className="text-sm mb-4 max-w-2xl">{t('adpay.sub', 'Every Stripe checkout is written here when it opens and finished by the webhook. A row that stays open after payment means the webhook never ran; the reconciler (at boot, every ten minutes, or the button) asks Stripe and delivers what was paid for. Paid-but-undelivered cases also raise an alert on the Errors page and notify super-admins.')}</Explain>
 
       {stale.length > 0 && (
         <Card className="p-3 mb-4 border-[var(--warning)]">

@@ -21,7 +21,7 @@ import {
 import { Bug as BugIcon } from 'lucide-react';
 import { useI18n } from '../i18n.jsx';
 import { useAuth } from './auth.jsx';
-import { Card, Input, Button, Spinner, useToast, useDialog } from '../ui/ui.jsx';
+import { Card, Input, Button, Spinner, useToast, useDialog, Explain } from '../ui/ui.jsx';
 import { api } from '../lib/api.js';
 import Markdown from '../ui/md.jsx';
 import { MarkdownEditor } from '../editor/markdown-editor.jsx';
@@ -1142,7 +1142,7 @@ function GuideEditor({ initial, overrides: initialOverrides, onClose, onSaved })
         <Button size="sm" variant="ghost" onClick={closeGuarded}><X size={13} /> {t('common.cancel', 'Cancel')}</Button>
         <Button size="sm" disabled={busy || !dirty} onClick={save} title="Ctrl+S">{busy ? <Spinner /> : <><Save size={13} /> {t('ag.save', 'Save guide')}</>}</Button>
       </div>
-      <p className="text-sm text-[var(--muted)] mb-3">{t('ag.edit.sub2', 'Every built-in entry can be retitled, rewritten or hidden, and given a section of your own under it; your own sections go under “Added by your team”. Bodies and sections are B.MD — callouts, checklists, cards, tabs, everything the blog and the docs use. Both languages, shown to admins by their language setting.')}</p>
+      <Explain className="text-sm mb-3">{t('ag.edit.sub2', 'Every built-in entry can be retitled, rewritten or hidden, and given a section of your own under it; your own sections go under “Added by your team”. Bodies and sections are B.MD — callouts, checklists, cards, tabs, everything the blog and the docs use. Both languages, shown to admins by their language setting.')}</Explain>
       <div className="inline-flex rounded-lg border border-[var(--line)] p-0.5 text-xs mb-4">
         {[['builtin', t('ag.edit.builtin', 'Built-in entries'), editedCount], ['ref', t('ag.edit.ref', 'On this screen'), refEditedCount], ['custom', t('ag.edit.custom', 'Your sections'), rows.length]].map(([k, lbl, n]) => (
           <button key={k} type="button" onClick={() => setPart(k)} className={`px-3 py-1.5 rounded-md ${part === k ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)]'}`}>{lbl}{n ? <span className="ms-1.5 text-[10px] px-1.5 py-0.5 rounded-full tint-primary text-[var(--accent-ink)]">{n}</span> : null}</button>
