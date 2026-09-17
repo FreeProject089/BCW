@@ -149,15 +149,16 @@
   direct, giveaway, vocal, logs, config), et le texte vit dans le dictionnaire du bot comme
   toutes ses autres chaînes : il est donc traduisible et remplaçable depuis l'écran Langues du
   site.
-- **Bot Discord** — accès multi-rôles avec exigences par rôle + `/refreshroles`,
+- **Bot Discord** (guide complet : [Bot Discord](../run/DISCORD_BOT_FR.md)) — accès multi-rôles avec exigences par rôle + `/refreshroles`,
   annonces de tips Ko-fi, alertes server-perf, modération, bienvenue, join-to-create
   vocal, annonces de blog. Le `/casino` a des **tables en direct** (une course à six voitures
   avec la voiture choisie dans un menu — une simulation Paddock-Manager accélérée : l’admin choisit le circuit (intégré, généré à chaque course, ou importé en JSON), les tours, les couleurs des voitures, machines égales ou grille réaliste, incidents et arrêts au stand, sous Bot Discord → Économie → Casino → Course — une cagnotte pondérée par la mise, et un tirage partagé de
   n’importe quel jeu solo) que d’autres membres rejoignent depuis le même message ; à deux ou
   plus, la table se règle **entre les joueurs** — les mises des perdants forment la cagnotte,
-  répartie par mise × multiplicateur, avantage pris sur la part seulement — et l’admin fixe
-  l’**avantage maison par jeu** et une mise max où **0 = pas de plafond** (le tapis est alors
-  vraiment tout). L’économie a des **saisons** — les points repartent à zéro selon un calendrier (du quotidien à l’annuel ou tous les N jours, en UTC, XP conservée ou effacée, annoncé par le bot) ou à la main — et une carte de **statistiques** : générés / gagnés / perdus / donnés / dépensés pour aujourd’hui vs hier, cette semaine vs la dernière, ce mois vs le dernier, avec un graphique quotidien par flux. Chaque message est un embed. Les réglages par serveur s'éditent
+  répartie au prorata de la mise, et la maison ne prend **rien** sur une table (personne ne
+  gagne : chaque siège est remboursé) — et l’admin fixe l’**avantage maison par jeu**, qui
+  s’applique au jeu en solo, et une mise max où **0 = pas de plafond** (le tapis est alors
+  vraiment tout). L’économie a des **saisons** — les points repartent à zéro selon un calendrier (du quotidien à l’annuel ou tous les N jours, en UTC, XP conservée ou effacée, annoncé par le bot) ou à la main — et une carte de **statistiques** : générés / gagnés / perdus / donnés / dépensés pour aujourd’hui vs hier, cette semaine vs la dernière, ce mois vs le dernier, avec un graphique quotidien par flux. Chaque message envoyé par le bot est un **conteneur Components V2**, pas un embed. Les réglages par serveur s'éditent
   sous un sélecteur qui montre dans quels serveurs le bot se trouve, et la navigation par
   sections marche sur téléphone. Un admin peut **bloquer un serveur** — le bot le quitte et
   n'y revient jamais, ou y reste mais toutes ses commandes sont inertes — et une commande

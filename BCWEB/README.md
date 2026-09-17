@@ -68,7 +68,9 @@ Same trap for every other script name the two repos share: `npm run build`, `npm
 apps/api      Fastify API — accounts/2FA/OAuth, catalogs, blog, repos, hosting,
               billing, admin, server-control, per-element BC ids (fully implemented)
 apps/web      React 18 + Vite + Tailwind SPA — full site (Three.js/GSAP hero orb, i18n)
-apps/bot      Discord.js bot — gating, Ko-fi, alerts, moderation, welcome, panels
+apps/bot      Discord.js bot — gating, automod + logging, welcome, join-to-create,
+              giveaways, role panels, Ko-fi/payment/blog/alert announcements, DMs,
+              the points economy (shop, casino, seasons). Guide: guides/run/DISCORD_BOT_EN.md
 packages/db   Prisma schema + migrations (the full data model)
 bmm/          BMM assets, telemetry-dashboard (moved here), official-server-repo, other
 bsm/          BSM assets / seed presets
@@ -161,9 +163,11 @@ Before pointing a real domain at this:
 ### Shipped since the original roadmap
 - **Auth**: TOTP 2FA (QR + recovery codes, required for admin tiers, step-up for
   server-control), GitHub/Discord OAuth login, optional-2FA signup onboarding.
-- **Community**: Discord bot (gating + `/refreshroles`, Ko-fi tip embeds, alerts,
-  moderation, welcome, join-to-create, blog announce), per-project blogs, showcase
-  "Other projects", Project-Announcement countdown pages.
+- **Community**: Discord bot (gating + `/refreshroles`, automod + per-category logging,
+  Ko-fi/payment/blog/alert announcements, welcome banners, join-to-create voice, role
+  panels, giveaways, and a points economy with a shop, a casino and seasons — full guide:
+  **[guides/run/DISCORD_BOT_EN.md](./guides/run/DISCORD_BOT_EN.md) / [_FR](./guides/run/DISCORD_BOT_FR.md)**),
+  per-project blogs, showcase "Other projects", Project-Announcement countdown pages.
 - **Ops/admin**: server-perf dashboard + alerts, advanced server management (DB
   viewer/file manager/Docker/power, audit-logged), security log, promo codes,
   free-tier claims, per-element **BC ids** + admin lookup.

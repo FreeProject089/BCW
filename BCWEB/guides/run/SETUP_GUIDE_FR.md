@@ -146,12 +146,17 @@ section une fois pour savoir ce qui existe :
 
 ## 8. Optionnel : bot Discord
 
+Le chemin court est ci-dessous. Tout ce que fait le bot, chaque commande, ce qu'il stocke et
+comment l'exploiter sont dans le [guide du bot Discord](DISCORD_BOT_FR.md).
+
 Dashboard admin → **Bot Discord** :
 
 1. Crée un bot sur le [Discord Developer Portal](https://discord.com/developers/applications),
    active les intents privilégiés **Server Members** et **Message Content**, et copie son token.
 2. Colle le token dans le champ **Bot token** du dashboard et sauve — ou règle `DISCORD_TOKEN`
    dans `.env` (la variable d'env gagne toujours sur celui stocké au dashboard).
+   Le champ du dashboard n'apparaît que si le bot est **éteint**, et seul un ADMIN peut le
+   poser : la capacité `manage_bot` ne couvre pas l'identifiant.
 3. Configure la modération, les messages de bienvenue, le join-to-create vocal, les annonces de
    blog, et les **alertes de perf serveur** (un champ de salon — poste les alertes
    CPU/RAM/disque/service-down au fil de l'eau) depuis le même écran.

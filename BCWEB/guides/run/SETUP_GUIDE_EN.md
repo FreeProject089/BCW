@@ -148,6 +148,9 @@ once so you know what's there:
 
 ## 8. Optional: Discord bot
 
+The short path is below. Everything the bot does, every slash command, what it stores and how
+to operate it is in the [Discord bot guide](DISCORD_BOT_EN.md).
+
 Admin dashboard → **Discord bot**:
 
 1. Create a bot in the [Discord Developer Portal](https://discord.com/developers/applications),
@@ -155,6 +158,8 @@ Admin dashboard → **Discord bot**:
    its token.
 2. Paste the token in the dashboard's **Bot token** field and save — or set
    `DISCORD_TOKEN` in `.env` (the env var always wins over the dashboard-stored one).
+   The dashboard field only appears while the bot is **switched off**, and only an ADMIN
+   may set it: the `manage_bot` capability does not cover the credential.
 3. Configure moderation, welcome messages, join-to-create voice, blog announcements,
    and **server-perf alerts** (a channel field — posts CPU/RAM/disk/service-down
    alerts as they fire) from the same screen.
