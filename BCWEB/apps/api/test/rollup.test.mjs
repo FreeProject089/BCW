@@ -46,12 +46,32 @@ test('rollup aggregates a day into views (count) + visitors (distinct), idempote
   // It looked like a rollup bug (`views = 16`, expected 4) and was a fixture leak.
   //
   // Scoped to the `roll-` prefix and to this one day, so a developer's real analytics data
-  // is never what gets deleted.
+  // is never what gets deleted. Which is also why the assertions below are RELATIVE: the
+  // fixture leak was fixed by wiping our own rows, but the day can still hold somebody
+  // else's. On a developer's database it usually does — this test went red the first time
+  // the clock rolled over midnight onto a day ten days after a day people had browsed the
+  // dev site, with 17 events and 4 visitors already there against the 4 and 3 it seeds.
+  // Hardcoding 4 asserts "this day is empty apart from me", which is not something a test
+  // sharing a database gets to assume.
   const wipe = async () => {
     await p.analyticsEvent.deleteMany({ where: { visitor: { startsWith: 'roll-' }, createdAt: { gte: dayKey, lt: new Date(dayKey.getTime() + 86400000) } } });
     await p.analyticsDaily.deleteMany({ where: { day: dayKey } });
   };
   await wipe();
+  // What is already on this day, measured AFTER the wipe and BEFORE the seed, so the
+  // assertions can say what this test actually means: the rollup counts every event on the
+  // day and every distinct visitor on it, whoever put them there.
+  const before = await p.analyticsEvent.findMany({
+    where: { createdAt: { gte: dayKey, lt: new Date(dayKey.getTime() + 86400000) } },
+    select: { visitor: true },
+  });
+  const baseViews = before.length;
+  // NULL visitors are counted as views and NOT as visitors: the rollup is
+  // `count(DISTINCT "visitor")`, and SQL's DISTINCT ignores NULL while a JS Set treats it as
+  // a member. On this database that is nine of the seventeen events on the day, so building
+  // the expectation with a plain Set makes the test demand one visitor more than the rollup
+  // can ever report. The mismatch is invisible until a day with an anonymous hit turns up.
+  const baseVisitors = new Set(before.map((e) => e.visitor).filter((v) => v != null));
   // And the gate. The first half of this test needs the FULL recompute to run, which only
   // happens when analytics.rollupAt is absent — otherwise the rollup does its trailing
   // 3-day window and a day 10 days back is never touched, so no row exists at all.
@@ -69,17 +89,22 @@ test('rollup aggregates a day into views (count) + visitors (distinct), idempote
   // Fresh DB → no analytics.rollupAt yet → the full recompute runs and backfills this day.
   await rollupAnalyticsDaily(p, log);
 
+  // The three visitors this test seeds, plus whatever was already there. A seeded visitor
+  // id carries `Date.now()`, so it cannot collide with a real one.
+  const wantViews = baseViews + 4;
+  const wantVisitors = new Set([...baseVisitors, `${tag}-a`, `${tag}-b`, `${tag}-c`]).size;
+
   const row = await p.analyticsDaily.findUnique({ where: { day: dayKey } });
   assert.ok(row, 'a rollup row should exist for the seeded day');
-  assert.equal(row.views, 4, 'views = total events that day');
-  assert.equal(row.visitors, 3, 'visitors = distinct visitors that day');
+  assert.equal(row.views, wantViews, 'views = total events that day');
+  assert.equal(row.visitors, wantVisitors, 'visitors = distinct visitors that day');
 
   // Re-run: the once/day full recompute is now gated off, and the seeded day is outside the
   // trailing 3-day window, so its row must be unchanged (idempotent, no double count).
   await rollupAnalyticsDaily(p, log);
   const again = await p.analyticsDaily.findUnique({ where: { day: dayKey } });
-  assert.equal(again.views, 4);
-  assert.equal(again.visitors, 3);
+  assert.equal(again.views, wantViews);
+  assert.equal(again.visitors, wantVisitors);
 
   await wipe();   // leave the database as we found it, so the next run starts clean too
 });
