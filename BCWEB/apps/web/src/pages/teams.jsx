@@ -1,9 +1,9 @@
 // Teams: create one, invite members, put repos / catalogues / pools under it, and the
 // public card at /t/:slug. A team's members manage what is attached alongside its owner;
 // billing stays with the owner.
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { Users, Plus, UserPlus, Trash2, LogOut, Crown, Mail, Phone, Globe, Link2, Package, HardDrive, Layers, ArrowRightLeft, Check, X, Copy, ShoppingBag, Clock, InfinityIcon } from 'lucide-react';
+import { Users, Plus, Sparkles, UserPlus, Trash2, LogOut, Crown, Mail, Phone, Globe, Link2, Package, HardDrive, Layers, ArrowRightLeft, Check, X, Copy, ShoppingBag, Clock, InfinityIcon } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { useAuth } from './auth.jsx';
@@ -13,30 +13,131 @@ import { ContactButton } from '../ui/contact.jsx';
 
 const ROLE_KEY = { owner: 'tm.role.owner', admin: 'tm.role.admin', member: 'tm.role.member' };
 
-function TeamForm({ initial, onSave, onCancel, busy }) {
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * The public address the server will give this name, shown while it is being typed.
+ *
+ * It mirrors `slugifyTeam` in the API's lib/teams.mjs. A copy of a rule is a thing that can
+ * drift, and this one is allowed to: it is a PREVIEW, and the server still decides — if the
+ * slug is taken it appends `-2`. What it buys is that nobody discovers the address their
+ * team lives at only after the team exists.
+ */
+function slugPreview(name) {
+  return String(name || '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+}
+
+/** A message under a field, in the error colour. Field itself has no error slot. */
+function FieldError({ children }) {
+  return children ? <p className="text-[11.5px] text-error mt-1">{children}</p> : null;
+}
+
+/**
+ * Creating a team asks for a NAME, and nothing else.
+ *
+ * It used to ask for six things — name, contact e-mail, phone, website, Discord, description
+ * — of which two were required, and the Save button simply sat disabled until both were
+ * right without ever saying why. Five of those six describe a team that already exists and
+ * can be changed at any time from Edit, so they belong there; the contact e-mail is the
+ * address the account signed up with, so asking for it again was asking a question we had
+ * already been answered. It is pre-filled and stays one click away for the team that wants
+ * a different one.
+ *
+ * Validation is inline and lives next to the field, and the button is never silently
+ * disabled: pressing it on an empty name tells you what is missing instead of doing nothing.
+ */
+function CreateTeamForm({ onCreate, onCancel, busy, defaultEmail }) {
   const { t } = useI18n();
-  const [f, setF] = useState({ name: '', contactEmail: '', contactPhone: '', website: '', discord: '', description: '', ...(initial || {}) });
-  const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [otherEmail, setOtherEmail] = useState(false);
+  const [err, setErr] = useState(null);          // { field, msg } — from us or from the server
+  const trimmed = name.trim();
+  const nameProblem = !trimmed ? t('tm.f.name.req', 'A team needs a name.')
+    : trimmed.length < 2 ? t('tm.f.name.short', 'At least 2 characters.') : '';
+  const emailProblem = otherEmail && email.trim() && !EMAIL_RE.test(email.trim()) ? t('tm.f.email.bad', 'That is not an e-mail address.') : '';
+  const slug = slugPreview(trimmed);
+  const submit = async () => {
+    if (nameProblem) { setErr({ field: 'name', msg: nameProblem }); return; }
+    if (emailProblem) { setErr({ field: 'contactEmail', msg: emailProblem }); return; }
+    setErr(null);
+    try { await onCreate({ name: trimmed, ...(otherEmail && email.trim() ? { contactEmail: email.trim() } : {}) }); }
+    catch (x) {
+      const e = x.data?.error;
+      if (e === 'invalid_name') setErr({ field: 'name', msg: t('tm.f.name.short', 'At least 2 characters.') });
+      else if (e === 'invalid_email') setErr({ field: 'contactEmail', msg: t('tm.f.email.bad', 'That is not an e-mail address.') });
+      else setErr({ field: null, msg: e === 'too_many_teams' ? t('tm.toomany', 'You own too many teams.') : t('common.failed', 'Failed.') });
+      if (e === 'invalid_email') setOtherEmail(true);
+    }
+  };
+  const shown = (f) => (err && err.field === f ? err.msg : '');
   return (
     <div className="space-y-3">
-      <div className="grid sm:grid-cols-2 gap-2">
-        <Field label={t('tm.f.name', 'Team name')}><Input value={f.name} maxLength={60} onChange={set('name')} /></Field>
-        <Field label={t('tm.f.email', 'Contact e-mail')} hint={t('tm.f.email.h', 'Required. Shown on the team page and on what the team publishes.')}><Input type="email" value={f.contactEmail} onChange={set('contactEmail')} /></Field>
-        <Field label={t('tm.f.phone', 'Phone (optional)')}><Input value={f.contactPhone} maxLength={40} onChange={set('contactPhone')} /></Field>
-        <Field label={t('tm.f.website', 'Website (optional)')}><Input value={f.website} onChange={set('website')} placeholder="https://…" /></Field>
-        <Field label="Discord (optional)"><Input value={f.discord} onChange={set('discord')} placeholder="https://discord.gg/…" /></Field>
+      <Field label={t('tm.f.name', 'Team name')} hint={t('tm.f.name.h', 'The only thing a team needs to exist. Everything else is in its settings afterwards.')}>
+        <Input value={name} maxLength={60} autoFocus onChange={(e) => { setName(e.target.value); if (err?.field === 'name') setErr(null); }} onKeyDown={(e) => e.key === 'Enter' && submit()} />
+      </Field>
+      <FieldError>{shown('name')}</FieldError>
+      {slug && <p className="text-[11.5px] text-[var(--faint)] -mt-1">{t('tm.f.slug', 'Public address: {u}').replace('{u}', `/t/${slug}`)}</p>}
+
+      <div className="panel-quiet rounded-xl p-3 space-y-2">
+        <div className="text-[12px] text-[var(--muted)] flex items-start gap-2 flex-wrap">
+          <Mail size={13} className="mt-0.5 text-[var(--accent-ink)] shrink-0" />
+          <span className="min-w-0 flex-1">{t('tm.create.email', 'People will reach the team at {e}, the address on your account.').replace('{e}', defaultEmail || '—')}</span>
+        </div>
+        {!otherEmail
+          ? <Button size="sm" variant="ghost" onClick={() => setOtherEmail(true)}>{t('tm.create.email.other', 'Use a different address')}</Button>
+          : (<>
+            <Field label={t('tm.f.email', 'Contact e-mail')} className="!mb-0">
+              <Input type="email" value={email} placeholder={defaultEmail || ''} onChange={(e) => { setEmail(e.target.value); if (err?.field === 'contactEmail') setErr(null); }} />
+            </Field>
+            <FieldError>{shown('contactEmail')}</FieldError>
+          </>)}
+        <p className="text-[11px] text-[var(--faint)]">{t('tm.create.later', 'Phone, website, Discord and description are in the team’s settings, once it exists.')}</p>
       </div>
-      <Field label={t('tm.f.desc', 'Description')}><Textarea rows={3} value={f.description} maxLength={2000} onChange={set('description')} /></Field>
+
+      {err && !err.field && <FieldError>{err.msg}</FieldError>}
       <div className="flex justify-end gap-2">
         {onCancel && <Button variant="ghost" onClick={onCancel}>{t('common.cancel', 'Cancel')}</Button>}
-        <Button variant="primary" loading={busy} disabled={f.name.trim().length < 2 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.contactEmail)} onClick={() => onSave(f)}>{t('common.save', 'Save')}</Button>
+        <Button variant="primary" loading={busy} onClick={submit}><Plus size={14} /> {t('tm.create.btn', 'Create the team')}</Button>
       </div>
     </div>
   );
 }
 
-function TeamDetail({ team, reload }) {
+/** The full form — every detail of a team that exists. Reached from Edit. */
+function TeamForm({ initial, onSave, onCancel, busy }) {
+  const { t } = useI18n();
+  const [f, setF] = useState({ name: '', contactEmail: '', contactPhone: '', website: '', discord: '', description: '', ...(initial || {}) });
+  const [touched, setTouched] = useState({});
+  const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+  const blur = (k) => () => setTouched((s) => ({ ...s, [k]: true }));
+  // Told as you leave the field, not as a refusal at Save. The two URLs are deliberately NOT
+  // errors: the server completes a missing scheme rather than refusing it, so saying
+  // "invalid" here would be the page inventing a rule the API does not have.
+  const nameErr = touched.name && f.name.trim().length < 2 ? t('tm.f.name.short', 'At least 2 characters.') : '';
+  const emailErr = touched.contactEmail && !EMAIL_RE.test(f.contactEmail || '') ? t('tm.f.email.bad', 'That is not an e-mail address.') : '';
+  return (
+    <div className="space-y-3">
+      <div className="grid sm:grid-cols-2 gap-2">
+        <Field label={t('tm.f.name', 'Team name')}><Input value={f.name} maxLength={60} onChange={set('name')} onBlur={blur('name')} /><FieldError>{nameErr}</FieldError></Field>
+        <Field label={t('tm.f.email', 'Contact e-mail')} hint={t('tm.f.email.h', 'Required. Shown on the team page and on what the team publishes.')}><Input type="email" value={f.contactEmail} onChange={set('contactEmail')} onBlur={blur('contactEmail')} /><FieldError>{emailErr}</FieldError></Field>
+        <Field label={t('tm.f.phone', 'Phone (optional)')}><Input value={f.contactPhone} maxLength={40} onChange={set('contactPhone')} /></Field>
+        <Field label={t('tm.f.website', 'Website (optional)')} hint={t('tm.f.url.h', 'https:// is added for you if you leave it out.')}><Input value={f.website} onChange={set('website')} placeholder="example.com" /></Field>
+        <Field label="Discord (optional)"><Input value={f.discord} onChange={set('discord')} placeholder="discord.gg/…" /></Field>
+      </div>
+      <Field label={t('tm.f.desc', 'Description')}><Textarea rows={3} value={f.description} maxLength={2000} onChange={set('description')} /></Field>
+      <div className="flex justify-end gap-2">
+        {onCancel && <Button variant="ghost" onClick={onCancel}>{t('common.cancel', 'Cancel')}</Button>}
+        <Button variant="primary" loading={busy} disabled={f.name.trim().length < 2 || !EMAIL_RE.test(f.contactEmail || '')} onClick={() => onSave(f)}>{t('common.save', 'Save')}</Button>
+      </div>
+    </div>
+  );
+}
+
+function TeamDetail({ team, reload, justCreated = false }) {
   const { t } = useI18n(); const toast = useToast(); const dialog = useDialog(); const { user } = useAuth();
+  const inviteRef = useRef(null); const managedRef = useRef(null);
   const [edit, setEdit] = useState(false); const [busy, setBusy] = useState(false);
   const [invite, setInvite] = useState(''); const [inviteRole, setInviteRole] = useState('member');
   const { data: pub, reload: reloadPub } = useAsync(() => api.get(`/teams/${team.slug}`), [team.slug, team.updatedAt]);
@@ -126,6 +227,19 @@ function TeamDetail({ team, reload }) {
     catch (x) { toast.error(x.data?.error === 'owner_only' ? t('tm.attach.owner', 'Only the owner of that item can attach it.') : t('common.failed', 'Failed.')); }
   };
   const [repos, catalogs, groups] = mine ? [mine[0].repos || [], mine[1].catalogs || [], mine[2].groups || []] : [[], [], []];
+  // A team on its first day: it exists, and nothing has happened to it yet. Three things are
+  // worth doing and none of them had to be decided before it existed — which is the point of
+  // moving them here. Each row is either already done (and says so) or is a button that puts
+  // you in front of the control, so "what now" is answered by the page rather than guessed.
+  const attachedCount = [...repos, ...catalogs, ...groups].filter((x) => x.teamId === team.id).length;
+  const steps = [
+    { id: 'invite', done: members.length > 1, label: t('tm.first.invite', 'Invite the people who work with you'), cta: t('tm.first.invite.a', 'Invite'), go: () => { inviteRef.current?.focus(); inviteRef.current?.scrollIntoView({ block: 'center' }); } },
+    { id: 'attach', done: attachedCount > 0, label: t('tm.first.attach', 'Put a repo, a catalogue or a pool under the team'), cta: t('tm.first.attach.a', 'Choose one'), go: () => managedRef.current?.scrollIntoView({ block: 'start' }) },
+    { id: 'details', done: !!team.description || !!team.website || (!!team.contactEmail && team.contactEmail !== user?.email), label: t('tm.first.details', 'Say who the team is: description, website, contact address'), cta: t('common.edit', 'Edit'), go: () => setEdit(true) },
+  ];
+  // Shown while the team is still empty, and for the rest of the visit that created it — not
+  // as a checklist that nags a two-year-old team about a description it does not want.
+  const showFirstRun = canAdmin && (justCreated || (members.length <= 1 && attachedCount === 0));
   const Attachable = ({ kind, icon: I, items, label }) => (
     <div>
       <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1 flex items-center gap-1"><I size={12} /> {label}</div>
@@ -161,6 +275,22 @@ function TeamDetail({ team, reload }) {
         </div>
       </Card>
 
+      {showFirstRun && (
+        <Card className="p-4 sm:p-5">
+          <div className="font-semibold flex items-center gap-2"><Sparkles size={15} className="text-[var(--accent-ink)]" /> {justCreated ? t('tm.first.new', '“{n}” exists. What now?').replace('{n}', team.name) : t('tm.first.h', 'Getting this team going')}</div>
+          <p className="text-[12px] text-[var(--muted)] mt-1">{t('tm.first.s', 'None of this was needed to create the team, and none of it is final — every one of them can be changed later.')}</p>
+          <ul className="mt-3 space-y-1.5">
+            {steps.map((s) => (
+              <li key={s.id} className="panel-quiet rounded-xl px-3 py-2 flex items-center gap-2 text-[13px] flex-wrap">
+                <span className={`grid place-items-center w-5 h-5 rounded-full shrink-0 ${s.done ? 'tint-success text-success' : 'panel text-[var(--faint)]'}`}>{s.done ? <Check size={12} /> : <Plus size={12} />}</span>
+                <span className={`min-w-0 flex-1 ${s.done ? 'text-[var(--faint)] line-through' : ''}`}>{s.label}</span>
+                {!s.done && <Button size="sm" variant="ghost" onClick={s.go}>{s.cta}</Button>}
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
       <Card className="p-4 sm:p-5">
         <div className="font-semibold mb-2 flex items-center gap-2"><Users size={15} /> {t('tm.members', 'Members')} <span className="text-[var(--faint)] font-normal text-[12px]">{members.length}</span></div>
         <ul className="divide-y divide-[var(--line)]">
@@ -181,7 +311,7 @@ function TeamDetail({ team, reload }) {
         </ul>
         {canAdmin && (<>
           <div className="mt-3 flex gap-2 items-end flex-wrap">
-            <Field label={t('tm.invite', 'Invite')} hint={t('tm.invite.h', 'A BC id, an e-mail or an exact display name. They must accept.')} className="flex-1 min-w-[14rem]"><Input value={invite} onChange={(e) => setInvite(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && doInvite()} /></Field>
+            <Field label={t('tm.invite', 'Invite')} hint={t('tm.invite.h', 'A BC id, an e-mail or an exact display name. They must accept.')} className="flex-1 min-w-[14rem]"><Input ref={inviteRef} value={invite} onChange={(e) => setInvite(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && doInvite()} /></Field>
             <Select value={inviteRole} className="!w-auto" onChange={(e) => setInviteRole(e.target.value)}><option value="member">{t('tm.role.member', 'member')}</option><option value="admin">{t('tm.role.admin', 'admin')}</option></Select>
             <Button variant="primary" loading={busy} onClick={doInvite}><UserPlus size={14} /> {t('tm.invite.btn', 'Invite')}</Button>
           </div>
@@ -246,7 +376,7 @@ function TeamDetail({ team, reload }) {
       </Card>
 
       {canAdmin && (
-        <Card className="p-4 sm:p-5 space-y-4">
+        <Card className="p-4 sm:p-5 space-y-4" ref={managedRef}>
           <div className="font-semibold flex items-center gap-2"><Layers size={15} /> {t('tm.managed', 'What the team manages')}</div>
           <p className="text-[12px] text-[var(--muted)]">{t('tm.managed.h', 'Only the owner of an item can attach it. Every active member then edits it, answers messages about it, and publishes — billing stays with the owner.')}</p>
           <div className="grid sm:grid-cols-3 gap-4">
@@ -267,10 +397,14 @@ function TeamDetail({ team, reload }) {
 }
 
 export function MyTeams() {
-  const { t } = useI18n(); const toast = useToast();
+  const { t } = useI18n(); const toast = useToast(); const { user } = useAuth();
   const { data, loading, reload } = useAsync(() => api.get('/me/teams'), []);
   const [creating, setCreating] = useState(false); const [busy, setBusy] = useState(false);
   const [openId, setOpenId] = useState(null);
+  // The team POST already answers with the team, so the page can open it at once instead of
+  // making the creator find the card it just added and click it. `fresh` covers the instant
+  // between the create and the list catching up.
+  const [fresh, setFresh] = useState(null);
   const limits = useAsync(() => api.get('/me/teams/limits'), [data]);
   const lim = limits.data;
   const atLimit = !!lim && !lim.staff && lim.owned >= lim.limit;
@@ -282,9 +416,9 @@ export function MyTeams() {
   const teams = data?.teams || [];
   const invited = teams.filter((x) => x.myStatus === 'invited');
   const active = teams.filter((x) => x.myStatus === 'active');
-  const open = active.find((x) => x.id === openId);
+  const open = active.find((x) => x.id === openId) || (fresh && fresh.id === openId ? fresh : null);
   const answer = async (tm, verb) => { await api.post(`/me/teams/${tm.id}/${verb}`).catch(() => toast.error(t('common.failed', 'Failed.'))); reload(); };
-  if (open) return <div><Button size="sm" variant="ghost" className="mb-2" onClick={() => setOpenId(null)}>← {t('tm.all', 'All teams')}</Button><TeamDetail team={open} reload={() => { reload(); }} /></div>;
+  if (open) return <div><Button size="sm" variant="ghost" className="mb-2" onClick={() => { setOpenId(null); setFresh(null); }}>← {t('tm.all', 'All teams')}</Button><TeamDetail team={open} justCreated={fresh?.id === open.id} reload={() => { reload(); }} /></div>;
   return (
     <Card className="p-4 sm:p-5">
       <div className="flex items-center gap-2 mb-2 flex-wrap">
@@ -326,8 +460,24 @@ export function MyTeams() {
         </ul>
       )}
       {creating && (
-        <Modal open onClose={() => setCreating(false)} title={t('tm.create', 'Create a team')} icon={Users} width="max-w-2xl">
-          <TeamForm busy={busy} onCancel={() => setCreating(false)} onSave={async (f) => { setBusy(true); try { await api.post('/me/teams', f); setCreating(false); reload(); } catch (x) { toast.error(x.data?.error === 'too_many_teams' ? t('tm.toomany', 'You own too many teams.') : t('common.failed', 'Failed.')); } finally { setBusy(false); } }} />
+        <Modal open onClose={() => setCreating(false)} title={t('tm.create', 'Create a team')} icon={Users} width="max-w-lg">
+          {/* The error is NOT swallowed into a toast here: CreateTeamForm catches it and puts
+              the sentence under the field it belongs to, so a refusal costs one correction
+              rather than a re-read of the whole form. */}
+          <CreateTeamForm
+            busy={busy}
+            defaultEmail={user?.email || ''}
+            onCancel={() => setCreating(false)}
+            onCreate={async (f) => {
+              setBusy(true);
+              try {
+                const r = await api.post('/me/teams', f);
+                setCreating(false);
+                if (r?.team) { setFresh(r.team); setOpenId(r.team.id); }
+                reload();
+              } finally { setBusy(false); }
+            }}
+          />
         </Modal>
       )}
     </Card>

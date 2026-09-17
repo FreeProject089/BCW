@@ -2,7 +2,8 @@
 //
 //   GET    /teams/:slug                      public card: who they are, how to reach them, what they publish
 //   GET    /me/teams                         mine (owned, member, invited)
-//   POST   /me/teams                         create (owner)
+//   POST   /me/teams                         create (owner) — { name } is enough; contactEmail
+//                                            defaults to the account's, the rest to empty
 //   PATCH  /me/teams/:id                     details (owner / admin)
 //   DELETE /me/teams/:id                     dissolve (owner) — repos, catalogues and pools stay with their owners
 //   GET    /me/teams/:id/invites             the links: the permanent one, the temporary ones, the caps
@@ -33,6 +34,22 @@ const contact = {
   description: z.string().trim().max(2000).optional().default(''),
 };
 const httpish = (s) => !s || /^https?:\/\//i.test(s);
+
+/**
+ * A pasted address, made into one we can put in an href.
+ *
+ * "discord.gg/abc" and "example.com" are what people type, and refusing them with a 400 at
+ * submit time was the single most expensive way to say "add https://" — the page could only
+ * show a generic failure, and the creator lost the rest of the form to find out which field
+ * was at fault. A scheme we do not want (javascript:, data:) is still refused by `httpish`;
+ * this only fills in the one that was missing. Re-capped after the prefix so a 300-char
+ * paste cannot grow past the column.
+ */
+const normalizeUrl = (s) => {
+  const v = String(s || '').trim();
+  if (!v || /^[a-z][a-z0-9+.-]*:/i.test(v)) return v.slice(0, 300);
+  return `https://${v}`.slice(0, 300);
+};
 
 async function uniqueSlug(p, base) {
   let slug = base, i = 2;
@@ -77,19 +94,43 @@ export default async function teamRoutes(app) {
   });
 
   app.post('/me/teams', { preHandler: requireRole(), config: { rateLimit: { max: 5, timeWindow: '1 hour' } } }, async (req, reply) => {
-    const b = z.object({ name: z.string().trim().min(2).max(60), ...contact }).safeParse(req.body);
-    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
-    if (!httpish(b.data.website)) return reply.code(400).send({ error: 'invalid_input' });
+    // Creating a team asks for ONE thing: a name. Everything else is a detail of a team that
+    // already exists and lives in its Edit form, so a creator is never made to decide about a
+    // phone number, a Discord invite or a description before there is anything to describe.
+    //
+    // `contactEmail` is the interesting one: the column is NOT NULL and the public card shows
+    // it, so it cannot simply be absent — but the account already told us an address when it
+    // signed up, and asking for it again is asking the same question twice. Absent, it
+    // defaults to the owner's account e-mail, and the team's Edit form changes it after.
+    //
+    // The refusals are named per field (`invalid_name`, `invalid_email`) instead of one
+    // `invalid_input`, because the page can only put a message under the right field if it is
+    // told which field. A website with no scheme is fixed rather than refused (normalizeUrl).
+    const b = z.object({
+      name: z.string().trim().min(2).max(60),
+      ...contact,
+      contactEmail: contact.contactEmail.optional(),
+    }).safeParse(req.body);
+    if (!b.success) {
+      const bad = b.error.issues[0]?.path?.[0];
+      return reply.code(400).send({ error: bad === 'name' ? 'invalid_name' : bad === 'contactEmail' ? 'invalid_email' : 'invalid_input', field: bad || null });
+    }
+    b.data.website = normalizeUrl(b.data.website);
+    b.data.discord = normalizeUrl(b.data.discord);
+    if (!httpish(b.data.website)) return reply.code(400).send({ error: 'invalid_website', field: 'website' });
+    if (!httpish(b.data.discord)) return reply.code(400).send({ error: 'invalid_discord', field: 'discord' });
     const p = await db();
     const owned = await p.team.count({ where: { ownerId: req.user.uid } });
     // The admin's limit plus the slots this account bought. The refusal carries the numbers
     // and the price, so the dashboard can offer the slot right there.
-    const me = await p.user.findUnique({ where: { id: req.user.uid }, select: { extraTeamSlots: true } });
+    const me = await p.user.findUnique({ where: { id: req.user.uid }, select: { extraTeamSlots: true, email: true } });
     const st = await hostingSettings(p);
     const lim = teamLimitFor(st, me || {});
     if (owned >= lim.limit && !isStaff(req.user)) return reply.code(409).send({ error: 'too_many_teams', owned, limit: lim.limit, slot: teamSlotPrice(st) });
     const slug = await uniqueSlug(p, slugifyTeam(b.data.name));
-    const t = await p.team.create({ data: { ...b.data, slug, ownerId: req.user.uid, members: { create: { userId: req.user.uid, role: 'owner', status: 'active' } } } });
+    const contactEmail = b.data.contactEmail || me?.email || '';
+    if (!contactEmail) return reply.code(400).send({ error: 'invalid_email', field: 'contactEmail' });
+    const t = await p.team.create({ data: { ...b.data, contactEmail, slug, ownerId: req.user.uid, members: { create: { userId: req.user.uid, role: 'owner', status: 'active' } } } });
     await logAudit(p, req.user.uid, 'team.create', `team=${t.id} ${t.name}`).catch(() => {});
     return reply.code(201).send({ team: serTeam(t, { myRole: 'owner', myStatus: 'active' }) });
   });
@@ -209,7 +250,15 @@ export default async function teamRoutes(app) {
 
   app.patch('/me/teams/:id', { preHandler: requireRole() }, async (req, reply) => {
     const b = z.object({ name: z.string().trim().min(2).max(60).optional(), avatar: z.string().trim().max(300).optional(), ...Object.fromEntries(Object.entries(contact).map(([k, v]) => [k, v.optional()])) }).safeParse(req.body);
-    if (!b.success || !httpish(b.data.website)) return reply.code(400).send({ error: 'invalid_input' });
+    if (!b.success) {
+      const bad = b.error.issues[0]?.path?.[0];
+      return reply.code(400).send({ error: bad === 'name' ? 'invalid_name' : bad === 'contactEmail' ? 'invalid_email' : 'invalid_input', field: bad || null });
+    }
+    // Same courtesy as create: a scheme-less address is completed, not refused.
+    if (b.data.website !== undefined) b.data.website = normalizeUrl(b.data.website);
+    if (b.data.discord !== undefined) b.data.discord = normalizeUrl(b.data.discord);
+    if (!httpish(b.data.website)) return reply.code(400).send({ error: 'invalid_website', field: 'website' });
+    if (!httpish(b.data.discord)) return reply.code(400).send({ error: 'invalid_discord', field: 'discord' });
     const p = await db();
     const got = await load(p, req, reply, ['owner', 'admin']); if (!got) return;
     const data = Object.fromEntries(Object.entries(b.data).filter(([, v]) => v !== undefined));
