@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {
   computeOrgShare, clampCharityPct, normalizeCharityConfig,
   CHARITY_MAX_PCT, monthKey, validateContribution, potTotalCents,
-  CONTRIBUTION_MIN_CENTS, CONTRIBUTION_MAX_CENTS, pollOpen,
+  CONTRIBUTION_MIN_CENTS, CONTRIBUTION_MAX_CENTS, pollOpen, normalizeCharityDesign,
 } from '../src/lib/charity.mjs';
 
 test('org-share is a percentage of net recurring revenue', () => {
@@ -77,4 +77,49 @@ test('pot total = frozen org share + every community gift', () => {
   assert.deepEqual(r, { orgContribCents: 600, communityCents: 750, totalCents: 1350 });
   // an empty pot is all zeros, never NaN
   assert.deepEqual(potTotalCents({}), { orgContribCents: 0, communityCents: 0, totalCents: 0 });
+});
+
+// The landing design is an allowlist REBUILD, not a merge: anything the shape does not name
+// is dropped rather than stored and rendered later. These are the cases that would otherwise
+// travel all the way to the public /charity/current payload.
+test('a design saved before the authored modes existed opens unchanged', () => {
+  const old = { mode: 'custom', width: '2xl', height: 400, frame: false, ink: 'light', align: 'left', backdrop: '/api/media/a.png', bleed: 80, sticker: 'https://x.test/s.png', stickerSize: 200, stickerCorner: 'bl', stickerOffset: 40, alt: 'hi' };
+  const d = normalizeCharityDesign(old);
+  for (const [k, v] of Object.entries(old)) assert.deepEqual(d[k], v, `${k} drifted`);
+  // and it gains the new fields in their "nothing changed" state
+  assert.ok(Object.values(d.parts).every(Boolean));
+  assert.equal(d.css, '');
+  assert.deepEqual(d.blocks, []);
+});
+
+test('the third mode rebuilds parts, labels, classes and blocks from an allowlist', () => {
+  const d = normalizeCharityDesign({
+    mode: 'code',
+    css: 'x'.repeat(30000),
+    parts: { bar: false, bogus: true },
+    labels: { give: 'Donne', evil: 'x' },
+    classes: { root: 'p-4', nope: 'y' },
+    blocks: [
+      { kind: 'text', text: 'hi', id: '"] , * { display:none } [x="' }, // an id that would escape [data-b="…"]
+      { kind: 'evil' },                                                 // unknown kind
+      { kind: 'image', src: 'javascript:alert(1)' },                    // a scheme that is not an image
+      { kind: 'spacer', size: 9999 },                                   // out of bounds
+    ],
+  });
+  assert.equal(d.mode, 'code');
+  assert.equal(d.css.length, 20000);            // capped, never unbounded in an AdminSetting row
+  assert.equal(d.parts.bar, false);
+  assert.equal('bogus' in d.parts, false);
+  assert.equal(d.labels.give, 'Donne');
+  assert.equal('evil' in d.labels, false);
+  assert.deepEqual(Object.keys(d.classes), ['root', 'card', 'content']);
+  assert.equal(d.blocks.length, 3);             // the unknown kind is gone entirely
+  assert.match(d.blocks[0].id, /^[A-Za-z0-9_-]{1,24}$/);
+  assert.equal(d.blocks[1].src, '');            // javascript: never survives as an image
+  assert.equal(d.blocks[2].size, 720);
+});
+
+test('an unknown mode falls back to the default card', () => {
+  assert.equal(normalizeCharityDesign({ mode: 'hax' }).mode, 'default');
+  assert.equal(normalizeCharityDesign(null).mode, 'default');
 });

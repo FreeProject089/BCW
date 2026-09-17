@@ -14,6 +14,9 @@ import { Link } from 'react-router-dom';
 import { Heart, Vote, Info, ArrowRight, Check } from 'lucide-react';
 import { Button, Card, Badge, Modal, Input, useToast } from '../ui/ui.jsx';
 import { api } from '../lib/api.js';
+// The SAME sanitiser the studio's page CSS goes through — one filter, tested in one place
+// (apps/web/test/canvas-shapes.test.mjs), rather than a second copy that drifts from it.
+import { scopeCss, safeClasses } from '../lib/css-scope.js';
 import { useI18n } from '../i18n.jsx';
 import { useAsync } from './pages.jsx';
 
@@ -88,42 +91,72 @@ function ContributeModal({ pot, onClose }) {
   );
 }
 
-// The shared card body (used both on the home page and the /charity page).
-function PotSummary({ pot, t }) {
+// ── The card's elements, one component each ───────────────────────────────────────────────
+// Each piece is rendered by the default card, by the improved "custom artwork" card and by a
+// `code`-mode block, so there is ONE place that decides what "the breakdown line" is. Each
+// carries `data-el="<part>"` — the same word the admin ticks in the editor and the hook their
+// own CSS targets.
+const Amount = ({ pot }) => <div data-el="amount" className="chy-amount text-3xl font-extrabold tabular-nums">{money(pot.totalCents || 0, pot.currency)}</div>;
+const Breakdown = ({ pot, t }) => (
+  <div data-el="breakdown" className="chy-breakdown text-xs text-[var(--muted)] mt-1">
+    {t('ch.breakdown', 'BetterCommunity {a} + community {b}')
+      .replace('{a}', money(pot.orgContribCents, pot.currency))
+      .replace('{b}', money(pot.communityCents, pot.currency))}
+  </div>
+);
+function Bar({ pot, t }) {
   const total = pot.totalCents || 0;
-  const pct = total > 0 ? Math.round((pot.communityCents / total) * 100) : 0;
+  if (!(total > 0)) return null;
+  const pct = Math.round((pot.communityCents / total) * 100);
+  return (
+    <div data-el="bar" className="chy-bar mt-3 h-2.5 rounded-full bg-[var(--surface-2)] overflow-hidden" title={`${pct}% ${t('ch.community', 'community')}`}>
+      <div className="h-full rounded-full bg-gradient-to-r from-brand to-brand-2" style={{ width: `${pct}%` }} />
+    </div>
+  );
+}
+const Association = ({ pot, t }) => (
+  <div data-el="association" className="chy-association mt-3 text-sm">
+    {pot.association
+      ? <span>{t('ch.for', 'This month’s association:')} <b>{pot.association}</b></span>
+      : <span className="text-[var(--muted)]">{t('ch.voting', 'The association is being chosen by community vote.')}</span>}
+  </div>
+);
+function PollLine({ pot, t }) {
+  if (!pot.poll || pot.association) return null;
+  return (
+    <div data-el="poll" className="chy-poll mt-2 text-sm text-[var(--muted)] flex items-center justify-center gap-1.5">
+      <Vote size={14} className="shrink-0" />
+      <span>{pot.poll.question}{pot.poll.open ? '' : ` · ${t('ch.voteclosed', 'vote closed')}`}</span>
+    </div>
+  );
+}
+const Projected = ({ pot, t }) => (pot.percent > 0
+  ? <div data-el="projected" className="chy-projected text-xs text-[var(--faint)] mt-1">{t('ch.projected', 'Up to {n}% of eligible monthly revenue is added by BetterCommunity.').replace('{n}', pot.percent)}</div>
+  : null);
+function PaidNotice({ pot, t }) {
+  if (pot.status !== 'paid') return null;
+  return (
+    <div data-el="paid" className="chy-paid mt-3 rounded-lg bg-[var(--surface-2)] px-3 py-2 text-sm text-[var(--text)] flex items-center justify-center gap-2 flex-wrap">
+      <Check size={15} className="text-[var(--accent-ink)] shrink-0" />
+      <span>{t('ch.sent', 'This month’s donation has been sent.')}</span>
+      {pot.proofUrl && <a href={pot.proofUrl} target="_blank" rel="noreferrer" className="underline text-[var(--accent-ink)]">{t('ch.proof', 'View proof')}</a>}
+    </div>
+  );
+}
+
+// The shared card body (used both on the home page and the /charity page). `parts` is the
+// per-element optionality; absent (the /charity page, the default card) everything shows.
+function PotSummary({ pot, t, parts }) {
+  const P = parts || ALL_PARTS;
   return (
     <>
-      <div className="text-3xl font-extrabold tabular-nums">{money(total, pot.currency)}</div>
-      <div className="text-xs text-[var(--muted)] mt-1">
-        {t('ch.breakdown', 'BetterCommunity {a} + community {b}')
-          .replace('{a}', money(pot.orgContribCents, pot.currency))
-          .replace('{b}', money(pot.communityCents, pot.currency))}
-      </div>
-      {total > 0 && (
-        <div className="mt-3 h-2.5 rounded-full bg-[var(--surface-2)] overflow-hidden" title={`${pct}% ${t('ch.community', 'community')}`}>
-          <div className="h-full rounded-full bg-gradient-to-r from-brand to-brand-2" style={{ width: `${pct}%` }} />
-        </div>
-      )}
-      <div className="mt-3 text-sm">
-        {pot.association
-          ? <span>{t('ch.for', 'This month’s association:')} <b>{pot.association}</b></span>
-          : <span className="text-[var(--muted)]">{t('ch.voting', 'The association is being chosen by community vote.')}</span>}
-      </div>
-      {pot.poll && !pot.association && (
-        <div className="mt-2 text-sm text-[var(--muted)] flex items-center justify-center gap-1.5">
-          <Vote size={14} className="shrink-0" />
-          <span>{pot.poll.question}{pot.poll.open ? '' : ` · ${t('ch.voteclosed', 'vote closed')}`}</span>
-        </div>
-      )}
-      {pot.percent > 0 && <div className="text-xs text-[var(--faint)] mt-1">{t('ch.projected', 'Up to {n}% of eligible monthly revenue is added by BetterCommunity.').replace('{n}', pot.percent)}</div>}
-      {pot.status === 'paid' && (
-        <div className="mt-3 rounded-lg bg-[var(--surface-2)] px-3 py-2 text-sm text-[var(--text)] flex items-center justify-center gap-2 flex-wrap">
-          <Check size={15} className="text-[var(--accent-ink)] shrink-0" />
-          <span>{t('ch.sent', 'This month’s donation has been sent.')}</span>
-          {pot.proofUrl && <a href={pot.proofUrl} target="_blank" rel="noreferrer" className="underline text-[var(--accent-ink)]">{t('ch.proof', 'View proof')}</a>}
-        </div>
-      )}
+      {P.amount && <Amount pot={pot} />}
+      {P.breakdown && <Breakdown pot={pot} t={t} />}
+      {P.bar && <Bar pot={pot} t={t} />}
+      {P.association && <Association pot={pot} t={t} />}
+      {P.poll && <PollLine pot={pot} t={t} />}
+      {P.projected && <Projected pot={pot} t={t} />}
+      {P.paid && <PaidNotice pot={pot} t={t} />}
     </>
   );
 }
@@ -131,7 +164,30 @@ function PotSummary({ pot, t }) {
 // The frame widths the design can pick — the same table as the API's CHARITY_WIDTHS, so the
 // size the admin screen prints ("draw a 1152 × 720 image") is the size the page really uses.
 export const CHARITY_WIDTHS = { xl: 576, '2xl': 672, '3xl': 768 };
-export const CHARITY_DESIGN_DEFAULTS = { mode: 'default', width: 'xl', height: 360, frame: true, ink: 'auto', align: 'center', backdrop: '', backdropFit: 'cover', overflow: '', bleed: 64, sticker: '', stickerSize: 160, stickerCorner: 'tr', stickerOffset: 24, alt: '' };
+// Mirrors apps/api/src/lib/charity.mjs — the API normalises what is stored, this is what the
+// editor and the card fall back to for a design saved before a field existed.
+export const CHARITY_PART_KEYS = ['icon', 'title', 'sub', 'month', 'amount', 'breakdown', 'bar', 'association', 'poll', 'projected', 'paid', 'give', 'vote', 'more'];
+export const CHARITY_BLOCK_KINDS = [...CHARITY_PART_KEYS, 'buttons', 'text', 'spacer', 'image'];
+export const CHARITY_LABEL_KEYS = ['title', 'sub', 'give', 'vote', 'more'];
+export const CHARITY_CLASS_SLOTS = ['root', 'card', 'content'];
+const ALL_PARTS = Object.fromEntries(CHARITY_PART_KEYS.map((k) => [k, true]));
+export const CHARITY_DESIGN_DEFAULTS = {
+  mode: 'default', width: 'xl', height: 360, frame: true, ink: 'auto', align: 'center',
+  backdrop: '', backdropFit: 'cover', overflow: '', bleed: 64,
+  sticker: '', stickerSize: 160, stickerCorner: 'tr', stickerOffset: 24, alt: '',
+  parts: ALL_PARTS, labels: { title: '', sub: '', give: '', vote: '', more: '' },
+  classes: { root: '', card: '', content: '' }, css: '', blocks: [],
+};
+/** The scope every admin-authored rule is confined to — the card, and nothing outside it. */
+export const CHARITY_CSS_SCOPE = '[data-charity-scope]';
+
+// The ink re-points the text TOKENS (not just `color`), so the muted/faint lines inside
+// PotSummary follow too — they read var(--muted) / var(--faint), which the frame redefines.
+// Exported so the code-mode card and the artwork card cannot drift apart on it.
+export function charityInkStyle(ink) {
+  return ink === 'light' ? { color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,.55), 0 0 18px rgba(0,0,0,.35)', '--text': '#fff', '--muted': 'rgba(255,255,255,.82)', '--faint': 'rgba(255,255,255,.66)', '--surface-2': 'rgba(255,255,255,.18)', '--accent-ink': '#fbbf24' }
+    : ink === 'dark' ? { color: '#111', textShadow: '0 1px 0 rgba(255,255,255,.45)', '--text': '#111', '--muted': 'rgba(0,0,0,.7)', '--faint': 'rgba(0,0,0,.55)', '--surface-2': 'rgba(0,0,0,.12)', '--accent-ink': '#8a3f06' } : {};
+}
 
 /** The canvas sizes (in px, at 2× for crisp rendering) an admin should draw for a design. */
 export function charityCanvasSizes(d) {
@@ -152,19 +208,39 @@ export function charityCanvasSizes(d) {
 //   out of it, but under the text and buttons so nothing becomes unclickable), and a sticker
 //   pinned to a corner half outside. The frame's own border/background can be dropped when
 //   the artwork is the whole design.
+//   'code' → nothing at all is drawn by the site: the card IS the admin's ordered block list,
+//   inside a bare box, styled by the admin's own (scoped) stylesheet. Every block is optional,
+//   including all of them, and no block carries markup — text is a text node.
 export function CharityCard({ pot, design, t, onGive, preview = false }) {
   const d = { ...CHARITY_DESIGN_DEFAULTS, ...(design || {}) };
-  const custom = d.mode === 'custom' && (d.backdrop || d.overflow || d.sticker);
-  const buttons = (
-    <div className={`flex flex-wrap gap-2 mt-5 ${d.align === 'left' ? 'justify-start' : d.align === 'right' ? 'justify-end' : 'justify-center'}`}>
-      <Button variant="primary" onClick={onGive}><Heart size={15} /> {t('ch.give.cta', 'Increase the pot')}</Button>
-      <Link to={pot.poll?.id ? `/polls/${pot.poll.id}` : '/polls'} tabIndex={preview ? -1 : undefined}><Button><Vote size={15} /> {t('ch.vote', 'Vote')}</Button></Link>
-      <Link to="/charity" tabIndex={preview ? -1 : undefined}><Button variant="ghost"><Info size={15} /> {t('ch.more', 'Learn more')}</Button></Link>
+  // The two authored modes share the per-element switches, the re-worded labels, the extra
+  // class tokens and the stylesheet. `default` ignores all of it — that is what keeps a card
+  // saved before any of this existed rendering byte-for-byte as it did.
+  const authored = d.mode === 'custom' || d.mode === 'code';
+  const P = authored ? { ...ALL_PARTS, ...(d.parts || {}) } : ALL_PARTS;
+  const L = { ...CHARITY_DESIGN_DEFAULTS.labels, ...(d.labels || {}) };
+  const cls = (k) => (authored ? safeClasses(d.classes?.[k]) : '');
+  // The one place admin-authored CSS is turned into a stylesheet. `scopeCss` prefixes every
+  // selector with the card's own scope and refuses @import / expression() / behavior /
+  // -moz-binding / javascript: / @namespace and any url() that is not same-origin, an anchor
+  // or an inline data: image — the same filter the studio's page CSS goes through.
+  const scoped = authored && d.css ? scopeCss(d.css, CHARITY_CSS_SCOPE).css : '';
+  const custom = d.mode === 'custom' && (d.backdrop || d.overflow || d.sticker || d.css || cls('root') || cls('card') || cls('content')
+    || CHARITY_PART_KEYS.some((k) => P[k] === false) || CHARITY_LABEL_KEYS.some((k) => L[k]));
+  const inked = (d.mode === 'custom' || d.mode === 'code') && d.ink !== 'auto';
+  const giveBtn = <Button variant="primary" onClick={onGive} data-el="give" className="chy-give"><Heart size={15} /> {L.give || t('ch.give.cta', 'Increase the pot')}</Button>;
+  const voteBtn = <Link key="vote" to={pot.poll?.id ? `/polls/${pot.poll.id}` : '/polls'} tabIndex={preview ? -1 : undefined}><Button data-el="vote" className="chy-vote"><Vote size={15} /> {L.vote || t('ch.vote', 'Vote')}</Button></Link>;
+  const moreBtn = <Link key="more" to="/charity" tabIndex={preview ? -1 : undefined}><Button variant="ghost" data-el="more" className="chy-more"><Info size={15} /> {L.more || t('ch.more', 'Learn more')}</Button></Link>;
+  const buttonRow = (P.give || P.vote || P.more) ? (
+    <div data-el="buttons" className={`chy-buttons flex flex-wrap gap-2 mt-5 ${d.align === 'left' ? 'justify-start' : d.align === 'right' ? 'justify-end' : 'justify-center'}`}>
+      {P.give && giveBtn}{P.vote && voteBtn}{P.more && moreBtn}
     </div>
-  );
+  ) : null;
+  const buttons = buttonRow;
+  const titleLine = P.title ? <div data-el="title" className="chy-title inline-flex items-center gap-2 text-base font-bold mb-1">{P.icon && <Heart size={18} className={inked ? '' : 'text-[var(--accent-ink)]'} />} {L.title || t('ch.title', 'Community Charity')}</div> : null;
   const heading = (
     <>
-      <div className="inline-flex items-center gap-2 text-base font-bold mb-1"><Heart size={18} className={custom && d.ink !== 'auto' ? '' : 'text-[var(--accent-ink)]'} /> {t('ch.title', 'Community Charity')}</div>
+      {titleLine}
       {/* One line above the numbers, and ONE way to read more.
           A fold was added here and the card already had a "Learn more" button pointing at
           /charity, so the same card offered the same promise twice, three centimetres apart,
@@ -172,9 +248,10 @@ export function CharityCard({ pot, design, t, onGive, preview = false }) {
           explains the two streams, the vote and the proof at length. A fold that paraphrases
           a whole page is a second copy that will drift from it. The button stays because it
           goes to the real thing; the fold goes. */}
-      <p className={`text-xs mb-4 ${custom && d.ink !== 'auto' ? 'opacity-80' : 'text-[var(--muted)]'}`}>{t('ch.sub', 'A charity the community chooses, every month.')}</p>
+      {P.sub && <p data-el="sub" className={`chy-sub text-xs mb-4 ${inked ? 'opacity-80' : 'text-[var(--muted)]'}`}>{L.sub || t('ch.sub', 'A charity the community chooses, every month.')}</p>}
     </>
   );
+  if (d.mode === 'code') return <CharityCodeCard {...{ d, pot, t, L, scoped, cls, giveBtn, voteBtn, moreBtn, buttonRow }} />;
   if (!custom) {
     return (
       <Card className="charity-card-glow p-6 md:p-8 max-w-xl mx-auto text-center relative overflow-hidden">
@@ -191,10 +268,7 @@ export function CharityCard({ pot, design, t, onGive, preview = false }) {
   }
   const W = CHARITY_WIDTHS[d.width] || CHARITY_WIDTHS.xl;
   const bleed = d.overflow ? d.bleed : 0;
-  // The ink re-points the text TOKENS (not just `color`), so the muted/faint lines inside
-  // PotSummary follow too — they read var(--muted) / var(--faint), which the frame redefines.
-  const inkStyle = d.ink === 'light' ? { color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,.55), 0 0 18px rgba(0,0,0,.35)', '--text': '#fff', '--muted': 'rgba(255,255,255,.82)', '--faint': 'rgba(255,255,255,.66)', '--surface-2': 'rgba(255,255,255,.18)', '--accent-ink': '#fbbf24' }
-    : d.ink === 'dark' ? { color: '#111', textShadow: '0 1px 0 rgba(255,255,255,.45)', '--text': '#111', '--muted': 'rgba(0,0,0,.7)', '--faint': 'rgba(0,0,0,.55)', '--surface-2': 'rgba(0,0,0,.12)', '--accent-ink': '#8a3f06' } : {};
+  const inkStyle = charityInkStyle(d.ink);
   const half = Math.round(d.stickerSize / 2);
   const corner = {
     tl: { top: -d.stickerOffset, left: -d.stickerOffset },
@@ -207,8 +281,9 @@ export function CharityCard({ pot, design, t, onGive, preview = false }) {
   return (
     // The wrapper reserves the bleed + sticker overhang so a parent with overflow:hidden (or
     // the next section) never clips the artwork that is meant to stick out.
-    <div className="relative mx-auto" style={{ maxWidth: W + 2 * pad, padding: pad }} data-charity-design="custom">
-      <div className={`relative ${d.frame ? 'card' : ''} ${align} flex flex-col justify-center p-6 md:p-8 overflow-visible`} style={{ minHeight: d.height, ...inkStyle }}>
+    <div className={`relative mx-auto ${cls('root')}`} style={{ maxWidth: W + 2 * pad, padding: pad }} data-charity-design="custom" data-charity-scope="">
+      {scoped && <style>{scoped}</style>}
+      <div className={`chy-card relative ${d.frame ? 'card' : ''} ${align} flex flex-col justify-center p-6 md:p-8 overflow-visible ${cls('card')}`} style={{ minHeight: d.height, ...inkStyle }}>
         {d.backdrop && (
           <div className={`absolute inset-0 pointer-events-none ${d.frame ? 'rounded-[inherit] overflow-hidden' : ''}`} aria-hidden="true">
             <img src={d.backdrop} alt="" className="w-full h-full block" style={{ objectFit: d.backdropFit }} draggable={false} />
@@ -221,10 +296,68 @@ export function CharityCard({ pot, design, t, onGive, preview = false }) {
         {d.sticker && (
           <img src={d.sticker} alt="" draggable={false} className="absolute pointer-events-none select-none z-[4] drop-shadow-lg" style={{ width: d.stickerSize, height: d.stickerSize, objectFit: 'contain', ...corner }} />
         )}
-        <div className={`relative z-[3] flex flex-col ${align} w-full`}>
+        <div className={`chy-content relative z-[3] flex flex-col ${align} w-full ${cls('content')}`}>
           {heading}
-          <div className={d.align === 'center' ? 'w-full' : 'w-full max-w-md'}><PotSummary pot={pot} t={t} /></div>
+          <div className={d.align === 'center' ? 'w-full' : 'w-full max-w-md'}><PotSummary pot={pot} t={t} parts={P} /></div>
           {buttons}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// The month pill and the big heart tile, as pieces a `code` design can place (or leave out).
+const MonthBadge = () => <div data-el="month" className="chy-month text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-full bg-[var(--surface-2)] text-[var(--muted)]">{new Date().toLocaleString(undefined, { month: 'long' })}</div>;
+const IconTile = () => <div data-el="icon" className="chy-icon w-14 h-14 rounded-2xl grid place-items-center bg-gradient-to-br from-brand to-brand-2 text-white shadow-lg"><Heart size={26} /></div>;
+
+// ── Mode 3: the card the admin writes themselves ──────────────────────────────────────────
+// The site draws NO chrome here beyond an optional frame: the card is the admin's ordered
+// block list, and their own stylesheet (scoped to this card) does the design. An empty list is
+// a legitimate design — an empty card — which is what "every element is optional" has to mean.
+//
+// What an admin CANNOT do, by construction: ship markup (a `text` block is a text node, so a
+// `<script>` or an `onerror=` is characters on screen, not a node), reach outside this card
+// with a selector (`scopeCss` prefixes every one), or make the page fetch from a third party
+// (`url()` is restricted to same-origin paths, anchors and inline data: images — the CSS
+// exfiltration channel a previous pass closed for the studio).
+function CharityCodeCard({ d, pot, t, L, scoped, cls, giveBtn, voteBtn, moreBtn, buttonRow }) {
+  const W = CHARITY_WIDTHS[d.width] || CHARITY_WIDTHS.xl;
+  const align = d.align === 'left' ? 'text-left items-start' : d.align === 'right' ? 'text-right items-end' : 'text-center items-center';
+  const blocks = Array.isArray(d.blocks) ? d.blocks : [];
+  const piece = (b) => {
+    switch (b.kind) {
+      case 'icon': return <IconTile />;
+      case 'title': return <div data-el="title" className="chy-title text-base font-bold">{L.title || t('ch.title', 'Community Charity')}</div>;
+      case 'sub': return <p data-el="sub" className="chy-sub text-xs">{L.sub || t('ch.sub', 'A charity the community chooses, every month.')}</p>;
+      case 'month': return <MonthBadge />;
+      case 'amount': return <Amount pot={pot} />;
+      case 'breakdown': return <Breakdown pot={pot} t={t} />;
+      case 'bar': return <Bar pot={pot} t={t} />;
+      case 'association': return <Association pot={pot} t={t} />;
+      case 'poll': return <PollLine pot={pot} t={t} />;
+      case 'projected': return <Projected pot={pot} t={t} />;
+      case 'paid': return <PaidNotice pot={pot} t={t} />;
+      case 'give': return giveBtn;
+      case 'vote': return voteBtn;
+      case 'more': return moreBtn;
+      case 'buttons': return buttonRow;
+      // Author text: a text node, never markup. `{b.text}` is escaped by React — that is the
+      // whole reason this mode has no HTML field.
+      case 'text': return <div data-el="text" className="chy-text text-sm">{b.text}</div>;
+      case 'spacer': return <div data-el="spacer" className="chy-spacer" style={{ height: b.size || 16 }} />;
+      // The URL shape is the API's `imgUrl` allowlist (same-origin media or http(s)); the alt
+      // text is the admin's own words, so a decorative image can still say what it is.
+      case 'image': return b.src ? <img data-el="image" className="chy-image max-w-full" src={b.src} alt={b.text || ''} draggable={false} style={{ width: b.size || undefined }} /> : null;
+      default: return null;
+    }
+  };
+  return (
+    <div className={`relative mx-auto ${cls('root')}`} style={{ maxWidth: W }} data-charity-design="code" data-charity-scope="">
+      {scoped && <style>{scoped}</style>}
+      <div className={`chy-card relative ${d.frame ? 'card p-6 md:p-8' : ''} ${align} flex flex-col justify-center overflow-visible ${cls('card')}`}
+        style={{ minHeight: d.height, ...charityInkStyle(d.ink) }}>
+        <div className={`chy-content flex flex-col w-full ${align} ${cls('content')}`}>
+          {blocks.map((b) => <div key={b.id} data-b={b.id} className={`chy-block ${safeClasses(b.cls)}`}>{piece(b)}</div>)}
         </div>
       </div>
     </div>

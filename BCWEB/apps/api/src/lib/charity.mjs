@@ -52,8 +52,23 @@ export const CHARITY_DEFAULTS = {
 // a sticker pinned to one corner. Sizes are fixed HERE so the admin UI can print exactly what
 // canvas to draw on — no scaling surprises. Nothing here is a colour preset: the design is the
 // images; the code only decides where they sit and which ink the text uses over them.
+// The card's elements, each one optional. The names are the `data-el` hooks the rendered card
+// carries, so an admin who writes CSS targets the same word they ticked off in the editor.
+export const CHARITY_PART_KEYS = ['icon', 'title', 'sub', 'month', 'amount', 'breakdown', 'bar', 'association', 'poll', 'projected', 'paid', 'give', 'vote', 'more'];
+// What a `code`-mode block may be: any part above, the three buttons as one row, a line of the
+// admin's own text, a spacer, or an image they uploaded. No block carries HTML — `text` is
+// rendered as a text node, so there is no markup an author can inject.
+export const CHARITY_BLOCK_KINDS = [...CHARITY_PART_KEYS, 'buttons', 'text', 'spacer', 'image'];
+// Labels that may be re-worded by the admin; '' means "use the site's translated string".
+export const CHARITY_LABEL_KEYS = ['title', 'sub', 'give', 'vote', 'more'];
+export const CHARITY_CLASS_SLOTS = ['root', 'card', 'content'];
+// The author's stylesheet, stored as typed. It is NOT trusted here: it is scoped and filtered
+// where it is rendered (apps/web/src/lib/css-scope.js `scopeCss`), the same single sanitiser
+// the studio's page CSS goes through. This cap only keeps an AdminSetting row bounded.
+export const CHARITY_CSS_MAX = 20000;
+
 export const CHARITY_DESIGN_DEFAULTS = {
-  mode: 'default',        // default | custom
+  mode: 'default',        // default | custom | code
   width: 'xl',            // xl (576 px) | 2xl (672 px) | 3xl (768 px) — the frame's CSS width
   height: 360,            // min height of the frame, px (content can still make it taller)
   frame: true,            // keep the card's own border + background under the artwork
@@ -68,6 +83,15 @@ export const CHARITY_DESIGN_DEFAULTS = {
   stickerCorner: 'tr',    // tl | tr | bl | br
   stickerOffset: 24,      // px the sticker sticks OUT of the frame (0 = flush inside)
   alt: '',                // alt text for the artwork (accessibility)
+  // ── Shared by `custom` and `code`: every element is optional, every label re-wordable,
+  // and the admin may add a stylesheet + utility classes. `default` ignores all of it, which
+  // is what keeps a card saved before this existed drawing exactly as it did.
+  parts: null,            // { [part]: boolean } — filled by normalizeCharityDesign (all true)
+  labels: null,           // { title, sub, give, vote, more } — '' = the translated string
+  classes: null,          // { root, card, content } — class tokens added to those three boxes
+  css: '',                // the admin's stylesheet, scoped to the card at render time
+  // ── `code` only: the card IS this list, in this order. Empty list, empty card.
+  blocks: [],
 };
 export const CHARITY_WIDTHS = { xl: 576, '2xl': 672, '3xl': 768 };
 const clampInt = (v, lo, hi, d) => { const x = Math.round(Number(v)); return Number.isFinite(x) ? Math.min(hi, Math.max(lo, x)) : d; };
@@ -75,12 +99,46 @@ const clampInt = (v, lo, hi, d) => { const x = Math.round(Number(v)); return Num
 // size in an AdminSetting row) and never a javascript: string.
 const imgUrl = (s) => (typeof s === 'string' && s.trim().length <= 600 && /^(\/api\/media\/|\/media\/|https?:\/\/)/i.test(s.trim())) ? s.trim() : '';
 const oneOf = (v, list, d) => (list.includes(v) ? v : d);
+const str = (v, n) => (typeof v === 'string' ? v.slice(0, n) : '');
+
+// Every part is ON unless it was explicitly turned off, so a design saved before parts existed
+// (and a `default` card) keeps all of them.
+function normParts(v) {
+  const o = v && typeof v === 'object' ? v : {};
+  return Object.fromEntries(CHARITY_PART_KEYS.map((k) => [k, o[k] !== false]));
+}
+function normLabels(v) {
+  const o = v && typeof v === 'object' ? v : {};
+  return Object.fromEntries(CHARITY_LABEL_KEYS.map((k) => [k, str(o[k], 200)]));
+}
+function normClasses(v) {
+  const o = v && typeof v === 'object' ? v : {};
+  return Object.fromEntries(CHARITY_CLASS_SLOTS.map((k) => [k, str(o[k], 300)]));
+}
+// A block list is an allowlist rebuild: an unknown kind is dropped entirely rather than stored
+// and rendered as nothing, and `text` is capped. Ids are for CSS ([data-b="…"]) and for React
+// keys, so they are forced into a shape that cannot escape an attribute selector.
+function normBlocks(v) {
+  if (!Array.isArray(v)) return [];
+  return v.slice(0, 32).map((b, i) => {
+    const o = b && typeof b === 'object' ? b : {};
+    if (!CHARITY_BLOCK_KINDS.includes(o.kind)) return null;
+    return {
+      id: (typeof o.id === 'string' && /^[A-Za-z0-9_-]{1,24}$/.test(o.id)) ? o.id : `b${i}`,
+      kind: o.kind,
+      text: str(o.text, 400),
+      cls: str(o.cls, 300),
+      src: o.kind === 'image' ? imgUrl(o.src) : '',
+      size: clampInt(o.size, 0, 720, 0),
+    };
+  }).filter(Boolean);
+}
 
 export function normalizeCharityDesign(v) {
   const o = v && typeof v === 'object' ? v : {};
   const D = CHARITY_DESIGN_DEFAULTS;
   return {
-    mode: oneOf(o.mode, ['default', 'custom'], D.mode),
+    mode: oneOf(o.mode, ['default', 'custom', 'code'], D.mode),
     width: oneOf(o.width, Object.keys(CHARITY_WIDTHS), D.width),
     height: clampInt(o.height, 200, 720, D.height),
     frame: o.frame !== false,
@@ -94,7 +152,12 @@ export function normalizeCharityDesign(v) {
     stickerSize: clampInt(o.stickerSize, 48, 320, D.stickerSize),
     stickerCorner: oneOf(o.stickerCorner, ['tl', 'tr', 'bl', 'br'], D.stickerCorner),
     stickerOffset: clampInt(o.stickerOffset, 0, 160, D.stickerOffset),
-    alt: typeof o.alt === 'string' ? o.alt.slice(0, 200) : '',
+    alt: str(o.alt, 200),
+    parts: normParts(o.parts),
+    labels: normLabels(o.labels),
+    classes: normClasses(o.classes),
+    css: str(o.css, CHARITY_CSS_MAX),
+    blocks: normBlocks(o.blocks),
   };
 }
 
