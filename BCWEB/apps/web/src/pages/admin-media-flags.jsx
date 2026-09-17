@@ -21,7 +21,7 @@
 //
 // The list mode is kept, because scanning twenty at once is a real second way to work.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Images, RefreshCw, Check, Gavel, Sliders, ArrowLeftRight, ScanSearch, Keyboard, Rows3, Maximize2, ChevronLeft, ChevronRight, ExternalLink } from 'lucide-react';
+import { Images, RefreshCw, Check, Gavel, Sliders, ArrowLeftRight, ScanSearch, Keyboard, Rows3, Maximize2, ChevronLeft, ChevronRight, ExternalLink, Eye, EyeOff } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { useAsync } from './pages.jsx';
@@ -33,15 +33,45 @@ const fmt = (s, vars) => String(s).replace(/\{(\w+)\}/g, (m, k) => (vars[k] !== 
 const KIND_LABEL = { upload: 'Upload', archive: 'Archive', 'archive-entry': 'Inside an archive', avatar: 'Avatar', 'team-avatar': 'Team avatar' };
 const fileName = (key) => (key.includes('#') ? key.split('#').slice(1).join('#') : key.split('/').pop());
 
-/** One picture, at whatever size its container gives it. */
-function Shot({ h, t, big = false }) {
+/**
+ * One picture, at whatever size its container gives it, behind a spoiler.
+ *
+ * Every picture on this screen is a REPORTED picture, so nothing is drawn until the
+ * moderator asks for it. The cover is not a blur. `filter: blur()` leaves the real bytes in
+ * the document: devtools removes the style in one click, "open image in a new tab" is in
+ * every context menu, a saved page carries the file, and a screenshot taken during the fade
+ * catches a frame that is barely blurred at all. Here there is no <img> and `src` is never
+ * set, so the browser never even requests it. What is not on the page cannot leak off it.
+ *
+ * What this does NOT do, honestly:
+ *   · it hides the picture, not its URL. `h.preview` is in the React props and the network
+ *     tab shows the request the moment you reveal. A moderator who wants the file has it by
+ *     definition, and that is fine: the thing being prevented is a picture NOBODY asked to
+ *     see appearing on a screen somebody else can also see.
+ *   · reveal is keyed by the hash id, so the same picture flagged twice reveals in both
+ *     places at once. It is the same picture; re-asking would be theatre.
+ *   · once revealed it stays revealed until the queue moves or "Hide" is pressed. Nothing is
+ *     written down, so a reload is always a clean screen.
+ */
+function Shot({ h, t, big = false, shown, onReveal }) {
   const [broken, setBroken] = useState(false);
   const dead = h.kind === 'archive' || broken;
+  const box = `w-full overflow-hidden rounded-lg panel-quiet flex items-center justify-center ${big ? 'aspect-[4/3]' : 'aspect-square'}`;
+  if (dead) return <div className={box}><Images size={big ? 48 : 28} className="text-[var(--faint)]" /></div>;
+  if (!shown) {
+    return (
+      <button type="button" onClick={onReveal}
+        className={`${box} flex-col gap-1.5 text-[var(--muted)] hover:text-[var(--text)] transition`}
+        title={t('adm.mf.spoiler.t', 'Nothing is downloaded until you ask: the picture is not on this page yet.')}
+        aria-label={t('adm.mf.spoiler.a', 'Show this reported picture')}>
+        <EyeOff size={big ? 26 : 16} />
+        <span className="text-[11px] font-medium leading-tight px-2 text-center">{t('adm.mf.spoiler', 'Reported picture. Click to show.')}</span>
+      </button>
+    );
+  }
   return (
-    <div className={`w-full overflow-hidden rounded-lg panel-quiet flex items-center justify-center ${big ? 'aspect-[4/3]' : 'aspect-square'}`}>
-      {dead
-        ? <Images size={big ? 48 : 28} className="text-[var(--faint)]" />
-        : <img src={`/api${h.preview}`} alt={fileName(h.key)} loading="lazy" className="max-w-full max-h-full object-contain" onError={() => setBroken(true)} />}
+    <div className={box}>
+      <img src={`/api${h.preview}`} alt={fileName(h.key)} loading="lazy" className="max-w-full max-h-full object-contain" onError={() => setBroken(true)} />
     </div>
   );
 }
@@ -76,15 +106,21 @@ function Who({ h, t, flags }) {
  * question that decides whether a flag is a crop of somebody else's work or an unrelated
  * picture that happens to hash nearby. The two images are stacked in one box and one is faded
  * out; nothing is downloaded twice and nothing moves, so a 4px watermark is visible.
+ *
+ * Blink is gated on BOTH pictures being revealed, and the caller enforces the same gate on
+ * the button and on the B key. Swapping two images in one frame is exactly the operation
+ * that would otherwise put a picture nobody asked for on screen for 700ms at a time, which
+ * is the whole thing the spoiler exists to prevent.
  */
-function Compare({ f, t, ownerFlags, blink, onBlink }) {
+function Compare({ f, t, ownerFlags, blink, onBlink, shown, reveal }) {
   const [side, setSide] = useState(0);   // which one blink is showing
+  const both = shown(f.hash) && shown(f.match);
   useEffect(() => {
-    if (!blink) return undefined;
+    if (!blink || !both) return undefined;
     const id = setInterval(() => setSide((v) => 1 - v), 700);
     return () => clearInterval(id);
-  }, [blink]);
-  if (blink) {
+  }, [blink, both]);
+  if (blink && both) {
     return (
       <div className="space-y-2">
         <div className="relative w-full aspect-[4/3] overflow-hidden rounded-lg panel-quiet">
@@ -103,13 +139,22 @@ function Compare({ f, t, ownerFlags, blink, onBlink }) {
     );
   }
   return (
-    <div className="grid sm:grid-cols-2 gap-3">
-      {[f.hash, f.match].map((h) => (
-        <div key={h.id} className="space-y-1.5">
-          <Shot h={h} t={t} big />
-          <Who h={h} t={t} flags={h.ownerId ? ownerFlags[h.ownerId] || 0 : 0} />
-        </div>
-      ))}
+    <div className="space-y-2">
+      <div className="grid sm:grid-cols-2 gap-3">
+        {[f.hash, f.match].map((h) => (
+          <div key={h.id} className="space-y-1.5">
+            <Shot h={h} t={t} big shown={shown(h)} onReveal={() => reveal([h])} />
+            <Who h={h} t={t} flags={h.ownerId ? ownerFlags[h.ownerId] || 0 : 0} />
+          </div>
+        ))}
+      </div>
+      {/* The job is comparing two pictures, so revealing them one at a time is two clicks
+          for every single flag in the queue. One button, one decision. */}
+      {!both && (
+        <Button size="sm" variant="ghost" onClick={() => reveal([f.hash, f.match])}>
+          <Eye size={13} /> {t('adm.mf.revealboth', 'Show both')}
+        </Button>
+      )}
     </div>
   );
 }
@@ -191,9 +236,14 @@ export function AdminMediaFlags() {
   // is LEFT, and a reload after every verdict both costs a round trip and moves the ground
   // under the next keystroke.
   const [done, setDone] = useState(() => new Set());
+  // Which reported pictures the moderator has asked to see, by hash id. Component state on
+  // purpose: no localStorage, no query string, nothing that survives a reload. A moderator
+  // who comes back to this tab tomorrow gets a blank screen again, and the pictures they
+  // revealed an hour ago are not waiting for them (or for whoever walks past).
+  const [revealed, setRevealed] = useState(() => new Set());
   const list = useAsync(() => api.get(`/admin/media-flags?status=${status}&page=${page}`), [status, page]);
   const stats = useAsync(() => api.get('/admin/media-hashes/stats'), []);
-  useEffect(() => { setDone(new Set()); setAt(0); }, [status, page]);
+  useEffect(() => { setDone(new Set()); setAt(0); setRevealed(new Set()); setBlink(false); }, [status, page]);
 
   const all = list.data?.flags || [];
   const ownerFlags = list.data?.ownerFlags || {};
@@ -201,16 +251,38 @@ export function AdminMediaFlags() {
   const pages = Math.max(1, Math.ceil((list.data?.total || 0) / (list.data?.pageSize || 40)));
   const cur = flags[Math.min(at, Math.max(0, flags.length - 1))] || null;
 
-  const resolve = useCallback(async (id, st) => {
-    try {
-      await api.post(`/admin/media-flags/${id}`, { status: st });
-      if (status === 'pending' && st !== 'pending') {
-        setDone((d) => new Set(d).add(id));
-        stats.reload();
-      } else { await list.reload(); stats.reload(); }
-    } catch { toast.error(t('common.failed', 'Failed.')); }
+  const shown = useCallback((h) => revealed.has(h.id), [revealed]);
+  const reveal = useCallback((hs) => setRevealed((s) => { const n = new Set(s); for (const h of hs) n.add(h.id); return n; }), []);
+  const hideAll = useCallback(() => { setRevealed(new Set()); setBlink(false); }, []);
+  const bothShown = !!cur && revealed.has(cur.hash.id) && revealed.has(cur.match.id);
+  // Blink cannot outlive the reveal that allowed it: hiding while it runs must stop it,
+  // not leave a timer swapping two covers (or, worse, catch a re-render that draws one).
+  useEffect(() => { if (blink && !bothShown) setBlink(false); }, [blink, bothShown]);
+
+  // A verdict is optimistic and undoable. Clearing a flag is a one-key action (C / A) in a
+  // queue, which is the shape of action people get wrong fastest, and nothing on this screen
+  // asks "are you sure" because a confirm on every keystroke would make the queue useless.
+  // So the row leaves the list at once, the POST waits out the toast, and Undo means the
+  // server was never told. Pressing x applies it now.
+  const unhide = useCallback((id) => setDone((d) => { const n = new Set(d); n.delete(id); return n; }), []);
+  const resolve = useCallback((id, st) => {
+    const optimistic = status === 'pending' && st !== 'pending';
+    if (optimistic) setDone((d) => new Set(d).add(id));
+    toast.action({
+      tone: 'success', duration: 6000, cancelLabel: t('common.undo', 'Undo'),
+      msg: st === 'cleared' ? t('adm.mf.did.clear', 'Flag cleared.')
+        : st === 'actioned' ? t('adm.mf.did.action', 'Marked acted on.')
+          : t('adm.mf.did.reopen', 'Flag reopened.'),
+      onCommit: async () => {
+        try {
+          await api.post(`/admin/media-flags/${id}`, { status: st });
+          if (optimistic) stats.reload(); else { await list.reload(); stats.reload(); }
+        } catch { toast.error(t('common.failed', 'Failed.')); if (optimistic) unhide(id); }
+      },
+      onCancel: () => { if (optimistic) unhide(id); },
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, list, stats]);
+  }, [status, list, stats, unhide]);
 
   // The keys. Ignored while something is being typed into, because a moderator who is writing
   // a note should not be marking flags acted on by pressing A.
@@ -223,7 +295,11 @@ export function AdminMediaFlags() {
       const k = e.key.toLowerCase();
       if (k === 'j' || e.key === 'ArrowRight') { setAt((v) => Math.min(flags.length - 1, v + 1)); setBlink(false); }
       else if (k === 'k' || e.key === 'ArrowLeft') { setAt((v) => Math.max(0, v - 1)); setBlink(false); }
-      else if (k === 'b') setBlink((v) => !v);
+      // B never reveals. A key that both starts the comparison AND uncovers two reported
+      // pictures is a key you press by accident once and regret in front of somebody.
+      else if (k === 'b') { if (bothShown) setBlink((v) => !v); }
+      else if (k === 'r') { if (cur) reveal([cur.hash, cur.match]); }
+      else if (k === 'h') hideAll();
       else if (k === '?') setKeys((v) => !v);
       else if (cur && k === 'c') resolve(cur.id, 'cleared');
       else if (cur && k === 'a') resolve(cur.id, 'actioned');
@@ -232,7 +308,7 @@ export function AdminMediaFlags() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [mode, flags.length, cur, resolve]);
+  }, [mode, flags.length, cur, resolve, bothShown, reveal, hideAll]);
 
   const header = (
     <div className="flex items-center gap-2 flex-wrap">
@@ -249,6 +325,8 @@ export function AdminMediaFlags() {
           <option value="actioned">{t('adm.mf.st.actioned', 'Acted on')}</option>
           <option value="all">{t('adm.mf.st.all', 'All')}</option>
         </Select>
+        {/* One gesture that blanks the screen, for the moment somebody walks up behind you. */}
+        {revealed.size > 0 && <Button size="sm" variant="ghost" onClick={hideAll} title={t('adm.mf.hideall.t', 'Cover every picture on this screen again.')}><EyeOff size={13} /> {t('adm.mf.hideall', 'Hide')}</Button>}
         <Button size="sm" variant="ghost" onClick={() => { list.reload(); stats.reload(); }} title={t('common.refresh', 'Refresh')}><RefreshCw size={13} /></Button>
         <Button size="sm" variant="ghost" onClick={() => setShowCfg((v) => !v)}><Sliders size={13} /> {t('adm.mf.settings', 'Detection')}</Button>
       </div>
@@ -281,9 +359,9 @@ export function AdminMediaFlags() {
                 <Button size="sm" variant="ghost" disabled={at + 1 >= flags.length} onClick={() => { setAt(at + 1); setBlink(false); }} aria-label={t('common.next', 'Next')}><ChevronRight size={14} /></Button>
               </span>
             </div>
-            <Compare f={cur} t={t} ownerFlags={ownerFlags} blink={blink} onBlink={() => setBlink((v) => !v)} />
+            <Compare f={cur} t={t} ownerFlags={ownerFlags} blink={blink} onBlink={() => setBlink((v) => !v)} shown={shown} reveal={reveal} />
             <div className="flex items-center gap-2 flex-wrap">
-              {!blink && <Button size="sm" variant="ghost" onClick={() => setBlink(true)} title={t('adm.mf.blink.t', 'Swap the two in the same frame, which is how a crop or a watermark becomes visible.')}><ArrowLeftRight size={13} /> {t('adm.mf.blink', 'Blink between them')}</Button>}
+              {!blink && <Button size="sm" variant="ghost" disabled={!bothShown} onClick={() => setBlink(true)} title={bothShown ? t('adm.mf.blink.t', 'Swap the two in the same frame, which is how a crop or a watermark becomes visible.') : t('adm.mf.blink.locked', 'Show both pictures first: blinking would uncover them.')}><ArrowLeftRight size={13} /> {t('adm.mf.blink', 'Blink between them')}</Button>}
               <Verdict f={cur} resolve={resolve} t={t} />
               <Button size="sm" variant="ghost" className="ms-auto" onClick={() => setKeys((v) => !v)} aria-expanded={keys}><Keyboard size={13} /> {t('adm.mf.keys', 'Shortcuts')}</Button>
             </div>
@@ -294,6 +372,8 @@ export function AdminMediaFlags() {
                 <li><kbd>C</kbd> {t('adm.mf.clear', 'Clear')}</li>
                 <li><kbd>A</kbd> {t('adm.mf.action', 'Acted on')}</li>
                 <li><kbd>B</kbd> {t('adm.mf.blink', 'Blink between them')}</li>
+                <li><kbd>R</kbd> {t('adm.mf.revealboth', 'Show both')}</li>
+                <li><kbd>H</kbd> {t('adm.mf.hideall', 'Hide')}</li>
               </ul>
             )}
           </Card>
@@ -308,15 +388,23 @@ export function AdminMediaFlags() {
                 <div className="grid grid-cols-2 gap-3">
                   {[f.hash, f.match].map((h) => (
                     <div key={h.id} className="flex gap-2 min-w-0">
-                      <div className="w-24 shrink-0"><Shot h={h} t={t} /></div>
+                      <div className="w-24 shrink-0"><Shot h={h} t={t} shown={shown(h)} onReveal={() => reveal([h])} /></div>
                       <Who h={h} t={t} flags={h.ownerId ? ownerFlags[h.ownerId] || 0 : 0} />
                     </div>
                   ))}
                 </div>
-                <button type="button" className="text-[11px] text-[var(--accent-ink)] hover:underline inline-flex items-center gap-1"
-                  onClick={() => { setMode('review'); setAt(flags.indexOf(f)); }}>
-                  <Maximize2 size={11} /> {t('adm.mf.open', 'Look at this one properly')}
-                </button>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <button type="button" className="text-[11px] text-[var(--accent-ink)] hover:underline inline-flex items-center gap-1"
+                    onClick={() => { setMode('review'); setAt(flags.indexOf(f)); }}>
+                    <Maximize2 size={11} /> {t('adm.mf.open', 'Look at this one properly')}
+                  </button>
+                  {!(shown(f.hash) && shown(f.match)) && (
+                    <button type="button" className="text-[11px] text-[var(--accent-ink)] hover:underline inline-flex items-center gap-1"
+                      onClick={() => reveal([f.hash, f.match])}>
+                      <Eye size={11} /> {t('adm.mf.revealboth', 'Show both')}
+                    </button>
+                  )}
+                </div>
               </Card>
             ))}
             {pages > 1 && <div className="flex items-center justify-center gap-2 text-[12px]">

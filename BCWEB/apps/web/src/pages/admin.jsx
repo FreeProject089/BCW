@@ -10323,10 +10323,14 @@ function AdminLegal() {
     } catch { toast.error(t('common.err', 'Something went wrong.')); }
     finally { setBusy(false); }
   };
+  // The section's body is the thing that cannot be got back by redoing anything: it is
+  // written prose, in two languages. The house hook hides the row at once and only sends the
+  // DELETE when the window closes, so Undo means the server was never told.
+  const undoDel = useUndoableDelete(reload);
   const del = async (sec) => {
     if (!await dialog.confirm({ title: t('al.del.t', 'Delete this section?'), message: sec.title, danger: true })) return;
-    try { await api.del(`/admin/legal/${sec.id}`); toast.success(t('common.deleted', 'Deleted.')); reload(); }
-    catch { toast.error(t('common.err', 'Something went wrong.')); }
+    if (openId === sec.id) setOpenId(null);
+    undoDel.del(sec.id, () => api.del(`/admin/legal/${sec.id}`), t('common.deleted', 'Deleted.'));
   };
   const add = async () => {
     const title = await dialog.prompt({ title: t('al.add.t', 'New section'), label: t('al.add.l', 'Title') });
@@ -10467,7 +10471,7 @@ function AdminLegal() {
             )}
           </Card>
           <div className="space-y-2">
-            {mine.map((sec) => (
+            {mine.filter((sec) => !undoDel.pending.has(sec.id)).map((sec) => (
               <Card key={sec.id} className="p-0 overflow-hidden">
                 <button type="button" onClick={() => (openId === sec.id ? setOpenId(null) : open(sec))}
                   className="w-full flex items-center gap-2 p-3 text-start">
@@ -10737,10 +10741,17 @@ function AdminKofiGoal() {
       t('kg.saved', 'Goal saved, now visible on the homepage.'),
       { onSettled: () => setBusy(false) });
   };
+  // Its sibling `save` two lines up has been undoable for months; only the destructive half
+  // had no window. A goal is a title, a number and a currency somebody chose: cheap to retype
+  // and annoying to have to.
+  const undoDel = useUndoableDelete(reload);
   const clear = async () => {
     if (!(await dialog.confirm({ title: t('kg.rm.t', 'Remove funding goal'), message: t('kg.rm.m', 'The public widget will disappear from the homepage. The running total/tip count keep accumulating in the background.'), okLabel: t('kg.rm.ok', 'Remove') }))) return;
-    try { await api.del('/admin/kofi/goal'); toast.success(t('common.removed', 'Removed.')); setF({ title: '', targetAmount: '', currency: 'USD' }); reload(); }
-    catch { toast.error(t('common.failed', 'Failed.')); }
+    // Cleared on screen at once, sent when the window closes. 'goal' is a constant id:
+    // there is exactly one funding goal, so the hook's per-row bookkeeping needs a key and
+    // any stable one will do.
+    setF({ title: '', targetAmount: '', currency: 'USD' });
+    undoDel.del('goal', () => api.del('/admin/kofi/goal'), t('common.removed', 'Removed.'));
   };
   if (loading) return <Loading />;
   const pct = data?.goal ? Math.min(100, Math.round((data.totalAmount / data.goal.targetAmount) * 100)) : 0;
@@ -18723,7 +18734,13 @@ function AdminShowcase() {
   // content only — no create/delete/schedule, and the reserved controls in the edit modal
   // are hidden. The server enforces the same split.
   const canManage = !!data?.canManage;
-  const del = async (pr) => { if (!(await dialog.confirm({ title: t('sh.del.t', 'Delete project'), message: t('sh.del.m', 'Delete "{name}"?').replace('{name}', pr.name), okLabel: t('sh.del.ok', 'Delete'), danger: true }))) return; try { await api.del(`/admin/showcase/${pr.id}`); toast.success(t('common.deleted', 'Deleted.')); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
+  // A showcase project carries a whole page config somebody built. The row goes at once and
+  // the DELETE waits out the window, so Undo costs the server nothing.
+  const undoDel = useUndoableDelete(reload);
+  const del = async (pr) => {
+    if (!(await dialog.confirm({ title: t('sh.del.t', 'Delete project'), message: t('sh.del.m', 'Delete "{name}"?').replace('{name}', pr.name), okLabel: t('sh.del.ok', 'Delete'), danger: true }))) return;
+    undoDel.del(pr.id, () => api.del(`/admin/showcase/${pr.id}`), t('common.deleted', 'Deleted.'));
+  };
   return (
     <div>
       <div className="flex items-center justify-between mb-2">
@@ -18733,7 +18750,7 @@ function AdminShowcase() {
       </div>
       <p className="text-sm text-[var(--muted)] mb-4">{canManage ? t('sh.sub', 'Feature any project on the public /projects page. Overview is always shown; enable Release notes, Community and Legal per project.') : t('sh.sub.grantee', 'You can edit the content of the projects you were granted. Pinning, visibility and publishing are managed by an admin.')}</p>
       {loading ? <Loading /> : projects.length ? <div className="space-y-2">
-        {projects.map((pr) => {
+        {projects.filter((pr) => !undoDel.pending.has(pr.id)).map((pr) => {
           const announcing = pr.announceEnabled && pr.announceRevealAt && new Date(pr.announceRevealAt) > new Date();
           return (
           /* Badges and four buttons used to be flex siblings of the content, which on a phone
@@ -23962,6 +23979,7 @@ function LanguagesCard() {
             : t('common.failed', 'Failed.'));
     } finally { setBusy(false); }
   };
+  const undoDel = useUndoableDelete(reload);
   const patchOne = async (code, body) => { try { await api.put(`/admin/locales/${code}`, body); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
   const remove = async (l) => {
     if (!await dialog.confirm({
@@ -23969,8 +23987,9 @@ function LanguagesCard() {
       message: t('lc.del.m', 'Remove {x}? Its translations are deleted; visitors on it fall back to English.').replace('{x}', l.nativeName),
       confirmLabel: t('lc.del.ok', 'Remove'),
     })) return;
-    try { await api.del(`/admin/locales/${l.code}`); toast.success(t('lc.removed', 'Language removed.')); reload(); }
-    catch { toast.error(t('common.failed', 'Failed.')); }
+    // The most expensive delete on this screen: a language takes every string anybody
+    // translated into it. The window is the difference between a mis-click and an evening.
+    undoDel.del(l.code, () => api.del(`/admin/locales/${l.code}`), t('lc.removed', 'Language removed.'));
   };
   const coreCount = Object.keys(core).length;
   return (
@@ -24021,7 +24040,7 @@ function LanguagesCard() {
       {/* Existing languages */}
       {loading ? <Loading /> : locales.length ? (
         <div className="space-y-2">
-          {locales.map((l) => (
+          {locales.filter((l) => !undoDel.pending.has(l.code)).map((l) => (
             <div key={l.code} className="flex items-center gap-3 rounded-lg border border-[var(--line)] px-3 py-2 flex-wrap">
               <span className="font-medium">{l.nativeName}</span>
               <code className="text-[11px] text-[var(--faint)]">{l.code}</code>
@@ -24150,10 +24169,13 @@ function AdminSettings() {
           there are unsaved edits, so pinning the header isn't needed. */}
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
         <h2 className="font-semibold flex items-center gap-2"><Settings2 size={16} className="text-[var(--accent-ink)]" /> {t('hs.title', 'Hosting settings')}</h2>
-        {/* The fields below carry a one-line description each; the long "what does this actually
-            do, and when would I change it" lives in the Admin guide so this screen stays a
-            control panel, not a manual. */}
-        <Link to="?s=guide&g=hostingsettings" className="text-xs text-[var(--accent-ink)] hover:underline inline-flex items-center gap-1.5 shrink-0"><BookOpen size={13} /> {t('hs.guide', 'Full explanations in the Admin guide')}</Link>
+        {/* No guide link here.
+            There were two on this one screen, worded differently and pointing at two different
+            entries: the house one that every admin screen now carries at the top, and this
+            one. And a third kind, better than both, is already under each SETTING: a "Learn
+            more" that deep-links to that setting's own paragraph. A header link to the whole
+            chapter is the least useful of the three and was the one making the top of the page
+            look cluttered. */}
       </div>
       {dirtyKeys.length > 0 && (
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 anim-slide">

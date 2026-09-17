@@ -300,7 +300,33 @@ export function Dropdown({ value, options, onChange, className = '', size, place
   const menuRef = useRef(null);
   const [pos, setPos] = useState(null);
   const cur = options.find((o) => String(o.value) === String(value));
-  const openMenu = () => { const r = btnRef.current?.getBoundingClientRect(); if (r) setPos({ top: r.bottom + 6, left: r.left, minWidth: Math.max(r.width, 160) }); setOpen(true); };
+  // The menu is `position: fixed`, so its coordinates are viewport coordinates and they have
+  // to be recomputed as the page moves under it. They were captured once, on open, and never
+  // again: scrolling left the menu pinned to the viewport while its button travelled away, so
+  // a list of settings sections sat in the middle of the page, attached to nothing. That is
+  // the "the dropdown follows me when I scroll" report, and it affects every Dropdown on the
+  // site rather than the one screen it was noticed on.
+  const place = useCallback(() => {
+    const r = btnRef.current?.getBoundingClientRect();
+    if (!r) return null;
+    return { top: r.bottom + 6, left: r.left, minWidth: Math.max(r.width, 160), btm: r.bottom, top0: r.top };
+  }, []);
+  const openMenu = () => { const at = place(); if (at) setPos(at); setOpen(true); };
+  useEffect(() => {
+    if (!open) return undefined;
+    const follow = () => {
+      const at = place();
+      // The button has left the window: a menu anchored to something nobody can see is a menu
+      // nobody meant to leave open.
+      if (!at || at.btm < 0 || at.top0 > window.innerHeight) { setOpen(false); return; }
+      setPos(at);
+    };
+    // Capture, because the page is not always what scrolls: these menus open inside cards,
+    // tables and the admin's own scrolling panes.
+    window.addEventListener('scroll', follow, true);
+    window.addEventListener('resize', follow);
+    return () => { window.removeEventListener('scroll', follow, true); window.removeEventListener('resize', follow); };
+  }, [open, place]);
   useEffect(() => { if (!open) return; const onKey = (e) => { if (e.key === 'Escape') { setOpen(false); btnRef.current?.focus?.(); } }; window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey); }, [open]);
   // On open, move focus onto the selected option (else the first) so the list is keyboard-usable.
   useEffect(() => {
