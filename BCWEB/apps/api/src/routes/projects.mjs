@@ -190,6 +190,33 @@ export default async function projectRoutes(app) {
    * fifty catalogue items behind it is not something to remove because a confirm dialog was
    * clicked. The counts come back so the screen can say what is in the way.
    */
+  /**
+   * What stands in the way of deleting this project.
+   *
+   * The same three counts the DELETE refuses on, asked BEFORE anything is destroyed. Two
+   * reasons: pressing Delete, confirming, and only then being told the project cannot go is
+   * the wrong order to learn it in; and a refusal that can only happen at delete time makes
+   * the delete impossible to defer, which is what the site's undo window needs.
+   */
+  app.get('/admin/projects/:key/usage', { preHandler: requireCap('manage_projects') }, async (req, reply) => {
+    const { key } = req.params;
+    const p = await db();
+    const row = await p.project.findUnique({ where: { key }, select: { id: true } });
+    if (!row) return reply.code(404).send({ error: 'unknown_project' });
+    const [posts, items, catalogs] = await Promise.all([
+      p.blogPost.count({ where: { projectId: row.id } }),
+      p.catalogItem.count({ where: { projectId: row.id } }),
+      p.communityCatalog.count({ where: { projectId: row.id } }),
+    ]);
+    return {
+      posts, items, catalogs,
+      builtin: BUILTIN_PROJECT_KEYS.includes(key),
+      // One answer rather than three numbers a caller has to re-interpret, so the screen and
+      // the route cannot disagree about what "deletable" means.
+      deletable: !posts && !items && !catalogs && !BUILTIN_PROJECT_KEYS.includes(key),
+    };
+  });
+
   app.delete('/admin/projects/:key', { preHandler: requireCap('manage_projects') }, async (req, reply) => {
     const { key } = req.params;
     if (BUILTIN_PROJECT_KEYS.includes(key)) return reply.code(400).send({ error: 'builtin_project' });

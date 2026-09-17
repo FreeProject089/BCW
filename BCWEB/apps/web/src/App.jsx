@@ -868,20 +868,18 @@ function Nav() {
 //   · it sat ON the end of the page. There is now a spacer the exact height of the bar, so
 //     the last row of any page can still be scrolled to.
 //
-// Labels still collapse while actively scrolling and slide back when the user stops.
+// Labels do NOT collapse while scrolling any more. They did, sliding back 220ms after the
+// last scroll event, and it reads as the bar breaking rather than as a considerate touch: the
+// labels are gone for exactly as long as the eye is moving and back once it has landed
+// somewhere else, so the reader sees the flicker and never the reason for it. It also put a
+// scroll listener and a timer on every page for every visitor on a phone, to hide four words
+// that were never in the way.
 function MobileTabBar() {
   const { t, lang } = useI18n();
   const { user } = useAuth();
   const navCfg = useNavConfig();
   const badge = useNavBadge();
-  const [showLabels, setShowLabels] = useState(true);
   const [openUp, setOpenUp] = useState(null); // index of the open dropup sheet, or null
-  useEffect(() => {
-    let tmr;
-    const onScroll = () => { setShowLabels(false); clearTimeout(tmr); tmr = setTimeout(() => setShowLabels(true), 220); };
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => { window.removeEventListener('scroll', onScroll); clearTimeout(tmr); };
-  }, []);
   const bar = buildDownbar(navCfg, { signedIn: !!user });
   // Hooks are all above this line: the bar can be switched off by an admin, and an early
   // return before a hook is the classic way to break a component on a config change.
@@ -889,7 +887,7 @@ function MobileTabBar() {
   const { display, items } = bar;
   const showIcon = display !== 'text';
   const showText = display !== 'icon';
-  const labelVisible = display === 'text' || showLabels;
+  const labelVisible = showText;
   // A hardcoded slot carries a translation key; a configured one carries label/labelFr.
   // The fallbacks are spelled out here because these two keys are new.
   const label = (n) => {

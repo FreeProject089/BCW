@@ -527,7 +527,10 @@ export function Hosting() {
           const features = [
             [HardDrive, t('hosting.card.storage', '{s} of storage, split how you like').replace('{s}', storageLabel), true],
             [Zap, t('hosting.card.upload', '{m} Mbps of download bandwidth').replace('{m}', mbps), true],
-            [Star, boosts || t('hosting.card.noboosts', 'Boosts bought separately'), !!boosts, t('hosting.card.boostis', 'A boost puts you first')],
+            // The note stays one line: this card is a price comparison, and what a boost IS
+            // belongs in the questions below, which is a disclosure and is read by somebody
+            // who wants the answer rather than by everybody comparing four prices.
+            [Star, boosts || t('hosting.card.noboosts', 'Boosts bought separately'), !!boosts, t('hosting.card.boostis', 'At the top of the public lists, for as long as it lasts')],
             [Globe, t('hosting.card.domain', 'Your own domain, per repo or catalogue'), true],
             [Gift, freeLine[0], freeLine[1]],
           ];
@@ -1213,6 +1216,10 @@ function HostingFaq() {
     // and nothing is credited. "Pro rata" and "credits the difference" were invented.
     [t('hosting.faq.q2b', 'Can I take a bigger one later? A smaller one?'),
      t('hosting.faq.a2c', 'Bigger, yes: buy another pool and merge the two into one — the space adds up, and the bigger plan\'s rate applies from the next renewal — or upgrade a single repo in place with a new prepaid term for its new size. Smaller, no: a paid pool is never shrunk or refunded mid-term. Let a subscription run out instead, or simply re-split the space between the repos and catalogues inside the pool, which is free and immediate. Nothing changes address either way, so no link you have shared stops working.')],
+    // Asked on the plan cards, answered here: the cards carry a one-line note and this is
+    // what that note is short for.
+    [t('hosting.faq.q8', 'What does a boost actually do?'),
+     t('hosting.faq.a8', 'It puts your repo or catalogue at the top of the public lists for the number of days it carries, above everything that is not boosted. Among boosted ones, the furthest end date comes first, so a longer boost outranks a shorter one. They stack rather than replace: putting one on something already featured extends the end date instead of restarting it, so there is no gap and nothing is thrown away. When it runs out the entry simply goes back to its normal place, and nothing else about it changes.')],
     [t('hosting.faq.q3b', 'What is the difference between a repo and a catalogue?'),
      t('hosting.faq.a3', 'A repo is the FILES themselves, at a fixed address something can sync from. A catalogue is a LIST people browse and install from. Publishing your own work usually wants a repo; gathering other people’s usually wants a catalogue. A pool holds both, so you do not have to decide now.')],
     [t('hosting.faq.q4b', 'Can I put several repos in one pool?'),

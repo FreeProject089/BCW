@@ -12,7 +12,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Heart, Vote, Info, ArrowRight, Check } from 'lucide-react';
-import { Button, Card, Badge, Modal, Input, useToast, Explain } from '../ui/ui.jsx';
+import { Button, Card, Badge, Modal, Input, useToast } from '../ui/ui.jsx';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { useAsync } from './pages.jsx';
@@ -165,13 +165,14 @@ export function CharityCard({ pot, design, t, onGive, preview = false }) {
   const heading = (
     <>
       <div className="inline-flex items-center gap-2 text-base font-bold mb-1"><Heart size={18} className={custom && d.ink !== 'auto' ? '' : 'text-[var(--accent-ink)]'} /> {t('ch.title', 'Community Charity')}</div>
-      {/* One line above the numbers. How the two streams add up and how the money leaves
-          is the whole of /charity, and repeating it here pushed the pot below the fold on a
-          phone. Folded, it stays available without being in front of the figure. */}
-      <p className={`text-xs mb-1 ${custom && d.ink !== 'auto' ? 'opacity-80' : 'text-[var(--muted)]'}`}>{t('ch.sub', 'A charity the community chooses, every month.')}</p>
-      <Explain className={`text-xs mb-4 ${d.align === 'left' ? 'text-left' : d.align === 'right' ? 'text-right' : 'text-center'}`}>
-        {t('ch.sub2', 'A share of our revenue is added to your gifts, and the whole pot goes to the charity the vote names. The payment is made by hand, with proof.')}
-      </Explain>
+      {/* One line above the numbers, and ONE way to read more.
+          A fold was added here and the card already had a "Learn more" button pointing at
+          /charity, so the same card offered the same promise twice, three centimetres apart,
+          leading to two different places. /charity is the long version and always was: it
+          explains the two streams, the vote and the proof at length. A fold that paraphrases
+          a whole page is a second copy that will drift from it. The button stays because it
+          goes to the real thing; the fold goes. */}
+      <p className={`text-xs mb-4 ${custom && d.ink !== 'auto' ? 'opacity-80' : 'text-[var(--muted)]'}`}>{t('ch.sub', 'A charity the community chooses, every month.')}</p>
     </>
   );
   if (!custom) {

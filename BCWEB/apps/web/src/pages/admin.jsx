@@ -9450,7 +9450,12 @@ function AdminProjects() {
   // project added anywhere else was invisible here, which is the one screen where it has
   // to appear. `/projects` is already loaded above and lists exactly what exists.
   const allKeys = Object.keys(projects);
-  const keys = canMngProjects ? allKeys : allKeys.filter((k) => (adminMeta.data?.projects || []).some((p) => p.key === k));
+  // The key whose delete is inside its undo window: gone from the rail, still on the server.
+  const [pendingDelete, setPendingDelete] = useState(null);
+  // A project inside its delete window is already gone as far as this screen is concerned:
+  // it leaves the rail the moment Delete is pressed and comes back if Undo is.
+  const keys = (canMngProjects ? allKeys : allKeys.filter((k) => (adminMeta.data?.projects || []).some((p) => p.key === k)))
+    .filter((k) => k !== pendingDelete);
   const isShowcase = active.startsWith('sc:');
   const [newKey, setNewKey] = useState('');
   const [newName, setNewName] = useState('');
@@ -9479,30 +9484,54 @@ function AdminProjects() {
     } finally { setAdding(false); }
   };
 
-  /** Remove one. Refused for the built-ins and for anything still attached to content. */
+  /**
+   * Remove one, with a window to change your mind.
+   *
+   * Three things, in this order, and the order is the design:
+   *
+   * 1. ASK THE SERVER FIRST whether it can go. The refusal (posts, catalogue items or
+   *    catalogues still attached) used to arrive after the confirm dialog, which is the wrong
+   *    moment to learn it, and it also made the delete impossible to defer.
+   * 2. Confirm, because it is destructive and the config goes with it.
+   * 3. Then the site's own undo: the row leaves the list at once, the selection moves off it,
+   *    and the DELETE is only sent when the toast expires. Cancel means the server was never
+   *    touched, which is the only kind of undo that cannot lose the blog and project grants
+   *    the delete also removes.
+   */
   const removeProject = async (key) => {
+    let usage;
+    try { usage = await api.get(`/admin/projects/${encodeURIComponent(key)}/usage`); }
+    catch (e) { return toast.error(String(e?.message || e)); }
+    if (usage?.builtin) return toast.error(t('adm.proj.builtin', 'The five built-in projects cannot be deleted.'));
+    if (!usage?.deletable) {
+      return toast.error(t('adm.proj.inuse', 'Still in use: {p} post(s), {i} catalogue item(s), {c} catalogue(s).')
+        .replace('{p}', usage.posts).replace('{i}', usage.items).replace('{c}', usage.catalogs));
+    }
     const ok = await dialog.confirm({
       title: t('adm.proj.delT', 'Delete this project?'),
-      body: t('adm.proj.delB', 'Its page config goes with it. Posts, catalogue items and catalogues must be moved or deleted first.'),
+      body: t('adm.proj.delB2', 'Its page config, and the blog and project grants pointing at it, go with it.'),
       danger: true,
     });
     if (!ok) return;
-    try {
-      await api.del(`/admin/projects/${encodeURIComponent(key)}`);
-      await reload();
-      toast.success(t('adm.proj.deleted', 'Deleted.'));
-    } catch (e) {
-      const d = e?.data;
-      if (d?.error === 'project_in_use') {
-        // Counted and named, rather than a refusal with no reason: the admin has to know WHAT
-        // is in the way to be able to move it.
-        return toast.error(t('adm.proj.inuse', 'Still in use: {p} post(s), {i} catalogue item(s), {c} catalogue(s).')
-          .replace('{p}', d.posts).replace('{i}', d.items).replace('{c}', d.catalogs));
-      }
-      if (d?.error === 'builtin_project') return toast.error(t('adm.proj.builtin', 'The five built-in projects cannot be deleted.'));
-      toast.error(String(e?.message || e));
+    // Off the doomed row before it disappears, so the editor below is never pointed at it.
+    setPendingDelete(key);
+    if (active === key) {
+      const next = keys.find((k) => k !== key);
+      setActive(next || (showcase[0] ? `sc:${showcase[0].id}` : ''));
     }
+    toast.action({
+      tone: 'success',
+      msg: t('adm.proj.deleted', 'Deleted.'),
+      cancelLabel: t('common.undo', 'Undo'),
+      onCommit: async () => {
+        try { await api.del(`/admin/projects/${encodeURIComponent(key)}`); await reload(); }
+        catch (e) { toast.error(String(e?.message || e)); }
+        finally { setPendingDelete(null); }
+      },
+      onCancel: () => { setPendingDelete(null); setActive(key); },
+    });
   };
+
   const activeManageable = isShowcase ? canMngShowcase : canMngProjects;
   // Keep `active` on something the viewer may actually edit (a grantee's default 'bmm' might
   // not be theirs). Runs once the scoped lists arrive.
@@ -9510,7 +9539,12 @@ function AdminProjects() {
     if (isShowcase) { if (!showcase.some((s) => `sc:${s.id}` === active)) { if (keys[0]) setActive(keys[0]); else if (showcase[0]) setActive(`sc:${showcase[0].id}`); } return; }
     if (!keys.includes(active)) { if (keys[0]) setActive(keys[0]); else if (showcase[0]) setActive(`sc:${showcase[0].id}`); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [adminMeta.data, show.data]);
+    // `data` belongs here and was missing, which is the whole of the "deleting a project
+    // leaves me on its settings page and every action fails" report. `keys` is derived from
+    // `data` (GET /projects); this effect watched only adminMeta and show. So after a delete
+    // reloaded `data`, the list lost the project, this never re-ran, and `active` went on
+    // naming a key the server no longer has: every save, upload and flush under it 404s.
+  }, [data, adminMeta.data, show.data]);
   // Collapse the showcase chips into a picker when the rail can't hold everything on one line.
   // Measured, not guessed at a count: a hidden nowrap copy gives the natural width, compared to
   // the rail's real width via a ResizeObserver, so it reflows with the viewport (phone → menu,
