@@ -126,6 +126,12 @@
 - **Files that expire** — one mechanism (`/f/<token>`) for Make Your Own deliverables (30 days after delivery or 7 after the first download; the first download is the proof, written into the conversation; archives keep no attachments), mail attachments (dated links, or inline when small) and any file handed out for a while. Mail: the composer keeps the admin's own templates and the gallery lets a built-in wording be edited in place instead of rewritten; the header logo sits on a white plate.
 - **Admin search** — the dashboard sidebar's box finds screens by label, synonym (FR/EN), accent-insensitive prefix or a one-letter typo, ranked from the admin guide's own text, and below them the data itself (accounts, repos, catalogues, teams, conversations, reports, sanctions, commissions, posts, docs, FAQ, polls, codes) through `/admin/search`.
 - **Lookalike pictures** — every uploaded image (and the images inside uploaded archives, and linked avatars) gets a perceptual hash; one within a few bits of another account's picture, or byte-identical to it, lands in Admin → Moderation → Lookalike pictures with both pictures side by side, to clear or act on.
+- **Discord bot: finding your way** — a screen opened from another screen draws **one Back
+  button** that reopens the one you came from. Where you came from travels in the button's own
+  custom id rather than in server-side state; it is one hop, not a browser history. `/help` browses the same explanations the **Learn more** button on each
+  feature card gives, from one index (link, level, shop, inventory, casino, live tables,
+  giveaway, voice, logs, config), and the text lives in the bot's dictionary like every other
+  string it says, so it is translatable and overridable from the site's Languages screen.
 - **Discord bot** — multi-role gated access with per-role requirements + `/refreshroles`,
   Ko-fi tip announcements, server-perf alerts, moderation, welcome, join-to-create
   voice, blog announcements. The `/casino` has **live tables** (a six-car race with the car
@@ -339,7 +345,11 @@
   an automatic dropdown beyond that, plus a footer switcher (desktop + mobile).
 - **Site theme** (SUPERADMIN) — an accent gradient, per-mode page colours, a full token
   catalogue and glow-geometry editor, a composed live preview — and **export/import** of a
-  whole look as a JSON file.
+  whole look as a JSON file. The accent is chosen as a **fill**, and a fill only has to be
+  visible, not legible, so the accent **as text** is its own token, `--accent-ink`: the same
+  hue walked toward the page's own ink until it clears 4.5:1, recomputed per mode from the
+  site's accent. A custom accent therefore gets a readable ink without anybody picking a
+  second colour and keeping it in step.
 - **Mobile bottom bar** — the phone tab bar is configurable: **icon-only / text-only / both**,
   and a custom set of up to five buttons (each an icon, an FR/EN name and a path) that replaces
   the auto-derived set.
@@ -356,7 +366,12 @@
   zoom, pulse, float, custom keyframes; on show, on load, after a delay, on hover; looped or
   not), a **Layers** panel (name, lock, hide, reorder), rotation, shadow, hover effects, a
   block-wide link, text alignment, a chosen grid step and presets to start from; **shapes** (twelve, as inline SVG with fill / gradient / stroke / label), **pasted SVG** through an allow-list sanitiser, twelve **tiling patterns**, a **page stylesheet** scoped to the page (external url(), @import and expression() refused and reported), per-block classes and inline style, the full **B.MD editor** for text blocks, copy / paste, zoom, and `.css` / `.svg` imports.
-  The studio is **a page of its own** at `/studio/<project|showcase>/<id>/<index>` (opened
+  The **home page** can be drawn too: each of its custom sections (Admin → Navigation and
+  footer → Home page) carries a **Written / Drawn** switch, and a drawn one opens in the same
+  studio. Switching to Drawn keeps the section's Markdown, so trying the studio and changing
+  your mind does not lose the words; a section set to Drawn with nothing on the board still
+  falls back to what was written.
+  The studio is **a page of its own** at `/studio/<project|showcase|home>/<id>/<index>` (opened
   from "Open the studio" in the page settings; the address without an index lists that
   page's canvases): a top bar (back, document name, save state, undo / redo, the light / dark
   / phone board switch, the previews, Save), a left pane (**Blocks** palette, **Layers**,

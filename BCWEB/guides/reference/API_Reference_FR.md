@@ -15,13 +15,19 @@ les modules de routes Fastify dans `apps/api/src/routes/`.
 - **Format :** JSON en entrée / JSON en sortie. L'auth est un **cookie de session** (posé par le
   login), sauf indication contraire (secret du bot / signature de webhook).
 - **Santé :** `GET /api/health` → `{ ok, db, ts }` (sans auth).
+- **Barre oblique finale :** l'API répond aux deux écritures — `/api/health` et `/api/health/`
+  atteignent la même route (`ignoreTrailingSlash`). L'edge redirige les chemins *du site* vers
+  la forme sans barre oblique par un 308 (qui conserve la méthode et le corps), mais `/api` et
+  `/hosting` en sont exemptés : un client programmatique obtient sa réponse plutôt qu'une
+  redirection qu'il ne suivra peut-être pas, et sous `/hosting` une barre oblique finale
+  désigne un listage de répertoire, pas le fichier d'à côté.
 
 ### Niveaux d'auth (la colonne « Auth »)
 | Tag | Signification |
 |---|---|
 | **—** | Public, sans auth. |
 | **user** | Cookie de session connecté. |
-| **mod** / **admin** | `requireRole('MOD'/'ADMIN')` — **compte avec 2FA activée requis**. |
+| **mod** / **admin** | La *surface* modérateur ou admin, derrière un **compte avec 2FA**. À lire comme « au moins jusque-là », pas comme un rôle exact : la plupart des lignes sont des `requireCap('manage_x')`, qui admettent ADMIN et SUPERADMIN, tout rôle nommé par la capacité, **et** tout compte dont le rôle personnalisé la porte. Une ligne « admin » est donc souvent ouverte aussi à un MOD ou à un porteur de capacité. Quand une ligne est vraiment un `requireRole('ADMIN')` et rien d'autre, la colonne But le dit. |
 | **superadmin** | `requireRole('SUPERADMIN')` seulement. |
 | **server-control** | Octroi `canControlServer` **+ cookie d'élévation 2FA renforcée**. |
 | **bot** | Secret partagé du bot Discord (en-tête `x-bot-secret`), vérifié en temps constant. |
@@ -146,7 +152,8 @@ e-mail, et les envois sont déclenchés par admin uniquement (pas d'auto-envoi �
 |---|---|---|---|
 | GET | `/repos/:id/dashboard` · `/activity` · `/traffic` | user (owner) | Dashboard (incl. statut + niveau de confiance), journal d'activité, graphe de trafic — reste consultable même suspendu. |
 | POST | `/repos/:id/dashboard/files` · `/files/presign` · `/files/download-zip` · DELETE `/files/:fid` | owner | Gestionnaire de fichiers + zip groupé. |
-| POST | `/repos/:id/dashboard/publish` · `/unpublish` · `/lock` · `/unlock` · `/ban` · `/unban` | owner | Contrôles publish/lock/ban. |
+| POST | `/repos/:id/dashboard/publish` · `/unpublish` · `/ban` · `/unban` | owner | Contrôles publish/ban. |
+| POST | `/repos/:id/dashboard/unlock` · `/lock` | — | Publiques délibérément : `unlock` EST la porte du mot de passe (argon2, limité à 10/min, pose le cookie `bcw_rd_<id>` en cas de succès) et `lock` ne fait que l’effacer. Les annoncer réservées au propriétaire décrivait une porte qui doit être ouverte pour qu’on y frappe. |
 | PUT | `/repos/:id/dashboard/access` · `/settings` | owner | Contrôle d'accès + réglages. |
 
 > **Les repos suspendus sont totalement gelés** : un repo `SUSPENDED` refuse **chaque** non-GET
@@ -322,7 +329,8 @@ interroge la route de statut ci-dessus jusqu'à lire `delivered`.
 ## 17. Gestion serveur avancée (`server-control.mjs`) — **server-control + 2FA renforcée**
 | Méthode | Chemin | Auth | But |
 |---|---|---|---|
-| GET | `/server/elevate/status` · POST `/server/elevate` | server-control | Élévation 2FA renforcée. |
+| GET | `/server/elevate/status` | admin | Une SONDE d’état : elle répond au lieu de refuser, et l’octroi `canControlServer` fait partie de la réponse, pas de la garde. Elle était auparavant derrière ce qu’elle rapporte, donc quiconque n’avait pas l’octroi recevait un 403 pour un état parfaitement normal. |
+| POST | `/server/elevate` | server-control | Élévation 2FA renforcée. Celle-ci est gardée. |
 | GET | `/server/db/tables` · `/db/table/:name` | server-control | DB viewer (lecture journalisée). |
 | PUT | `/server/db/table/:name/cell` | server-control | Éditer une cellule (tables d'audit refusées). |
 | GET/POST | `/server/db/backups` · `/db/backups/:hash/restore` | server-control | Backups BD façon git. |
@@ -708,7 +716,7 @@ artefact avant sa publication.
 | POST | `/admin/inspect` | `manage_catalogs` / mod | Le même lecteur, côté modération. |
 | POST | `/dev/validate-recipe` | connecté | Vérifier un `installer.toml` BetterInstaller contre le schéma publié. |
 | POST | `/dev/validate-feed` | connecté | Vérifier un flux de catalogue (par URL ou corps). |
-| GET | `/admin/schema-map`, `/admin/rbac-map`, `/admin/compose-map`, `/admin/secrets-map`, `/admin/infra-map`, `/admin/migration-map`, `/admin/data-flow`, `/admin/config-diff` | superadmin | Les cartes générées derrière le tableau de bord admin. |
+| GET | `/admin/schema-map`, `/admin/rbac-map`, `/admin/compose-map`, `/admin/secrets-map`, `/admin/infra-map`, `/admin/migration-map`, `/admin/data-flow`, `/admin/config-diff` | admin | Les cartes générées derrière le tableau de bord admin. Les huit sont des `requireRole('ADMIN')`, pas SUPERADMIN, ce que ce tableau affirmait jusqu’à vérification dans le code. La carte des secrets donne les NOMS des variables d’environnement et si chacune est gardée au démarrage, jamais une valeur. |
 
 
 ### Les deux artefacts que lisent ces outils

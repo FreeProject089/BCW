@@ -12,13 +12,18 @@ from the Fastify route modules in `apps/api/src/routes/`.
 - **Format:** JSON in / JSON out. Auth is a **session cookie** (set by login), except
   where noted (bot secret / webhook signature).
 - **Health:** `GET /api/health` → `{ ok, db, ts }` (no auth).
+- **Trailing slash:** the API answers both spellings — `/api/health` and `/api/health/` hit
+  the same route (`ignoreTrailingSlash`). The edge redirects the *site's* paths to the
+  slashless form with a 308 (which keeps the method and the body), but `/api` and `/hosting`
+  are exempt: a programmatic client gets its answer rather than a redirect it may not follow,
+  and under `/hosting` a trailing slash means a directory listing, not the file beside it.
 
 ### Auth tiers (the "Auth" column)
 | Tag | Meaning |
 |---|---|
 | **—** | Public, no auth. |
 | **user** | Signed-in session cookie. |
-| **mod** / **admin** | `requireRole('MOD'/'ADMIN')` — **2FA-enabled account required**. |
+| **mod** / **admin** | The moderator or admin *surface*, behind a **2FA-enabled account**. Read it as "at least this far in", not as an exact role: most rows are `requireCap('manage_x')`, which admits ADMIN and SUPERADMIN, any role the capability names, **and** any account whose custom role bundle carries that capability. So an "admin" row is often also open to a MOD or to a cap grantee. Where a row really is `requireRole('ADMIN')` and nothing else, the Purpose column says so. |
 | **superadmin** | `requireRole('SUPERADMIN')` only. |
 | **server-control** | `canControlServer` grant **+ step-up 2FA elevation cookie**. |
 | **bot** | Discord bot shared secret (`x-bot-secret` header), constant-time checked. |
@@ -142,7 +147,8 @@ and sends are admin-triggered only (no auto-send on publish).
 |---|---|---|---|
 | GET | `/repos/:id/dashboard` · `/activity` · `/traffic` | user (owner) | Dashboard (incl. status + trust tier), activity log, traffic graph — stays viewable even when suspended. |
 | POST | `/repos/:id/dashboard/files` · `/files/presign` · `/files/download-zip` · DELETE `/files/:fid` | owner | File manager + bulk zip. |
-| POST | `/repos/:id/dashboard/publish` · `/unpublish` · `/lock` · `/unlock` · `/ban` · `/unban` | owner | Publish/lock/ban controls. |
+| POST | `/repos/:id/dashboard/publish` · `/unpublish` · `/ban` · `/unban` | owner | Publish and ban controls. |
+| POST | `/repos/:id/dashboard/unlock` · `/lock` | — | Deliberately public: `unlock` IS the password gate (argon2, rate-limited to 10/min, mints the `bcw_rd_<id>` cookie on success) and `lock` only clears that cookie. Listing them as owner-only described a door that has to be open to be knocked on. |
 | PUT | `/repos/:id/dashboard/access` · `/settings` | owner | Access control + settings. |
 
 > **Suspended repos are fully frozen**: a `SUSPENDED` repo refuses **every** non-GET here (files add/delete, publish/list, settings, access, state) with `403 repo_suspended` — the dashboard stays read-only until an admin lifts it.
@@ -315,7 +321,8 @@ grants nothing: the dashboard polls the status route above until it reads `deliv
 ## 17. Advanced server management (`server-control.mjs`) — **server-control + step-up 2FA**
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| GET | `/server/elevate/status` · POST `/server/elevate` | server-control | Step-up 2FA elevation. |
+| GET | `/server/elevate/status` | admin | A status PROBE, so it answers rather than refuses: the `canControlServer` grant is part of the answer, not the gate. It used to sit behind the very thing it reports, so anybody without the grant got a 403 for a perfectly normal state. |
+| POST | `/server/elevate` | server-control | Step-up 2FA elevation. This one is gated. |
 | GET | `/server/db/tables` · `/db/table/:name` | server-control | DB viewer (read-logged). |
 | PUT | `/server/db/table/:name/cell` | server-control | Edit a cell (audit tables refused). |
 | GET/POST | `/server/db/backups` · `/db/backups/:hash/restore` | server-control | DB git-style backups. |
@@ -698,7 +705,7 @@ before it is published.
 | POST | `/admin/inspect` | `manage_catalogs` / mod | The same reader, on the moderation door. |
 | POST | `/dev/validate-recipe` | signed in | Check a BetterInstaller `installer.toml` against the published schema. |
 | POST | `/dev/validate-feed` | signed in | Check a catalogue feed (by URL or body). |
-| GET | `/admin/schema-map`, `/admin/rbac-map`, `/admin/compose-map`, `/admin/secrets-map`, `/admin/infra-map`, `/admin/migration-map`, `/admin/data-flow`, `/admin/config-diff` | superadmin | The generated maps behind the admin dashboard. |
+| GET | `/admin/schema-map`, `/admin/rbac-map`, `/admin/compose-map`, `/admin/secrets-map`, `/admin/infra-map`, `/admin/migration-map`, `/admin/data-flow`, `/admin/config-diff` | admin | The generated maps behind the admin dashboard. All eight are `requireRole('ADMIN')`, not SUPERADMIN, which this table claimed until it was checked against the code. The secrets map reports env-var NAMES and whether each is guarded at boot, never a value. |
 
 
 ### The two artifacts these tools read

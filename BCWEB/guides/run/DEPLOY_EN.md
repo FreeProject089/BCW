@@ -120,6 +120,12 @@ The BMM telemetry dashboard runs as its own service (`telemetry` + `telemetry-db
 Point `telemetry.example.com` at the server and set `TELEMETRY_INTERNAL_URL` +
 `TELEMETRY_ADMIN_KEY` in `.env` to manage its limits from the BCWEB admin.
 
+`/demo` on that same origin opens the dashboard on **generated data**, with every write,
+delete and export refused — it is for showing what the dashboard looks like without showing
+anyone's telemetry. It is not a public page: everything on this origin except the ingest paths
+sits behind the edge's `forward_auth` gate, so `/demo` still needs a BCWEB login with the
+telemetry grant.
+
 ## 8b. SSO — "Sign in with BetterCommunity" (OpenID Connect provider)
 
 BCWEB is a standards **OpenID Connect provider** — other services (yours or third-party)
@@ -248,7 +254,13 @@ The API exposes three probes (all exempt from the rate limiter, no request logs)
 - **`GET /health`**: the combined probe (always 200 with a `db: true/false` flag); the
   Docker healthcheck and Caddy's `depends_on` use this one.
 - Admin **Server perf** tab shows CPU/RAM/disk, dependency health, downtime history
-  and recent alerts (deduped, copyable).
+  and recent alerts (deduped, copyable). Each alert carries a **severity** decided where it is
+  raised — `critical` (a service is down, capacity oversold), `warning` (a threshold crossed),
+  `info` — and a **condition key** (`cpu`, `disk`, `service_down:db`…). On every tick the
+  monitor **closes** the open alerts whose condition it no longer sees, so "still happening"
+  is answerable; that is separate from acknowledging, which only records that a human looked.
+  Only a check that actually returned may close its own alerts: one that threw has no opinion,
+  and is not allowed to mark an outage as over.
 - Load test: `cd loadtest && npm install && BASE=https://community.example.com node run.mjs`.
 
 ## 12. Lock it down — firewall (do this right after the first deploy)

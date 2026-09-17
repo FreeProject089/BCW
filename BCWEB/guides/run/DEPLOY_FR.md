@@ -123,6 +123,12 @@ Le dashboard de télémétrie BMM tourne dans son propre service (`telemetry` +
 `TELEMETRY_INTERNAL_URL` + `TELEMETRY_ADMIN_KEY` dans `.env` pour gérer ses limites
 depuis l'admin BCWEB.
 
+`/demo`, sur cette même origine, ouvre le dashboard sur des **données générées**, toute
+écriture, suppression ou export étant refusée : de quoi montrer à quoi ressemble le dashboard
+sans montrer la télémétrie de qui que ce soit. Ce n'est pas une page publique : sur cette
+origine, tout sauf les chemins d'ingestion passe par le `forward_auth` de l'edge, donc `/demo`
+demande toujours une session BCWEB avec le droit télémétrie.
+
 ## 8b. SSO — « Se connecter avec BetterCommunity » (provider OpenID Connect)
 
 BCWEB est un **fournisseur OpenID Connect** standard — d'autres services (les tiens ou
@@ -254,7 +260,15 @@ L'API expose trois sondes (toutes exemptées du rate limiter, sans logs de requ�
 - **`GET /health`** : la sonde combinée (toujours 200 avec un drapeau `db: true/false`) ;
   c'est celle qu'utilisent le healthcheck Docker et le `depends_on` de Caddy.
 - L'onglet admin **Server perf** montre CPU/RAM/disque, la santé des dépendances,
-  l'historique de downtime et les alertes récentes (dédupliquées, copiables).
+  l'historique de downtime et les alertes récentes (dédupliquées, copiables). Chaque alerte
+  porte une **gravité** décidée là où elle est levée — `critical` (un service est tombé, une
+  capacité survendue), `warning` (un seuil franchi), `info` — et une **clé de condition**
+  (`cpu`, `disk`, `service_down:db`…). À chaque tick le moniteur **clôt** les alertes ouvertes
+  dont il ne voit plus la condition : « c'est toujours en cours ? » devient une question à
+  laquelle la liste répond, ce qui n'est pas la même chose qu'accuser réception (qui dit
+  seulement qu'un humain a regardé). Seule une vérification qui a vraiment rendu sa réponse
+  peut clore ses propres alertes : celle qui a échoué n'a pas d'avis, et n'a pas le droit de
+  déclarer une panne terminée.
 - Test de charge : `cd loadtest && npm install && BASE=https://community.example.com node run.mjs`.
 
 ## 12. Verrouille — pare-feu (juste après le premier déploiement)

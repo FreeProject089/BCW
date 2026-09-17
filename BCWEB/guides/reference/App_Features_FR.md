@@ -141,6 +141,14 @@
 - **Fichiers qui expirent** — un seul mécanisme (`/f/<jeton>`) pour les livraisons Make Your Own (30 jours après la livraison ou 7 après le premier téléchargement ; le premier téléchargement est la preuve, écrite dans la conversation ; les archives ne gardent aucune pièce jointe), les pièces jointes des mails (liens datés, ou jointes quand petites) et tout fichier remis pour un temps. Mail : le compositeur garde les modèles de l’admin et la galerie permet de modifier un texte intégré sur place au lieu de le réécrire ; le logo d’en-tête est sur une plaque blanche.
 - **Recherche admin** — la boîte de la barre latérale trouve les écrans par libellé, synonyme (FR/EN), préfixe sans accents ou faute d’une lettre, classés d’après le texte du guide admin, et dessous les données elles-mêmes (comptes, dépôts, catalogues, équipes, conversations, signalements, sanctions, commandes, articles, docs, FAQ, sondages, codes) via `/admin/search`.
 - **Images ressemblantes** — chaque image envoyée (et les images dans les archives envoyées, et les avatars liés) reçoit une empreinte perceptuelle ; une image à quelques bits de celle d’un autre compte, ou identique octet pour octet, arrive dans Admin → Modération → Images ressemblantes, les deux côte à côte, à effacer ou traiter.
+- **Bot Discord : s'y retrouver** — un écran ouvert depuis un autre affiche **un seul bouton
+  Retour**, qui rouvre celui d'où l'on vient. La provenance voyage dans l'identifiant du bouton
+  plutôt que dans un état côté serveur ; c'est un saut, pas un historique de navigateur.
+  `/help` parcourt les mêmes explications que le bouton **En savoir plus** de chaque carte de
+  fonctionnalité, depuis un index unique (link, niveau, boutique, inventaire, casino, tables en
+  direct, giveaway, vocal, logs, config), et le texte vit dans le dictionnaire du bot comme
+  toutes ses autres chaînes : il est donc traduisible et remplaçable depuis l'écran Langues du
+  site.
 - **Bot Discord** — accès multi-rôles avec exigences par rôle + `/refreshroles`,
   annonces de tips Ko-fi, alertes server-perf, modération, bienvenue, join-to-create
   vocal, annonces de blog. Le `/casino` a des **tables en direct** (une course à six voitures
@@ -376,7 +384,11 @@
   dropdown automatique au-delà, plus un sélecteur dans le footer (desktop + mobile).
 - **Thème du site** (SUPERADMIN) — un dégradé d'accent, des couleurs de page par mode, un
   catalogue de tokens complet et un éditeur de géométrie des halos, un aperçu composé en direct
-  — et **export/import** d'un thème entier en fichier JSON.
+  — et **export/import** d'un thème entier en fichier JSON. L'accent est choisi comme un
+  **aplat**, et un aplat doit seulement se voir, pas se lire : l'accent **en texte** a donc son
+  propre token, `--accent-ink`, la même teinte poussée vers l'encre de la page jusqu'à franchir
+  4,5:1, recalculée par mode à partir de l'accent du site. Un accent personnalisé obtient ainsi
+  une encre lisible sans que personne ait à choisir une deuxième couleur et à la maintenir.
 - **Barre du bas mobile** — la barre d'onglets du téléphone est configurable : **icônes seules
   / texte seul / les deux**, et un jeu personnalisé jusqu'à cinq boutons (icône, nom FR/EN,
   chemin) qui remplace le jeu auto-dérivé.
@@ -396,7 +408,12 @@
   délai, au survol ; en boucle ou non), un panneau **Calques** (nom, verrou, masquage,
   ordre), rotation, ombre, effets au survol, lien sur tout le bloc, alignement du texte, pas
   de grille au choix et des presets pour démarrer ; des **formes** (douze, en SVG inline avec remplissage / dégradé / contour / libellé), du **SVG collé** passé par un assainisseur à liste blanche, douze **motifs** répétés, une **feuille de style de page** confinée à la page (url() externes, @import et expression() refusés et signalés), des classes et un style en ligne par bloc, l’**éditeur B.MD** complet pour les blocs texte, copier / coller, zoom, et l’import de fichiers `.css` / `.svg`.
-  Le studio est **une page à part entière** en `/studio/<project|showcase>/<id>/<index>`
+  La **page d'accueil** se dessine aussi : chacune de ses sections personnalisées (Admin →
+  Navigation et pied de page → Page d'accueil) porte un sélecteur **Écrite / Dessinée**, et
+  une section dessinée s'ouvre dans le même studio. Passer en Dessinée conserve le Markdown de
+  la section : essayer le studio puis changer d'avis ne fait pas disparaître le texte ; une
+  section en Dessinée dont la planche est vide affiche encore ce qui était écrit.
+  Le studio est **une page à part entière** en `/studio/<project|showcase|home>/<id>/<index>`
   (ouverte par « Ouvrir le studio » dans les réglages de la page ; l’adresse sans index liste
   les planches de cette page) : une barre haute (retour, nom du document, état
   d’enregistrement, annuler / rétablir, le sélecteur planche claire / sombre / téléphone, les
