@@ -286,7 +286,11 @@ export default async function taskRoutes(app) {
     // `scope=mine` is the default view: what is on MY name, plus what I asked for. A board
     // that opens on everything is a board nobody reads.
     if (q.scope === 'mine') where.AND = [{ OR: [{ assigneeId: req.user.uid }, { creatorId: req.user.uid }] }];
-    else if (q.scope === 'team') where.AND = [{ teamId: { in: mine.memberOf.length ? mine.memberOf : [' none'] } }];
+    // A sentinel that matches no id, so "my teams" for somebody on no team returns
+    // nothing rather than everything. It was a literal NUL byte, which made this file
+    // read as binary to grep and would have been rejected by Postgres the first time a
+    // staff member on no team filtered by team: NUL is not valid in a text value.
+    else if (q.scope === 'team') where.AND = [{ teamId: { in: mine.memberOf.length ? mine.memberOf : ['__no_team__'] } }];
 
     const rows = await p.adminTask.findMany({ where, orderBy: { createdAt: 'desc' }, skip: page * PAGE, take: PAGE });
     const visible = rows.filter((t) => canView(req.user, t, mine));

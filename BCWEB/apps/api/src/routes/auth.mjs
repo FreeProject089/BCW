@@ -60,13 +60,32 @@ const WEAK_PASSWORDS = new Set([
 ]);
 
 function isWeakPassword(pw) {
-  const n = String(pw).toLowerCase()
+  const raw = String(pw).toLowerCase();
+  // The leetspeak fold catches "P@ssw0rd", and it has to be an EXTRA reading rather than the
+  // only one. Folded first and then used for everything, it hid the passwords it was not
+  // written for: `123456` becomes `l2eas6`, which is on no list and is no longer a run of
+  // digits, so the two commonest passwords in the world were being accepted. `1234567890` is
+  // even IN the list below and was unreachable for exactly this reason.
+  const folded = raw
     .replace(/[@4]/g, 'a').replace(/[0]/g, 'o').replace(/[1!|]/g, 'l')
     .replace(/[3]/g, 'e').replace(/[$5]/g, 's').replace(/[7]/g, 't');
-  if (WEAK_PASSWORDS.has(n)) return true;
-  // A single repeated character, and simple runs, whatever the length.
-  if (/^(.)+$/.test(n)) return true;
-  if ('abcdefghijklmnopqrstuvwxyz'.includes(n) || '01234567890'.includes(n)) return true;
+  if (WEAK_PASSWORDS.has(raw) || WEAK_PASSWORDS.has(folded)) return true;
+  // The structural checks read what was TYPED. A fold cannot help them and, as above, can
+  // only take things away from them.
+  //
+  // `\1` is a BACKREFERENCE and has to be written as one. It arrived here as a raw 0x01
+  // byte, which is a literal character in a pattern, so this read "any character followed
+  // by one or more 0x01" and matched no password ever typed: "aaaaaaaa" was accepted as
+  // strong. The byte is invisible in an editor and Node prints the pattern as /^(.)+$/,
+  // so neither reading the line nor logging the regex would have shown it.
+  if (/^(.)\1+$/.test(raw)) return true;
+  // A straight run, forwards or backwards, of the alphabet or the digits. The digit string
+  // is written twice over so that a run wrapping past 9 ("890123") is caught too.
+  const RUNS = ['abcdefghijklmnopqrstuvwxyz', '01234567890123456789'];
+  for (const seq of RUNS) {
+    const back = [...seq].reverse().join('');
+    if (raw.length >= 4 && (seq.includes(raw) || back.includes(raw))) return true;
+  }
   return false;
 }
 

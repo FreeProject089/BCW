@@ -369,7 +369,7 @@ export function detectStack(files = {}, { endpointLinks = [], callsTruncated = f
     // Cargo's path dependencies, which are as explicit as compose's depends_on and were being
     // thrown away: a Rust workspace drew one box per crate and not one line between them.
     const edges = [...compose.edges, ...desktop.edges, ...cargoPathEdges(files)].filter((e) => {
-        const k = `${e.from} ${e.to}`;
+        const k = `${e.from}\0${e.to}`;   // \0 separates: it cannot occur in either half
         if (seenEdge.has(k)) return false;
         seenEdge.add(k);
         // An edge to a node that got dropped is not an edge.
