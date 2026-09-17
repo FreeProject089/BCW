@@ -21,6 +21,41 @@ const REFUSE = [
 const URL_RE = /url\s*\(\s*(['"]?)([^'")]*)\1\s*\)/gi;
 const urlOk = (u) => /^(\/(?!\/)|#|data:image\/(?:png|jpeg|gif|webp|svg\+xml);)/i.test(u.trim());
 
+/**
+ * A CSS escape is part of the SYNTAX, not of the value.
+ *
+ * `background: \75 rl(https://…)` is `url(https://…)` to every browser: `\75` is the code
+ * point for `u`, and the single space after a hex escape is the terminator, not a space in
+ * the value. A filter that matches the literal text `url(` therefore sees nothing, passes
+ * the declaration through untouched, and the browser then fetches the third-party URL — the
+ * exact channel this file exists to close.
+ *
+ * So escapes are decoded FIRST, and every later rule runs against the text the browser will
+ * actually read. Decoding is lossless for anything legitimate: a decoded `content: "\201C"`
+ * is the same character the escape stood for.
+ */
+function decodeCssEscapes(input) {
+  return String(input)
+    .replace(/\\([0-9a-fA-F]{1,6})(\r\n|[ \t\r\n\f])?/g, (all, hex) => {
+      const cp = parseInt(hex, 16);
+      // 0 and anything past the last code point are replaced, as CSS says.
+      if (!cp || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF)) return '\uFFFD';
+      return String.fromCodePoint(cp);
+    })
+    .replace(/\\([^\r\n\f0-9a-fA-F])/g, '$1');
+}
+
+/**
+ * The image functions that take a URL WITHOUT writing `url()`.
+ *
+ * `image-set("https://evil/x.png" 1x)` and `src("https://evil/x.png")` both fetch, and
+ * neither contains a `url(` token, so URL_RE never saw them. Each string inside one of
+ * these is a URL and goes through the same test; if any of them fails, the whole function
+ * is replaced rather than edited, because half a rewritten image-set is not a value.
+ */
+const FN_URL_RE = /\b(?:-webkit-|-ms-|-moz-)?(?:image-set|src)\s*\(([^()]*)\)/gi;
+const STR_RE = /(['"])((?:[^'"\\]|\\.)*)\1/g;
+
 const BLOCK_AT = /^@(media|supports|container|layer|scope)\b/i;
 const KEEP_AT = /^@(keyframes|-webkit-keyframes|font-face|property|counter-style|page)\b/i;
 
@@ -62,11 +97,26 @@ function walk(src, scope, out, depth) {
  */
 export function scopeCss(input, scope) {
   const refused = new Set();
-  let s = String(input || '').slice(0, 40_000).replace(/\/\*[\s\S]*?\*\//g, '');
+  // Escapes first: every rule below matches literal text, and a CSS escape is how you write
+  // the same token without that text. See decodeCssEscapes.
+  let s = decodeCssEscapes(String(input || '').slice(0, 40_000)).replace(/\/\*[\s\S]*?\*\//g, '');
+  // Statement-level at-rules (`@import …;`, `@charset …;`) go FIRST, whole statement and
+  // semicolon included. Refusing them token by token instead left `/*refused*/ none;` behind,
+  // and `walk()` reads that leftover as the start of the NEXT rule's selector — so refusing an
+  // @import silently took the rule that followed it down with it. The author saw one line
+  // refused and a second, valid rule do nothing.
+  s = s.replace(/@(import|charset)\b[^;}]*;?/gi, (all, name) => { refused.add(`@${name.toLowerCase()}`); return ''; });
   for (const [re, name] of REFUSE) if (re.test(s)) { refused.add(name); s = s.replace(new RegExp(re.source, 'gi'), '/*refused*/'); }
   s = s.replace(URL_RE, (all, q, u) => { if (urlOk(u)) return all; refused.add(`url(${u.slice(0, 40)})`); return 'none'; });
-  // a stray statement-level @import survives as `@import …;` with no block: drop such lines
-  s = s.replace(/^\s*@(import|charset)[^;]*;/gim, '');
+  // After url(), because a url() inside an image-set has already been dealt with and a
+  // refused one now reads `none`, which is a legal image-set entry.
+  s = s.replace(FN_URL_RE, (all, inner) => {
+    let bad = null;
+    for (const m of inner.matchAll(STR_RE)) if (!urlOk(m[2])) { bad = m[2]; break; }
+    if (bad === null) return all;
+    refused.add(`image url(${bad.slice(0, 40)})`);
+    return 'none';
+  });
   const out = [];
   walk(s, scope, out, 0);
   return { css: out.join('\n'), refused: [...refused] };

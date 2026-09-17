@@ -68,6 +68,28 @@ describe('scopeCss', () => {
     assert.ok(!css.includes('evil') && !css.includes('expression('));
     assert.ok(css.includes('url(/ok.png)') && css.includes('url(#a)') && css.includes('url(data:image/png'));
   });
+  // Three ways to name a third-party URL without writing the four letters `url(`. Each one
+  // fetched, and the filter reported nothing, which is the worst of the two failure modes: the
+  // author is told the stylesheet was accepted whole.
+  test('a CSS escape is syntax, not value: \\75 rl( IS url(', () => {
+    const { css, refused } = scopeCss('.a{background:\\75 rl(https://evil/p.png)}', SCOPE);
+    assert.ok(!css.includes('evil'), 'the escape used to pass through untouched');
+    assert.ok(refused.some((r) => r.startsWith('url(https://evil')));
+    // An escape in ordinary content is decoded, not refused: it means the character it stands for.
+    assert.ok(scopeCss('.a{content:"\\201C"}', SCOPE).css.includes('\u201C'));
+  });
+  test('image-set() and src() take a URL with no url() token', () => {
+    for (const decl of ['background:image-set("https://evil/p.png" 1x)',
+      'background:-webkit-image-set("https://evil/p.png" 1x)',
+      'list-style-image:src("https://evil/p.png")']) {
+      const { css, refused } = scopeCss(`.a{${decl}}`, SCOPE);
+      assert.ok(!css.includes('evil'), decl);
+      assert.ok(refused.some((r) => r.includes('evil')), decl);
+    }
+    // A same-origin one is untouched, and a url() inside an image-set still resolves normally.
+    assert.ok(scopeCss('.a{background:image-set("/u/p.png" 1x)}', SCOPE).css.includes('/u/p.png'));
+    assert.ok(scopeCss('.a{background:image-set(url(/u/p.png) 1x)}', SCOPE).css.includes('url(/u/p.png)'));
+  });
   test('classes and inline style are filtered the same way', () => {
     assert.equal(safeClasses('hero rounded-2xl md:flex bg-[#fff] <script> a"b'), 'hero rounded-2xl md:flex bg-[#fff]');
     assert.deepEqual(safeInlineStyle('letter-spacing: .04em; background-image: url(https://evil/x); color: red; --accent: #f00'), { letterSpacing: '.04em', color: 'red', '--accent': '#f00' });
@@ -92,4 +114,16 @@ describe('patterns', () => {
     const img = patternImage('grid', { color: '"><script>' });
     assert.ok(!decodeURIComponent(img).includes('<script>'));
   });
+});
+
+// Refusing something must not take the author's NEXT rule with it. `@import url(...)` used to
+// be refused token by token, leaving `/*refused*/ none;` in the stream; the scoper reads that
+// leftover as the head of the following rule, so the valid rule after an @import silently did
+// nothing — and the author only saw ONE line reported.
+test('a refused @import does not swallow the rule that follows it', () => {
+  const SCOPE = '[data-cv="c1"]';
+  const { css, refused } = scopeCss('@import url(https://evil/x.css); .a { color: red }', SCOPE);
+  assert.ok(refused.includes('@import'));
+  assert.ok(css.includes(`${SCOPE} .a{color: red}`), css);
+  assert.ok(!css.includes('refused'), css);
 });
