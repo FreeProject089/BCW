@@ -16135,13 +16135,27 @@ function PendingDeliveries({ currency }) {
 function EconomyLedger({ currency }) {
   const { t } = useI18n();
   const toast = useToast();
+  const dialog = useDialog();
   const [q, setQ] = useState('');
   const [data, setData] = useState(null);
   const [busy, setBusy] = useState('');
   const load = (query = '') => api.get(`/admin/economy?q=${encodeURIComponent(query)}`).then(setData).catch(() => setData({ members: [], totals: {} }));
   useEffect(() => { load(); }, []);
   const grant = async (m, delta, kind = 'points') => {
-    const raw = window.prompt((kind === 'xp' ? t('db.eco.grantxp.p', 'XP to give {name} (negative to take, the level follows the curve):') : t('db.eco.grant.p', 'Points to give {name} (negative to take):')).replace('{name}', m.displayName), String(delta || 100));
+    // The site's own dialog, not the browser's.
+    //
+    // `window.prompt` draws the BROWSER's box: it says "localhost:5176" across the top, it
+    // ignores the site's theme and language, it offers "Prevent this page from creating
+    // additional dialogs" which silently breaks the screen for the rest of the session, and
+    // on a phone it is a system sheet. This one hands out currency, so it was the worst place
+    // on the site to look like something a page had no business drawing.
+    //
+    // dialog.prompt is the house component and was already used a dozen times in this file.
+    const raw = await dialog.prompt({
+      title: kind === 'xp' ? t('db.eco.grantxp.t', 'Give or take XP') : t('db.eco.grant.t', 'Give or take points'),
+      label: (kind === 'xp' ? t('db.eco.grantxp.p', 'XP to give {name} (negative to take, the level follows the curve):') : t('db.eco.grant.p', 'Points to give {name} (negative to take):')).replace('{name}', m.displayName),
+      defaultValue: String(delta || 100),
+    });
     if (raw == null) return;
     const amount = Math.round(Number(raw));
     if (!Number.isFinite(amount) || amount === 0) return;
@@ -21444,7 +21458,7 @@ function RightsNoticeModal({ id, onClose }) {
 }
 
 function ProtectedWorks() {
-  const { t } = useI18n(); const toast = useToast();
+  const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
   const { data, loading, reload } = useAsync(() => api.get('/admin/rights/works'), []);
   const works = data?.works || [];
   const blank = { title: '', owner: '', contact: '', urls: '', hashes: '', patterns: '', notes: '' };
@@ -21488,7 +21502,14 @@ function ProtectedWorks() {
             </div>
             <Button size="sm" variant="ghost" onClick={() => setDraft({ ...w })}>{t('common.edit', 'Edit')}</Button>
             <Button size="sm" variant="ghost" onClick={async () => { await api.patch(`/admin/rights/works/${w.id}`, { active: !w.active }); reload(); }}>{w.active ? t('rn.w.disable', 'Disable') : t('rn.w.enable', 'Enable')}</Button>
-            <Button size="sm" variant="ghost" className="!text-error" onClick={async () => { if (!window.confirm(t('rn.w.del.q', 'Remove this work from the registry?'))) return; await api.del(`/admin/rights/works/${w.id}`); reload(); }}><Trash2 size={14} /></Button>
+            <Button size="sm" variant="ghost" className="!text-error" onClick={async () => {
+              if (!await dialog.confirm({ title: t('rn.w.del.t', 'Remove this work?'), message: t('rn.w.del.q', 'Remove this work from the registry?'), danger: true })) return;
+              // undo: a registry entry is the evidence a rights claim rests on, and removing
+              // it is a decision somebody makes deliberately after reading the row. A window
+              // that quietly un-removes it would be the wrong kind of forgiving here.
+              try { await api.del(`/admin/rights/works/${w.id}`); reload(); }
+              catch { toast.error(t('common.failed', 'Failed.')); }
+            }}><Trash2 size={14} /></Button>
           </Card>
         ))}
       </div> : <EmptyState icon={Shield} title={t('rn.w.none.t', 'No registered works')} sub={t('rn.w.none.s', 'Take a notice down with "register the work" ticked, or add one here.')}

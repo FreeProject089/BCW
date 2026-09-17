@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
-import { Button, Card, Badge, Input, Textarea, Select, Field, Spinner, Explain, useToast } from '../ui/ui.jsx';
+import { Button, Card, Badge, Input, Textarea, Select, Field, Spinner, Explain, useDialog, useToast } from '../ui/ui.jsx';
 import { useAsync } from './pages.jsx';
 import { analyseBundle, LIMITS } from '../lib/crash-bundle.js';
 
@@ -80,7 +80,7 @@ function Spread({ rows, total, label }) {
 }
 
 export function AdminFeedbackCentre() {
-  const { t } = useI18n(); const toast = useToast();
+  const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
   const [cfg, setCfg] = useState(null);
   const [project, setProject] = useState(() => { try { return new URLSearchParams(location.search).get('p') || ''; } catch { return ''; } });
   const [view, setView] = useState('inbox');       // inbox | crashes
@@ -106,7 +106,13 @@ export function AdminFeedbackCentre() {
   const setSt = async (id, st) => { setBusy(true); try { const r = await api.post(`/admin/feedback/${id}/status`, { status: st }); setOpen((o) => o && o.id === id ? { ...o, status: r.item.status } : o); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); } };
   const send = async () => { if (!open || !reply.trim()) return; setBusy(true); try { const r = await api.post(`/admin/feedback/${open.id}/reply`, { body: reply.trim() }); toast.success(r.via === 'mail' ? t('fb.replied.mail', 'Sent by e-mail.') : t('fb.replied.thread', 'Posted in their dashboard thread.')); setReply(''); reload(); } catch (x) { toast.error(x.data?.error === 'no_channel' ? t('fb.nochannel', 'No way to reach this sender: no account and no e-mail.') : x.data?.error === 'mail_failed' ? t('fb.mailfail', 'The mail could not be sent.') : t('common.failed', 'Failed.')); } finally { setBusy(false); } };
   const del = async (id) => {
-    if (!window.confirm(t('fb.del.confirm', 'Delete this report and its attachments?'))) return;
+    // The site's own dialog. A browser confirm() puts the origin across the top, ignores the
+    // theme and the language, and offers to suppress every future dialog on the page.
+    if (!await dialog.confirm({
+      title: t('fb.del.t', 'Delete this report?'),
+      message: t('fb.del.confirm', 'Delete this report and its attachments?'),
+      danger: true,
+    })) return;
     try { await api.del(`/admin/feedback/${id}`); setOpen(null); setBundle(null); reload(); } catch { toast.error(t('common.failed', 'Failed.')); }
   };
 
