@@ -18,6 +18,7 @@ import { logEvent } from './features/logs.mjs';
 import { ensureAppIcons } from './features/icons.mjs';
 import { openLive, liveComponent, liveModal, joinByCode, listLobbies, LIVE_GAMES, MULTI_GAMES, VISIBILITIES } from './features/casino-live.mjs';
 import { seasonStatusCard } from './features/season.mjs';
+import { parseAmount, parseWholeInRange } from './amount.mjs';
 
 export const BRAND = ui.BRAND;
 // Kept under its old name: panel.mjs and the pollers still call it. A one-card reply.
@@ -671,7 +672,10 @@ async function casinoAgain(i) {
   const [, , game, bet, betOn, num, target, risk, userId] = i.customId.split(':');
   if (userId && userId !== i.user.id) {
     const { t } = await tr(i);
-    return i.reply({ content: t('cas.notyours', 'That is not your game — start your own with /casino.'), ephemeral: true }).catch(() => {});
+    // `t(key, vars)` takes VARIABLES, not a fallback string: the second argument was an English
+    // sentence, so it was ignored and — with no `cas.notyours` in the dictionary — makeT fell
+    // through to returning the KEY. The player read the literal text "cas.notyours".
+    return i.reply({ content: t('cas.notyours'), ephemeral: true }).catch(() => {});
   }
   return playCasino(i, {
     game: GAME_NAME[game] ? game : 'coinflip',
@@ -1022,24 +1026,42 @@ async function casinoSetup(i) {
   return casinoMenu(i, st, { update: true });
 }
 
-function casinoAmountModal(i, st) {
-  const modal = new ModalBuilder().setCustomId(`casm:bet:${packCas(st)}`).setTitle('Your bet')
-    .addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('v').setLabel('How many points?').setStyle(TextInputStyle.Short).setPlaceholder('e.g. 42').setMaxLength(9).setRequired(true)));
+// The custom-amount box is a TEXT box, so it gets a real parser (amount.mjs) rather than a
+// digit strip: `2.5`, `1,5` and `-50` used to become 25, 15 and 50. It also understands what
+// the box now says it understands — a percentage of the balance, and "all".
+async function casinoAmountModal(i, st) {
+  const { t } = await tr(i);
+  const modal = new ModalBuilder().setCustomId(`casm:bet:${packCas(st)}`).setTitle(t('cas.modal.betTitle').slice(0, 45))
+    .addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('v').setLabel(t('cas.modal.bet').slice(0, 45)).setStyle(TextInputStyle.Short).setPlaceholder(t('cas.modal.betPh').slice(0, 100)).setMaxLength(12).setRequired(true)));
   return i.showModal(modal);
 }
-function casinoNumberModal(i, st) {
-  const modal = new ModalBuilder().setCustomId(`casm:num:${packCas(st)}`).setTitle('Roulette — your number')
-    .addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('v').setLabel('A number from 0 to 36').setStyle(TextInputStyle.Short).setPlaceholder('17').setMaxLength(2).setRequired(true)));
+async function casinoNumberModal(i, st) {
+  const { t } = await tr(i);
+  const modal = new ModalBuilder().setCustomId(`casm:num:${packCas(st)}`).setTitle(t('cas.modal.numTitle').slice(0, 45))
+    .addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('v').setLabel(t('cas.modal.num').slice(0, 45)).setStyle(TextInputStyle.Short).setPlaceholder('17').setMaxLength(2).setRequired(true)));
   return i.showModal(modal);
 }
 async function casinoModal(i) {
   const [, kind, ...rest] = i.customId.split(':');
   const st = unpackCas(rest);
-  if (st.owner && st.owner !== i.user.id) { const { t } = await tr(i); return ui.line(i, t('cas.someoneElse'), { title: `${ui.icx('casino')}${t('cas.title')}` }); }
-  const raw = (i.fields.getTextInputValue('v') || '').replace(/[^0-9]/g, '');
-  const v = raw === '' ? NaN : Number(raw);
-  if (kind === 'bet') st.bet = Number.isFinite(v) ? Math.max(0, Math.floor(v)) : st.bet;
-  else if (kind === 'num') { st.betOn = 'number'; st.num = Number.isFinite(v) && v >= 0 && v <= 36 ? v : st.num; }
+  const { t } = await tr(i);
+  if (st.owner && st.owner !== i.user.id) return ui.line(i, t('cas.someoneElse'), { title: `${ui.icx('casino')}${t('cas.title')}` });
+  const raw = i.fields.getTextInputValue('v') || '';
+  if (kind === 'bet') {
+    const r = parseAmount(raw);
+    // Unreadable is SAID, not swallowed: the old code kept the previous bet and redrew the
+    // same card, so a typo looked like the button had simply not worked.
+    if (!r.ok) return ui.line(i, t('cas.badAmount', { v: raw.slice(0, 40) }), { title: `${ui.icx('casino')}${t('cas.title')}`, color: ui.BAD });
+    // "all" stays the word: `st.bet === 'all'` is what already resolves against the balance
+    // AND the cap, and says so on the card. Only a percentage needs the balance here.
+    if (r.kind === 'all') st.bet = 'all';
+    else if (r.kind === 'pct') { const bal = Number((await api.economyUser(i.user.id)).points) || 0; st.bet = Math.max(0, Math.floor((bal * r.pct) / 100)); }
+    else st.bet = Math.max(0, r.value);
+  } else if (kind === 'num') {
+    const v = parseWholeInRange(raw, 0, 36);
+    if (v === null) return ui.line(i, t('cas.badNumber', { v: raw.slice(0, 40) }), { title: `${ui.icx('casino')}${t('cas.title')}`, color: ui.BAD });
+    st.betOn = 'number'; st.num = v;
+  }
   return casinoMenu(i, st, { update: typeof i.isFromMessage === 'function' && i.isFromMessage() });
 }
 

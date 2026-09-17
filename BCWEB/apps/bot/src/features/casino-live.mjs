@@ -37,6 +37,7 @@ import { tr, makeT } from '../i18n.mjs';
 import { backButtons } from '../nav.mjs';
 import { learnButton } from '../help.mjs';
 import * as reg from './casino-lobbies.mjs';
+import { parseAmount, parseChoice } from '../amount.mjs';
 
 export const LIVE_GAMES = ['race', 'pot'];
 export const MULTI_GAMES = ['coinflip', 'dice', 'roulette', 'wheel'];
@@ -100,6 +101,11 @@ function pickLabel(t, game, pick) {
   if (game === 'wheel') return `${pick}×`;
   return '';
 }
+/**
+ * What each game will accept as a pick — the SAME list the controls offer, so a custom id that
+ * did not come from one of those controls cannot seat a player on something that is not there.
+ */
+export const PICKS = { race: CARS.map((_, i) => i), wheel: [2, 3, 5, 10, 20, 50], coinflip: ['heads', 'tails'], roulette: ['red', 'black', 'green'] };
 /** A select-menu option with the icon set's emoji when one is mapped. */
 const pickOpt = (value, label, icon = null) => ui.option(value, label, { emoji: icon });
 /**
@@ -112,7 +118,7 @@ function pickButtons(t, L) {
   if (L.game === 'race') return [new StringSelectMenuBuilder().setCustomId(`cl:pick:${L.id}`).setPlaceholder(t('live.race.pickCar')).addOptions(CARS.map((k, i) => pickOpt(i, t(`live.race.car.${i}`), k)))];
   if (L.game === 'coinflip') return [ui.btn(S('heads'), t('live.pick.heads'), ButtonStyle.Secondary, { emoji: 'heads' }), ui.btn(S('tails'), t('live.pick.tails'), ButtonStyle.Secondary, { emoji: 'tails' })];
   if (L.game === 'roulette') return [ui.btn(S('red'), t('live.pick.red'), ButtonStyle.Secondary, { emoji: 'red' }), ui.btn(S('black'), t('live.pick.black'), ButtonStyle.Secondary, { emoji: 'black' }), ui.btn(S('green'), t('live.pick.green'), ButtonStyle.Secondary, { emoji: 'green' })];
-  if (L.game === 'wheel') return [new StringSelectMenuBuilder().setCustomId(`cl:pick:${L.id}`).setPlaceholder(t('live.wheel.pickMult')).addOptions([2, 3, 5, 10, 20, 50].map((m) => pickOpt(m, `${m}×`, 'wheel')))];
+  if (L.game === 'wheel') return [new StringSelectMenuBuilder().setCustomId(`cl:pick:${L.id}`).setPlaceholder(t('live.wheel.pickMult')).addOptions(PICKS.wheel.map((m) => pickOpt(m, `${m}×`, 'wheel')))];
   return [];
 }
 
@@ -379,7 +385,7 @@ async function runMulti(L) {
 function joinModal(t, L, { min, max }) {
   const modal = new ModalBuilder().setCustomId(`clm:join:${L.id}`).setTitle(t('live.modal.title').slice(0, 45));
   modal.addComponents(new ActionRowBuilder().addComponents(
-    new TextInputBuilder().setCustomId('bet').setLabel(t('live.modal.bet', { a: n(min), b: Number.isFinite(max) ? n(max) : '∞' }).slice(0, 45)).setStyle(TextInputStyle.Short).setPlaceholder('50').setMaxLength(9).setRequired(true),
+    new TextInputBuilder().setCustomId('bet').setLabel(t('live.modal.bet', { a: n(min), b: Number.isFinite(max) ? n(max) : '∞' }).slice(0, 45)).setStyle(TextInputStyle.Short).setPlaceholder(t('cas.modal.betPh').slice(0, 100)).setMaxLength(12).setRequired(true),
   ));
   return modal;
 }
@@ -388,7 +394,7 @@ function codeModal(t, { min, max }, code = '') {
   const modal = new ModalBuilder().setCustomId('clm:code').setTitle(t('live.modal.code.title').slice(0, 45));
   modal.addComponents(
     new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('code').setLabel(t('live.modal.code').slice(0, 45)).setStyle(TextInputStyle.Short).setPlaceholder('K7P2QX').setMinLength(6).setMaxLength(8).setRequired(true).setValue(code)),
-    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('bet').setLabel(t('live.modal.bet', { a: n(min), b: Number.isFinite(max) ? n(max) : '∞' }).slice(0, 45)).setStyle(TextInputStyle.Short).setPlaceholder('50').setMaxLength(9).setRequired(true)),
+    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('bet').setLabel(t('live.modal.bet', { a: n(min), b: Number.isFinite(max) ? n(max) : '∞' }).slice(0, 45)).setStyle(TextInputStyle.Short).setPlaceholder(t('cas.modal.betPh').slice(0, 100)).setMaxLength(12).setRequired(true)),
   );
   return modal;
 }
@@ -441,9 +447,14 @@ export async function liveComponent(i) {
     const p = L.players.get(i.user.id);
     if (L.state !== 'open') return ui.line(i, t('live.notOpen'));
     if (!p) return ui.line(i, t('live.joinFirst'));
-    // A button carries the pick in its custom id, a select in its value.
+    // A button carries the pick in its custom id, a select in its value. Either way it is
+    // checked against the list this game actually offers: `Number(raw)` on its own accepted
+    // a car that does not exist, and `NaN` for anything non-numeric — a seat that silently
+    // loses every round.
     const raw = arg ?? i.values?.[0];
-    p.pick = L.game === 'race' || L.game === 'wheel' ? Number(raw) : raw;
+    const picked = parseChoice(raw, PICKS[L.game] || []);
+    if (picked === null) return i.deferUpdate().catch(() => {});
+    p.pick = picked;
     reg.touch(L);
     await i.deferUpdate().catch(() => {});
     return redraw(L, lobbyCard(L));
@@ -484,15 +495,28 @@ export async function liveComponent(i) {
 export async function liveModal(i) {
   const [, kind, id] = i.customId.split(':');
   const { t } = await tr(i);
-  let L, bet;
+  let L;
   if (kind === 'code') {
     L = reg.findByCode(i.fields.getTextInputValue('code'));
     if (!L) return ui.line(i, t('live.code.unknown'), { title: `${ui.icx('casino')}${t('cas.title')}` });
-    bet = Number((i.fields.getTextInputValue('bet') || '').replace(/[^0-9]/g, ''));
   } else {
     L = reg.getLobby(id);
     if (!L) return ui.line(i, t('live.gone'));
-    bet = Number((i.fields.getTextInputValue('bet') || '').replace(/[^0-9]/g, ''));
+  }
+  // The same digit strip that was in the private table lived here TWICE: `2.5` seated you for
+  // 25, `1,5` for 15, `-50` for 50. One parser (amount.mjs) for every box the bot has, and an
+  // unreadable stake is refused rather than rounded into something else.
+  const typed = i.fields.getTextInputValue('bet') || '';
+  const parsed = parseAmount(typed);
+  if (!parsed.ok) return ui.line(i, t('cas.badAmount', { v: typed.slice(0, 40) }), { title: `${ui.icx('casino')}${t('cas.title')}`, color: ui.BAD });
+  let bet = parsed.value;
+  if (parsed.kind !== 'abs') {
+    // "all" and a percentage need the balance and the cap, which only the config and the API
+    // know — one lookup, on the paths that actually asked for them.
+    const { casino } = await liveConfig();
+    const { max } = limits(casino);
+    const bal = Math.max(0, Math.floor(Number((await api.economyUser(i.user.id)).points) || 0));
+    bet = Math.min(max, parsed.kind === 'all' ? bal : Math.floor((bal * parsed.pct) / 100));
   }
   const r = await seat(L, i, { bet });
   if (!r.ok) return ui.line(i, r.why);
