@@ -129,10 +129,21 @@ for (const f of files.sort()) {
     const src = read(f);
     const lineOf = (i) => src.slice(0, i).split('\n').length;
 
-    for (const m of src.matchAll(/docker compose (?:-f \S+ )?(?:up -d |restart |logs -f |exec |build |stop |start )?([a-z][a-z0-9_-]*)/g)) {
+    // The word after `docker compose` is a SUBCOMMAND, and only the word after that is a
+    // service. The list below is the whole of `docker compose --help`, not the seven verbs
+    // the guides happened to use when this was written: `docker compose port api 3000` is a
+    // perfectly good line, and it was being reported as a service called "port". A checker
+    // that cries wolf on a correct document is worse than no checker, because the next
+    // person fixes the document.
+    const SUBCOMMANDS = [
+        'attach', 'build', 'commit', 'config', 'cp', 'create', 'down', 'events', 'exec', 'export',
+        'images', 'kill', 'logs', 'ls', 'pause', 'port', 'ps', 'publish', 'pull', 'push', 'restart',
+        'rm', 'run', 'scale', 'start', 'stats', 'stop', 'top', 'unpause', 'up', 'version', 'wait',
+        'watch', 'alpha', 'bridge',
+    ];
+    for (const m of src.matchAll(/docker compose (?:-f \S+ )?(?:up -d |restart |logs -f |exec |build |stop |start |port )?([a-z][a-z0-9_-]*)/g)) {
         const name = m[1];
-        // Verbs and flags that follow `docker compose`, not service names.
-        if (['up', 'down', 'ps', 'logs', 'exec', 'build', 'restart', 'pull', 'run', 'stop', 'start', 'config', 'version'].includes(name)) continue;
+        if (SUBCOMMANDS.includes(name)) continue;
         if (services.has(name) || seen.service.has(name)) continue;
         seen.service.add(name);
         problems.push(`${rel}:${lineOf(m.index)}  docker compose "${name}" — no such service`);
