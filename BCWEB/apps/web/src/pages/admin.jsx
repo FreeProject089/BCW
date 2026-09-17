@@ -22849,10 +22849,24 @@ function EconomySeasonCard() {
             <Select value={cfg.every} onChange={(e) => set('every', e.target.value)}>
               {[['never', t('db.eco.season.e.never', 'Never (manual only)')], ['daily', t('db.eco.season.e.daily', 'Every day')], ['weekly', t('db.eco.season.e.weekly', 'Every week')],
                 ['monthly', t('db.eco.season.e.monthly', 'Every month')], ['quarterly', t('db.eco.season.e.quarterly', 'Every quarter')], ['yearly', t('db.eco.season.e.yearly', 'Every year')],
-                ['custom', t('db.eco.season.e.custom', 'Every N days')]].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                ['custom', t('db.eco.season.e.custom', 'Every N days')],
+                ['custom_weeks', t('db.eco.season.e.customWeeks', 'Every N weeks')],
+                ['custom_months', t('db.eco.season.e.customMonths', 'Every N months')]].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </Select>
           </Field>
-          {cfg.every === 'custom' && <Field label={t('db.eco.season.days', 'Every N days')}><Input type="number" min={1} max={3650} value={cfg.days} onChange={(e) => set('days', Number(e.target.value) || 1)} /></Field>}
+          {/* One field for all three custom lengths: `days` is the number in every case and
+              the unit is the suffix of `every`. A months schedule is CALENDAR months with the
+              day clamped to 28, like every other monthly schedule here, so February is never
+              skipped. The ceiling differs per unit only to keep the number sensible; the API
+              caps it at 3650 regardless. */}
+          {['custom', 'custom_weeks', 'custom_months'].includes(cfg.every) && (
+            <Field label={cfg.every === 'custom_weeks' ? t('db.eco.season.weeks', 'Every N weeks')
+              : cfg.every === 'custom_months' ? t('db.eco.season.months', 'Every N months')
+                : t('db.eco.season.days', 'Every N days')}>
+              <Input type="number" min={1} max={cfg.every === 'custom' ? 3650 : cfg.every === 'custom_weeks' ? 520 : 120}
+                value={cfg.days} onChange={(e) => set('days', Number(e.target.value) || 1)} />
+            </Field>
+          )}
           {cfg.every === 'weekly' && <Field label={t('db.eco.season.weekday', 'On')}><Select value={cfg.weekday} onChange={(e) => set('weekday', Number(e.target.value))}>{WD.map((l, i) => <option key={i} value={i}>{l}</option>)}</Select></Field>}
           {['monthly', 'quarterly', 'yearly'].includes(cfg.every) && <Field label={t('db.eco.season.dom', 'Day of month (1–28)')}><Input type="number" min={1} max={28} value={cfg.dayOfMonth} onChange={(e) => set('dayOfMonth', Number(e.target.value) || 1)} /></Field>}
           {cfg.every !== 'never' && <Field label={t('db.eco.season.hour', 'At (hour, UTC)')}><Input type="number" min={0} max={23} value={cfg.hour} onChange={(e) => set('hour', Number(e.target.value) || 0)} /></Field>}
