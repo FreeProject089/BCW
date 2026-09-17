@@ -29,7 +29,7 @@
 // functions are the pure ones the API's own tests pin — duplicated here as the same lines
 // rather than imported, because the bot is a separate package with no path to the API's
 // source. Keep them in step with apps/api/src/lib/casino-rules.mjs.
-import { ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, StringSelectMenuBuilder, StringSelectMenuOptionBuilder } from 'discord.js';
+import { ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, StringSelectMenuBuilder } from 'discord.js';
 import * as ui from '../ui.mjs';
 import { api } from '../api.mjs';
 import { config } from '../config.mjs';
@@ -101,11 +101,7 @@ function pickLabel(t, game, pick) {
   return '';
 }
 /** A select-menu option with the icon set's emoji when one is mapped. */
-function pickOpt(value, label, icon = null) {
-  const o = new StringSelectMenuOptionBuilder().setValue(String(value)).setLabel(String(label).slice(0, 100));
-  if (icon && ui.ic(icon)) { try { o.setEmoji(ui.ic(icon)); } catch { /* label only */ } }
-  return o;
-}
+const pickOpt = (value, label, icon = null) => ui.option(value, label, { emoji: icon });
 /**
  * The pick controls a game offers, or none. Six cars or six multipliers are a DROPDOWN (one
  * component, one row); two or three choices stay buttons. A `cl:pick:<id>` select carries the

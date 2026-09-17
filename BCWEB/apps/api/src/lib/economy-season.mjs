@@ -8,11 +8,24 @@
 // database functions are thin: one raw GROUP BY per day and kind for the series, one
 // updateMany + a ledger row per member for the reset.
 
-export const SEASON_EVERY = ['never', 'daily', 'weekly', 'monthly', 'quarterly', 'yearly', 'custom'];
+/**
+ * How often the season ends.
+ *
+ * The fixed calendar schedules (daily … yearly) pin a boundary; the three `custom_*` ones are
+ * the season LENGTH the admin types: `days` is the N, and the suffix is its unit. `custom` is
+ * the original "every N days" and keeps its name so a schedule saved before the two others
+ * existed still means what it meant.
+ */
+export const SEASON_EVERY = ['never', 'daily', 'weekly', 'monthly', 'quarterly', 'yearly', 'custom', 'custom_weeks', 'custom_months'];
+
+/** The `custom_*` values, and how many days (or months) one unit of each is worth. */
+export const SEASON_UNITS = { custom: { unit: 'days', days: 1 }, custom_weeks: { unit: 'weeks', days: 7 }, custom_months: { unit: 'months', months: 1 } };
+/** A season length as { n, unit }, or null when the schedule is a fixed calendar one. */
+export const seasonLength = (cfg) => { const c = normalizeSeason(cfg); const u = SEASON_UNITS[c.every]; return u ? { n: c.days, unit: u.unit } : null; };
 
 export const SEASON_DEFAULTS = {
   every: 'never',
-  days: 30,          // custom: every N days
+  days: 30,          // custom / custom_weeks / custom_months: the N of "every N days|weeks|months"
   weekday: 1,        // weekly: 0 = Sunday … 6 = Saturday (UTC)
   dayOfMonth: 1,     // monthly / quarterly / yearly: 1–28 so every month has the day
   hour: 4,           // UTC hour the reset runs at
@@ -46,9 +59,16 @@ export function nextSeasonReset(cfg, from) {
   const c = normalizeSeason(cfg);
   const f = new Date(from);
   if (c.every === 'never' || Number.isNaN(f.getTime())) return null;
-  if (c.every === 'custom') {
+  if (c.every === 'custom' || c.every === 'custom_weeks') {
     // Anchored to the hour so a run that fires late does not drift the schedule.
-    return atHour(new Date(f.getTime() + c.days * DAY), c.hour);
+    return atHour(new Date(f.getTime() + c.days * SEASON_UNITS[c.every].days * DAY), c.hour);
+  }
+  if (c.every === 'custom_months') {
+    // Calendar months, not 30-day blocks: "every 3 months" from the 12th of January is the
+    // 12th of April. The day is clamped to 28 like every other monthly schedule here, so a
+    // season that starts on the 31st does not skip February.
+    const day = Math.min(28, f.getUTCDate());
+    return atHour(new Date(Date.UTC(f.getUTCFullYear(), f.getUTCMonth() + c.days, day)), c.hour);
   }
   if (c.every === 'daily') {
     let d = atHour(f, c.hour);

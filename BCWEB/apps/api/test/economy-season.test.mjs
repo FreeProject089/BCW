@@ -1,7 +1,7 @@
 // Seasons: when the next reset falls; statistics: what a ledger row counts as, and the folds.
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { nextSeasonReset, seasonDue, normalizeSeason, classify, windowsOf, foldStats, METRICS } from '../src/lib/economy-season.mjs';
+import { nextSeasonReset, seasonDue, normalizeSeason, classify, windowsOf, foldStats, METRICS, seasonLength, SEASON_EVERY } from '../src/lib/economy-season.mjs';
 
 const iso = (d) => d.toISOString();
 
@@ -31,6 +31,25 @@ describe('nextSeasonReset', () => {
   });
   test('custom: every N days, anchored to the hour so a late run does not drift', () => {
     assert.equal(iso(nextSeasonReset({ every: 'custom', days: 10, hour: 4 }, '2026-09-11T04:37:00Z')), '2026-09-21T04:00:00.000Z');
+  });
+  test('a season length in weeks or months, which is what the dashboard asks for', () => {
+    // `days` is the N; the suffix of `every` is its unit.
+    assert.equal(iso(nextSeasonReset({ every: 'custom_weeks', days: 2, hour: 4 }, '2026-09-11T04:37:00Z')), '2026-09-25T04:00:00.000Z');
+    assert.equal(iso(nextSeasonReset({ every: 'custom_weeks', days: 1, hour: 0 }, '2026-09-11T10:00:00Z')), '2026-09-18T00:00:00.000Z');
+    // Calendar months, not 30-day blocks: three months from 12 January is 12 April.
+    assert.equal(iso(nextSeasonReset({ every: 'custom_months', days: 3, hour: 4 }, '2026-01-12T10:00:00Z')), '2026-04-12T04:00:00.000Z');
+    assert.equal(iso(nextSeasonReset({ every: 'custom_months', days: 1, hour: 4 }, '2026-12-05T10:00:00Z')), '2027-01-05T04:00:00.000Z');
+    // The day is clamped to 28 like every other monthly schedule, so a season that starts on
+    // the 31st does not skip February.
+    assert.equal(iso(nextSeasonReset({ every: 'custom_months', days: 1, hour: 4 }, '2026-01-31T10:00:00Z')), '2026-02-28T04:00:00.000Z');
+    // Every custom_* schedule is a real length; nothing else is.
+    assert.deepEqual(seasonLength({ every: 'custom_weeks', days: 2 }), { n: 2, unit: 'weeks' });
+    assert.deepEqual(seasonLength({ every: 'custom_months', days: 6 }), { n: 6, unit: 'months' });
+    assert.deepEqual(seasonLength({ every: 'custom', days: 45 }), { n: 45, unit: 'days' });
+    assert.equal(seasonLength({ every: 'monthly' }), null);
+    // An unknown `every` still normalises to "never" rather than throwing.
+    assert.equal(normalizeSeason({ every: 'custom_fortnights' }).every, 'never');
+    assert.ok(SEASON_EVERY.includes('custom_weeks') && SEASON_EVERY.includes('custom_months'));
   });
   test('seasonDue needs a clock and honours it', () => {
     const cfg = { every: 'weekly', weekday: 1, hour: 4 };

@@ -41,6 +41,41 @@ export function seasonCard(t, { seasonNo, affected, points, next, cur }) {
   };
 }
 
+/**
+ * The season SCHEDULE as words: "every 2 weeks", "every month", "no automatic reset".
+ *
+ * The three `custom_*` schedules are the season LENGTH the admin typed — `days` is the N and
+ * the suffix is its unit (apps/api/src/lib/economy-season.mjs). Everything else is a fixed
+ * calendar boundary and needs no number.
+ */
+const LENGTH_UNIT = { custom: 'days', custom_weeks: 'weeks', custom_months: 'months' };
+export function seasonEveryLabel(t, season = {}) {
+  const every = String(season.every || 'never');
+  const unit = LENGTH_UNIT[every];
+  if (unit) return t(`season.every.${unit}`, { n: Math.max(1, Number(season.days) || 1) });
+  return t(`season.every.${['daily', 'weekly', 'monthly', 'quarterly', 'yearly'].includes(every) ? every : 'never'}`);
+}
+
+/**
+ * `/season` — "how long until the points reset". Pure (no Discord): the whole card is the
+ * reply from GET /bot/economy/season, and the countdown is a Discord timestamp, so every
+ * reader sees it in their own locale and it keeps ticking without the bot redrawing anything.
+ */
+export function seasonStatusCard(t, { seasonNo = 1, next = null, since = null, lastResetAt = null, season = {} } = {}) {
+  const at = next ? Math.floor(new Date(next).getTime() / 1000) : null;
+  const startedAt = lastResetAt || since;
+  const started = startedAt ? Math.floor(new Date(startedAt).getTime() / 1000) : null;
+  return {
+    title: t('season.now.title', { n: Number(seasonNo) || 1 }), color: ui.BRAND,
+    body: [
+      Number.isFinite(at) ? t('season.now.left', { r: `<t:${at}:R>`, d: `<t:${at}:F>` }) : t('season.now.none'),
+      t('season.now.every', { v: seasonEveryLabel(t, season) }),
+      Number.isFinite(started) ? t('season.now.started', { when: `<t:${started}:R>` }) : null,
+      '', season.resetXp ? t('season.now.wipes') : t('season.now.keeps'),
+    ].filter((l) => l !== null),
+  };
+}
+
 export async function pollSeason(client) {
   if (running) return;
   running = true;

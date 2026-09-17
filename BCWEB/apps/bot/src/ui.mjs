@@ -11,6 +11,7 @@
 import {
   ContainerBuilder, TextDisplayBuilder, SectionBuilder, ThumbnailBuilder, SeparatorBuilder, SeparatorSpacingSize,
   MediaGalleryBuilder, MediaGalleryItemBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags, AttachmentBuilder,
+  StringSelectMenuOptionBuilder,
 } from 'discord.js';
 
 export const BRAND = 0xf59e0b;
@@ -46,29 +47,77 @@ export const isCustomEmoji = (s) => CUSTOM.test(String(s || '').trim());
 
 const clip = (s, n) => { s = String(s ?? ''); return s.length > n ? s.slice(0, n - 1) + '…' : s; };
 
+const CUSTOM_ANY = /<a?:\w{2,32}:\d{15,22}>/g;
+/**
+ * A LABEL is PLAIN TEXT to Discord — a button's label, a select option's label or
+ * description, a placeholder. Discord renders `<:name:id>` as a picture only inside MESSAGE
+ * text (a text display, a section); inside a label it prints the token itself, which is how
+ * `<:bc_rename_…:1546305741365710878> Montant libre…` ended up on a menu entry and
+ * `Visibilité : <:bc_vis_server_…:1549…> Ce serveur` on a button.
+ *
+ * The tokens get there honestly: a dictionary string carries `{ic:key}` (i18n.mjs), which is
+ * resolved to a real token long before the string reaches a builder — so the only place that
+ * can tell a label from body text is here. Pull every token OUT of the label and hand the
+ * first one back, to be set as the component's own emoji, where Discord does draw it.
+ */
+export function labelParts(label) {
+  const s = String(label ?? '');
+  const found = s.match(CUSTOM_ANY);
+  const text = s.replace(CUSTOM_ANY, ' ').replace(/\s{2,}/g, ' ').trim();
+  return { text, emoji: found ? found[0] : null };
+}
+/** An explicit emoji argument as a token: an icon key, a literal token, or '' for anything else. */
+const emojiArg = (emoji) => (emoji ? ic(emoji) || (isCustomEmoji(emoji) ? String(emoji).trim() : '') : '');
+
 /** A plain button. `id` becomes the custom id, or a URL when it starts with http(s). */
 export function btn(id, label, style = ButtonStyle.Secondary, { emoji = null, disabled = false } = {}) {
-  const b = new ButtonBuilder().setLabel(clip(label, 80)).setDisabled(disabled);
+  const { text, emoji: inLabel } = labelParts(label);
+  const b = new ButtonBuilder().setDisabled(disabled);
   if (/^https?:\/\//.test(id)) b.setStyle(ButtonStyle.Link).setURL(id);
   else b.setCustomId(id).setStyle(style);
   // A key resolves through the icon set; a literal custom-emoji token passes as is. Anything
-  // else (a unicode emoji, an unmapped key) is dropped: the label carries the button.
-  if (emoji) { const e = ic(emoji) || (isCustomEmoji(emoji) ? String(emoji).trim() : ''); if (e) { try { b.setEmoji(e); } catch { /* an unusable custom emoji leaves the label */ } } }
+  // else (a unicode emoji, an unmapped key) is dropped: the label carries the button. A token
+  // that travelled inside the label stands in when the caller named no icon.
+  const e = emojiArg(emoji) || inLabel || '';
+  if (e) { try { b.setEmoji(e); } catch { /* an unusable custom emoji leaves the label */ } }
+  // A label made of nothing but an icon keeps the icon and no text, rather than a blank label.
+  if (text || !e) b.setLabel(clip(text || String(label ?? ''), 80));
   return b;
 }
 
-/** Buttons split into rows of ≤ 5 (Discord's row limit). Accepts ButtonBuilders or a select. */
-export function rows(...items) {
+/**
+ * A select-menu option, with the same label rule as `btn`: no emoji token survives in the
+ * label or the description, and an icon rides in the option's own `emoji` slot.
+ */
+export function option(value, label, { selected = false, description = null, emoji = null } = {}) {
+  const { text, emoji: inLabel } = labelParts(label);
+  const o = new StringSelectMenuOptionBuilder().setValue(String(value)).setLabel(clip(text || String(label ?? ''), 100)).setDefault(!!selected);
+  if (description) { const d = labelParts(description).text; if (d) o.setDescription(clip(d, 100)); }
+  const e = emojiArg(emoji) || inLabel || '';
+  if (e) { try { o.setEmoji(e); } catch { /* label only */ } }
+  return o;
+}
+
+/**
+ * Buttons split into rows of at most `perRow` (Discord's row limit is 5). Accepts
+ * ButtonBuilders or a select. `perRow` is how many COLUMNS the client draws: the casino's
+ * game list asks for 2, so its six buttons read as two columns and not as one crowded line
+ * the client re-wraps into three.
+ */
+export function rowsOf(perRow, ...items) {
+  const cap = Math.max(1, Math.min(5, Math.floor(Number(perRow)) || 5));
   const out = [];
   let row = null;
   for (const it of items.flat().filter(Boolean)) {
     // A select menu owns its row.
     if (!(it instanceof ButtonBuilder)) { out.push(new ActionRowBuilder().addComponents(it)); row = null; continue; }
-    if (!row || row.components.length >= 5) { row = new ActionRowBuilder(); out.push(row); }
+    if (!row || row.components.length >= cap) { row = new ActionRowBuilder(); out.push(row); }
     row.addComponents(it);
   }
   return out;
 }
+/** Buttons split into rows of ≤ 5 (Discord's row limit). Accepts ButtonBuilders or a select. */
+export const rows = (...items) => rowsOf(5, ...items);
 
 /**
  * Build one card.
@@ -82,9 +131,10 @@ export function rows(...items) {
  *   files      — AttachmentBuilders that `image` refers to
  *   footer     — small trailing text (rendered as -# small)
  *   buttons    — ButtonBuilders / selects, laid out in rows
+ *   buttonColumns — how many buttons per row (1–5, default 5)
  */
 export const MAX_COMPONENTS = 40;
-export function card({ title = null, body = '', color = BRAND, thumb = null, sections = [], image = null, files = [], footer = null, buttons = [] } = {}) {
+export function card({ title = null, body = '', color = BRAND, thumb = null, sections = [], image = null, files = [], footer = null, buttons = [], buttonColumns = 5 } = {}) {
   const c = new ContainerBuilder().setAccentColor(color);
   // Discord counts EVERY component in the message — the container, each text display, each
   // section AND its text AND its accessory, each separator, each row, each button — and
@@ -92,7 +142,7 @@ export function card({ title = null, body = '', color = BRAND, thumb = null, sec
   // tracked here so a long list degrades (extra rows fold into text, extra button rows are
   // cut) instead of failing to send.
   let used = 1;
-  const btnRows = rows(...buttons).slice(0, 5);
+  const btnRows = rowsOf(buttonColumns, ...buttons).slice(0, 5);
   const btnCost = btnRows.length ? 1 + btnRows.reduce((a, r) => a + 1 + r.components.length, 0) : 0;
   const footerCost = footer ? 2 : 0;
   const reserve = () => btnCost + footerCost;

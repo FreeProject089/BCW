@@ -1,5 +1,5 @@
 // Slash commands + interaction routing. Every response is a Components V2 card (see ui.mjs).
-import { SlashCommandBuilder, PermissionFlagsBits, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, ChannelType } from 'discord.js';
+import { SlashCommandBuilder, PermissionFlagsBits, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, StringSelectMenuBuilder, ChannelType } from 'discord.js';
 import { api, SITE_URL } from './api.mjs';
 import { clearMessages } from './features/moderation.mjs';
 import { sendPanel, handlePanelInteraction } from './features/panel.mjs';
@@ -17,6 +17,7 @@ import { cmdLogs, cmdLockdown, logsAutocomplete } from './features/logcmd.mjs';
 import { logEvent } from './features/logs.mjs';
 import { ensureAppIcons } from './features/icons.mjs';
 import { openLive, liveComponent, liveModal, joinByCode, listLobbies, LIVE_GAMES, MULTI_GAMES, VISIBILITIES } from './features/casino-live.mjs';
+import { seasonStatusCard } from './features/season.mjs';
 
 export const BRAND = ui.BRAND;
 // Kept under its old name: panel.mjs and the pollers still call it. A one-card reply.
@@ -64,6 +65,10 @@ export const commandData = [
   new SlashCommandBuilder().setName('history').setDescription('Your last point movements — purchases, casino, gifts')
     .addStringOption((o) => o.setName('kind').setDescription('Only one kind').addChoices(
       { name: 'Casino', value: 'casino' }, { name: 'Purchases', value: 'purchase' }, { name: 'Gifts sent', value: 'gift_out' }, { name: 'Gifts received', value: 'gift_in' }, { name: 'Level-ups', value: 'levelup' })),
+  // The season is the one economy fact nobody could read from Discord: the schedule lives on
+  // the dashboard and the end is announced once, so a member who joined mid-season had no way
+  // to ask how long their points last.
+  new SlashCommandBuilder().setName('season').setDescription('How long until the points season resets'),
   new SlashCommandBuilder().setName('leaderboard').setDescription('Top members by level — this server or everyone')
     .addStringOption((o) => o.setName('scope').setDescription('This server, or every server the bot is in').addChoices({ name: 'This server', value: 'server' }, { name: 'Global', value: 'global' })),
   // Every option is a SHORTCUT: `/casino` alone opens the interactive table (pick the game, the
@@ -158,6 +163,7 @@ export async function handleInteraction(i) {
     if (i.commandName === 'inventory') return cmdInventory(i);
     if (i.commandName === 'gift') return cmdGift(i);
     if (i.commandName === 'history') return cmdHistory(i, i.options.getString('kind') || '');
+    if (i.commandName === 'season') return cmdSeason(i);
     if (i.commandName === 'leaderboard') return cmdLeaderboard(i, false, i.options.getString('scope') || 'server');
     if (i.commandName === 'casino') return cmdCasino(i);
     if (i.commandName === 'setup') return cmdSetup(i);
@@ -220,6 +226,7 @@ async function ecoComponent(i) {
   if (screen === 'shop') return cmdShop(i, 0, false, from);
   if (screen === 'inventory') return cmdInventory(i, from);
   if (screen === 'history') return cmdHistory(i, '', from);
+  if (screen === 'season') return cmdSeason(i, from);
   if (screen === 'leaderboard') return cmdLeaderboard(i, false, 'server', from);
   const { t } = await tr(i);
   return ui.line(i, t('nav.stale'), { color: ui.INFO });
@@ -256,6 +263,7 @@ registerScreen('cas', (i) => casinoMenu(i, unpackCas(['list', 'coinflip', 0, 're
 // tail was trimmed would otherwise slide the owner into the risk slot.
 registerScreen('casg', (i, a) => casinoMenu(i, unpackCas(['game', a[0], a[1], a[2], a[3], a[4], a[5], i.user.id])));
 registerScreen('lob', (i) => listLobbies(i));
+registerScreen('seas', (i) => cmdSeason(i));
 
 // ── B-econ: levelling / economy commands ─────────────────────────────────────
 const curLabel = (c) => c?.emoji || c?.name || 'points';
@@ -551,6 +559,29 @@ async function cmdHistory(i, kind = '', from = '') {
   return ui.reply(i, { title: `${ui.icx('history')}${t('hist.title')}${kind ? ` · ${kindLabel(kind) || kind}` : ''}`, body: lines, footer: t('hist.footer'), buttons: [ui.btn(`${SITE_URL}/dashboard?s=economy`, t('btn.site'), ButtonStyle.Secondary, { emoji: 'site' }), ...ecoButtons('', t, here), ...backButtons(t, from)] });
 }
 
+/**
+ * `/season` — how long until the points reset.
+ *
+ * Everything shown is the API's own answer (GET /bot/economy/season): the season number, the
+ * schedule the admin set, and the next boundary. The countdown is a Discord timestamp rather
+ * than a sentence the bot renders, so it keeps ticking on a card the bot never edits again and
+ * every reader sees it in their own locale.
+ */
+async function cmdSeason(i, from = '') {
+  const [{ t }, r] = await Promise.all([tr(i), api.economySeason()]);
+  const here = origin('seas');
+  if (!r?.state) return ui.reply(i, { title: t('season.now.title', { n: 1 }), body: t('season.now.unavailable'), color: ui.INFO, buttons: [...backButtons(t, from)] });
+  return ui.reply(i, {
+    ...seasonStatusCard(t, { seasonNo: r.state.seasonNo, next: r.next, since: r.state.since, lastResetAt: r.state.lastResetAt, season: r.season || {} }),
+    title: `${ui.icx('timer')}${t('season.now.title', { n: Number(r.state.seasonNo) || 1 })}`,
+    buttons: [
+      ui.btn(`${SITE_URL}/dashboard?s=economy`, t('btn.site'), ButtonStyle.Secondary, { emoji: 'site' }),
+      ...ecoButtons('', t, here),
+      ...backButtons(t, from),
+    ],
+  });
+}
+
 async function cmdLeaderboard(i, isUpdate = false, scope = 'server', from = '') {
   const guildId = scope === 'server' && i.guildId ? i.guildId : '';
   const here = origin('lb', guildId ? 'server' : 'global');
@@ -738,7 +769,7 @@ async function cmdCasino(i) {
 // (view · game · bet · bet_on · number · target · risk · owner), so the table survives a bot
 // restart and needs no session state. Every word comes from the reader's language.
 // No unicode emoji anywhere here: a game's glyph is `ui.ic(game)`, the site's icon set.
-const CASINO_GAMES = [
+export const CASINO_GAMES = [
   { id: 'coinflip', preview: 'H', odds: [['2×', '50 %']] },
   { id: 'dice', preview: '6', odds: [['2×', '50 %']] },
   { id: 'slots', preview: 'cherry cherry cherry', odds: [['8×', '4 %'], ['1.5×', '48 %']] },
@@ -750,6 +781,21 @@ const CASINO_GAMES = [
   { id: 'race', live: true, preview: '2|2', odds: [['6×', '1 / 6']] },
   { id: 'pot', live: true, preview: '1|10,30,60|A,B,C', odds: [['the pot', 'your stake / the pot']] },
 ];
+/**
+ * The games that HAVE a page, in the order Previous / Next walks them.
+ *
+ * `race` and `pot` are live-only: picking one opens a table in the channel, there is no
+ * private page to stand on. They were still in the walk, so the LIST's Previous — which
+ * pointed at `CASINO_GAMES[last]`, i.e. `pot` — opened a live table instead of the last game,
+ * and Previous from the first game (coinflip wrapping round to `pot`) did the same. That is
+ * the "Suivant lands on a game, Précédent lands on a multi table" report: the two buttons were
+ * walking a ring that contained screens which are not pages.
+ *
+ * The ring is now [LIST, …PAGE_GAMES]: the list is the item before the first game and after
+ * the last, so the walk is symmetric (list → Next → coinflip → Previous → list) and never
+ * opens a table by accident.
+ */
+export const PAGE_GAMES = CASINO_GAMES.filter((g) => !g.live);
 const ROULETTE_BETS = [['red', 'Red — 2×', 'red'], ['black', 'Black — 2×', 'black'], ['green', 'Green (zero) — 14×', 'green'], ['number', 'An exact number — 35×', 'number']];
 const WHEEL_TARGETS = [[2, '2× — 45 % of the wheel'], [3, '3× — 24 %'], [5, '5× — 16 %'], [10, '10× — 9 %'], [20, '20× — 4 %'], [50, '50× — 2 %']];
 const PLINKO_RISKS = [['low', 'Low — buckets 0.5× to 5×'], ['medium', 'Medium — buckets 0.3× to 13×'], ['high', 'High — buckets 0.2× to 50×']];
@@ -770,12 +816,11 @@ function unpackCas(parts) {
     owner: owner || '',
   };
 }
-const casOpt = (value, label, selected, description = null, icon = null) => {
-  const o = new StringSelectMenuOptionBuilder().setValue(String(value)).setLabel(label.slice(0, 100)).setDefault(!!selected);
-  if (description) o.setDescription(description.slice(0, 100));
-  if (icon && ui.ic(icon)) { try { o.setEmoji(ui.ic(icon)); } catch { /* label only */ } }
-  return o;
-};
+// ui.option, not a builder by hand: it is what keeps an icon token out of the LABEL (a label
+// is plain text to Discord — see ui.labelParts). `cas.custom` is '{ic:rename} Custom amount…',
+// and the resolved token used to be printed raw as the entry's own text.
+const casOpt = (value, label, selected, description = null, icon = null) =>
+  ui.option(value, label, { selected, description, emoji: icon });
 const casSelect = (id, placeholder, options) => new StringSelectMenuBuilder().setCustomId(id).setPlaceholder(placeholder).addOptions(options.slice(0, 25));
 
 /**
@@ -813,7 +858,9 @@ async function casinoList(i, st, { update = false } = {}) {
   const { t, min, max, e, cur, balance, enabled } = await casinoContext(i);
   const here = origin('cas');
   const S = (patch) => packCas({ ...st, ...patch });
-  const first = CASINO_GAMES[0].id, last = CASINO_GAMES[CASINO_GAMES.length - 1].id;
+  // The ends of the walk are the games that HAVE a page: `pot` is the last entry of
+  // CASINO_GAMES and is a live table, so Previous used to open one from here.
+  const first = PAGE_GAMES[0].id, last = PAGE_GAMES[PAGE_GAMES.length - 1].id;
   // The live games open a TABLE in the channel rather than a page: there is no bet to pick
   // in private first, the table is where you bet.
   const pickGame = casSelect(`cas:go:${S({})}`, t('cas.pickGame'), CASINO_GAMES.map((g) => casOpt(g.id, `${t(`game.${g.id}`)}${g.live ? ` · ${t('cas.liveTag')}` : ''}`, false, t(`game.${g.id}.d`), g.id)));
@@ -827,6 +874,9 @@ async function casinoList(i, st, { update = false } = {}) {
       ...CASINO_GAMES.map((g) => `${ui.icx(g.id)}**${t(`game.${g.id}`)}**${g.live ? ` · ${t('cas.liveTag')}` : ''}\n-# ${t(`game.${g.id}.d`)}`),
     ],
     footer: t('cas.footer'),
+    // The dropdown, then the buttons two to a row: five in one row is one line the client
+    // re-wraps into three ragged columns on anything narrower than a desktop window.
+    buttonColumns: 2,
     buttons: [
       pickGame,
       // `:p` / `:n` after the payload: every custom id on a message must be unique. unpackCas
@@ -848,12 +898,15 @@ async function casinoList(i, st, { update = false } = {}) {
 async function casinoMenu(i, st, { update = false } = {}) {
   if (st.view === 'list') return casinoList(i, st, { update });
   const { t, min, max, live, e, cur, balance, enabled } = await casinoContext(i);
-  const idx = Math.max(0, CASINO_GAMES.findIndex((x) => x.id === st.game));
-  // A live-only game has no private page: its Previous / Next neighbours land here, so open its table.
-  if (CASINO_GAMES[idx].live) return openLive(i, CASINO_GAMES[idx].id, {});
-  const g = CASINO_GAMES[idx];
-  const prev = CASINO_GAMES[(idx + CASINO_GAMES.length - 1) % CASINO_GAMES.length].id;
-  const next = CASINO_GAMES[(idx + 1) % CASINO_GAMES.length].id;
+  // A live-only game has no private page — only `/casino game:race` and a stale `casg~race`
+  // origin can still ask for one, and both mean "open the table".
+  const live0 = CASINO_GAMES.find((x) => x.id === st.game && x.live);
+  if (live0) return openLive(i, live0.id, {});
+  const idx = Math.max(0, PAGE_GAMES.findIndex((x) => x.id === st.game));
+  const g = PAGE_GAMES[idx];
+  // null = the LIST, which is the item before the first game and after the last one.
+  const prev = idx === 0 ? null : PAGE_GAMES[idx - 1].id;
+  const next = idx === PAGE_GAMES.length - 1 ? null : PAGE_GAMES[idx + 1].id;
   const bet = st.bet === 'all' ? Math.min(max, balance) : st.bet;
   const needsNumber = st.game === 'roulette' && st.betOn === 'number' && st.num == null;
   const canPlay = enabled && e.linked && bet >= min && bet <= max && bet <= balance && !needsNumber;
@@ -869,6 +922,9 @@ async function casinoMenu(i, st, { update = false } = {}) {
     : needsNumber ? t('cas.pickNumber') : null;
 
   const S = (patch) => packCas({ ...st, ...patch });
+  // One step of the walk. `null` is the LIST — the `:p` / `:n` tail only keeps the two ids
+  // distinct, which Discord requires of components on one message.
+  const step = (to, tag) => (to === null ? `cas:list:${S({ view: 'list' })}:${tag}` : `cas:open:${S({ game: to })}:${tag}`);
   // This page as an origin, so a screen opened from it (the balance, the link card, the open
   // tables) comes back to THIS game with this bet and these options, not to the games list.
   const here = origin('casg', st.game, st.bet, st.betOn, st.num ?? '', st.target, st.risk);
@@ -893,9 +949,9 @@ async function casinoMenu(i, st, { update = false } = {}) {
     ...(st.game === 'roulette' && st.betOn === 'number' ? [ui.btn(`cas:num:${S({})}`, st.num == null ? t('btn.pickNumber') : t('btn.number', { n: st.num }), ButtonStyle.Primary)] : []),
     // Multi: the same game on one shared roll, at a table in the channel.
     ...(live.multi !== false && MULTI_GAMES.includes(st.game) ? [ui.btn(`cl:new:${st.game}`, t('live.multiBtn'), ButtonStyle.Secondary, { emoji: 'multi' })] : []),
-    ui.btn(`cas:open:${S({ game: prev })}:p`, t('btn.prev'), ButtonStyle.Secondary, { emoji: 'prev' }),
+    ui.btn(step(prev, 'p'), t('btn.prev'), ButtonStyle.Secondary, { emoji: 'prev' }),
     ui.btn(`cas:list:${S({ view: 'list' })}`, t('btn.games'), ButtonStyle.Secondary, { emoji: 'games' }),
-    ui.btn(`cas:open:${S({ game: next })}:n`, t('btn.next'), ButtonStyle.Secondary, { emoji: 'next' }),
+    ui.btn(step(next, 'n'), t('btn.next'), ButtonStyle.Secondary, { emoji: 'next' }),
     e.linked ? ui.btn(withOrigin('eco:level', here), t('btn.balance'), ButtonStyle.Secondary, { emoji: 'level' }) : ui.btn(withOrigin('eco:link', here), t('btn.link'), ButtonStyle.Primary, { emoji: 'link' }),
     learnButton(t, 'casino'),
   ];
@@ -913,7 +969,7 @@ async function casinoMenu(i, st, { update = false } = {}) {
       why ? `\n${why}` : `\n${t('cas.ready')}`,
     ],
     image: gif ? 'attachment://table.gif' : null, files,
-    footer: t('cas.page', { i: idx + 1, n: CASINO_GAMES.length }),
+    footer: t('cas.page', { i: idx + 1, n: PAGE_GAMES.length }),
     buttons,
   };
   return update ? ui.update(i, opts) : ui.reply(i, opts);

@@ -17,7 +17,10 @@ const SRC = join(dirname(fileURLToPath(import.meta.url)), '..', 'src');
 const files = (dir) => readdirSync(dir).flatMap((f) => { const p = join(dir, f); return statSync(p).isDirectory() ? files(p) : p.endsWith('.mjs') ? [p] : []; });
 // Pictographs and the symbol blocks Discord renders as emoji. Arrows (→ ←) and the box-drawing
 // / bar glyphs (▰ ▱ ▁…█) are typography, not emoji, and stay allowed.
-const EMOJI = /[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{25B6}\u{25C0}\u{2705}\u{274C}\u{231A}\u{231B}\u{23E9}-\u{23F3}\u{23F8}-\u{23FA}\u{25AA}\u{25AB}\u{25FB}-\u{25FE}\u{2139}]/u;
+// U+FE0F is the variation selector that turns a plain character into an EMOJI presentation:
+// `↩️` is U+21A9 + U+FE0F and slipped past every range below for months (it was the live
+// table's "push" line in all four languages). An arrow used as typography never carries it.
+const EMOJI = /[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{25B6}\u{25C0}\u{2705}\u{274C}\u{231A}\u{231B}\u{23E9}-\u{23F3}\u{23F8}-\u{23FA}\u{25AA}\u{25AB}\u{25FB}-\u{25FE}\u{2139}\u{FE0F}]/u;
 
 describe('no unicode emoji in the bot', () => {
   test('every source file is clean', () => {
