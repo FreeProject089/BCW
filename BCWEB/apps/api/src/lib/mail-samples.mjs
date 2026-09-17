@@ -41,6 +41,28 @@ export const MAIL_SAMPLES = [
             { url: link('/auth/verify?token=EXAMPLE'), label: 'Confirm my email' }, o),
     },
     {
+        id: 'verify-reminder', editable: true, group: 'account', label: 'Your email is still unconfirmed',
+        note: 'Sent once, a week after a sign-up that was never confirmed. It names the date the account is released — a reminder with no consequence in it is the one nobody acts on.',
+        build: (o) => mailShell('Your email is still unconfirmed',
+            'You created a BetterCommunity account a week ago and this address was never confirmed, so the account cannot publish anything yet. '
+            + 'If it is not confirmed by <b>1 September 2026</b>, the account is released and the address becomes free to sign up with again. This link is valid for 24 hours.',
+            { url: link('/verify-email?token=EXAMPLE'), label: 'Confirm my email' }, o),
+    },
+    {
+        id: 'login-alert', editable: true, group: 'account', label: 'A sign-in worth telling you about',
+        note: 'A new device, a new country, or a success after a run of failed attempts — never a new IP, which changes on its own all day. Switchable off under "New sign-ins"; it is not in the locked security category, because it is a push copy of what the devices list already shows.',
+        build: (o) => mailShell('Your account was signed in to on a new device',
+            '<p style="margin:0 0 14px">This is the first time your account has been used on this browser.</p>'
+            + '<table role="presentation" style="border-collapse:collapse;font-size:14px;margin:0 0 14px">'
+            + '<tr><td style="padding:4px 14px 4px 0;color:#918a80">When</td><td style="padding:4px 0"><b>Tue, 01 Sep 2026 14:32:00 GMT</b></td></tr>'
+            + '<tr><td style="padding:4px 14px 4px 0;color:#918a80">Where</td><td style="padding:4px 0"><b>Lausanne, Vaud, CH</b></td></tr>'
+            + '<tr><td style="padding:4px 14px 4px 0;color:#918a80">Device</td><td style="padding:4px 0"><b>Firefox on Windows</b></td></tr>'
+            + '<tr><td style="padding:4px 14px 4px 0;color:#918a80">IP address</td><td style="padding:4px 0"><b>203.0.113.7</b></td></tr>'
+            + '</table>'
+            + '<p style="margin:0 0 14px">Your signed-in devices are listed in your account, and you can sign any of them out from there.</p>',
+            { url: link('/profile'), label: 'Check my devices' }, o),
+    },
+    {
         id: 'reset', editable: true, group: 'account', label: 'Reset your password',
         note: 'Only ever sent to an address that asked. The link expires.',
         build: (o) => mailShell('Reset your password',

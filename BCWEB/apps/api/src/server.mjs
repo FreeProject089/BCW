@@ -6,6 +6,7 @@ import cors from '@fastify/cors';
 import cookie from '@fastify/cookie';
 import rateLimit from '@fastify/rate-limit';
 import { db } from './lib/lib.mjs';
+import { registerVerifyGate } from './lib/verify-gate.mjs';
 import { startFlagRefresh } from './lib/flags.mjs';
 import { getRedis } from './lib/redis.mjs';
 import { ensureBucket } from './lib/storage.mjs';
@@ -278,6 +279,13 @@ app.addHook('onRequest', async (req, reply) => {
     return reply;
   }
 });
+
+// Confirming your address is part of creating an account: until it is confirmed the account
+// is read-only, apart from an explicit list of writes that concern nobody but itself. The
+// whole rule, and why it is deny-by-default rather than a guard on eighty routes, is in
+// lib/verify-gate.mjs. Inert on a deployment with e-mail switched off — nobody there can ever
+// confirm, so there is nothing to hold them to.
+registerVerifyGate(app, { db, jwtSecret: ACCT_JWT_SECRET });
 
 await app.register(rateLimit, {
   // 600/min per IP is generous for a human (~10 req/s) and is what keeps the DB safe under

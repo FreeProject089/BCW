@@ -8,22 +8,59 @@ import { generateSecret, verifyTotp, otpauthUri, generateRecoveryCodes } from '.
 import { userBcId } from '../lib/repofingerprint.mjs';
 import { grantAutoBadges } from './social.mjs';
 import { sendMail, mailShell, emailEnabled } from '../lib/mail.mjs';
+import { VERIFY_WINDOW_DAYS, RESEND_MIN_GAP_MS, RESEND_MAX_PER_DAY, RESEND_DAY_MS, clearVerifiedCache } from '../lib/verify-gate.mjs';
+import { priorLoginContext, maybeAlertLogin, FAIL_WINDOW_MS, FAIL_THRESHOLD } from '../lib/login-alert.mjs';
 
 const SITE_URL = (process.env.SITE_URL || 'http://localhost:5176').replace(/\/$/, '');
 
 // Create + email an account-confirmation token (non-blocking; no-op if email is off).
-async function sendVerificationEmail(p, user) {
-  if (!emailEnabled() || user.emailVerified) return;
+export async function sendVerificationEmail(p, user, opts = {}) {
+  if (!emailEnabled() || user.emailVerified) return false;
   const token = crypto.randomBytes(24).toString('hex');
   await p.emailVerification.create({ data: { userId: user.id, tokenHash: sha256(token), expiresAt: new Date(Date.now() + 24 * 3600e3) } });
   const url = `${SITE_URL}/verify-email?token=${token}`;
-  await sendMail({
+  // The deadline is part of the message. "Confirm your email" with no consequence attached is
+  // the line every service sends and nobody acts on; the sentence that gets acted on is the
+  // one that says what happens if you do not.
+  const deadline = user.verifyDeadline ? new Date(user.verifyDeadline) : null;
+  const by = deadline ? ` If it is not confirmed by <b>${deadline.toUTCString().slice(0, 16)}</b>, the account is released and the address becomes free to sign up with again.` : '';
+  const lead = opts.reminder
+    ? `You created a BetterCommunity account a week ago and this address was never confirmed, so the account cannot publish anything yet.${by}`
+    : `Welcome to BetterCommunity. Confirm this address and your account is ready — until you do, you can sign in and manage your account, but not publish or message anyone.${by}`;
+  return sendMail({
     to: user.email,
-    mailId: 'verify',
-    subject: 'Confirm your BetterCommunity email',
-    html: mailShell('Confirm your email', 'Welcome to BetterCommunity! Confirm your email address to finish securing your account. This link is valid for 24 hours.', { url, label: 'Confirm my email' }, { mailId: 'verify' }),
+    mailId: opts.reminder ? 'verify-reminder' : 'verify',
+    subject: opts.reminder ? 'Your BetterCommunity email is still unconfirmed' : 'Confirm your BetterCommunity email',
+    html: mailShell(opts.reminder ? 'Your email is still unconfirmed' : 'Confirm your email', `${lead} This link is valid for 24 hours.`, { url, label: 'Confirm my email' }, { mailId: opts.reminder ? 'verify-reminder' : 'verify' }),
     text: `Confirm your BetterCommunity email: ${url}`,
-  }).catch(() => {});
+  }).catch(() => false);
+}
+
+/**
+ * How long until this account may cause another confirmation mail, in ms (0 = now).
+ *
+ * Counted from the EmailVerification rows themselves rather than an in-process counter, so it
+ * survives a restart and holds across replicas — a limit that resets when a container does is
+ * not a limit. Per ACCOUNT, because the fastify limiter on this route is per IP and a mail
+ * bomb aimed at somebody else's inbox does not care which IP it is sent from.
+ *
+ * Two bounds, because one of them is always the wrong one on its own: a minimum gap stops the
+ * double-click and the retry loop, and a daily ceiling stops a patient sender.
+ */
+export async function resendWaitMs(p, userId, now = Date.now()) {
+  const rows = await p.emailVerification.findMany({
+    where: { userId, createdAt: { gte: new Date(now - RESEND_DAY_MS) } },
+    orderBy: { createdAt: 'desc' },
+    select: { createdAt: true },
+  }).catch(() => []);
+  if (!rows.length) return 0;
+  const gap = RESEND_MIN_GAP_MS - (now - new Date(rows[0].createdAt).getTime());
+  if (gap > 0) return gap;
+  if (rows.length >= RESEND_MAX_PER_DAY) {
+    const oldest = new Date(rows[rows.length - 1].createdAt).getTime();
+    return Math.max(1, RESEND_DAY_MS - (now - oldest));
+  }
+  return 0;
 }
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-insecure-secret';
@@ -166,8 +203,17 @@ export default async function authRoutes(app) {
       ? { status: prior.status, moderationReason: prior.moderationReason, moderationUntil: prior.moderationUntil }
       : {};
 
+    // The account is created, and it is on the clock. See verify-gate.mjs for what it can do
+    // in the meantime and sweepUnverifiedAccounts for what happens when the clock runs out.
+    //
+    // Set ONLY when mail can actually be sent. A deployment with e-mail switched off can never
+    // deliver a confirmation link, so a deadline there would release accounts for failing to
+    // do something nobody offered them — and the gate stands aside on that deployment for the
+    // same reason.
+    const verifyDeadline = emailEnabled() ? new Date(Date.now() + VERIFY_WINDOW_DAYS * 864e5) : null;
     const user = await p.user.create({ data: {
       email, passwordHash, displayName: displayName || email.split('@')[0],
+      ...(verifyDeadline ? { verifyDeadline } : {}),
       ...(prior ? { priorUserId: prior.id } : {}),
       ...carried,
     } });
@@ -186,20 +232,36 @@ export default async function authRoutes(app) {
     const p = await db();
     const ev = await p.emailVerification.findUnique({ where: { tokenHash: sha256(b.data.token) } });
     if (!ev || ev.usedAt || ev.expiresAt < new Date()) return reply.code(400).send({ error: 'invalid_token' });
-    await p.user.update({ where: { id: ev.userId }, data: { emailVerified: true } });
+    // The deadline is cleared in the same write that sets the flag. Two rows saying whether
+    // this account is on the clock is one row that will disagree with the other.
+    await p.user.update({ where: { id: ev.userId }, data: { emailVerified: true, verifyDeadline: null, verifyRemindedAt: null } });
     await p.emailVerification.update({ where: { id: ev.id }, data: { usedAt: new Date() } });
+    // The gate remembers "not verified" for up to thirty seconds. Confirming is the one moment
+    // where that wait would be felt as the feature not working, so it is evicted here.
+    clearVerifiedCache(ev.userId);
     return { ok: true };
   });
 
-  // Resend the confirmation email to the signed-in user (rate-limited).
-  app.post('/auth/verify-email/resend', { preHandler: requireRole(), config: { rateLimit: { max: 5, timeWindow: '1 hour' } } }, async (req, reply) => {
+  // Resend the confirmation email to the signed-in user.
+  //
+  // Two limits, and they are different things. The fastify one is per IP and crude; the one
+  // below is per ACCOUNT and is the real rule — at most one mail every 5 minutes, and at most
+  // 5 in a rolling day. The mail goes to an address the account holder typed, which may be
+  // somebody else's, so "how many can this IP send" is the wrong question.
+  //
+  // A refusal says how long to wait rather than just failing: the person on the other side is
+  // usually somebody whose link did not arrive, and "try again later" with no number is how
+  // they end up pressing it ten more times.
+  app.post('/auth/verify-email/resend', { preHandler: requireRole(), config: { rateLimit: { max: 10, timeWindow: '1 hour' } } }, async (req, reply) => {
     const p = await db();
     const user = await p.user.findUnique({ where: { id: req.user.uid } });
     if (!user) return reply.code(404).send({ error: 'not_found' });
     if (user.emailVerified) return { ok: true, already: true };
     if (!emailEnabled()) return reply.code(503).send({ error: 'email_disabled' });
+    const wait = await resendWaitMs(p, user.id);
+    if (wait > 0) return reply.code(429).send({ error: 'resend_too_soon', retryAfterSec: Math.ceil(wait / 1000) });
     await sendVerificationEmail(p, user);
-    return { ok: true };
+    return { ok: true, deadline: user.verifyDeadline || null };
   });
 
   // Request a password reset. Always returns ok (never leaks whether the email exists).
@@ -260,11 +322,11 @@ export default async function authRoutes(app) {
     //
     // Counted on the SUBMITTED address, whether or not it belongs to an account, so
     // the response cannot be used to tell existing addresses from absent ones.
-    const failWindow = new Date(Date.now() - 15 * 60_000);
+    const failWindow = new Date(Date.now() - FAIL_WINDOW_MS);
     const recentFails = await p.loginAttempt.count({
       where: { email: parsed.data.email, success: false, createdAt: { gte: failWindow } },
     }).catch(() => 0);
-    if (recentFails >= 3 && !powVerify(req.body?.pow)) {
+    if (recentFails >= FAIL_THRESHOLD && !powVerify(req.body?.pow)) {
       return reply.code(429).send({ error: 'pow_required', ...powChallenge() });
     }
     let user = await p.user.findUnique({ where: { email: parsed.data.email } });
@@ -308,7 +370,13 @@ export default async function authRoutes(app) {
       return { twoFactorRequired: true, tempToken };
     }
     await logLogin(p, { email: user.email, ip, success: true, reason: 'ok', userId: user.id });
-    return issueSession(reply, user, req);
+    // Read BEFORE the session is issued. "Is this device new?" cannot be answered once the
+    // new device's own row is in the set being compared against — the alert would be silent
+    // for ever and nothing would look wrong.
+    const prior = await priorLoginContext(p, user.id);
+    const res = await issueSession(reply, user, req);
+    maybeAlertLogin(p, user, prior, { recentFails }).catch(() => {}); // never blocks the sign-in
+    return res;
   });
 
   // Step 2 of a 2FA-protected login: a TOTP code (or a one-time recovery code).
@@ -336,7 +404,16 @@ export default async function authRoutes(app) {
     }
     if (usedRecovery) await p.user.update({ where: { id: user.id }, data: { totpRecoveryCodes: user.totpRecoveryCodes.filter((h) => h !== usedRecovery) } });
     await logLogin(p, { email: user.email, ip, success: true, reason: 'ok', userId: user.id });
-    return issueSession(reply, user, req);
+    // Counted here as well as in step one: the failures that matter are the ones on this
+    // address, and a 2FA-protected account reaches this handler without step one having
+    // decided anything about them.
+    const recentFails = await p.loginAttempt.count({
+      where: { email: user.email, success: false, createdAt: { gte: new Date(Date.now() - FAIL_WINDOW_MS) } },
+    }).catch(() => 0);
+    const prior = await priorLoginContext(p, user.id);
+    const res = await issueSession(reply, user, req);
+    maybeAlertLogin(p, user, prior, { recentFails }).catch(() => {});
+    return res;
   });
 
   // ── 2FA enrollment (self-service — an admin can never enable/disable this FOR
@@ -399,7 +476,7 @@ export default async function authRoutes(app) {
     return { ok: true };
   });
 
-  const profileSelect = { id: true, email: true, displayName: true, role: true, permissions: true, customRoleIds: true, emailVerified: true, bio: true, avatar: true, createdAt: true, totpEnabled: true, profilePublic: true, showConnections: true, website: true, locale: true, badges: { include: { badge: true }, orderBy: { badge: { priority: 'desc' } } }, oauthAccounts: { select: { provider: true } }, socialConnections: { select: { provider: true } }, _count: { select: { discordLinks: true, creatorLinks: true } }, status: true, moderationUntil: true, moderationReason: true };
+  const profileSelect = { id: true, email: true, displayName: true, role: true, permissions: true, customRoleIds: true, emailVerified: true, verifyDeadline: true, bio: true, avatar: true, createdAt: true, totpEnabled: true, profilePublic: true, showConnections: true, website: true, locale: true, badges: { include: { badge: true }, orderBy: { badge: { priority: 'desc' } } }, oauthAccounts: { select: { provider: true } }, socialConnections: { select: { provider: true } }, _count: { select: { discordLinks: true, creatorLinks: true } }, status: true, moderationUntil: true, moderationReason: true };
 
   // Soft-authed "who am I": logged-out visitors get 200 { user: null } instead of a
   // noisy 401 in the console. The app boots this on every load.

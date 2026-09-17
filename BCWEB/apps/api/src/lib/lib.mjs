@@ -992,6 +992,15 @@ export const NOTIF_CATEGORIES = {
   polls: { match: (k) => /^poll_/.test(k), label: 'Polls & surveys' },
   blog: { match: (k) => /^blog_|^docs_|^comment/.test(k), label: 'Comments & replies on your writing' },
   newsletter: { match: (k) => /^newsletter/.test(k), label: 'Newsletter' },
+  // Sign-in alerts (a new device, a new country, a success after a run of failures).
+  //
+  // Mutable, and deliberately NOT part of the locked category below — the full reasoning is at
+  // the top of lib/login-alert.mjs. The short version: everything in `security` has already
+  // happened TO the account and is lost if muted, whereas a sign-in alert is an event the
+  // person caused themselves and is a push copy of what /me/sessions shows at all times. One
+  // switch covers both the in-app notice and the e-mail; a preference that silences the bell
+  // and not the inbox is a rule written twice.
+  logins: { match: (k) => /^login_/.test(k), label: 'New sign-ins' },
   // Not switchable, and deliberately so: these are the ones you would most regret muting —
   // a ban, a revoked key, an app losing access, a closure. An account that can silence its
   // own security notices is one that finds out too late.

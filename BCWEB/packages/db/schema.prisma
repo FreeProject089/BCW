@@ -198,6 +198,24 @@ model User {
   // in to being told about their own things. Stored as JSON rather than a table because it
   // is a handful of booleans read on every notify() — one row read instead of a join.
   notifPrefs             Json?
+  // ── Confirming the address is part of creating the account ──────────────────
+  // When this unconfirmed sign-up stops being an account. See lib/verify-gate.mjs for what it
+  // can and cannot do in the meantime, and sweepUnverifiedAccounts for what happens at the
+  // end. Set at registration ONLY when e-mail is switched on for the deployment (nobody can
+  // confirm a link that cannot be sent), and cleared in the same write that sets
+  // emailVerified — two rows saying whether an account is on the clock is one row that will
+  // disagree with the other.
+  //
+  // Null therefore means "no deadline", which covers an OAuth sign-up (the provider already
+  // proved the address), an account that predates this column, and one that has confirmed.
+  // The sweeper only ever looks at rows where it is SET and past, so every account that
+  // existed before this rule is out of its reach by construction rather than by a date check
+  // somebody has to remember.
+  verifyDeadline         DateTime?
+  // Set when the single day-7 "you never confirmed" reminder goes out, so it goes out once
+  // instead of on every sweeper tick.
+  verifyRemindedAt       DateTime?
+  loginAlerts            LoginAlert[]
   // SHA-256 of the email the account had before anonymisation.
   //
   // Closing erases the address, which is the point — but it also erases the only link
@@ -4653,4 +4671,37 @@ model UserMessagingPref {
   updatedAt     DateTime @updatedAt
 
   @@index([acceptsDirect])
+}
+
+/// One "your account was signed in to" notice that was actually raised.
+///
+/// It exists to answer "have we already told them this?", which is the entire difference
+/// between an alert worth reading and a mail every time a phone changes cell tower. The key is
+/// (user, reason, fingerprint): the same browser on the same OS does not produce a second
+/// notice within the day, and a genuinely different one produces its own immediately.
+///
+/// The fingerprint is browser|os|device, lowercased — deliberately NOT the IP. An IP changes
+/// several times a day on a mobile network without anybody going anywhere, so keying on it
+/// would teach people to ignore the one alert that mattered.
+///
+/// `sessionId` carries no foreign key on purpose: the session sweeper prunes device rows long
+/// before these are pruned, and a cascade would delete the record of the warning at exactly
+/// the moment somebody goes looking for what happened.
+///
+/// Never read by an admin surface. This is the account holder's own trail, like /me/sessions.
+model LoginAlert {
+  id          String   @id @default(cuid())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String
+  /// new_device | new_country | after_failures
+  reason      String
+  /// browser|os|device, lowercased.
+  fingerprint String
+  country     String?
+  ip          String?
+  sessionId   String?
+  createdAt   DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([userId, reason, fingerprint, createdAt])
 }

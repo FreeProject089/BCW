@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import argon2 from 'argon2';
 import { db, issueSession, requireRole, optionalAuth, safeEqual, notify } from '../lib/lib.mjs';
+import { priorLoginContext, maybeAlertLogin } from '../lib/login-alert.mjs';
 import { sendMail, mailShell, emailEnabled } from '../lib/mail.mjs';
 import { mergeShadowEconomy } from '../lib/economy-curve.mjs';
 import { verifyConnectState, exchangeConnect, OAUTH as CONNECT_OAUTH } from './connections.mjs';
@@ -303,7 +304,11 @@ export default async function oauthRoutes(app) {
       }
       await attachDiscord(p, name, profile, user);
 
+      // A provider sign-in is a sign-in. Gathered BEFORE the session row exists, or "is this
+      // device new" is answered against a set that already contains it.
+      const prior = await priorLoginContext(p, user.id);
       await issueSession(reply, user, req);
+      maybeAlertLogin(p, user, prior).catch(() => {});
       // Re-checked coming OUT as well as going in. The signature makes tampering impossible,
       // so this is belt-and-braces — but a state minted by an older build, or by a future one
       // that relaxes the entry check, must not be the thing that turns this into a redirector.
