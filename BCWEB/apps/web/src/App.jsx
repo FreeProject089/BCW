@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Routes, Route, Link, NavLink, Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { Code2, Boxes, Music2, Newspaper, Server, Rocket, LayoutDashboard, Shield, LogOut, Download, Menu, X, Sparkles, Bell, Trash2, CheckCheck, Mail, Home as HomeIcon, ChevronDown, MoreHorizontal, LayoutGrid, ShieldCheck, ArrowUpRight, Info, AlertTriangle, CheckCircle2, Settings as SettingsIcon, BookOpen } from 'lucide-react';
+import { Code2, Boxes, Music2, Newspaper, Server, Rocket, LayoutDashboard, Shield, LogOut, Download, Menu, X, Sparkles, Bell, Trash2, CheckCheck, Mail, Home as HomeIcon, ChevronDown, MoreHorizontal, LayoutGrid, ShieldCheck, ArrowUpRight, Info, AlertTriangle, CheckCircle2, Settings as SettingsIcon, BookOpen, Search } from 'lucide-react';
 import { useAuth } from './pages/auth.jsx';
 import { api } from './lib/api.js';
 import { onNotifsChanged, applyNotifChange, markNotifRead, markAllNotifsRead, deleteNotif } from './lib/notifs.js';
@@ -13,6 +13,8 @@ import { ThemeToggle, SiteLogo } from './ui/theme.jsx';
 
 import { useI18n, LangToggle, LangSelect } from './i18n.jsx';
 import CommandPalette from './ui/command-palette.jsx';
+import { openPalette } from './ui/palette-recent.js';
+import { buildDownbar } from './ui/mobilebar-items.js';
 import { KofiIcon, GithubIcon, DiscordIcon, RedditIcon, XIcon, YoutubeIcon, TwitchIcon,
   MastodonIcon, BlueskyIcon, InstagramIcon, TelegramIcon, TiktokIcon, APP_LOGO } from './ui/brand.jsx';
 import { ShowcaseIcon, IconGlyph } from './ui/md.jsx';
@@ -144,7 +146,7 @@ const DEFAULT_ITEMS = [
 // Icons an admin can pick for a configured nav item — a curated, safe whitelist
 // (only these render; an unknown name falls back to Boxes). Keys are the values
 // stored in the nav config; keep them stable.
-const NAV_ICONS = { Boxes, Music2, Newspaper, Server, Rocket, Shield, Download, Sparkles, Mail, Home: HomeIcon, BookOpen, LayoutGrid, Info, Bell, Code: Code2 };
+const NAV_ICONS = { Boxes, Music2, Newspaper, Server, Rocket, Shield, Download, Sparkles, Mail, Home: HomeIcon, BookOpen, LayoutGrid, Info, Bell, Code: Code2, Search };
 
 // Built-in topbar utility elements, split by their responsive cluster (see Topbar).
 // Admins reorder/hide WITHIN a cluster; the keys are the config identifiers — keep stable.
@@ -183,12 +185,29 @@ function useNavConfig() {
 // becomes an <img>, a name goes through IconGlyph — same result as ShowcaseIcon.
 const showcaseChildIcon = (icon) => /^(https?:|data:|\/)/i.test(icon || '') ? { img: icon } : { icon: icon || 'sparkles' };
 
-// Mobile bottom bar items derived from the nav config: home first, then the leading
-// top-level LINK items (groups are skipped — a bottom bar can't nest). Capped so the bar
-// stays legible on a phone. `k`-less items carry raw label/labelFr like configured nav.
-function deriveDownbar(items) {
-  const leaves = (items || []).filter((it) => it.type !== 'group' && it.to).slice(0, 4);
-  return [{ to: '/', k: 'nav.home', icon: HomeIcon, exact: true }, ...leaves];
+// The bell's badge, shared with the mobile bottom bar.
+//
+// The bar needs the same number the bell shows, and the obvious way to get it — a second
+// fetch — would double a poll that already runs every 60 seconds for every signed-in visitor,
+// to render the same digit twice. The bell publishes instead. A module value plus one event
+// rather than lifted state: this number changes on a timer, and putting it in App's state
+// would re-render the entire shell (nav, main, footer) once a minute for a badge.
+let _navBadge = 0;
+const NAV_BADGE_EVENT = 'bcw:nav-badge';
+function publishNavBadge(n) {
+  if (n === _navBadge) return;
+  _navBadge = n;
+  try { window.dispatchEvent(new CustomEvent(NAV_BADGE_EVENT)); } catch { /* no window */ }
+}
+function useNavBadge() {
+  const [n, setN] = useState(_navBadge);
+  useEffect(() => {
+    const h = () => setN(_navBadge);
+    window.addEventListener(NAV_BADGE_EVENT, h);
+    h(); // the bell may have published before this mounted
+    return () => window.removeEventListener(NAV_BADGE_EVENT, h);
+  }, []);
+  return n;
 }
 
 // Real app icon when /icons/<app>.png exists, otherwise any Lucide icon or Simple Icons
@@ -521,6 +540,8 @@ function NavNotifications() {
   const pendingNew = Math.max(0, pending - pendingSeen);
   const markPendingSeen = () => { setPendingSeen(pending); try { localStorage.setItem('bcw_pending_seen', String(pending)); } catch {} };
   const badge = unread + pendingNew;
+  useEffect(() => { publishNavBadge(badge); }, [badge]);
+  useEffect(() => () => publishNavBadge(0), []); // signing out unmounts the bell; don't leave a number behind
   const markOne = async (n) => { if (n.readAt) return; readIds.current.add(n.id); setItems((s) => s.map((x) => (x.id === n.id ? { ...x, readAt: new Date().toISOString() } : x))); try { await markNotifRead(n.id); } catch {} };
   // Click = mark read + go to the relevant page (if the kind maps to one).
   // The notification's OWN destination first, the per-kind default second.
@@ -587,14 +608,6 @@ function NavNotifications() {
     </div>
   );
 }
-
-// Primary destinations for the mobile bottom tab bar.
-const BOTTOM = [
-  { to: '/', k: 'nav.home', icon: HomeIcon, exact: true },
-  { to: '/p/bmm', k: 'nav.bmm', icon: Boxes, img: '/icons/bmm.png' },
-  { to: '/p/bsm', k: 'nav.bsm', icon: Music2, img: '/icons/bsm.png' },
-  { to: '/hosting', k: 'nav.hosting', icon: Rocket },
-];
 
 function Nav() {
   const { user, logout: rawLogout } = useAuth();
@@ -841,11 +854,26 @@ function Nav() {
   );
 }
 
-// App-style bottom tab bar (mobile only). Labels collapse while actively scrolling
-// and slide back in when the user stops — a clean, contextual reveal.
+// App-style bottom tab bar (mobile only).
+//
+// WHAT IT SHOWS is decided in ui/mobilebar-items.js (shared with the admin editor); read the
+// header there for why the defaults changed. This function is the rendering, and it exists to
+// fix three complaints about the old one:
+//
+//   · it was a default tab bar. It now floats clear of the edge on the site's own surface,
+//     with the active tab carrying a real accent pill and a filament above it;
+//   · the active state had a Tailwind `transition` on a class that never animated anything
+//     visible. The pill now scales and fades from the tab it left, the icon lifts, and the
+//     whole thing is off under prefers-reduced-motion (see .mbar in index.css);
+//   · it sat ON the end of the page. There is now a spacer the exact height of the bar, so
+//     the last row of any page can still be scrolled to.
+//
+// Labels still collapse while actively scrolling and slide back when the user stops.
 function MobileTabBar() {
   const { t, lang } = useI18n();
+  const { user } = useAuth();
   const navCfg = useNavConfig();
+  const badge = useNavBadge();
   const [showLabels, setShowLabels] = useState(true);
   const [openUp, setOpenUp] = useState(null); // index of the open dropup sheet, or null
   useEffect(() => {
@@ -854,51 +882,72 @@ function MobileTabBar() {
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => { window.removeEventListener('scroll', onScroll); clearTimeout(tmr); };
   }, []);
-  // Off when the admin disabled it. Otherwise: an admin-defined custom bar if one exists,
-  // else it mirrors the configured nav items (home + leading links), else the default
-  // app-shortcut bar. `display` decides icon / text / both.
-  const db = navCfg?.downbar || {};
-  if (db.enabled === false) return null;
-  const display = db.display === 'icon' || db.display === 'text' ? db.display : 'both';
-  // A custom button carries a `kind`: a plain 'link', a raised 'primary' centre button, or a
-  // 'dropup' that opens an upward sheet of children. A dropup keeps its slot even without a
-  // `to` (it has children); a link/primary needs an internal path. Label is optional here so
-  // an icon-only bar doesn't get silently dropped for lacking one.
-  const custom = Array.isArray(db.items) && db.items.length
-    ? db.items
-        .filter((it) => it && (String(it.to || '').startsWith('/') || (it.kind === 'dropup' && (it.children || []).some((c) => c && String(c.to || '').startsWith('/')))))
-        .slice(0, 5)
-        .map((it) => ({
-          kind: it.kind === 'primary' || it.kind === 'dropup' ? it.kind : 'link',
-          to: it.to, icon: it.icon, label: it.label, labelFr: it.labelFr, exact: it.to === '/',
-          children: (it.children || []).filter((c) => c && String(c.to || '').startsWith('/')),
-        }))
-    : null;
-  const items = custom || (navCfg?.items?.length ? deriveDownbar(navCfg.items) : BOTTOM).map((n) => ({ ...n, kind: 'link' }));
-  const label = (n) => (n.k ? t(n.k) : navLabel(n, t, lang));
+  const bar = buildDownbar(navCfg, { signedIn: !!user });
+  // Hooks are all above this line: the bar can be switched off by an admin, and an early
+  // return before a hook is the classic way to break a component on a config change.
+  if (!bar) return null;
+  const { display, items } = bar;
   const showIcon = display !== 'text';
   const showText = display !== 'icon';
-  // In 'both', labels collapse while scrolling (the app-style reveal). In 'text' they are
-  // the only thing on the bar, so they never collapse.
   const labelVisible = display === 'text' || showLabels;
-  const txt = (n) => showText && <span className={`text-[10px] leading-none overflow-hidden transition-all duration-200 ${display === 'text' ? 'font-medium max-w-full truncate px-1' : ''} ${labelVisible ? 'max-h-4 opacity-100 mt-0.5' : 'max-h-0 opacity-0 mt-0'}`}>{label(n)}</span>;
-  const tab = ({ isActive }) => `flex-1 flex flex-col items-center justify-center py-1.5 ${isActive ? 'text-[var(--accent-ink)]' : 'text-[var(--muted)]'}`;
+  // A hardcoded slot carries a translation key; a configured one carries label/labelFr.
+  // The fallbacks are spelled out here because these two keys are new.
+  const label = (n) => {
+    if (n.k === 'downbar.search') return t('downbar.search', 'Search');
+    if (n.k === 'downbar.me') return t('downbar.me', 'My space');
+    return n.k ? t(n.k) : navLabel(n, t, lang);
+  };
+  // Slot icons are stored as NAMES (the shared module has no business importing lucide).
+  // A name in the whitelist becomes the bundled component; anything else falls through to
+  // NavIcon's existing string handling (IconGlyph / a project logo).
+  const withIcon = (n) => (typeof n.icon === 'string' && NAV_ICONS[n.icon] ? { ...n, icon: NAV_ICONS[n.icon] } : n);
+  const txt = (n) => showText && (
+    <span className={`mbar-lbl ${labelVisible ? 'is-on' : ''} ${display === 'text' ? 'is-only' : ''}`}>{label(n)}</span>
+  );
+  // The unread count, on whichever slot asked for it. Capped at 9+: the bar has room for one
+  // glyph, and "23" in a 14px dot is a smudge. The full number is in the title, which is also
+  // what stops this being a clipped value with no way to read it.
+  const dot = (n) => {
+    if (n.badge !== 'notifs' || badge <= 0) return null;
+    const full = t('downbar.unread', '{n} unread').replace('{n}', String(badge));
+    return <span className="mbar-badge" title={full} aria-label={full}>{badge > 9 ? '9+' : badge}</span>;
+  };
+  const glyph = (n, size = 19) => showIcon && (
+    <span className="mbar-ic"><NavIcon item={withIcon(n)} size={size} />{dot(n)}</span>
+  );
   return (
     <>
+      {/* The page has to END above the bar. Without this the last control on every page sat
+          under a floating bar that no amount of scrolling could move — the one bug a bottom
+          bar always has. The height is the bar plus its float gap plus the home indicator. */}
+      <div className="mbar-spacer md:hidden" aria-hidden />
       {/* An invisible catcher so a tap anywhere else closes an open dropup. Below the nav in
           the stack (nav is rendered after), above the page. */}
       {openUp != null && <div className="md:hidden fixed inset-0 z-40" onClick={() => setOpenUp(null)} aria-hidden />}
-      <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 border-t border-[var(--line)] topbar flex items-stretch px-1" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+      {/* `md:hidden` and `flex` are both Tailwind display utilities, so Tailwind's own output
+          order decides which wins and the bar really does disappear at md+. Setting `display`
+          in the .mbar rule instead would have depended on where the appended block lands
+          relative to the utility layer, which is not something to leave to chance. */}
+      <nav className="mbar topbar md:hidden fixed z-40 flex items-stretch" aria-label={t('downbar.aria', 'Main shortcuts')}>
         {items.map((n, i) => {
-          // The raised main action. A filled circle that overhangs the top edge, ringed in the
-          // page colour so it reads as sitting proud of the bar — the one button that matters.
+          // The raised main action. On the default bar this is Search, and it opens the same
+          // ⌘K palette the desktop has — the phone had no way in at all.
           if (n.kind === 'primary') {
+            const press = () => { if (n.act === 'search') openPalette(); };
+            const inner = (active) => <>
+              <span className={`mbar-raise ${active ? 'is-on' : ''}`}><NavIcon item={withIcon(n)} size={22} /></span>
+              {txt(n)}
+            </>;
+            if (n.act) {
+              return (
+                <button key={i} type="button" onClick={press} className="mbar-tab is-raised" title={label(n)} aria-label={label(n)}>
+                  {inner(false)}
+                </button>
+              );
+            }
             return (
-              <NavLink key={i} to={n.to || '/'} end={n.exact} className="flex-1 flex flex-col items-center justify-start pt-0.5" title={label(n)} aria-label={label(n)}>
-                {({ isActive }) => <>
-                  <span className={`-mt-5 grid place-items-center w-12 h-12 rounded-full text-white shadow-lg ring-4 ring-[var(--bg)] transition ${isActive ? 'bg-[var(--primary)] scale-105' : 'bg-[color-mix(in_srgb,var(--primary)_92%,black)]'}`}><NavIcon item={n} size={22} /></span>
-                  {txt(n)}
-                </>}
+              <NavLink key={i} to={n.to || '/'} end={n.exact} className="mbar-tab is-raised" title={label(n)} aria-label={label(n)}>
+                {({ isActive }) => inner(isActive)}
               </NavLink>
             );
           }
@@ -907,32 +956,31 @@ function MobileTabBar() {
             const open = openUp === i;
             const kids = n.children || [];
             return (
-              <div key={i} className="flex-1 relative flex">
+              <div key={i} className="mbar-slot">
                 {open && (
-                  <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 min-w-[11rem] max-w-[80vw] rounded-2xl border border-[var(--line)] shadow-xl p-1.5 z-50" style={{ background: 'var(--bg-solid)' }}>
+                  <div className="mbar-up" style={{ background: 'var(--bg-solid)' }}>
                     {kids.length === 0
-                      ? <div className="px-3 py-2 text-xs text-[var(--faint)]">—</div>
+                      ? <div className="px-3 py-2 text-xs text-[var(--faint)]">{t('downbar.empty', 'Nothing here yet')}</div>
                       : kids.map((c, j) => (
                         <NavLink key={j} to={c.to} onClick={() => setOpenUp(null)} className={({ isActive }) => `flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm ${isActive ? 'text-[var(--accent-ink)] bg-[var(--surface-2)]' : 'text-[var(--muted)] hover:bg-[var(--surface-2)]'}`}>
-                          <NavIcon item={c} size={16} /> <span className="truncate">{label(c)}</span>
+                          <NavIcon item={withIcon(c)} size={16} /> <span className="truncate" title={label(c)}>{label(c)}</span>
                         </NavLink>
                       ))}
                   </div>
                 )}
                 <button type="button" onClick={() => setOpenUp(open ? null : i)} aria-expanded={open} title={label(n)} aria-label={label(n)}
-                  className={`flex-1 flex flex-col items-center justify-center py-1.5 ${open ? 'text-[var(--accent-ink)]' : 'text-[var(--muted)]'}`}>
-                  {showIcon && <span className={`grid place-items-center w-9 h-7 rounded-full transition ${open ? 'bg-[var(--surface-2)]' : ''}`}><NavIcon item={n} size={18} /></span>}
+                  className={`mbar-tab ${open ? 'is-active' : ''}`}>
+                  {glyph(n)}
                   {txt(n)}
                 </button>
               </div>
             );
           }
           return (
-            <NavLink key={i} to={n.to} end={n.exact} className={tab} title={label(n)} aria-label={label(n)}>
-              {({ isActive }) => <>
-                {showIcon && <span className={`grid place-items-center w-9 h-7 rounded-full transition ${isActive ? 'bg-[var(--surface-2)]' : ''}`}><NavIcon item={n} size={18} /></span>}
-                {txt(n)}
-              </>}
+            <NavLink key={i} to={n.to} end={n.exact} title={label(n)} aria-label={label(n)}
+              className={({ isActive }) => `mbar-tab ${isActive ? 'is-active' : ''}`}>
+              {glyph(n)}
+              {txt(n)}
             </NavLink>
           );
         })}

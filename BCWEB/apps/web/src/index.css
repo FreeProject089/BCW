@@ -1323,3 +1323,122 @@ label:has(> input[type="radio"]) {
   border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: 6px;
   background: var(--surface-2); color: var(--text); white-space: nowrap;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Mobile bottom bar (App.jsx · MobileTabBar). Appended block — nothing above is
+   touched.
+
+   The old bar was a flat strip glued to the bottom edge with a Tailwind
+   `transition` on a class whose only visible change was the text colour, so the
+   active state had nothing to animate. This one floats clear of the edge on the
+   site's own surface (.topbar, so the translucent-surfaces setting still
+   governs it) and gives the active tab three things that move: an accent pill
+   that scales in behind the icon, the icon lifting a pixel, and a short
+   filament along the top edge. All of it is off under prefers-reduced-motion.
+
+   Heights live in variables because .mbar-spacer has to be EXACTLY as tall as
+   the bar — that spacer is what stops the last row of a page hiding underneath.
+   ──────────────────────────────────────────────────────────────────────────── */
+:root { --mbar-h: 56px; --mbar-gap: 10px; }
+
+/* The page ends above the bar. env() resolves to 0px where there is no home
+   indicator, so this is the right height on every phone and on a desktop
+   browser pretending to be one. */
+.mbar-spacer { height: calc(var(--mbar-h) + var(--mbar-gap) * 2 + env(safe-area-inset-bottom, 0px)); }
+
+.mbar {
+  left: var(--mbar-gap); right: var(--mbar-gap);
+  bottom: calc(var(--mbar-gap) + env(safe-area-inset-bottom, 0px));
+  height: var(--mbar-h);
+  padding: 0 4px;
+  border: 1px solid var(--line-strong);
+  border-radius: 18px;
+  box-shadow: 0 12px 30px -12px rgba(0, 0, 0, .5);
+}
+
+.mbar-slot { position: relative; flex: 1 1 0; min-width: 0; display: flex; }
+.mbar-slot > .mbar-tab { flex: 1 1 0; }
+
+.mbar-tab {
+  position: relative; flex: 1 1 0; min-width: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  color: var(--muted); border-radius: 14px;
+  -webkit-tap-highlight-color: transparent;
+  transition: color .22s ease, transform .16s ease;
+}
+.mbar-tab:active { transform: scale(.93); }
+.mbar-tab.is-active { color: var(--accent-ink); }
+
+/* The filament: a short accent stroke on the bar's top edge under the live tab. */
+.mbar-tab::before {
+  content: ''; position: absolute; top: 0; left: 50%; width: 24px; height: 2px; margin-left: -12px;
+  border-radius: 0 0 3px 3px; background: var(--primary);
+  transform: scaleX(0); opacity: 0; transform-origin: center;
+  transition: transform .32s cubic-bezier(.22, 1, .36, 1), opacity .2s ease;
+}
+.mbar-tab.is-active::before { transform: scaleX(1); opacity: 1; }
+
+.mbar-ic {
+  position: relative; display: grid; place-items: center;
+  width: 42px; height: 26px; border-radius: 999px;
+  transition: transform .3s cubic-bezier(.22, 1, .36, 1);
+}
+/* The pill is a pseudo-element so it can scale independently of the icon and so
+   nothing needs a Tailwind alpha on a CSS variable (which emits no rule at all). */
+.mbar-ic::before {
+  content: ''; position: absolute; inset: 0; border-radius: 999px;
+  background: color-mix(in srgb, var(--primary) 16%, transparent);
+  opacity: 0; transform: scale(.55);
+  transition: opacity .24s ease, transform .34s cubic-bezier(.34, 1.56, .64, 1);
+}
+.mbar-tab.is-active .mbar-ic::before { opacity: 1; transform: scale(1); }
+.mbar-tab.is-active .mbar-ic { transform: translateY(-1px); }
+
+.mbar-lbl {
+  display: block; font-size: 10px; line-height: 1; max-width: 100%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  max-height: 0; opacity: 0; margin-top: 0;
+  transition: max-height .2s ease, opacity .2s ease, margin-top .2s ease;
+}
+.mbar-lbl.is-on { max-height: 14px; opacity: 1; margin-top: 3px; }
+.mbar-lbl.is-only { font-weight: 500; padding: 0 4px; }
+
+/* Unread count. Ringed in the bar's own colour so it reads as sitting on top of
+   the icon rather than merging with it. */
+.mbar-badge {
+  position: absolute; top: -2px; right: 1px;
+  min-width: 15px; height: 15px; padding: 0 4px;
+  display: grid; place-items: center; border-radius: 999px;
+  background: var(--primary); color: #fff;
+  font-size: 9px; font-weight: 700; line-height: 1;
+  box-shadow: 0 0 0 2px var(--bg-solid);
+}
+
+/* The raised centre action (Search on the default bar). Ringed in the PAGE
+   colour, not the bar's, because its top half overhangs onto the page. */
+.mbar-tab.is-raised { justify-content: flex-start; padding-top: 3px; }
+.mbar-raise {
+  display: grid; place-items: center; width: 46px; height: 46px; margin-top: -21px;
+  border-radius: 999px; color: #fff;
+  background: linear-gradient(140deg, var(--primary), var(--primary-2));
+  border: 3px solid var(--bg);
+  box-shadow: 0 10px 22px -8px color-mix(in srgb, var(--primary) 70%, transparent);
+  transition: transform .26s cubic-bezier(.34, 1.56, .64, 1), box-shadow .26s ease;
+}
+.mbar-tab.is-raised:active .mbar-raise { transform: scale(.9); }
+.mbar-raise.is-on { transform: scale(1.06); }
+
+/* A dropup sheet. Opaque (--bg-solid, set inline) so its text never renders over
+   the card behind it. */
+.mbar-up {
+  position: absolute; bottom: calc(100% + 10px); left: 50%; transform: translateX(-50%);
+  min-width: 11rem; max-width: 78vw; padding: 6px;
+  border: 1px solid var(--line-strong); border-radius: 16px;
+  box-shadow: 0 18px 44px -14px rgba(0, 0, 0, .5); z-index: 50;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mbar-tab, .mbar-tab::before, .mbar-ic, .mbar-ic::before, .mbar-lbl, .mbar-raise {
+    transition: none !important;
+  }
+}
