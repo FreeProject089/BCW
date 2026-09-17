@@ -7,7 +7,7 @@ import { Users, Plus, UserPlus, Trash2, LogOut, Crown, Mail, Phone, Globe, Link2
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { useAuth } from './auth.jsx';
-import { useAsync } from './pages.jsx';
+import { useAsync, useUndoableDelete } from './pages.jsx';
 import { Button, Card, Badge, Input, Textarea, Field, Select, EmptyState, Spinner, Modal, useToast, useDialog } from '../ui/ui.jsx';
 import { ContactButton } from '../ui/contact.jsx';
 
@@ -48,8 +48,12 @@ function TeamDetail({ team, reload }) {
   // admin offers) and SENDS them in `policy`, so this page never decides what is allowed.
   const links = useAsync(() => (['owner', 'admin'].includes(team.myRole) ? api.get(`/me/teams/${team.id}/invites`) : Promise.resolve({ invites: [], temporary: [], permanent: null })), [team.id]);
   const policy = links.data?.policy || { maxTemporary: 5, lifetimeDays: [1, 7, 30] };
-  const permanent = links.data?.permanent || null;
-  const temporary = links.data?.temporary || [];
+  // Revoking a link is undoable (see revokeLink) — a revoked row is hidden here until the
+  // window closes, so the list shows what the team will have, not what it still has.
+  const { pending: linkPending, del: undoDel } = useUndoableDelete(() => links.reload());
+  const permanentRaw = links.data?.permanent || null;
+  const permanent = permanentRaw && !linkPending.has(permanentRaw.id) ? permanentRaw : null;
+  const temporary = (links.data?.temporary || []).filter((l) => !linkPending.has(l.id));
   const [permRole, setPermRole] = useState('member');
   const [linkRole, setLinkRole] = useState('member'); const [linkDays, setLinkDays] = useState(0);
   const lifeDays = policy.lifetimeDays.includes(linkDays) ? linkDays : policy.lifetimeDays[0];
@@ -68,9 +72,16 @@ function TeamDetail({ team, reload }) {
       title: l.kind === 'permanent' ? t('tm.link.del.q1', 'Delete the permanent link?') : t('tm.link.del.q', 'Delete this link?'),
       message: t('tm.link.del.m', 'It stops working at once. Anyone who already joined with it stays in the team.'), danger: true,
     })) return;
-    try { await api.del(`/me/teams/${team.id}/invites/${l.id}`); toast.success(t('tm.link.deleted', 'Link deleted.')); }
-    catch { toast.error(t('common.failed', 'Failed.')); }
-    links.reload();
+    // A link is a URL somebody else already has. Making a new one makes a DIFFERENT URL, so
+    // "just create another" does not undo this: the permanent link a team pinned in a
+    // channel a year ago is gone from that channel's message the moment this commits, and
+    // every temporary one still in somebody's inbox dies with it. So the row goes at once
+    // and the DELETE waits out the window; Undo means the link was never touched and keeps
+    // working, with the same address and the same use count.
+    undoDel(l.id, () => api.del(`/me/teams/${team.id}/invites/${l.id}`),
+      l.kind === 'permanent'
+        ? t('tm.link.del.undo1', 'Permanent link deleted. A new one would have a different address.')
+        : t('tm.link.del.undo', 'Link deleted, it stops working.'));
   };
   // What is left of a temporary link, in the coarsest unit that still says something.
   const remaining = (iso) => {

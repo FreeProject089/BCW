@@ -3,6 +3,7 @@ import { Webhook, Plus, Trash2, Send, RefreshCw, RotateCw, Copy, CheckCircle2, X
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { Card, Button, Input, Badge, Field, Spinner, EmptyState, useToast, useDialog, copyText } from '../ui/ui.jsx';
+import { useUndoableDelete } from './pages.jsx';
 
 // Webhooks, from the developer's side.
 //
@@ -85,6 +86,11 @@ export default function WebhooksPanel() {
   const [secret, setSecret] = useState(null);
   const [openId, setOpenId] = useState(null);
 
+  // Deleting an endpoint takes its whole delivery history with it — every attempt, every
+  // response code, the evidence of what we sent and what the receiver said. The endpoint
+  // itself is two fields and a checkbox to recreate; that log is not. So the row goes at
+  // once and the DELETE only fires when the window elapses.
+  const { pending, del: undoDel } = useUndoableDelete(() => load());
   const load = () => api.get('/me/webhooks').then(setData).catch(() => setData({ webhooks: [], events: {} }));
   useEffect(() => { load(); }, []);
 
@@ -113,8 +119,8 @@ export default function WebhooksPanel() {
       message: t('wh.del.m', 'We stop calling {u}. Its delivery history goes with it.').replace('{u}', w.url),
       okLabel: t('common.delete', 'Delete'), danger: true,
     })) return;
-    try { await api.del(`/me/webhooks/${w.id}`); toast.success(t('common.deleted', 'Deleted.')); load(); }
-    catch { toast.error(t('common.failed', 'Failed.')); }
+    undoDel(w.id, () => api.del(`/me/webhooks/${w.id}`),
+      t('wh.del.undo', 'Endpoint deleted, with its delivery history.'));
   };
 
   const rotate = async (w) => {
@@ -140,6 +146,7 @@ export default function WebhooksPanel() {
 
   if (!data) return <Card className="p-5"><Spinner /></Card>;
   const events = Object.entries(data.events || {});
+  const hooks = (data.webhooks || []).filter((w) => !pending.has(w.id));
 
   return (
     <Card className="p-5">
@@ -195,13 +202,13 @@ export default function WebhooksPanel() {
         </form>
       )}
 
-      {!data.webhooks.length ? (
+      {!hooks.length ? (
         <EmptyState icon={Webhook} title={t('wh.none', 'No endpoints')}
           sub={t('wh.none.s', 'Without one, the only way to know something changed is to keep asking. Add an address and we will tell you instead.')}
           action={{ label: t('wh.none.a', 'Add an endpoint'), icon: Plus, onClick: () => setAdding(true) }} />
       ) : (
         <div className="space-y-2 mt-2">
-          {data.webhooks.map((w) => (
+          {hooks.map((w) => (
             <div key={w.id} className="rounded-lg border border-[var(--line)] overflow-hidden">
               <div className="p-3">
                 <div className="flex items-center gap-2 flex-wrap">

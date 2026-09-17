@@ -5,7 +5,7 @@ import { useI18n } from '../i18n.jsx';
 import { QuestionResults, CHART_INK } from '../ui/poll-results.jsx';
 import Markdown from '../ui/md.jsx';
 import { Card, Button, Input, Textarea, Select, Badge, Modal, Field, EmptyState, Spinner, useToast, useDialog, copyText } from '../ui/ui.jsx';
-import { useAsync, Loading } from './pages.jsx';
+import { useAsync, Loading, useUndoableDelete } from './pages.jsx';
 
 /** The link to share, and a button that actually copies it.
  *
@@ -678,9 +678,14 @@ export function AdminPolls() {
   const [stats, setStats] = useState(null);
   const [questions, setQuestions] = useState(null);
   const [busy, setBusy] = useState('');
+  // Deleting a poll takes every answer to it with it, and answers are the one thing on this
+  // page nobody can redo: you cannot ask the people who voted to come back and vote again.
+  // So the row disappears at once and the DELETE waits out the undo window — Undo means the
+  // request was never sent and the poll was never touched.
+  const { pending, del: undoDel } = useUndoableDelete(reload);
 
   if (loading) return <Loading />;
-  const polls = data?.polls || [];
+  const polls = (data?.polls || []).filter((p) => !pending.has(p.id));
 
   // Featuring is one boolean, and the home page shows at most two. Making it a row control
   // rather than a trip through the editor is the difference between "which poll is on the
@@ -700,8 +705,11 @@ export function AdminPolls() {
       message: t('apoll.del.m', 'The question and every answer to it go with it. {n} answers so far.').replace('{n}', String(poll.total || 0)),
       okLabel: t('common.delete', 'Delete'), danger: true,
     })) return;
-    try { await api.del(`/admin/polls/${poll.id}`); toast.success(t('common.deleted', 'Deleted.')); reload(); }
-    catch { toast.error(t('common.failed', 'Failed.')); }
+    // The count the dialog just quoted is repeated in the toast on purpose: it is the part
+    // that cannot be got back, so it is the part worth seeing again while there is still
+    // time to press Undo.
+    undoDel(poll.id, () => api.del(`/admin/polls/${poll.id}`),
+      t('apoll.del.undo', 'Poll deleted, and its {n} answer(s) with it.').replace('{n}', String(poll.total || 0)));
   };
 
   const toEditor = (poll) => ({

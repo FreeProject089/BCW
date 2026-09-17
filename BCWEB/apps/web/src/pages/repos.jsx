@@ -671,6 +671,12 @@ export function MyRepos() {
     });
     if (typed === false) return;
     if (String(typed).trim() !== r.name) return toast.error(t('repos.del.mismatch', "Name didn't match, deletion cancelled."));
+    // `delNow`, the one that skips the grace period, does get a countdown window, and that
+    // is the right place for it: there the destruction is real.
+    // undo: no countdown here, because this delete already has a far better undo. The
+    // server soft-deletes: the repo goes offline now and its content survives 72 hours,
+    // restorable from the repo card. A six-second window over a request that is itself
+    // reversible for three days would only delay the going-offline the user asked for.
     try { await api.del(`/repos/${r.id}`); toast.success(t('repos.deleted72', 'Scheduled for deletion in 72h, undo from the repo card anytime before then.')); reload(); }
     catch { toast.error(t('repos.failed', 'Failed.')); }
   };

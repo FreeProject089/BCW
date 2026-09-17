@@ -100,9 +100,8 @@ function ApiKeysPanel() {
     } finally { setBusy(false); }
   };
 
-  // No undo window here, unlike most destructive actions on this site: the row is really
-  // deleted, so there would be nothing to put back. The confirmation carries the weight
-  // instead, and it names what stops working.
+  // No undo window here, unlike most destructive actions on this site. The reason is
+  // written at the call site below, where the DELETE is.
   const remove = async (k) => {
     const code = user?.totpEnabled
       ? await dialog.prompt({
@@ -122,6 +121,11 @@ function ApiKeysPanel() {
         })) ? '' : null;
     if (code === null || code === undefined || code === false) return;
     try {
+      // The deliberation already happened one prompt ago, and it was a stronger one than a
+      // countdown: this path asks for a 2FA code. Nothing is lost to a slip either, since a
+      // key is replaced by creating a new one and its usage history is kept regardless.
+      // undo: no window, because a key is deleted the moment somebody finds it leaked, and
+      // the window is exactly a delay between deciding that and the key actually dying.
       await api.del(`/me/api-keys/${k.id}`, code ? { totp: code } : undefined);
       toast.success(t('devc.deleted', 'Deleted.')); load();
     } catch (x) {
@@ -292,6 +296,11 @@ function OAuthAppsPanel() {
       message: t('dev.del.m', 'Everyone who connected it is disconnected and its live sessions are revoked: {n} account(s) today. The client id cannot be reused.').replace('{n}', String(c.users || 0)),
       okLabel: t('common.delete', 'Delete'), danger: true,
     })) return;
+    // The dialog already states the cost: the connected accounts, the client id that can
+    // never be reused. An app is recreated by creating one, not by restoring this row.
+    // undo: same argument as the API key above. This revokes the app's live sessions, and
+    // it is pressed because the app or its secret has gone somewhere it should not be, so
+    // holding the revocation back for six seconds is six more seconds of usable sessions.
     try { await api.del(`/me/oauth-clients/${c.id}`); toast.success(t('common.deleted', 'Deleted.')); load(); }
     catch { toast.error(t('common.failed', 'Failed.')); }
   };

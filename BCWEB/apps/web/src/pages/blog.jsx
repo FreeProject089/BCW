@@ -444,8 +444,33 @@ function BlogEditor({ post, scopes, onClose, onSaved, draft, draftBase, conflict
   };
   const del = async () => {
     if (!post) return;
-    if (!(await dialog.confirm({ title: t('be.delpost', 'Delete post'), message: t('be.cannotundo', 'This cannot be undone.'), okLabel: t('be.delete', 'Delete'), danger: true }))) return;
-    try { await api.del(`/blog/${post.id}`); toast.success(t('be.deleted', 'Deleted.')); onSaved(); } catch { toast.error(t('be.failed', 'Failed.')); }
+    // The dialog used to say "This cannot be undone", which stopped being true the moment
+    // the delete went behind the undo window below. It says what is actually at stake
+    // instead: the post's body, its history and its comments, none of which come back.
+    if (!(await dialog.confirm({ title: t('be.delpost', 'Delete post'),
+      message: t('be.del.m', 'Delete “{n}”? Its text, edit history, comments and reactions go with it. You get a moment to take it back, and after that nothing can be restored.').replace('{n}', f.title || t('be.untitled', 'this post')),
+      okLabel: t('be.delete', 'Delete'), danger: true }))) return;
+    // Same shape as save() above: close the editor now, defer the write behind the undo
+    // toast, and reopen the editor exactly as it was if the user takes it back — there is
+    // nothing to roll back on the server, because nothing was sent. The 409 branch save()
+    // has is not mirrored here: a DELETE carries no baseVersion, so there is no conflict to
+    // merge; a failed delete just puts the editor back with the error.
+    const snapshot = { ...f };
+    const origBase = { ...baseRef.current };
+    // Undo reopens the editor exactly as it was where the host can do that. Where it cannot
+    // (no `reopenDraft`), Undo still means the DELETE was never sent, so the post is intact
+    // and is reopened from the list like any other. The window is worth having either way.
+    const back = () => reopenDraft?.(snapshot, { post, base: origBase });
+    onClose();
+    toast.action({
+      tone: 'success', duration: 6000, cancelLabel: t('be.undo', 'Undo'),
+      msg: t('be.deleted', 'Deleted.'),
+      onCommit: async () => {
+        try { await api.del(`/blog/${post.id}`); onSaved(); }
+        catch { toast.error(t('be.failed', 'Failed.')); back(); }
+      },
+      onCancel: back,
+    });
   };
   const fr = tab === 'fr';
   // The FR tab answers one question: is there a translation behind it, and is it whole.

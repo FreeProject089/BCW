@@ -400,14 +400,59 @@ export function PollCard({ poll: initial, onChange }) {
     } finally { setBusy(false); }
   };
 
+  // Withdrawing is the cheapest thing on this card to take back and the easiest to hit by
+  // accident: the button sits right under the results everybody scrolls down to read. So it
+  // gets the undo window. Undo means the DELETE was never sent, so the answer is still the
+  // one that was recorded, with its original timestamp, rather than a re-cast copy.
+  //
+  // One exception, decided here: if the poll closes within the window, there is no window.
+  // The server refuses a withdrawal on a closed poll (409 `closed`), so a countdown that
+  // outlives the poll would spend six seconds showing the answer as withdrawn and then hand
+  // back a failure nobody can do anything about. Near closing the request goes at once and
+  // the user gets the real answer while the poll is still open. Fifteen seconds of margin,
+  // because the six-second window plus a slow round trip is the thing being fitted in.
+  const CLOSING_SOON_MS = 15000;
+  const doWithdraw = async () => {
+    await api.del(`/polls/${poll.id}/vote`);
+    const fresh = await api.get(`/polls/${poll.id}`);
+    setPoll(fresh); onChange?.(fresh);
+  };
   const withdraw = async () => {
-    setBusy(true);
-    try {
-      await api.del(`/polls/${poll.id}/vote`);
-      const fresh = await api.get(`/polls/${poll.id}`);
-      setPoll(fresh); onChange?.(fresh);
-      toast.success(t('poll.withdrawn', 'Answer withdrawn.'));
-    } catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); }
+    const closesIn = poll.closesAt ? new Date(poll.closesAt).getTime() - Date.now() : Infinity;
+    if (closesIn < CLOSING_SOON_MS) {
+      setBusy(true);
+      try { await doWithdraw(); toast.success(t('poll.withdrawn', 'Answer withdrawn.')); }
+      catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); }
+      return;
+    }
+    // Optimistic: the card goes back to the unanswered state, and my own vote comes out of
+    // the tallies so the bars agree with it. Everything is read off `before`, which is the
+    // exact object put back on Undo.
+    const before = poll;
+    const mineIds = new Set(before.myVotes || []);
+    const optimistic = {
+      ...before, myVotes: [], hasAnswered: false,
+      options: (before.options || []).map((o) => (mineIds.has(o.id) && typeof o.votes === 'number' ? { ...o, votes: Math.max(0, o.votes - 1) } : o)),
+      total: (typeof before.total === 'number' && mineIds.size) ? Math.max(0, before.total - 1) : before.total,
+    };
+    const restore = () => { setPoll(before); onChange?.(before); };
+    setPoll(optimistic); onChange?.(optimistic);
+    toast.action({
+      tone: 'success', duration: 6000, cancelLabel: t('common.undo', 'Undo'),
+      msg: t('poll.withdrawn', 'Answer withdrawn.'),
+      onCommit: async () => {
+        try { await doWithdraw(); }
+        catch (x) {
+          // The answer is still recorded, so the card has to show it again rather than keep
+          // pretending. A poll that closed under us says so in its own words.
+          restore();
+          toast.error(x?.data?.error === 'closed'
+            ? t('poll.withdraw.closed', 'The poll closed before that went through, so your answer stands.')
+            : t('common.failed', 'Failed.'));
+        }
+      },
+      onCancel: restore,
+    });
   };
 
   return (

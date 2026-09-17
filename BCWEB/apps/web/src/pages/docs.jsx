@@ -661,8 +661,30 @@ function DocEditor({ page, tree, onClose, onSaved, draft, draftBase, conflictReo
   };
   const del = async () => {
     if (!page) return;
-    if (!(await dialog.confirm({ title: t('de.delpage', 'Delete page'), message: t('de.delpagemsg', 'Delete “{n}”? This cannot be undone.').replace('{n}', page.title), okLabel: t('be.delete', 'Delete'), danger: true }))) return;
-    try { await api.del(`/docs/${page.id}`); toast.success(t('be.deleted', 'Deleted.')); onSaved(); } catch { toast.error(t('be.failed', 'Failed.')); }
+    // Was "This cannot be undone", which the undo window below makes untrue. What it says
+    // now is the part that stays true: there is a moment to take it back, and after that
+    // the text, its history and every link pointing at this slug are gone.
+    if (!(await dialog.confirm({ title: t('de.delpage', 'Delete page'),
+      message: t('de.del.m', 'Delete “{n}”? Its text, edit history and comments go with it, and any link to it stops working. You get a moment to take it back, and after that nothing can be restored.').replace('{n}', page.title),
+      okLabel: t('be.delete', 'Delete'), danger: true }))) return;
+    // Mirrors save() above, and the blog editor's delete: close now, write when the toast
+    // expires, reopen the editor untouched on Undo. No 409 branch — a DELETE sends no
+    // baseVersion, so there is no version conflict to resolve.
+    const snapshot = { ...f };
+    const origBase = { ...baseRef.current };
+    // Same as the blog editor: where the host can reopen the draft, Undo puts it back
+    // untouched; where it cannot, Undo still means nothing was sent and the page is intact.
+    const back = () => reopenDraft?.(snapshot, { page, base: origBase });
+    onClose();
+    toast.action({
+      tone: 'success', duration: 6000, cancelLabel: t('be.undo', 'Undo'),
+      msg: t('be.deleted', 'Deleted.'),
+      onCommit: async () => {
+        try { await api.del(`/docs/${page.id}`); onSaved(); }
+        catch { toast.error(t('be.failed', 'Failed.')); back(); }
+      },
+      onCancel: back,
+    });
   };
   const fr = tab === 'fr';
   // What the FR tab is really being asked: is there a translation behind it, and is it whole.
