@@ -35,30 +35,39 @@ formes de garde sont reconnues (`requireRole`, `requireCap`, `optionalAuth`, `ap
 fichiers.
 
 Le nombre à lire est **suspicious** : une route `/admin` ou `/me` sans garde et absente de la
-liste des routes publiques à dessein. Mesuré le 2026-09-17, il vaut 51, et ce chiffre ne
-désigne pas 51 trous. L'un est `GET /me`, qui est en `optionalAuth` et donc correcte. Les
-cinquante autres relèvent tous du même angle mort, et le connaître est la seule façon de lire
-cette liste.
+liste des routes publiques à dessein. Mesuré le 2026-09-17, il vaut **1**, et cette route est
+`GET /me`, qui est en `optionalAuth` et donc correcte.
 
-!!! danger "Une garde rangée dans une constante est invisible pour cette carte"
-    L'analyseur regarde les six lignes sous le chemin et reconnaît l'appel de garde comme du
-    texte. Il voit donc `{ preHandler: requireCap('manage_rights') }`, et ne voit pas ceci :
+Il valait 51 le matin même, et ce qui a changé est l'analyseur, pas le code. L'histoire mérite
+d'être gardée : c'est ainsi qu'un rapport de sécurité cesse d'être lu.
+
+!!! note "Pourquoi il disait 51, et ce qu'il fait maintenant"
+    L'analyseur reconnaît la garde comme du texte, dans les six lignes sous le chemin. Il
+    voyait donc `{ preHandler: requireCap('manage_rights') }`, et ne voyait pas ceci :
 
     ```js
-    const CAP = requireCap('manage_rights');
-    app.get('/admin/rights', CAP, async (req) => { … });
+    const CAP = { preHandler: requireCap('manage_reports', 'MOD') };
+    app.get('/admin/rights/works', CAP, async (req) => { … });
     ```
 
-    Cette écriture est celle de `rights.mjs` (`CAP`), `feedback.mjs` (`READ`), `tasks.mjs`
-    (`board`), `content-backup.mjs` et `og.mjs` (`RACE_CAP`), ce qui fait exactement les
-    cinquante. Chacune a été vérifiée à la main face à sa constante, et chacune est gardée.
+    Un fichier qui applique une seule capacité à vingt routes l'écrit une fois : c'est du bon
+    code, et c'était invisible ici. `rights.mjs` (`CAP`), `feedback.mjs` (`READ`), `tasks.mjs`
+    (`board`), `content-backup.mjs` et `og.mjs` (`RACE_CAP`) sont exactement de cette forme,
+    soit les cinquante. Les routes du bot étaient un second cas : gardées par `botAuth` dès la
+    première ligne du gestionnaire, parce que la vérification a besoin de l'objet `reply`, ce
+    qui les plaçait toutes les cinquante dans la liste « écrivable par une requête anonyme ».
 
-    Sur l'ensemble de la carte, la même cause explique 91 des 320 routes signalées comme non
-    gardées. Le mode d'échec annoncé de ces cartes est de sous-compter ; ici c'est l'inverse :
-    elles sur-signalent, dans la direction alarmante, c'est-à-dire le genre de rapport que les
-    gens cessent de lire. Tant que l'analyseur ne résout pas un `preHandler` rangé dans une
-    constante, traitez une entrée de `suspicious` comme « va voir cette ligne », jamais comme
-    un problème constaté.
+    `parseRoutes` lit désormais les constantes de garde déclarées en tête du fichier et résout
+    le `preHandler` d'une route à travers elles, et reconnaît les deux gardes en gestionnaire
+    dont la branche d'échec retourne. Mesuré sur l'arbre réel : les routes signalées non
+    gardées passent de 257 à 116, `suspicious` de 51 à 1, et les écrivables anonymes de 83 à
+    32. Le reste est dispersé, quelques-unes par fichier, au lieu de sous-systèmes entiers.
+
+    Les deux mécanismes sont volontairement étroits : même fichier, un seul niveau, aucun
+    import, et seulement les identifiants qui apparaissent comme options de la route ou comme
+    son `preHandler`. Une constante qu'il ne sait pas résoudre laisse la route telle quelle,
+    non gardée et signalée. Le mode d'échec de la carte est revenu au sous-comptage, c'est-à-
+    dire la direction avec laquelle un lecteur peut vivre.
 
 ## La base, et l'écart — `GET /admin/schema-map`
 
@@ -212,32 +221,28 @@ Le modèle à surveiller n'est pas celui qu'on croit. `user` est touché par 136
 modèle le plus touché est `adminSetting`, avec 126 routes et 184 appels : la table des réglages
 est lue à l'entrée de presque tout, ce qu'il vaut mieux savoir avant d'en changer la forme.
 
-La liste à lire est **ce qu'une requête anonyme peut écrire**, et ce n'est plus une liste que
-quiconque peut réciter. Mesuré le 2026-09-17, elle compte 83 routes. Un bon tiers est
-délibéré et l'a toujours été : ingestion analytics, inscription, vérification d'e-mail,
-réinitialisation de mot de passe, retours OAuth et sociaux, webhook Ko-fi, double opt-in de la
-newsletter, codes de liaison Discord, retours sur la doc, abonnements à la page d'état. Le
-reste relève du même angle mort que la carte RBAC.
+La liste à lire est **ce qu'une requête anonyme peut écrire**. Mesurée le 2026-09-17, elle
+compte 32 routes, et c'est une liste qu'on peut parcourir d'une traite. L'essentiel est
+délibéré et l'a toujours été : ingestion analytique, inscription, vérification d'e-mail,
+réinitialisation de mot de passe, les rappels OAuth et sociaux, le webhook Ko-fi, le double
+opt-in de la newsletter, les codes de liaison Discord, les retours sur la doc, les
+abonnements à la page de statut.
 
-!!! danger "Deux familles de cette liste sont gardées, et cette carte ne peut pas le voir"
-    **Le `preHandler` rangé dans une constante.** Les familles `/admin/tasks`, `/admin/rights`
-    et `/admin/feedback` font 25 des 83. Elles portent une garde de capacité tenue dans une
-    constante, exactement comme décrit sous la carte RBAC, et cette liste hérite de son
-    analyse.
+Elle en comptait 83 ce matin-là, pour les deux raisons décrites sous la carte RBAC : des
+gardes rangées dans une constante, et le `botAuth` du bot vérifié dès la première ligne du
+gestionnaire parce qu'il lui faut l'objet `reply`. `parseRoutes` lit les deux désormais, donc
+les familles `/admin/tasks`, `/admin/rights`, `/admin/feedback` et `/bot/*` ont quitté cette
+liste, soit 51 routes qu'un inconnu n'a jamais pu écrire.
 
-    **`botAuth` a déménagé.** Les routes `/bot/*`, 25 dans `bot.mjs`, s'authentifient avec
-    `botAuth(req, reply)` *dans* le handler, un `safeEqual` contre un secret partagé. Le
-    détecteur qui les séparait cherche dans le fichier une `function` déclarée localement qui
-    répond 401 ou 403 ; `botAuth` vit désormais dans `lib/lib.mjs` et est importée, donc rien
-    ne correspond dans `bot.mjs` et les 25 atterrissent dans « écrivable par une requête non
-    authentifiée ». Elles ne le sont pas.
-
-    Ce que la liste séparée `writableInHandlerGuard` attrape encore, ce sont quatre routes dont
-    la fonction de rejet est déclarée dans le même fichier : `POST /catalog`,
-    `POST /oauth2/token`, `POST /oauth2/revoke`, `PUT /server/backups/limit`.
+!!! note "À quoi sert encore `writableInHandlerGuard`"
+    À trois routes, dont l'assistant de refus est déclaré dans le même fichier et ne fait pas
+    partie des deux que l'analyseur connaît par leur nom : `POST /catalog`,
+    `POST /oauth2/token`, `POST /oauth2/revoke`. La catégorie existe justement pour les formes
+    que l'analyseur ne voit pas, et la garder petite est tout l'intérêt : quand elle grossit,
+    c'est qu'une nouvelle manière de garder est apparue, ou qu'une ancienne a déménagé.
 
 !!! note "`selfRejects` est un fait, pas un verdict"
-    19 des 83 répondent 401 ou 403 quelque part dans leur propre corps, et la carte le dit sans
+    5 des 32 répondent 401 ou 403 quelque part dans leur propre corps, et la carte le dit sans
     décider de ce que cela signifie. `/webhooks/kofi` compare un jeton avec `safeEqual` et
     renvoie 401 avant d'écrire ; `/auth/login/2fa` renvoie 401 aussi, sur un mot de passe
     erroné, sur un point d'entrée réellement public. Forme identique, sens opposé. La ligne

@@ -101,9 +101,34 @@ describe('buildDataFlow', () => {
   }];
 
   test('a route guarded inside its handler is not called unauthenticated', () => {
+    // `botAuth` is now recognised by parseRoutes itself, so /bot/ping arrives here
+    // already GUARDED rather than as an unguarded route rescued by the handler scan.
+    // That is the point of the change: the bot's 50 endpoints used to be the loudest
+    // finding this map produced and the wrongest. What must still hold is the thing the
+    // test is named after, which is that it is not in the unauthenticated list.
     const m = buildDataFlow(FILES, parseRoutes);
-    assert.deepEqual(m.writableInHandlerGuard.map((w) => w.route), ['POST /bot/ping']);
     assert.equal(m.writableUnauthenticated.some((w) => w.route === 'POST /bot/ping'), false);
+    assert.equal(m.writableInHandlerGuard.some((w) => w.route === 'POST /bot/ping'), false);
+  });
+
+  test('a handler guard the parser does NOT know still keeps the route off the public list', () => {
+    // The category has to keep working for the shapes parseRoutes cannot see, which is
+    // what it was built for. `canRunTeams` is one of the real ones: a check in the body,
+    // no preHandler, and not on the short list of helpers the parser recognises.
+    const files = [{
+      name: 'teams.mjs',
+      src: [
+        "function canRunTeams(u) { return !!u; }",
+        '', '', '', '', '', '',
+        "app.post('/teams/run', async (req, reply) => {",
+        "  if (!canRunTeams(req.user)) return reply.code(403).send({ error: 'forbidden' });",
+        '  await p.team.update({});',
+        '});',
+      ].join('\n'),
+    }];
+    const m = buildDataFlow(files, parseRoutes);
+    assert.deepEqual(m.writableInHandlerGuard.map((w) => w.route), ['POST /teams/run']);
+    assert.equal(m.writableUnauthenticated.some((w) => w.route === 'POST /teams/run'), false);
   });
 
   test('a genuinely public write is listed', () => {

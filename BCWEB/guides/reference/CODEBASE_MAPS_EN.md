@@ -31,28 +31,38 @@ are recognised (`requireRole`, `requireCap`, `optionalAuth`, `apiAuth`, `resolve
 `oauthBearer`, `requireEditor`). Measured 2026-09-17: 1080 routes across 71 files.
 
 The number to read is **suspicious**: an `/admin` or `/me` route with no guard and no entry
-in the public-by-design list. Measured 2026-09-17 it is 51, and that figure is not 51 holes.
-One is `GET /me`, which is `optionalAuth` and correct. The other fifty are all the same blind
-spot, and knowing it is the only way to read this list at all.
+in the public-by-design list. Measured 2026-09-17 it is **1**, and that one is `GET /me`,
+which is `optionalAuth` and correct.
 
-!!! danger "A guard hoisted into a constant is invisible to this map"
-    The parser looks at the six lines under the path and matches the guard call as text. So
-    `{ preHandler: requireCap('manage_rights') }` is seen, and this is not:
+It was 51 the same morning, and what changed was the parser rather than the code. The story
+is worth keeping, because it is how a security report stops being read.
+
+!!! note "Why it said 51, and what it does now"
+    The parser matches the guard as text in the six lines under the path. So
+    `{ preHandler: requireCap('manage_rights') }` was seen, and this was not:
 
     ```js
-    const CAP = requireCap('manage_rights');
-    app.get('/admin/rights', CAP, async (req) => { … });
+    const CAP = { preHandler: requireCap('manage_reports', 'MOD') };
+    app.get('/admin/rights/works', CAP, async (req) => { … });
     ```
 
-    That idiom is used by `rights.mjs` (`CAP`), `feedback.mjs` (`READ`), `tasks.mjs`
-    (`board`), `content-backup.mjs` and `og.mjs` (`RACE_CAP`), which is exactly the fifty.
-    Every one of them was checked by hand against its constant and every one is guarded.
+    A file with one capability over twenty routes writes it once, which is good code and was
+    invisible here. `rights.mjs` (`CAP`), `feedback.mjs` (`READ`), `tasks.mjs` (`board`),
+    `content-backup.mjs` and `og.mjs` (`RACE_CAP`) are all that shape: exactly the fifty. The
+    bot's endpoints were a second case, guarded by `botAuth` in the first line of the handler
+    because the check needs the reply object, which put all fifty of them in the
+    "writable by an unauthenticated request" list.
 
-    Across the whole map the same thing accounts for 91 of the 320 routes reported as
-    unguarded. The map's stated failure mode is undercounting, and this is the opposite: it
-    over-reports, in the alarming direction, which is the kind of report people stop reading.
-    Until the parser resolves a hoisted `preHandler`, treat a name in `suspicious` as "go look
-    at this line", never as a finding.
+    `parseRoutes` now reads a file's own top-level guard constants and resolves a route's
+    `preHandler` through them, and recognises the two in-handler guards whose failure branch
+    returns. Measured over the real tree: routes reported unguarded fell from 257 to 116,
+    suspicious from 51 to 1, and anonymous-writable from 83 to 32. The remainder is spread
+    thinly, a handful per file, rather than whole subsystems at a time.
+
+    Both mechanisms are deliberately narrow: same file, one level, no imports, and only the
+    identifiers that appear as the route's options or as its `preHandler`. A constant it
+    cannot resolve leaves the route exactly as it was, unguarded and reported. The map's
+    failure mode is back to undercounting, which is the direction a reader can live with.
 
 ## The database, and the drift — `GET /admin/schema-map`
 
@@ -199,30 +209,26 @@ The model to watch is not the one you would guess. `user` is touched by 136 rout
 most touched model is `adminSetting`, at 126 routes and 184 calls: the settings table is read
 on the way into almost everything, which is worth knowing before you change its shape.
 
-The list to read is **what an anonymous request can write**, and it has stopped being a list
-anybody can recite. Measured 2026-09-17 it is 83 routes. Around a third of it is deliberate
-and always was: analytics ingestion, sign-up, email verification, password reset, the OAuth
-and social callbacks, the Ko-fi webhook, newsletter double opt-in, Discord link codes, doc
-feedback, status-page subscriptions. The rest is the same blind spot the RBAC map has.
+The list to read is **what an anonymous request can write**. Measured 2026-09-17 it is 32
+routes, and it is a list somebody can go through in a sitting. Most of it is deliberate and
+always was: analytics ingestion, sign-up, email verification, password reset, the OAuth and
+social callbacks, the Ko-fi webhook, newsletter double opt-in, Discord link codes, doc
+feedback, status-page subscriptions.
 
-!!! danger "Two families in that list are guarded, and this map cannot see it"
-    **The hoisted `preHandler`.** The `/admin/tasks`, `/admin/rights` and `/admin/feedback`
-    families are 25 of the 83. They carry a capability guard held in a constant, exactly as
-    described under the RBAC map, and this list inherits that map's parse.
+It was 83 that morning, for the two reasons described under the RBAC map: guards held in a
+constant, and the bot's `botAuth` checked in the first line of the handler because it needs
+the reply object. `parseRoutes` reads both now, so the `/admin/tasks`, `/admin/rights`,
+`/admin/feedback` and `/bot/*` families have left this list, which is 51 routes that were
+never writable by a stranger.
 
-    **`botAuth` moved.** The `/bot/*` routes, 25 of them in `bot.mjs`, authenticate with
-    `botAuth(req, reply)` *inside* the handler, a `safeEqual` against a shared secret. The
-    detector that used to separate them scans the file for a locally declared `function` that
-    replies 401 or 403; `botAuth` now lives in `lib/lib.mjs` and is imported, so nothing in
-    `bot.mjs` matches and all 25 land in "writable by an unauthenticated request". They are
-    not.
-
-    What the separate `writableInHandlerGuard` list still catches is four routes whose
-    rejecting helper is declared in the same file: `POST /catalog`, `POST /oauth2/token`,
-    `POST /oauth2/revoke`, `PUT /server/backups/limit`.
+!!! note "What `writableInHandlerGuard` is still for"
+    Three routes, whose rejecting helper is declared in the same file and is not one of the
+    two the parser knows by name: `POST /catalog`, `POST /oauth2/token`, `POST /oauth2/revoke`.
+    The category exists precisely for the shapes the parser cannot see, and keeping it small
+    is the point: when it grows, either a new guard idiom has appeared or one has moved.
 
 !!! note "`selfRejects` is a fact, not a verdict"
-    19 of the 83 reply 401 or 403 somewhere in their own body, and the map says so without
+    5 of the 32 reply 401 or 403 somewhere in their own body, and the map says so without
     deciding what it means. `/webhooks/kofi` `safeEqual`s a token and 401s before writing;
     `/auth/login/2fa` also 401s, on a failed password check, on a genuinely public endpoint.
     Identical shape, opposite meaning. The row carries the fact and no verdict is invented.

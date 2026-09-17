@@ -42,6 +42,23 @@ const GUARDS = [
   { kind: 'resolver', re: /preHandler: resolve\(/ },
 ];
 
+/**
+ * Guards checked in the FIRST lines of the handler rather than by a preHandler.
+ *
+ * The bot's endpoints authenticate with a shared secret, and that check reads the reply
+ * object, so it is written as the opening statement of the handler instead of a
+ * preHandler. Reading only the options object, this map called all 51 of them
+ * unguarded, which is both the loudest finding it produced and the wrongest.
+ *
+ * The shape accepted is deliberately exact: a call to one of these helpers, negated, whose
+ * failure branch RETURNS. A guard that does not return is not a guard, and a helper not
+ * named here is not assumed to be one.
+ */
+const IN_HANDLER = [
+  { kind: 'bot', re: /if \(!botAuth\(req[^)]*\)\)\s*return\b/ },
+  { kind: 'link-secret', re: /if \(!linkSecretOk\(req[^)]*\)\)\s*return\b/ },
+];
+
 /** Routes that are public ON PURPOSE. Prefixes rather than exact paths, because the feeds
  *  carry parameters. Listed here so "unguarded" can mean "unguarded and not meant to be" —
  *  a report where every public feed is a finding is a report nobody reads twice. */
@@ -58,9 +75,38 @@ const PUBLIC_BY_DESIGN = [
  * is not worth a dependency for something whose failure mode is "reports fewer routes than
  * exist", which the count check below catches.
  */
+/**
+ * Guards held in a constant, resolved to what they are.
+ *
+ * A file with one capability over twenty routes writes it once:
+ *
+ *   const CAP = { preHandler: requireCap('manage_reports', 'MOD') };
+ *   app.get('/admin/rights/works', CAP, …)
+ *
+ * Reading the route's own six lines then finds no guard, and the map reported those routes
+ * as unguarded. That was not a rounding error: 91 of the 320 routes it called unguarded were
+ * this idiom, and all but one of the 51 it called "suspicious". A security map that is wrong
+ * fifty times is one nobody reads the fifty-first time.
+ *
+ * So the file's own top-level `const NAME = …` definitions are collected first, and a route
+ * whose options are a bare identifier is looked up in them. Shallow on purpose, like the
+ * rest of this parser: one level, same file, no imports. A constant it cannot resolve leaves
+ * the route exactly as it was, unguarded and reported.
+ */
+function guardConstants(src) {
+  const out = new Map();
+  // `const NAME = { … }` or `const NAME = requireX(…)`, up to the end of that line.
+  for (const m of String(src).matchAll(/^\s*const ([A-Za-z_$][\w$]*)\s*=\s*(.+)$/gm)) {
+    const [, name, body] = m;
+    if (/require[A-Z]\w*\(|apiAuth\(|oauthBearer\(|optionalAuth\(|resolve\(/.test(body)) out.set(name, body);
+  }
+  return out;
+}
+
 export function parseRoutes(filename, src) {
   const out = [];
   const lines = String(src).split(/\r?\n/);
+  const consts = guardConstants(src);
   for (let i = 0; i < lines.length; i++) {
     const m = lines[i].match(/\bapp\.(get|post|put|patch|delete)\(\s*'([^']+)'/);
     if (!m) continue;
@@ -68,7 +114,19 @@ export function parseRoutes(filename, src) {
     // The options object may be on this line or the next few — preHandler is conventionally
     // written just under the path. Six lines covers every shape in this codebase without
     // running into the next route.
-    const window = lines.slice(i, i + 6).join('\n');
+    let window = lines.slice(i, i + 6).join('\n');
+    // …and when those lines name a constant instead of spelling the guard out, read what
+    // the constant holds. Two shapes, both real here:
+    //   app.get('/x', CAP, …)                 the whole options object in a const
+    //   app.get('/x', { preHandler: board })  just the guard, which may be an array
+    // Only identifiers in one of those two positions, so an unrelated const mentioned
+    // nearby cannot lend a route a guard it does not have.
+    for (const name of [
+      (lines[i].match(/,\s*([A-Za-z_$][\w$]*)\s*[,)]/) || [])[1],
+      (window.match(/preHandler:\s*([A-Za-z_$][\w$]*)\s*[,}]/) || [])[1],
+    ]) {
+      if (name && consts.has(name)) window += '\n' + consts.get(name);
+    }
     let guard = { kind: 'none' };
     for (const g of GUARDS) {
       const hit = window.match(g.re);
@@ -83,6 +141,15 @@ export function parseRoutes(filename, src) {
         guard = { kind: g.kind };
       }
       break;
+    }
+    // Nothing in the options object: look at the opening of the handler, where a guard
+    // that needs the reply object has to live. Twelve lines, because it is conventionally
+    // the first statement and a longer window starts reading the next route.
+    if (guard.kind === 'none') {
+      const body = lines.slice(i, i + 12).join('\n');
+      for (const g of IN_HANDLER) {
+        if (g.re.test(body)) { guard = { kind: g.kind, inHandler: true }; break; }
+      }
     }
     // `line` is unused by this map and needed by the data-flow one, which attributes each
     // database call to the route it sits under.
