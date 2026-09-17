@@ -121,7 +121,7 @@ function Tiles({ options, value, onPick, multi = false, lang, cols = 'sm:grid-co
       {options.map((o) => (
         <button key={o.id} type="button" onClick={() => onPick(o.id)}
           className={`relative text-start rounded-xl border px-3 py-2.5 text-sm transition-all hover:-translate-y-0.5 ${
-            on(o.id) ? 'border-[var(--primary)] bg-[var(--primary)]/[0.07] text-[var(--text)]'
+            on(o.id) ? 'border-[var(--primary)] tint-primary-soft text-[var(--text)]'
                      : 'border-[var(--line)] text-[var(--muted)] hover:border-[var(--line-strong,var(--line))] hover:text-[var(--text)]'}`}>
           {L(lang, o)}
           {on(o.id) && <Check size={13} className="absolute top-2 end-2 text-[var(--accent-ink)]" />}
@@ -193,7 +193,7 @@ export default function MyoIntakeWizard({ cards = [], cfg, onClose, inline = fal
             return (
               <button key={c.key} type="button" onClick={() => { set('card', c.key); setI((v) => v + 1); }}
                 className={`text-start rounded-xl border px-3 py-3 transition-all hover:-translate-y-0.5 ${
-                  on ? 'border-[var(--primary)] bg-[var(--primary)]/[0.07]' : 'border-[var(--line)] hover:border-[var(--line-strong,var(--line))]'}`}>
+                  on ? 'border-[var(--primary)] tint-primary-soft' : 'border-[var(--line)] hover:border-[var(--line-strong,var(--line))]'}`}>
                 <span className="flex items-center gap-2">
                   {Ico ? <Ico size={16} className="text-[var(--accent-ink)] shrink-0" /> : null}
                   <span className="font-medium text-sm">{c.label}</span>

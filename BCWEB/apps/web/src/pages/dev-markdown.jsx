@@ -196,7 +196,7 @@ function KitPacker() {
             aria-pressed={flavour === f.id}
             className={`text-start rounded-xl border p-2.5 flex-1 min-w-[220px] transition-colors ${
               flavour === f.id
-                ? 'border-[var(--primary)] bg-[var(--primary)]/[0.06]'
+                ? 'border-[var(--primary)] tint-primary-soft'
                 : 'border-[var(--line)] hover:border-[var(--line-strong)]'
             }`}>
             <span className="text-sm font-semibold">{f.label}</span>

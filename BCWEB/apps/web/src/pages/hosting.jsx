@@ -79,7 +79,7 @@ function TermControl({ months, setMonths, term, sample, t }) {
             const active = m === months;
             return (
               <button key={m} type="button" aria-pressed={active} onClick={() => pick(m)}
-                className={`rounded-full border px-2.5 py-1 text-[12px] leading-none transition-colors tabular-nums ${active ? 'border-[var(--primary)] bg-[var(--primary)]/[0.08] text-[var(--accent-ink)] font-semibold' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
+                className={`rounded-full border px-2.5 py-1 text-[12px] leading-none transition-colors tabular-nums ${active ? 'border-[var(--primary)] tint-primary-soft text-[var(--accent-ink)] font-semibold' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
                 {m} {t('hosting.mo', 'mo')}{d > 0 && <span className={`ms-1 ${active ? '' : 'text-success'}`}>−{d}%</span>}
               </button>
             );
@@ -540,7 +540,7 @@ export function Hosting() {
           // pixels in front of the others is a choice the page has already made for you. The
           // scale only from lg, where the grid has room for it to grow without touching its
           // neighbours, and never on a card that cannot be bought.
-          <div key={pl.id} className={`card relative flex flex-col p-5 min-w-0 transition-transform ${planDisabled ? 'opacity-60' : ''} ${recommended && !planDisabled ? 'z-10 !border-[var(--primary)] bg-[var(--primary)]/[0.06] ring-2 ring-[var(--primary)] shadow-[0_12px_32px_-14px_var(--primary)] lg:scale-[1.03]' : ''}`}>
+          <div key={pl.id} className={`card plan-hover relative flex flex-col p-5 min-w-0 ${planDisabled ? 'plan-dead opacity-60' : ''} ${recommended && !planDisabled ? 'plan-reco z-10 !border-[var(--primary)] tint-primary-soft ring-2 ring-[var(--primary)] shadow-[0_12px_32px_-14px_var(--primary)] lg:scale-[1.03]' : ''}`}>
             {/* A filled pill rather than a word floating in the padding — four cards with a
                 gap at the top of three of them read as three cards missing something. The
                 other three keep an invisible copy so the bodies stay on the same line. */}
@@ -553,7 +553,7 @@ export function Hosting() {
             {/* The price, right under the name: it is what the card is for. Prepaid, so
                 "$X /mo" is the effective rate and the line under it is what is actually
                 charged, once, for the term chosen above. */}
-            <div className="mt-2 flex items-end gap-1.5 flex-wrap">
+            <div className="plan-price mt-2 flex items-end gap-1.5 flex-wrap">
               {save > 0 && <span className="text-[13px] text-[var(--faint)] line-through mb-0.5 tabular-nums">${base.toFixed(2)}</span>}
               <span className="text-[2rem] font-extrabold leading-none tabular-nums">${eff.toFixed(2)}</span>
               <span className="text-[13px] text-[var(--muted)] mb-0.5">{t('hosting.permo', '/mo')}</span>
@@ -1162,7 +1162,7 @@ function HostingCompare({ freePlan }) {
       ],
     },
     {
-      k: 'paid', tone: 'border-[var(--ring)] bg-[var(--primary)]/[0.05]',
+      k: 'paid', tone: 'border-[var(--ring)] tint-primary-soft',
       title: t('hosting.cmp.paid', 'A paid pool'),
       sub: t('hosting.cmp.paid.s', 'The size you pick, split how you like.'),
       rows: [

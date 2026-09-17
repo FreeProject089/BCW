@@ -1199,7 +1199,7 @@ function AddRepoChoice({ pools, onClose, onPool, onExternal }) {
       <div className="grid md:grid-cols-2 gap-5 items-stretch">
 
         {/* Hosted here */}
-        <div className="rounded-xl border border-[var(--ring)] bg-[var(--primary)]/[0.04] p-5 flex flex-col">
+        <div className="rounded-xl border border-[var(--ring)] tint-primary-soft p-5 flex flex-col">
           <div className="flex items-center gap-2 font-semibold text-[15px]"><Server size={17} className="text-[var(--accent-ink)] shrink-0" /> {t('repos.addwhat.host', 'Host it here')}</div>
           <p className="text-[13px] text-[var(--muted)] leading-relaxed mt-2">{t('repos.addwhat.host.d', 'We keep the files and serve them. You get an address that does not move, a real download count, and access control.')}</p>
           <div className="mt-4 flex-1">

@@ -17,7 +17,12 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 const SRC = 'src';
-const RE = /\b(?:bg|text|border|ring|from|via|to|shadow|outline|divide|accent|caret|fill|stroke)-\[var\(--[a-z0-9-]+\)\]\/[0-9]+/g;
+// Both spellings of the alpha. Tailwind takes a bare number (`/40`) AND an arbitrary one
+// (`/[0.06]`), and emits nothing for either when the colour is a variable. The first
+// version of this gate matched only the bare form, so 23 of the arbitrary form sat in the
+// tree painting nothing while the check ran green over them — including the wash behind
+// the RECOMMENDED hosting plan, which is why that card was only a ring.
+const RE = /\b(?:bg|text|border|ring|from|via|to|shadow|outline|divide|accent|caret|fill|stroke)-\[var\(--[a-z0-9-]+\)\]\/(?:[0-9]+|\[[0-9.]+%?\])/g;
 
 const files = (dir) => readdirSync(dir).flatMap((f) => {
   const p = join(dir, f);

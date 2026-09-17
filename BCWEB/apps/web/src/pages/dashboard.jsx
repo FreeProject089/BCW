@@ -1227,7 +1227,7 @@ function MyData() {
   const Check = ({ k, label, hint, icon }) => (
     <label className={`flex items-start gap-2.5 cursor-pointer rounded-lg border p-3 transition-colors ${
       want[k]
-        ? 'b-primary bg-[var(--primary)]/[0.06]'
+        ? 'b-primary tint-primary-soft'
         : 'border-[var(--line)] hover:border-[var(--line-strong)] hover:bg-[var(--surface-2)]'
     }`}>
       <input type="checkbox" className="mt-0.5 shrink-0" checked={want[k]}

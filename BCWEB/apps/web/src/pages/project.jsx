@@ -813,7 +813,8 @@ function Counter({ cnt, pkey }) {
     }
   }
   return (
-    <div className="rounded-2xl border border-[var(--line)] bg-gradient-to-br from-[var(--primary)]/[0.06] to-transparent p-6 text-center">
+    <div className="rounded-2xl border border-[var(--line)] p-6 text-center"
+      style={{ backgroundImage: 'linear-gradient(to bottom right, color-mix(in srgb, var(--primary) 6%, transparent), transparent)' }}>
       <div className="text-4xl sm:text-5xl font-extrabold tabular-nums gradient-text">{value}</div>
       {cnt.label && <div className="text-sm text-[var(--muted)] mt-1">{cnt.label}</div>}
       {cnt.sub && <div className="text-xs text-[var(--faint)] mt-0.5">{cnt.sub}</div>}
@@ -1599,7 +1600,7 @@ function Marketplace({ pkey, products = [], onChanged }) {
               </div>
             )}
             {d ? (
-              <div className="mt-auto rounded-lg border b-success bg-[var(--success)]/[0.06] p-2.5">
+              <div className="mt-auto rounded-lg border b-success tint-success-soft p-2.5">
                 <div className="text-[11px] font-semibold text-[var(--success)] uppercase tracking-wide mb-1">{t('mk.yours', 'Yours')}</div>
                 {d.key && <button type="button" onClick={() => { try { navigator.clipboard?.writeText(d.key); toast.success(t('common.copied', 'Copied.')); } catch { /* denied */ } }} className="inline-flex items-center gap-1.5 font-mono text-xs px-2 py-1 rounded bg-[var(--surface-2)] border border-[var(--line)] max-w-full"><Key size={12} className="shrink-0" /><span className="truncate" title={d.key}>{d.key}</span><Copy size={11} className="opacity-60 shrink-0" /></button>}
                 {d.content && <div className="text-sm text-[var(--text)] whitespace-pre-wrap break-words">{d.content}</div>}

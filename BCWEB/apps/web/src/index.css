@@ -384,6 +384,10 @@ code, .break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
     background: color-mix(in srgb, #1c1913 calc(var(--glass-alpha, 0.85) * 100%), transparent); }
   .tint-primary { background: color-mix(in srgb, var(--primary) 12%, transparent); }
   .tint-primary-strong { background: color-mix(in srgb, var(--primary) 22%, transparent); }
+  /* The barely-there wash a selected chip or a recommended plan asks for: the ring carries
+     the emphasis, this only warms the surface behind it. */
+  .tint-primary-soft { background: color-mix(in srgb, var(--primary) 6%, transparent); }
+  .tint-success-soft { background: color-mix(in srgb, var(--success) 6%, transparent); }
   .tint-accent { background: color-mix(in srgb, var(--primary-2) 12%, transparent); }
   .tint-success { background: color-mix(in srgb, var(--success) 12%, transparent); }
   .tint-warning { background: color-mix(in srgb, var(--warning) 12%, transparent); }
@@ -1514,4 +1518,40 @@ html[data-studio-open="1"], html[data-studio-open="1"] body { overflow: hidden; 
 .cst-refuse {
   max-width: 34rem; margin: 2rem auto; padding: 24px;
   border: 1px solid var(--line); border-radius: 18px; text-align: center;
+}
+
+/* A hosting plan under the pointer.
+
+   Four price cards sit still while you read across them, so nothing says which one you are
+   about to buy until you have clicked it. This lifts the card under the pointer, warms its
+   border, brings its shadow up and grows the price a little. The lift is 4px and the scale
+   1.01: enough to separate it from its neighbours, small enough that the row does not reflow
+   and the button under your finger does not move out from under it.
+
+   Three deliberate limits:
+     - `@media (hover: hover)`, so a phone does not paint the hover state on tap and leave it
+       stuck there afterwards.
+     - the recommended card already scales by 1.03 from lg, so it gets its own hovered scale
+       composed with the lift rather than a second transform fighting the first.
+     - a sold-out card (`.plan-dead`) does not move at all. An animation inviting a click the
+       card will refuse is worse than no animation.
+
+   Under prefers-reduced-motion the movement goes and the colour stays: the card still answers
+   the pointer, it just does not travel. */
+@media (hover: hover) {
+  .plan-hover { transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease; }
+  .plan-price { transition: transform .18s ease; transform-origin: left bottom; }
+  .plan-hover:not(.plan-dead):hover {
+    transform: translateY(-4px) scale(1.01);
+    border-color: color-mix(in srgb, var(--primary) 55%, var(--line));
+    box-shadow: 0 18px 38px -18px color-mix(in srgb, var(--primary) 70%, transparent);
+  }
+  .plan-hover:not(.plan-dead):hover .plan-price { transform: scale(1.04); }
+  @media (min-width: 1024px) {
+    .plan-hover.plan-reco:not(.plan-dead):hover { transform: translateY(-4px) scale(1.04); }
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .plan-hover:not(.plan-dead):hover,
+  .plan-hover:not(.plan-dead):hover .plan-price { transform: none; }
 }
