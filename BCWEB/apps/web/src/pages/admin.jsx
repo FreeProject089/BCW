@@ -34,7 +34,10 @@ import { GRADIENTS, gradientCss } from '../ui/theme-gradients.js';
 import { BrandMarksCard, GradientsCard } from '../editor/site-theme-cards.jsx';
 import { themeCss, applySiteTheme, inkOn, contrastRatio } from '../ui/theme.jsx';
 import { I18nDraft } from '../i18n.jsx';
-import { CharityCard, CHARITY_WIDTHS, CHARITY_DESIGN_DEFAULTS, charityCanvasSizes } from './charity.jsx';
+import { CharityCard, CHARITY_WIDTHS, CHARITY_DESIGN_DEFAULTS, charityCanvasSizes, CHARITY_PART_KEYS, CHARITY_BLOCK_KINDS, CHARITY_LABEL_KEYS, CHARITY_CSS_SCOPE } from './charity.jsx';
+// The charity design editor shows what its stylesheet filter took out, the way the studio's
+// page panel does — a rule that vanished silently is a rule the author rewrites five times.
+import { scopeCss } from '../lib/css-scope.js';
 import { useAuth } from './auth.jsx';
 import { utilAllowed, effectiveCaps } from '../lib/roles.js';
 import { readLayout, navAlignClass } from '../lib/navLayout.js';
@@ -8807,7 +8810,7 @@ function AdminAssets() {
         onDragLeave={(e) => { if (e.currentTarget === e.target) setDragOver(false); }}
         onDrop={(e) => { e.preventDefault(); setDragOver(false); void uploadMany(e.dataTransfer?.files || []); }}
         className={`rounded-xl border-2 border-dashed p-6 text-center mb-4 transition-colors ${
-          dragOver ? 'border-[var(--primary)] bg-[var(--primary)]/[0.06]' : 'border-[var(--line)] bg-[var(--surface-2)]'
+          dragOver ? 'border-[var(--primary)] tint-primary-soft' : 'border-[var(--line)] bg-[var(--surface-2)]'
         }`}>
         <UploadIcon size={22} className="mx-auto text-[var(--faint)] mb-2" />
         <div className="text-sm font-medium">{t('assets.drop', 'Drop files here')}</div>
@@ -8907,12 +8910,12 @@ function AdminAssets() {
               {!!kinds.length && (
                 <div className="flex flex-wrap gap-1.5">
                   <button type="button" onClick={() => setFilter('')}
-                    className={`text-xs px-2.5 py-1.5 rounded-lg border ${!filter ? 'border-[var(--primary)] bg-[var(--primary)]/[0.06]' : 'border-[var(--line)] text-[var(--muted)]'}`}>
+                    className={`text-xs px-2.5 py-1.5 rounded-lg border ${!filter ? 'border-[var(--primary)] tint-primary-soft' : 'border-[var(--line)] text-[var(--muted)]'}`}>
                     {t('assets.all', 'All')} {assets.filter((a) => a.kind === 'file' && !a.version).length}
                   </button>
                   {kinds.map((k) => (
                     <button key={k} type="button" onClick={() => setFilter(filter === k ? '' : k)}
-                      className={`text-xs px-2.5 py-1.5 rounded-lg border ${filter === k ? 'border-[var(--primary)] bg-[var(--primary)]/[0.06]' : 'border-[var(--line)] text-[var(--muted)]'}`}>
+                      className={`text-xs px-2.5 py-1.5 rounded-lg border ${filter === k ? 'border-[var(--primary)] tint-primary-soft' : 'border-[var(--line)] text-[var(--muted)]'}`}>
                       {t(`assets.k.${k}`, k)}
                     </button>
                   ))}
@@ -12730,7 +12733,7 @@ function SceneEditor() {
               <button key={k} type="button" onClick={() => set({ shape: k })}
                 aria-pressed={cfg.shape === k}
                 className={`text-start rounded-xl border p-3 transition-colors ${
-                  cfg.shape === k ? 'border-[var(--primary)] bg-[var(--primary)]/[0.06]' : 'border-[var(--line)] hover:border-[var(--line-strong)]'
+                  cfg.shape === k ? 'border-[var(--primary)] tint-primary-soft' : 'border-[var(--line)] hover:border-[var(--line-strong)]'
                 }`}>
                 <div className="text-sm font-semibold">{NAMES[k]?.[0] || k}</div>
                 <p className="text-[11px] text-[var(--muted)] leading-snug mt-0.5">{NAMES[k]?.[1] || ''}</p>
@@ -12753,7 +12756,7 @@ function SceneEditor() {
                     aria-pressed={cfg[key] === k}
                     title={table[k]?.[1] || ''}
                     className={`rounded-lg border px-3 py-1.5 text-[13px] transition-colors ${
-                      cfg[key] === k ? 'border-[var(--primary)] bg-[var(--primary)]/[0.06]' : 'border-[var(--line)] hover:border-[var(--line-strong)]'
+                      cfg[key] === k ? 'border-[var(--primary)] tint-primary-soft' : 'border-[var(--line)] hover:border-[var(--line-strong)]'
                     }`}>{table[k]?.[0] || k}</button>
                 ))}
               </div>
@@ -13267,7 +13270,7 @@ function HomePageEditor() {
         <div className="flex flex-wrap gap-1.5">
           {glance.map((g, i) => { const on = sections[g.id] !== false; return (
             <button key={g.id} type="button" onClick={() => setSections((x) => ({ ...x, [g.id]: !on }))}
-              className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border transition ${on ? 'border-[var(--primary)] text-[var(--text)] bg-[var(--primary)]/[0.06]' : 'border-dashed border-[var(--line)] text-[var(--muted)] line-through'}`}>
+              className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border transition ${on ? 'border-[var(--primary)] text-[var(--text)] tint-primary-soft' : 'border-dashed border-[var(--line)] text-[var(--muted)] line-through'}`}>
               <span className="text-[10px] text-[var(--faint)] tabular-nums">{i + 1}</span>{g.label}
             </button>
           ); })}
@@ -13299,7 +13302,7 @@ function HomePageEditor() {
               aria-pressed={variant === v.v}
               className={`text-start rounded-xl border p-3 transition-colors ${
                 variant === v.v
-                  ? 'border-[var(--primary)] bg-[var(--primary)]/[0.06]'
+                  ? 'border-[var(--primary)] tint-primary-soft'
                   : 'border-[var(--line)] hover:border-[var(--line-strong)]'
               }`}
             >
@@ -13386,7 +13389,7 @@ function HomePageEditor() {
               <button key={k} type="button" onClick={() => setSuite((v) => ({ ...v, style: k }))}
                 aria-pressed={suite.style === k}
                 className={`text-start rounded-xl border p-3 transition-colors ${
-                  suite.style === k ? 'border-[var(--primary)] bg-[var(--primary)]/[0.06]' : 'border-[var(--line)] hover:border-[var(--line-strong)]'
+                  suite.style === k ? 'border-[var(--primary)] tint-primary-soft' : 'border-[var(--line)] hover:border-[var(--line-strong)]'
                 }`}>
                 {/* Each option draws what it does. Three words in a radio list would ask an
                     admin to imagine the difference between "swipe" and "marquee". */}
@@ -14744,7 +14747,10 @@ function AdminBot() {
   const SectionTitle = ({ icon: I, title, sub }) => (
     <div className="flex items-center gap-2.5 mt-7 mb-3 pb-2 border-b border-[var(--line)]">
       <span className="grid place-items-center w-8 h-8 rounded-lg tint-primary border b-primary shrink-0"><I size={15} className="text-[var(--accent-ink)]" /></span>
-      <div><div className="font-semibold text-sm">{title}</div>{sub && <div className="text-[11px] text-[var(--faint)]">{sub}</div>}</div>
+      {/* min-w-0 is defensive, not a measured fix: today's subs all wrap (measured, no overflow
+          at 375/768/1180), but a flex child without it refuses to shrink below its content, so
+          one unbreakable token in a `sub` would push the row past the column. */}
+      <div className="min-w-0"><div className="font-semibold text-sm">{title}</div>{sub && <div className="text-[11px] text-[var(--faint)]">{sub}</div>}</div>
     </div>
   );
 
@@ -14757,7 +14763,12 @@ function AdminBot() {
       <div className="sticky top-0 z-20 mb-5">
         <Card className="p-0 overflow-hidden border-[#5865F2]/30">
           <div className="h-1 bg-gradient-to-r from-[#5865F2] via-[#5865F2]/60 to-transparent" />
-          <div className="px-4 py-3.5 flex items-center gap-4 flex-wrap">
+          {/* Measured at 375px: the four stat tiles used to wrap this STICKY header to 310px —
+              a third of a phone screen permanently gone, and the module chip strip below it is
+              pinned at top-[46px] as if the header were one row. The tiles now scroll sideways
+              on their own line and the switch shares a row with Save: 310px → 201px. Desktop is
+              untouched (1180px: 84px before, 80px after — the y padding only). */}
+          <div className="px-4 py-3 sm:py-3.5 flex items-center gap-x-4 gap-y-2 flex-wrap">
             {/* Identity + live state */}
             <div className="flex items-center gap-3 min-w-0">
               <span className="relative grid place-items-center w-12 h-12 rounded-xl bg-[#5865F2]/15 border border-[#5865F2]/30 shrink-0">
@@ -14775,7 +14786,7 @@ function AdminBot() {
             </div>
 
             {/* Master switch — its own pill so it never reads as one of the stats. */}
-            <label className={`flex items-center gap-2.5 cursor-pointer rounded-lg border px-3 py-2 ${cfg.enabled !== false ? 'border-success-border bg-success-bg/60' : 'border-[var(--line)] panel'}`}>
+            <label className={`flex items-center gap-2.5 cursor-pointer rounded-lg border px-3 py-2 grow sm:grow-0 ${cfg.enabled !== false ? 'border-success-border bg-success-bg/60' : 'border-[var(--line)] panel'}`}>
               <span className={`relative inline-flex h-5 w-9 items-center rounded-full transition ${cfg.enabled !== false ? 'bg-success' : 'bg-[var(--surface-3,var(--line))]'}`}>
                 <input type="checkbox" className="sr-only" checked={cfg.enabled !== false} onChange={(e) => set('enabled', e.target.checked)} />
                 <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition ${cfg.enabled !== false ? 'translate-x-[18px]' : 'translate-x-[3px]'}`} />
@@ -14784,7 +14795,7 @@ function AdminBot() {
             </label>
 
             {/* Stat tiles */}
-            <div className="flex items-stretch gap-1.5 flex-wrap ms-auto">
+            <div className="flex items-stretch gap-1.5 ms-auto overflow-x-auto no-scrollbar max-w-full w-full sm:w-auto order-last sm:order-none">
               {[
                 [status?.guilds ?? '—', t('db.servers', 'servers'), Server],
                 [status?.users ?? '—', t('db.users', 'users'), Users],
@@ -15046,9 +15057,13 @@ function AdminBot() {
         const base = Number(num('curveBase', 100)) || 100, factor = Number(num('curveFactor', 1.18)) || 1.18;
         const xpFor = (lvl) => Math.round(base * ((factor ** lvl - 1) / (factor - 1)));
         const cur = g('economy.currencyName') || 'points';
+        // The live panels below (grant, season reset, deliveries) are guarded by
+        // manage_economy, not manage_bot — see the comment where they render.
+        const canEco = me?.role === 'ADMIN' || me?.role === 'SUPERADMIN' || effectiveCaps(me).includes('manage_economy');
         const Lbl = ({ children }) => <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">{children}</div>;
         return (<div className="space-y-4">
-        <SectionTitle icon={Sparkles} title={t('db.eco.title', 'Levels & economy')} sub={t('db.eco.sub2', 'Messages, reactions and voice time earn XP; XP earns levels; levels grant points to spend in the shop or the casino. Everything below is site-wide: one economy across every server the bot is in. Only members who linked their Discord to a BCWEB account accrue anything — an unlinked member earns nothing until they link, and nothing is credited retroactively.')} />
+        <SectionTitle icon={Sparkles} title={t('db.eco.title', 'Levels & economy')} sub={t('db.eco.sub3', 'One economy across every server the bot is in — the rules first, then the members and their balances.')} />
+        <Explain className="text-[11px] -mt-1 mb-1">{t('db.eco.sub2', 'Messages, reactions and voice time earn XP; XP earns levels; levels grant points to spend in the shop or the casino. Everything below is site-wide: one economy across every server the bot is in. Only members who linked their Discord to a BCWEB account accrue anything — an unlinked member earns nothing until they link, and nothing is credited retroactively.')}</Explain>
 
         {/* Economy — the system itself, in four short columns instead of one long form. */}
         <ModuleCard id="sec-eco" icon={Sparkles} title={t('db.eco.card', 'Economy')} desc={t('db.eco.card.d', 'The whole system, off until you turn it on.')} enabled={eco.enabled !== false && !!eco.enabled} onToggle={(v) => set('economy.enabled', v)}>
@@ -15155,7 +15170,7 @@ function AdminBot() {
                     "multi" is the shared roll for the classic games. */}
                 <div className="rounded-lg border border-[var(--line)] panel p-3">
                   <Lbl>{t('db.eco.live', 'Live tables')}</Lbl>
-                  <p className="text-[11px] text-[var(--faint)] mb-2 leading-snug">{t('db.eco.live.d', 'Rounds several members join from the channel and watch happen. Race: six cars, pick one. Pot: everyone stakes, one winner drawn in proportion to stake — minimum two players, no maximum. Multi: the classic games on one shared roll.')}</p>
+                  <Explain className="text-[11px] mb-2" summary={t('db.eco.live.s', 'Rounds several members join from the channel and watch happen.')}>{t('db.eco.live.d', 'Rounds several members join from the channel and watch happen. Race: six cars, pick one. Pot: everyone stakes, one winner drawn in proportion to stake — minimum two players, no maximum. Multi: the classic games on one shared roll.')}</Explain>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     {[['race', '🏎️ ' + t('db.eco.game.race', 'Race')], ['pot', '🎁 ' + t('db.eco.game.pot', 'Pot')], ['multi', '👥 ' + t('db.eco.live.multi', 'Multi (classic games)')]].map(([k, label]) => (
                       <label key={k} className="flex items-center gap-2 text-xs cursor-pointer"><BotSwitch checked={live[k] !== false} onChange={(v) => setLive(k, v)} /> <span>{label}</span></label>
@@ -15177,7 +15192,7 @@ function AdminBot() {
               <Field label={t('db.eco.gifts.cap', 'Daily cap per giver (0 = none)')} className="!mb-0"><Input type="number" min="0" value={eco.gifts?.maxPerDay ?? 0} onChange={(e) => set('economy.gifts.maxPerDay', Number(e.target.value))} /></Field>
             </div>
           </ModuleCard>
-          <ModuleCard id="sec-history" icon={History} title={t('db.eco.hist', 'History')} desc={t('db.eco.hist.d', 'Every point movement — purchases, casino plays, gifts, level-ups, staff grants — is kept as a ledger. Members see theirs on the site and with /history; you see everything under Members → Levels & economy.')} onToggle={null}>
+          <ModuleCard id="sec-history" icon={History} title={t('db.eco.hist', 'History')} desc={<Explain summary={t('db.eco.hist.s', 'Every point movement is kept as a ledger.')}>{t('db.eco.hist.d2', 'Purchases, casino plays, gifts, level-ups and staff grants. Members see their own on the site and with /history; the whole ledger is further down this page, under “Members, balances & history”.')}</Explain>} onToggle={null}>
             <Field label={t('db.eco.hist.days', 'Keep the ledger for (days, 0 = forever)')} className="!mb-0" hint={t('db.eco.hist.days.h', 'Older rows are deleted once a day. Purchases themselves (the inventory) are never deleted by this.')}><Input type="number" min="0" value={eco.historyDays ?? 180} onChange={(e) => set('economy.historyDays', Number(e.target.value))} /></Field>
           </ModuleCard>
         </div>
@@ -15201,7 +15216,7 @@ function AdminBot() {
             ['custom', Gift, t('db.eco.kind.custom', 'Custom / manual'), t('db.eco.kind.custom.h', 'Anything else, you hand it out.')],
           ];
           return (
-        <ModuleCard id="sec-shop" icon={Gift} title={t('db.eco.shop', 'Shop')} desc={t('db.eco.shop.d2', 'What members buy with points, on Discord (/shop) and on the site (Dashboard → Shop & inventory). Every item needs a linked BCWEB account: that is where the badge, the code or the perk lands. Codes are sealed until the holder reveals them, so an unopened item can be gifted.')} onToggle={null}
+        <ModuleCard id="sec-shop" icon={Gift} title={t('db.eco.shop', 'Shop')} desc={<Explain summary={t('db.eco.shop.s', 'What members buy with points, on Discord (/shop) and on the site.')}>{t('db.eco.shop.d2', 'What members buy with points, on Discord (/shop) and on the site (Dashboard → Shop & inventory). Every item needs a linked BCWEB account: that is where the badge, the code or the perk lands. Codes are sealed until the holder reveals them, so an unopened item can be gifted.')}</Explain>} onToggle={null}
           action={<Button size="sm" variant="ghost" onClick={() => set('economy.shop', [...shop, { id: `it-${Date.now().toString(36)}`, name: '', desc: '', cost: 100, kind: 'badge', giftable: true, active: true }])}><Plus size={13} /> {t('db.eco.additem', 'Item')}</Button>}>
           {shop.length === 0 && <div className="text-xs text-[var(--faint)]">{t('db.eco.noitems', 'No items yet, add one. Members buy them with points.')}</div>}
           {/* One item per row, full width: the seven kind chips, the kind's own fields and the
@@ -15286,13 +15301,21 @@ function AdminBot() {
           );
         })()}
 
-        <div className="rounded-xl border border-dashed border-[var(--line)] p-3 flex items-center gap-3 flex-wrap text-sm text-[var(--muted)]">
-          <TrendingUp size={16} className="text-[var(--accent-ink)]" />
-          <span className="flex-1">{t('db.eco.ledger.moved2', 'Balances, the leaderboard, purchases to hand out and the full point history are on the Members page → Levels & economy.')}</span>
-          <Button size="sm" variant="ghost" onClick={() => setPage('members')}>{t('db.eco.ledger.go', 'Open Members')} <ChevronRight size={13} /></Button>
-        </div>
-
-        <EcoResetControl />
+        {/* The economy's LIVE side, on the same page as the rules that produce it. It used to
+            be a second screen — a "Levels & economy" sub-tab inside Members — carrying the same
+            title as this page, so the whole subject was in two places and neither said which.
+            The three panels here grant, reset and deliver: they are guarded by manage_economy,
+            not manage_bot, so a bot-only delegate would meet a block of 403s. Hide it for them
+            (the server is what actually refuses, here as everywhere) and keep the settings. */}
+        {canEco && (<>
+          <SectionTitle icon={TrendingUp} title={t('db.eco.ops.title', 'Members, balances & history')} sub={t('db.eco.ops.sub', 'The live side of the same economy: who has what, what is owed, and every movement.')} />
+          <EconomyStatsCard />
+          <EconomySeasonCard />
+          <EconomyLedger currency={cur} />
+          <PendingDeliveries currency={cur} />
+          <EconomyHistoryCard currency={cur} />
+          <EcoResetControl />
+        </>)}
         </div>);
       })()}
 
@@ -15550,7 +15573,10 @@ function AdminBot() {
       )}
       </>)}
 
-      {page === 'members' && <AdminBotMembersPage currency={g('economy.currencyName') || 'points'} />}
+      {/* Members is the ROSTER and nothing else. Its "Levels & economy" sub-tab used to carry
+          the same name as the Levels & economy page in the rail, and the balances now live
+          there, beside the rules that produce them. */}
+      {page === 'members' && <AdminBotMembers />}
 
         </div>
       </div>
@@ -15649,9 +15675,10 @@ function BotModerate({ member }) {
   );
 }
 
-// Members: ONE page for the people the bot knows, in two views — the roster (who is in the
-// servers, linked or not) and the economy (levels, points, leaderboard, give). They used to be
-// two cards on two pages showing the same members with different columns.
+// Members: the roster — who is in the servers, linked or not. It briefly also carried a
+// "Levels & economy" view, which duplicated the rail page of that name; the balances, the
+// leaderboard, the deliveries and the ledger live on that page now, next to the rules that
+// produce them. The per-member give tool stays here, where the member is.
 // The bot's button icons. Each is a coloured tile with a glyph from the site's own icon
 // families (lucide, Phosphor, an uploaded image) — the same picker as everywhere else — so an
 // admin changes the glyph or the tile colour per button, the shape and the glyph colour for
@@ -15692,7 +15719,7 @@ function BotIconsCard({ icons, iconStyle, onChange, onStyle }) {
   };
   const customised = list.filter((ic) => mine(ic.key).icon || mine(ic.key).color).length;
   return (
-    <ModuleCard id="sec-icons" icon={ImageIcon} title={t('db.eco.icons', 'Button icons')} desc={t('db.eco.icons.d3', 'The bot’s buttons carry custom emoji instead of the unicode ones. Each icon is a coloured tile with a glyph from the same icon families as the site (lucide, Phosphor, or an image): pick the glyph and the colour per button, the shape and the glyph colour for the set, download the pack, upload it on the application’s Emojis page, then paste each emoji here.')}
+    <ModuleCard id="sec-icons" icon={ImageIcon} title={t('db.eco.icons', 'Button icons')} desc={<Explain summary={t('db.eco.icons.s', 'The bot’s buttons carry custom emoji instead of the unicode ones.')}>{t('db.eco.icons.d3', 'The bot’s buttons carry custom emoji instead of the unicode ones. Each icon is a coloured tile with a glyph from the same icon families as the site (lucide, Phosphor, or an image): pick the glyph and the colour per button, the shape and the glyph colour for the set, download the pack, upload it on the application’s Emojis page, then paste each emoji here.')}</Explain>}
       action={<a href="/api/admin/bot/emoji-pack.zip" download><Button size="sm" variant="ghost"><Download size={13} /> {t('db.eco.icons.pack', 'Icon pack')}</Button></a>}>
       {/* Set-wide style — controls on one line, the help text as its own block below */}
       <div className="rounded-xl border border-[var(--line)] panel p-3.5 space-y-3">
@@ -15706,9 +15733,9 @@ function BotIconsCard({ icons, iconStyle, onChange, onStyle }) {
             <button type="button" onClick={() => setOpen((v) => !v)} className="text-xs font-medium text-[var(--accent-ink)] hover:underline">{open ? t('db.eco.icons.less', 'Hide the list') : t('db.eco.icons.more', 'Map the {n} icons').replace('{n}', list.length)}</button>
           </div>
         </div>
-        <p className="text-[11px] leading-relaxed text-[var(--faint)] m-0">
+        <Explain className="text-[11px]" summary={t('db.eco.icons.h.s', 'Save the page first — the pack is drawn from the saved style.')}>
           {t('db.eco.icons.h2', 'Save the page, then download the pack — it is drawn from the saved style. Developer Portal → your application → Emojis → Upload (keep the bc_<name> file names); then right-click an emoji in Discord → Copy Text, and paste the <:bc_shop:123…> in the field.')}
-        </p>
+        </Explain>
       </div>
       {open && (
         <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-2.5 mt-3">
@@ -15722,7 +15749,7 @@ function BotIconsCard({ icons, iconStyle, onChange, onStyle }) {
               // fraction of ~230px, so every one of them ellipsised at once ("gl…", "u…",
               // "<:bc_site:154…") — the card read as broken. Nothing shares a row with the
               // controls now, so nothing truncates but the label.
-              <div key={ic.key} className={`rounded-xl border px-3 py-2.5 flex flex-col gap-2 transition-colors ${changed ? 'b-primary bg-[var(--primary)]/[0.04]' : 'border-[var(--line)] hover:border-[var(--line-strong,var(--line))]'}`}>
+              <div key={ic.key} className={`rounded-xl border px-3 py-2.5 flex flex-col gap-2 transition-colors ${changed ? 'b-primary tint-primary-soft' : 'border-[var(--line)] hover:border-[var(--line-strong,var(--line))]'}`}>
                 <div className="flex items-center gap-2.5 min-w-0">
                   <EmojiPreview src={preview(ic)} glyph={m.icon || ic.icon} color={m.color || ic.color} shape={shape} fg={fg} />
                   <div className="min-w-0 flex-1">
@@ -15757,7 +15784,7 @@ function EconomyHistoryCard({ currency }) {
   const rows = data?.history || [];
   const label = (k) => t(`db.eco.lk.${k}`, LEDGER_KIND[k] || k);
   return (
-    <ModuleCard id="sec-eco-history" icon={History} title={t('db.eco.histcard', 'Point history')} desc={t('db.eco.histcard.d', 'Every movement: purchases, casino plays, gifts between members, level-ups and staff grants. Retention is set on the Levels & economy page.')} onToggle={null}>
+    <ModuleCard id="sec-eco-history" icon={History} title={t('db.eco.histcard', 'Point history')} desc={t('db.eco.histcard.d2', 'Every movement: purchases, casino plays, gifts between members, level-ups and staff grants. Retention is set in the History card above.')} onToggle={null}>
       <div className="flex gap-2 flex-wrap">
         <div className="relative flex-1 min-w-[160px]"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" /><Input className="!ps-9 !py-1.5 !text-sm" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && reload()} placeholder={t('db.eco.search', 'Search a member…')} /></div>
         <Select className="!w-auto !py-1.5 !text-sm" value={kind} onChange={(e) => setKind(e.target.value)}><option value="">{t('db.eco.lk.all', 'Everything')}</option>{Object.keys(LEDGER_KIND).map((k) => <option key={k} value={k}>{label(k)}</option>)}</Select>
@@ -15885,31 +15912,6 @@ function BotMemberModal({ member, guildRoles, onClose }) {
         </div>
       </div>
     </Modal>
-  );
-}
-
-function AdminBotMembersPage({ currency }) {
-  const { t } = useI18n();
-  const { user } = useAuth();
-  // The economy lives in bot.mjs but is guarded by manage_economy, not manage_bot — the
-  // three panels behind this sub-tab grant, reset and deliver. Someone holding only the
-  // bot dashboard would meet three panels that all 403; hide the sub-tab instead. The
-  // server is what actually refuses, here and everywhere.
-  const canEco = user?.role === 'ADMIN' || user?.role === 'SUPERADMIN'
-    || effectiveCaps(user).includes('manage_economy');
-  const [view, setView] = useState('roster');
-  return (
-    <div>
-      <div className="flex items-center gap-1 p-1 rounded-xl border border-[var(--line)] panel w-fit mt-6 mb-1" hidden={!canEco}>
-        {[['roster', t('bm.view.roster', 'Roster'), Users], ['economy', t('bm.view.economy', 'Levels & economy'), TrendingUp]].map(([id, label, I]) => (
-          <button key={id} type="button" onClick={() => setView(id)}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition ${view === id ? 'bg-[var(--bg-solid)] text-[var(--text)] font-medium shadow-sm border border-[var(--line)]' : 'text-[var(--muted)] hover:text-[var(--text)] border border-transparent'}`}>
-            <I size={14} className={view === id ? 'text-[var(--accent-ink)]' : ''} /> {label}
-          </button>
-        ))}
-      </div>
-      {view === 'roster' || !canEco ? <AdminBotMembers /> : <div className="mt-4 space-y-4"><EconomyStatsCard /><EconomySeasonCard /><EconomyLedger currency={currency} /><PendingDeliveries currency={currency} /><EconomyHistoryCard currency={currency} /></div>}
-    </div>
   );
 }
 
@@ -19467,7 +19469,7 @@ function SeoPagesCard() {
         const sDesc = (lang === 'fr' ? settings['seo.descriptionFr'] : settings['seo.description']) || settings['seo.description']
           || t('ogp.prev.defdesc', 'The home for every Better* project, catalogs, hosting, accounts and more.');
         return (
-          <div className="rounded-lg border b-primary bg-[var(--primary)]/[0.04] p-3 mb-3">
+          <div className="rounded-lg border b-primary tint-primary-soft p-3 mb-3">
             <div className="flex items-center gap-2 mb-2 flex-wrap">
               <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--accent-ink)] flex items-center gap-1.5"><Globe size={12} /> {t('ogp.wholesite', 'Whole site (default)')}</span>
               <code className="text-[10px] text-[var(--faint)]">/*</code>
@@ -23670,6 +23672,152 @@ function useFitScale(outerRef, innerRef) {
   return st;
 }
 
+// A new block id: short, and inside the /^[A-Za-z0-9_-]{1,24}$/ shape the API forces, so the
+// `[data-b="…"]` selector an admin writes against it can never escape the attribute.
+const chyBlockId = () => `b${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+// What a fresh `code` design starts as: the default card, taken apart. An admin deletes what
+// they don't want rather than being handed a blank box and having to guess the part names.
+const CHY_SEED_BLOCKS = ['icon', 'title', 'sub', 'amount', 'breakdown', 'bar', 'association', 'buttons']
+  .map((kind) => ({ id: chyBlockId(), kind, text: '', cls: '', src: '', size: 0 }));
+
+// The frame geometry — shared by the artwork mode and the write-it-yourself mode, so the two
+// cannot disagree about what "width" means.
+function CharityFrameCard({ t, d, set, num, sizes, secTitle }) {
+  return (
+    <Card className="p-3 space-y-2.5">
+      {secTitle(t('chc.design.grp.frame', 'Frame'))}
+      <div className="grid grid-cols-2 gap-2">
+        <Field label={t('chc.design.width', 'Width')} className="!mb-0"><Dropdown value={d.width} onChange={(v) => set('width', v)} options={Object.entries(CHARITY_WIDTHS).map(([k, w]) => ({ value: k, label: `${w} px` }))} /></Field>
+        <Field label={t('chc.design.height2', 'Min height (px)')} className="!mb-0"><Input type="number" min="200" max="720" value={d.height} onChange={num('height', 200, 720)} /></Field>
+        <Field label={t('chc.design.ink', 'Text ink')} className="!mb-0"><Dropdown value={d.ink} onChange={(v) => set('ink', v)} options={[{ value: 'auto', label: t('chc.design.ink.auto', 'Theme (auto)') }, { value: 'light', label: t('chc.design.ink.light', 'Light') }, { value: 'dark', label: t('chc.design.ink.dark', 'Dark') }]} /></Field>
+        <Field label={t('chc.design.align', 'Text & buttons')} className="!mb-0"><Dropdown value={d.align} onChange={(v) => set('align', v)} options={[{ value: 'center', label: t('chc.design.align.center', 'Centred') }, { value: 'left', label: t('chc.design.align.left', 'Left') }, { value: 'right', label: t('chc.design.align.right', 'Right') }]} /></Field>
+      </div>
+      <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+        <input type="checkbox" className="accent-[var(--primary)]" checked={d.frame} onChange={(e) => set('frame', e.target.checked)} /> {t('chc.design.frame2', 'Keep the card frame under the artwork')}
+      </label>
+      <div className="text-[11px] text-[var(--faint)] tabular-nums">{t('chc.design.framesize', 'The frame on the page is {w} px wide and at least {h} px tall.').replace('{w}', sizes.frame.w).replace('{h}', sizes.frame.h)}</div>
+    </Card>
+  );
+}
+
+// Per-element switches + the re-wordable labels. Shared by both authored modes: this is what
+// turns "Visuel personnalisé" from "artwork behind the same fixed card" into a card whose
+// every line the admin can drop.
+function CharityPartsCard({ t, d, set, keys, secTitle }) {
+  const P = { ...Object.fromEntries(CHARITY_PART_KEYS.map((k) => [k, true])), ...(d.parts || {}) };
+  const LABELS = {
+    icon: t('chc.part.icon', 'Heart icon'), title: t('chc.part.title', 'Title'), sub: t('chc.part.sub', 'Tagline'),
+    month: t('chc.part.month', 'Month pill'), amount: t('chc.part.amount', 'Total amount'), breakdown: t('chc.part.breakdown', 'Breakdown line'),
+    bar: t('chc.part.bar', 'Progress bar'), association: t('chc.part.association', 'Association line'), poll: t('chc.part.poll', 'Vote line'),
+    projected: t('chc.part.projected', 'Projected share line'), paid: t('chc.part.paid', 'Donation-sent notice'),
+    give: t('chc.part.give', 'Give button'), vote: t('chc.part.vote', 'Vote button'), more: t('chc.part.more', 'Learn-more button'),
+  };
+  return (
+    <Card className="p-3 space-y-2.5">
+      {secTitle(t('chc.design.grp.parts', 'Elements — untick anything you do not want'))}
+      <div className="grid sm:grid-cols-2 gap-x-3 gap-y-1">
+        {keys.map((k) => (
+          <label key={k} className="flex items-center gap-2 text-[13px] cursor-pointer select-none">
+            <input type="checkbox" className="accent-[var(--primary)]" checked={P[k] !== false}
+              onChange={(e) => set('parts', { ...P, [k]: e.target.checked })} />
+            <span className="min-w-0 truncate">{LABELS[k]}</span>
+            <code className="text-[10px] text-[var(--faint)]">{k}</code>
+          </label>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+function CharityLabelsCard({ t, d, set, secTitle }) {
+  const L = { ...CHARITY_DESIGN_DEFAULTS.labels, ...(d.labels || {}) };
+  const PH = {
+    title: t('ch.title', 'Community Charity'), sub: t('ch.sub', 'A charity the community chooses, every month.'),
+    give: t('ch.give.cta', 'Increase the pot'), vote: t('ch.vote', 'Vote'), more: t('ch.more', 'Learn more'),
+  };
+  return (
+    <Card className="p-3 space-y-2">
+      {secTitle(t('chc.design.grp.words', 'Words'))}
+      <p className="text-[11px] text-[var(--muted)] leading-snug">{t('chc.design.words.h', 'Leave a box empty to keep the site’s own translated text. Anything you type here is shown as-is, in every language.')}</p>
+      {CHARITY_LABEL_KEYS.map((k) => (
+        <Field key={k} label={PH[k]} className="!mb-0">
+          <Input maxLength={200} value={L[k]} placeholder={PH[k]} onChange={(e) => set('labels', { ...L, [k]: e.target.value })} />
+        </Field>
+      ))}
+    </Card>
+  );
+}
+
+// The stylesheet + the utility classes. The refusals are printed, never swallowed.
+function CharityCssCard({ t, d, set, secTitle }) {
+  const C = { ...CHARITY_DESIGN_DEFAULTS.classes, ...(d.classes || {}) };
+  const { refused } = scopeCss(d.css || '', CHARITY_CSS_SCOPE);
+  return (
+    <Card className="p-3 space-y-2.5">
+      {secTitle(t('chc.design.grp.css', 'Your stylesheet'))}
+      <Explain className="text-[11px]" summary={t('chc.design.css.h2', 'Every selector you write is confined to this card.')}>
+        {t('chc.design.css.h', 'Every selector you write is confined to this card — it cannot restyle the rest of the site. Target .chy-card, .chy-content, .chy-title, .chy-amount… or [data-el="amount"] and [data-b="…"] for one block. @import, expression(), behaviour and any url() pointing off this site are refused. Tailwind classes only work if the site’s build already contains them, so prefer plain CSS here.')}
+      </Explain>
+      <Textarea rows={10} value={d.css || ''} onChange={(e) => set('css', e.target.value.slice(0, 20000))} className="font-mono text-[12px]" spellCheck={false}
+        placeholder={'.chy-card { background: linear-gradient(135deg,#0f172a,#312e81); border-radius: 28px }\n.chy-amount { font-size: 3rem; letter-spacing: -.02em }\n[data-el="bar"] { display: none }'} />
+      {refused.length > 0 && <p className="text-[11.5px] text-warning">{t('chc.design.css.refused', 'Left out:')} {refused.join(' · ')}</p>}
+      <div className="grid sm:grid-cols-3 gap-2">
+        {['root', 'card', 'content'].map((k) => (
+          <Field key={k} label={t(`chc.design.cls.${k}`, k === 'root' ? 'Classes: outer' : k === 'card' ? 'Classes: card' : 'Classes: content')} className="!mb-0">
+            <Input className="font-mono !text-xs" maxLength={300} value={C[k]} placeholder="p-10 rounded-3xl" onChange={(e) => set('classes', { ...C, [k]: e.target.value })} />
+          </Field>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+// The block list: the whole content of a `code` card, in order. Nothing is implicit — an empty
+// list draws an empty card, which is a legitimate design.
+function CharityBlocksCard({ t, d, set, secTitle }) {
+  const blocks = Array.isArray(d.blocks) ? d.blocks : [];
+  const write = (next) => set('blocks', next.slice(0, 32));
+  const patch = (i, o) => write(blocks.map((b, j) => (j === i ? { ...b, ...o } : b)));
+  const move = (i, dir) => { const n = [...blocks]; const j = i + dir; if (j < 0 || j >= n.length) return; [n[i], n[j]] = [n[j], n[i]]; write(n); };
+  const KIND_LABEL = {
+    icon: t('chc.part.icon', 'Heart icon'), title: t('chc.part.title', 'Title'), sub: t('chc.part.sub', 'Tagline'), month: t('chc.part.month', 'Month pill'),
+    amount: t('chc.part.amount', 'Total amount'), breakdown: t('chc.part.breakdown', 'Breakdown line'), bar: t('chc.part.bar', 'Progress bar'),
+    association: t('chc.part.association', 'Association line'), poll: t('chc.part.poll', 'Vote line'), projected: t('chc.part.projected', 'Projected share line'),
+    paid: t('chc.part.paid', 'Donation-sent notice'), give: t('chc.part.give', 'Give button'), vote: t('chc.part.vote', 'Vote button'),
+    more: t('chc.part.more', 'Learn-more button'), buttons: t('chc.blk.buttons', 'All three buttons, one row'),
+    text: t('chc.blk.text', 'Your own text'), spacer: t('chc.blk.spacer', 'Spacer'), image: t('chc.blk.image', 'Image'),
+  };
+  return (
+    <Card className="p-3 space-y-2">
+      {secTitle(t('chc.design.grp.blocks', 'Blocks — the card, in order'))}
+      <p className="text-[11px] text-[var(--muted)] leading-snug">{t('chc.design.blocks.h', 'Add only the pieces you want and order them yourself. Each block gets a class box and a [data-b] hook your stylesheet can target. Your own text is shown as text, never as HTML.')}</p>
+      {!blocks.length && <p className="text-[11px] text-[var(--faint)]">{t('chc.design.blocks.empty', 'No blocks: the card draws nothing at all.')}</p>}
+      {blocks.map((b, i) => (
+        <div key={b.id} className="rounded-lg border border-[var(--line)] p-2 space-y-1.5">
+          <div className="flex items-center gap-1.5">
+            <Dropdown className="flex-1 min-w-0" value={b.kind} onChange={(v) => patch(i, { kind: v })} options={CHARITY_BLOCK_KINDS.map((k) => ({ value: k, label: KIND_LABEL[k] || k }))} />
+            <Button size="sm" variant="ghost" disabled={i === 0} onClick={() => move(i, -1)} title={t('common.moveup', 'Move up')}><ChevronUp size={13} /></Button>
+            <Button size="sm" variant="ghost" disabled={i === blocks.length - 1} onClick={() => move(i, 1)} title={t('common.movedown', 'Move down')}><ChevronDown size={13} /></Button>
+            <Button size="sm" variant="ghost" onClick={() => write(blocks.filter((_, j) => j !== i))} title={t('common.remove', 'Remove')}><X size={13} /></Button>
+          </div>
+          <div className="flex gap-1.5 flex-wrap">
+            {(b.kind === 'text' || b.kind === 'image') && (
+              <Input className="flex-1 min-w-[10rem] !py-1 text-xs" maxLength={400} value={b.text || ''}
+                placeholder={b.kind === 'image' ? t('chc.blk.alt', 'Image description (accessibility)') : t('chc.blk.textph', 'The line to show')}
+                onChange={(e) => patch(i, { text: e.target.value })} />
+            )}
+            {b.kind === 'image' && <Input className="flex-1 min-w-[10rem] !py-1 text-xs" maxLength={600} value={b.src || ''} placeholder={t('chc.design.urlph', '…or paste an image URL')} onChange={(e) => patch(i, { src: e.target.value })} />}
+            {(b.kind === 'spacer' || b.kind === 'image') && <Input type="number" className="w-24 !py-1 text-xs" min="0" max="720" value={b.size || 0} onChange={(e) => patch(i, { size: Math.max(0, Math.min(720, Number(e.target.value) || 0)) })} title={t('chc.blk.size', 'Height / width in px (0 = auto)')} />}
+            <Input className="flex-1 min-w-[8rem] !py-1 text-xs font-mono" maxLength={300} value={b.cls || ''} placeholder={t('chc.blk.cls', 'classes for this block')} onChange={(e) => patch(i, { cls: e.target.value })} />
+            <code className="text-[10px] text-[var(--faint)] self-center">[data-b=&quot;{b.id}&quot;]</code>
+          </div>
+        </div>
+      ))}
+      <Button size="sm" onClick={() => write([...blocks, { id: chyBlockId(), kind: 'text', text: '', cls: '', src: '', size: 0 }])}><Plus size={13} /> {t('chc.design.blocks.add', 'Add a block')}</Button>
+    </Card>
+  );
+}
+
 function CharityDesignEditor({ design, onChange, pot, currency }) {
   const { t } = useI18n();
   const toast = useToast();
@@ -23699,8 +23847,12 @@ function CharityDesignEditor({ design, onChange, pot, currency }) {
   ];
   const MODES = [
     ['default', t('chc.design.mode.default', 'Default card'), t('chc.design.mode.default.h', 'The glowing card, drawn by the site. Nothing to upload.')],
-    ['custom', t('chc.design.mode.custom', 'Custom artwork'), t('chc.design.mode.custom.h', 'Your own backdrop, an overflow layer and a corner sticker, at the sizes printed below.')],
+    ['custom', t('chc.design.mode.custom', 'Custom artwork'), t('chc.design.mode.custom.h2', 'Your own backdrop, overflow layer and corner sticker — and now: drop any element of the card, re-word any label, add your own CSS.')],
+    ['code', t('chc.design.mode.code', 'Write it yourself'), t('chc.design.mode.code.h', 'No card drawn by the site at all: you choose the blocks, their order, and style them with your own scoped CSS.')],
   ];
+  // Picking `code` on an empty design hands over the default card taken apart, not a blank box:
+  // an admin who has never seen the part names would otherwise have to guess them.
+  const setMode = (v) => onChange({ ...d, mode: v, blocks: (v === 'code' && !(d.blocks || []).length) ? CHY_SEED_BLOCKS.map((b) => ({ ...b, id: chyBlockId() })) : d.blocks });
   const secTitle = (txt) => <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)]">{txt}</div>;
   const corners = [['tl', 'rounded-tl-md', 'top-1 left-1'], ['tr', 'rounded-tr-md', 'top-1 right-1'], ['bl', 'rounded-bl-md', 'bottom-1 left-1'], ['br', 'rounded-br-md', 'bottom-1 right-1']];
   return (
@@ -23708,12 +23860,14 @@ function CharityDesignEditor({ design, onChange, pot, currency }) {
       <h3 className="font-medium mb-1 flex items-center gap-2"><Palette size={15} /> {t('chc.design.t', 'Landing design')}</h3>
       <p className="text-xs text-[var(--muted)] mb-3">{t('chc.design.sub2', 'How the charity card looks on the home page. Pick a style; with custom artwork, upload the layers and watch the preview — it is the card exactly as the page draws it.')}</p>
 
-      <div className="grid sm:grid-cols-2 gap-2 mb-4">
+      {/* The picked mode used to carry an alpha on a CSS variable, which Tailwind emits no rule
+          for, so it was never actually tinted — .tint-primary-soft is the house class. */}
+      <div className="grid sm:grid-cols-3 gap-2 mb-4">
         {MODES.map(([v, l, h]) => (
-          <button key={v} type="button" onClick={() => set('mode', v)}
-            className={`text-start rounded-xl border p-3 flex gap-3 items-start transition ${d.mode === v ? 'border-[var(--primary)] bg-[var(--primary)]/[0.06]' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
+          <button key={v} type="button" onClick={() => setMode(v)}
+            className={`text-start rounded-xl border p-3 flex gap-3 items-start transition ${d.mode === v ? 'border-[var(--primary)] tint-primary-soft' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
             <span className={`w-12 h-9 rounded-md shrink-0 border ${v === 'default' ? 'bg-gradient-to-br from-[var(--primary)] to-transparent b-primary' : 'border-dashed border-[var(--line-strong)] bg-[var(--surface-2)]'} grid place-items-center`}>
-              {v === 'default' ? <Heart size={14} className="text-[var(--accent-ink)]" /> : <ImageIcon size={14} className="text-[var(--muted)]" />}
+              {v === 'default' ? <Heart size={14} className="text-[var(--accent-ink)]" /> : v === 'code' ? <Code2 size={14} className="text-[var(--muted)]" /> : <ImageIcon size={14} className="text-[var(--muted)]" />}
             </span>
             <span className="min-w-0"><span className="block text-sm font-medium">{l}</span><span className="block text-[11px] text-[var(--muted)] leading-snug">{h}</span></span>
           </button>
@@ -23748,19 +23902,7 @@ function CharityDesignEditor({ design, onChange, pot, currency }) {
           </div>
 
           <div className="space-y-3">
-            <Card className="p-3 space-y-2.5">
-              {secTitle(t('chc.design.grp.frame', 'Frame'))}
-              <div className="grid grid-cols-2 gap-2">
-                <Field label={t('chc.design.width', 'Width')} className="!mb-0"><Dropdown value={d.width} onChange={(v) => set('width', v)} options={Object.entries(CHARITY_WIDTHS).map(([k, w]) => ({ value: k, label: `${w} px` }))} /></Field>
-                <Field label={t('chc.design.height2', 'Min height (px)')} className="!mb-0"><Input type="number" min="200" max="720" value={d.height} onChange={num('height', 200, 720)} /></Field>
-                <Field label={t('chc.design.ink', 'Text ink')} className="!mb-0"><Dropdown value={d.ink} onChange={(v) => set('ink', v)} options={[{ value: 'auto', label: t('chc.design.ink.auto', 'Theme (auto)') }, { value: 'light', label: t('chc.design.ink.light', 'Light') }, { value: 'dark', label: t('chc.design.ink.dark', 'Dark') }]} /></Field>
-                <Field label={t('chc.design.align', 'Text & buttons')} className="!mb-0"><Dropdown value={d.align} onChange={(v) => set('align', v)} options={[{ value: 'center', label: t('chc.design.align.center', 'Centred') }, { value: 'left', label: t('chc.design.align.left', 'Left') }, { value: 'right', label: t('chc.design.align.right', 'Right') }]} /></Field>
-              </div>
-              <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
-                <input type="checkbox" className="accent-[var(--primary)]" checked={d.frame} onChange={(e) => set('frame', e.target.checked)} /> {t('chc.design.frame2', 'Keep the card frame under the artwork')}
-              </label>
-              <div className="text-[11px] text-[var(--faint)] tabular-nums">{t('chc.design.framesize', 'The frame on the page is {w} px wide and at least {h} px tall.').replace('{w}', sizes.frame.w).replace('{h}', sizes.frame.h)}</div>
-            </Card>
+            <CharityFrameCard t={t} d={d} set={set} num={num} sizes={sizes} secTitle={secTitle} />
             <Card className="p-3 space-y-2.5">
               {secTitle(t('chc.design.grp.place', 'Placement'))}
               <div className="grid grid-cols-2 gap-2">
@@ -23784,6 +23926,25 @@ function CharityDesignEditor({ design, onChange, pot, currency }) {
               </div>
             </Card>
           </div>
+        </div>
+      )}
+
+      {d.mode === 'code' && (
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px] items-start">
+          <div className="space-y-3 min-w-0"><CharityBlocksCard t={t} d={d} set={set} secTitle={secTitle} /></div>
+          <div className="space-y-3"><CharityFrameCard t={t} d={d} set={set} num={num} sizes={sizes} secTitle={secTitle} /></div>
+        </div>
+      )}
+
+      {/* Shared by both authored modes: the words, the per-element switches (artwork mode only
+          — in `code` mode the block list IS the switch), and the stylesheet. */}
+      {d.mode !== 'default' && (
+        <div className="grid gap-3 lg:grid-cols-2 items-start mt-3">
+          <div className="space-y-3">
+            {d.mode === 'custom' && <CharityPartsCard t={t} d={d} set={set} secTitle={secTitle} keys={CHARITY_PART_KEYS.filter((k) => k !== 'month')} />}
+            <CharityLabelsCard t={t} d={d} set={set} secTitle={secTitle} />
+          </div>
+          <CharityCssCard t={t} d={d} set={set} secTitle={secTitle} />
         </div>
       )}
 
