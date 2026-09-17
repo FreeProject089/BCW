@@ -68,6 +68,12 @@ import { AdminPolls } from './admin-polls.jsx';
 import { RaceConfig } from './admin-race.jsx';
 import { GUIDE, guideEntryForTab } from './admin-guide.jsx';
 import { handoffKey, studioPath } from '../lib/studio-page.js';
+import { buildDownbar } from '../ui/mobilebar-items.js';
+// Two screens that outgrew this file. Both were lifted out whole rather than rewritten:
+// the feedback centre gained crash grouping, the messages screen gained an inbox.
+import { AdminFeedbackCentre } from './admin-feedback.jsx';
+import AdminMessagesScreen from './admin-messages.jsx';
+import { AdminTasks, TASKS_TAB_ICON } from './admin-tasks.jsx';
 import { ADMIN_SCREENS_REF } from '../lib/admin-screens-ref.js';
 import { AdminReactions } from './admin-reactions.jsx';
 import AdminGuide from './admin-guide.jsx';
@@ -234,6 +240,9 @@ export function Admin() {
     // added. The numbers belong on the tabs where the work is actually done; this tab answers
     // "what is waiting", not "how much".
     isMod && { id: 'needs', label: t('adm.tab.needs', 'Needs attention'), icon: BellIcon },
+    // Beside the queues, because it is one: the difference is that the rows on this one
+    // have somebody's name on them.
+    isMod && { id: 'tasks', label: t('adm.tab.tasks', 'Tasks'), icon: TASKS_TAB_ICON },
     isMod && { id: 'moderation', label: t('adm.tab.moderation', 'Moderation'), icon: ShieldAlert,
       sub: [
         { id: 'moderation', label: t('adm.tab.submissions', 'Submissions'), icon: Inbox, badge: queue.length || undefined },
@@ -439,7 +448,9 @@ export function Admin() {
           {review && <SubmissionReview sub={review} onClose={() => setReview(null)} onApprove={() => { approve(review); setReview(null); }} onReject={() => { reject(review); setReview(null); }} reload={subs.reload} />}
         </div>}
         {s === 'needs' && <AdminNeedsAttention data={pending.data} loading={pending.loading} onReload={pending.reload} />}
-        {s === 'messages' && <><AdminMessages /><AdminThreads /></>}
+        {s === 'tasks' && <AdminTasks />}
+        {/* The new screen renders AdminThreads itself, under its policy card. */}
+        {s === 'messages' && <AdminMessagesScreen />}
         {s === 'lookalikes' && <AdminMediaFlags />}
         {s === 'legal' && <AdminLegal />}
         {s === 'users' && <AdminUsers />}
@@ -482,7 +493,7 @@ export function Admin() {
         {s === 'bot' && <AdminBot />}
         {s === 'analytics' && <AdminAnalytics />}
         {s === 'errors' && <AdminErrors />}
-        {s === 'feedback' && <AdminFeedback />}
+        {s === 'feedback' && <AdminFeedbackCentre />}
         {s === 'goals' && <AdminGoals />}
         {s === 'projects' && <AdminProjects />}
         {s === 'assets' && <AdminAssets />}
@@ -10468,100 +10479,9 @@ function AdminLegal() {
   );
 }
 
-function AdminMessages() {
-  const toast = useToast(); const { t } = useI18n();
-  const { data, loading, reload } = useAsync(() => api.get('/admin/contact'), []);
-  const undo = useUndoableDelete(reload);
-  const [sp, setSp] = useSearchParams();
-  // The attention digest links straight here with ?k=legal, so the counter that said
-  // "2 waiting" lands on those two rather than on everything ever sent.
-  const filter = sp.get('k') || 'all';
-  const setFilter = (k) => { const n = new URLSearchParams(sp); if (k === 'all') n.delete('k'); else n.set('k', k); setSp(n, { replace: true }); };
-  const all = (data?.messages || []).filter((m) => !undo.pending.has(m.id));
-  const bucket = (m) => (MSG_KINDS[m.kind]?.legal ? 'legal' : MSG_KINDS[m.kind]?.data ? 'data' : 'other');
-  const msgs = filter === 'all' ? all : all.filter((m) => bucket(m) === filter);
-  const countOf = (k) => all.filter((m) => bucket(m) === k && !m.readAt).length;
-  const markRead = async (m) => { if (m.readAt) return; try { await api.post(`/admin/contact/${m.id}/read`); reload(); } catch {} };
-  const del = (m) => undo.del(m.id, () => api.del(`/admin/contact/${m.id}`), t('common.deleted', 'Deleted.'));
-  if (loading) return <Loading />;
-  const TABS = [
-    ['all', t('am.f.all', 'Everything'), all.filter((m) => !m.readAt).length],
-    ['legal', t('am.f.legal', 'Legal notices'), countOf('legal')],
-    ['data', t('am.f.data', 'Data requests'), countOf('data')],
-    ['other', t('am.f.other', 'Everything else'), countOf('other')],
-  ];
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="font-semibold flex items-center gap-2"><Mail size={16} className="text-[var(--accent-ink)]" /> {t('am.title', 'Contact messages')} {data?.unread > 0 && <Badge tone="amber">{t('am.new', '{n} new').replace('{n}', data.unread)}</Badge>}</h2>
-        <Button size="sm" variant="ghost" onClick={reload}><RefreshCw size={14} /> {t('am.refresh', 'Refresh')}</Button>
-      </div>
-      {/* Unread count per bucket, not total: a bucket with forty read messages and one
-          unread notice is a bucket you must open, and a bare total hides exactly that. */}
-      <div className="flex flex-wrap gap-1.5 mb-4">
-        {TABS.map(([k, label, n]) => (
-          <button key={k} type="button" onClick={() => setFilter(k)}
-            aria-current={filter === k ? 'true' : undefined}
-            className={`inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition ${
-              filter === k
-                ? 'border-[var(--primary)] text-[var(--text)] bg-[var(--surface-2)]'
-                : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--primary)]'
-            }`}>
-            {k === 'legal' && <Gavel size={12} />}
-            {label}
-            {n > 0 && <Badge tone={k === 'legal' ? 'error' : 'amber'}>{n}</Badge>}
-          </button>
-        ))}
-      </div>
-      {filter === 'legal' && <BlockedUrls t={t} />}
-      {filter === 'legal' && (
-        <Card className="p-3 mb-3 text-xs text-[var(--muted)] flex items-start gap-2">
-          <AlertTriangle size={14} className="text-error shrink-0 mt-0.5" />
-          {/* Says the deadline where the decision is made, not in a policy nobody rereads. */}
-          <span>{t('am.legal.note', 'These carry a clock: the DSA expects action without undue delay, and under the LCEN a notification in form is what makes us legally presumed to know. Answer with a reason either way — a removal and a refusal both need one.')}</span>
-        </Card>
-      )}
-      {msgs.length ? <div className="space-y-2">
-        {msgs.map((m) => (
-          <Card key={m.id} className={`p-4 ${m.readAt ? '' : MSG_KINDS[m.kind]?.legal ? 'border-error/40 bg-red-500/[0.04]' : 'border-[var(--ring)] bg-orange-500/[0.03]'}`} onMouseEnter={() => markRead(m)}>
-            <div className="flex items-start gap-3">
-              <span className="grid place-items-center w-9 h-9 rounded-lg bg-[var(--surface-2)] shrink-0">
-                {MSG_KINDS[m.kind]?.legal
-                  ? <Gavel size={15} className="text-error" />
-                  : <MessageSquare size={15} className="text-[var(--accent-ink)]" />}
-              </span>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-medium">{m.name}</span>
-                  {MSG_KINDS[m.kind] && <Badge tone={MSG_KINDS[m.kind].tone || undefined}>{MSG_KINDS[m.kind].label(t)}</Badge>}
-                  <a href={`mailto:${m.email}`} className="text-xs text-[var(--accent-ink)] hover:underline">{m.email}</a>
-                  {m.user && <Badge tone="primary"><Users size={9} /> {m.user.displayName}</Badge>}
-                  {!m.readAt && <Badge tone="amber">{t('am.newbadge', 'new')}</Badge>}
-                  <span className="text-xs text-[var(--faint)] ms-auto">{new Date(m.createdAt).toLocaleString()}</span>
-                </div>
-                <div className="text-sm text-[var(--muted)] mt-1.5 break-words prose-sm"><Markdown>{m.body}</Markdown></div>
-                <div className="flex items-center gap-2 mt-2.5">
-                  <a href={`mailto:${m.email}?subject=${encodeURIComponent(t('am.replysubj', 'Re: your message to BetterCommunity'))}`}><Button size="sm"><Send size={13} /> {t('am.reply', 'Reply')}</Button></a>
-                  <Button size="sm" variant="ghost" onClick={() => del(m)}><Trash2 size={13} /> {t('am.delete', 'Delete')}</Button>
-                </div>
-              </div>
-            </div>
-          </Card>
-        ))}
-      </div> : (
-        // Filter-aware, because "No messages" under an active filter reads as an empty
-        // inbox when there are forty messages one click away.
-        <EmptyState icon={filter === 'legal' ? Gavel : Mail}
-          title={filter === 'all' ? t('am.none.t', 'No messages')
-            : filter === 'legal' ? t('am.none.legal', 'No legal notices')
-              : t('am.none.filtered', 'Nothing in this category')}
-          sub={filter === 'all' ? t('am.none.s', 'Contact-form submissions will appear here.')
-            : t('am.none.s2', '{n} message(s) in other categories.').replace('{n}', all.length)}
-          action={filter === 'all' ? null : { label: t('am.none.showall', 'Show every message'), icon: X, onClick: () => setFilter('all') }} />
-      )}
-    </div>
-  );
-}
+/* The contact inbox moved to pages/admin-messages.jsx: states, an assignee, a search,
+   and replies written in markdown. It renders AdminThreads below its policy card, so
+   nothing on this tab disappeared. */
 
 // Admin: configure the Discord bot + see its live status (heartbeat).
 // A tidy add/remove list of Discord channel IDs (replaces a raw textarea).
@@ -17757,203 +17677,11 @@ function AdminGoals() {
 // Client-error dashboard: uncaught errors + rejections grouped by message, with
 // occurrences, distinct sessions, first/last seen, and an expandable stack trace.
 /* ── Feedback & crash centre ──
-   One inbox per project for what apps post to /feedback/<project>: feedback, bug reports,
-   crash dumps. The left column is the list with its filters; the right one is the open item
-   (body, context, attachments, thread, reply). Settings for the project — switch, caps,
-   sampling, filters — fold under the header so an admin sees the queue first. */
-const FB_KIND_TONE = { feedback: 'success', bug: 'warning', crash: 'red' };
-const FB_STATUS_TONE = { new: 'red', triaged: 'warning', resolved: 'success', ignored: '' };
-function AdminFeedback() {
-  const { t } = useI18n(); const toast = useToast();
-  const [cfg, setCfg] = useState(null);
-  const [project, setProject] = useState(() => { try { return new URLSearchParams(location.search).get('p') || ''; } catch { return ''; } });
-  const [kind, setKind] = useState(''); const [status, setStatus] = useState('new'); const [version, setVersion] = useState(''); const [sort, setSort] = useState('severity');
-  const [q, setQ] = useState(''); const [qApplied, setQApplied] = useState(''); const [page, setPage] = useState(0);
-  const [open, setOpen] = useState(null); const [reply, setReply] = useState(''); const [busy, setBusy] = useState(false);
-  const [showSettings, setShowSettings] = useState(false); const [draft, setDraft] = useState(null); const [savingCfg, setSavingCfg] = useState(false);
-  const loadCfg = () => api.get('/admin/feedback/config').then((c) => { setCfg(c); if (!project) { const first = Object.keys(c.projects)[0] || c.knownProjects[0]?.key || ''; setProject(first); } }).catch(() => toast.error(t('common.failed', 'Failed.')));
-  useEffect(() => { loadCfg(); }, []); // eslint-disable-line
-  const qs = `project=${encodeURIComponent(project)}${kind ? `&kind=${kind}` : ''}${status ? `&status=${status}` : ''}${version ? `&version=${encodeURIComponent(version)}` : ''}${qApplied ? `&q=${encodeURIComponent(qApplied)}` : ''}&sort=${sort}&page=${page}`;
-  const { data, loading, reload } = useAsync(() => project ? api.get(`/admin/feedback?${qs}`) : Promise.resolve(null), [qs]);
-  const openItem = async (id) => { try { const r = await api.get(`/admin/feedback/${id}`); setOpen(r.item); setReply(''); } catch { toast.error(t('common.failed', 'Failed.')); } };
-  const setSt = async (id, st) => { setBusy(true); try { const r = await api.post(`/admin/feedback/${id}/status`, { status: st }); setOpen((o) => o && o.id === id ? { ...o, status: r.item.status } : o); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); } };
-  const send = async () => { if (!open || !reply.trim()) return; setBusy(true); try { const r = await api.post(`/admin/feedback/${open.id}/reply`, { body: reply.trim() }); toast.success(r.via === 'mail' ? t('fb.replied.mail', 'Sent by e-mail.') : t('fb.replied.thread', 'Posted in their dashboard thread.')); setReply(''); reload(); } catch (x) { toast.error(x.data?.error === 'no_channel' ? t('fb.nochannel', 'No way to reach this sender: no account and no e-mail.') : x.data?.error === 'mail_failed' ? t('fb.mailfail', 'The mail could not be sent.') : t('common.failed', 'Failed.')); } finally { setBusy(false); } };
-  const del = async (id) => { if (!confirm(t('fb.del.confirm', 'Delete this report and its attachments?'))) return; try { await api.del(`/admin/feedback/${id}`); setOpen(null); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
-  // Settings draft: the project's block + the global limits, edited together, saved together.
-  const startEdit = () => { const pc = cfg.projects[project] || cfg.defaults.project; setDraft({ project: { ...cfg.defaults.project, ...pc, kinds: { ...cfg.defaults.project.kinds, ...(pc.kinds || {}) } }, limits: JSON.parse(JSON.stringify(cfg.limits)) }); setShowSettings(true); };
-  const saveCfg = async () => {
-    setSavingCfg(true);
-    try {
-      const projects = { ...cfg.projects, [project]: draft.project };
-      await api.put('/admin/feedback/config', { projects, limits: draft.limits });
-      toast.success(t('fb.cfg.saved', 'Saved.')); setShowSettings(false); await loadCfg();
-    } catch (x) { toast.error(t('fb.cfg.bad', 'Some value is out of range.') + (x.data?.detail?.path ? ` (${x.data.detail.path.join('.')})` : '')); }
-    finally { setSavingCfg(false); }
-  };
-  const pd = (k, v) => setDraft((d) => ({ ...d, project: { ...d.project, [k]: v } }));
-  const ld = (k, v) => setDraft((d) => ({ ...d, limits: { ...d.limits, [k]: v } }));
-  const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
-  const list = (v) => String(v || '').split(/[,\n]/).map((x) => x.trim()).filter(Boolean);
-  if (!cfg) return <div className="flex justify-center py-20 text-[var(--muted)]"><Spinner /></div>;
-  const pc = cfg.projects[project];
-  const projects = cfg.knownProjects;
-  const counts = data?.counts || {};
-  return (
-    <div className="space-y-4">
-      <div>
-        <h2 className="font-semibold flex items-center gap-2"><BugIcon size={16} className="text-[var(--accent-ink)]" /> {t('fb.title', 'Feedback & crashes')}</h2>
-        <p className="text-sm text-[var(--muted)] mt-0.5">{t('fb.sub', 'What apps send through the feedback centre: suggestions, bug reports, crash dumps, one inbox per project, answered from here.')}</p>
-      </div>
-      <div className="flex items-center gap-2 flex-wrap">
-        {projects.map((x) => <button key={x.key} onClick={() => { setProject(x.key); setPage(0); setOpen(null); setShowSettings(false); }} className={`px-3 py-1.5 rounded-lg text-sm border ${x.key === project ? 'bg-[var(--primary)] text-white border-transparent' : 'border-[var(--line)] hover:bg-[var(--surface-2)]'}`}>
-          {x.name} {cfg.projects[x.key]?.enabled ? <span className="inline-block w-1.5 h-1.5 rounded-full bg-[var(--success)] ms-1 align-middle" /> : <span className="text-[10px] text-[var(--faint)] ms-1">{t('fb.off', 'off')}</span>}
-        </button>)}
-        <div className="flex-1" />
-        <Button size="sm" variant={showSettings ? 'primary' : 'default'} onClick={() => showSettings ? setShowSettings(false) : startEdit()}><Sliders size={14} /> {t('fb.settings', 'Project settings & limits')}</Button>
-      </div>
-      {!pc?.enabled && !showSettings && <Card className="p-4 text-sm text-[var(--muted)] flex items-center gap-3"><AlertTriangle size={16} className="text-[var(--warning)] shrink-0" /> {t('fb.disabled', 'This project does not accept reports yet — open the settings and switch it on. Apps get a clean “not enabled” answer meanwhile, nothing breaks on their side.')}</Card>}
-      {/* What is waiting, at a glance: new by kind — crashes first, since a crash is the one
-          somebody could not work around — plus the age of the oldest untriaged one. */}
-      {pc?.enabled && data && (() => {
-        const items = data.items || [];
-        const news = items.filter((f) => f.status === 'new');
-        const oldest = news.length ? news[news.length - 1] : null;
-        const by = (k) => news.filter((f) => f.kind === k).length;
-        const tiles = [
-          ['crash', by('crash'), 'red', 'bg-error'], ['bug', by('bug'), 'warning', 'bg-warning'], ['feedback', by('feedback'), 'success', 'bg-success'],
-        ];
-        return (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            {tiles.map(([k, n, tone, bar]) => { const active = kind === k && status === 'new'; return (
-              <button key={k} type="button" onClick={() => { setKind(k); setStatus('new'); setPage(0); }}
-                className={`fb-prio relative overflow-hidden rounded-xl border pl-4 pr-3 py-2.5 text-left transition hover:bg-[var(--surface-2)] ${active ? 'border-[var(--primary)] bg-[var(--primary)]/[0.04]' : n ? 'border-[var(--line-strong)]' : 'border-[var(--line)]'}`}>
-                <span aria-hidden="true" className={`absolute left-0 top-0 bottom-0 w-1 ${n ? bar : 'bg-[var(--line)]'}`} />
-                <div className="text-[10.5px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t(`fb.kind.${k}`, k)} · {t('fb.st.new', 'new')}</div>
-                <div className={`text-2xl font-extrabold tabular-nums leading-tight ${n ? `text-${tone}` : 'text-[var(--faint)]'}`}>{n}</div>
-              </button>
-            ); })}
-            <div className="relative overflow-hidden rounded-xl border border-[var(--line)] pl-4 pr-3 py-2.5">
-              <span aria-hidden="true" className="absolute left-0 top-0 bottom-0 w-1 bg-[var(--line)]" />
-              <div className="text-[10.5px] font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1"><Clock size={11} /> {t('fb.oldest', 'Oldest untriaged')}</div>
-              <div className="text-2xl font-extrabold tabular-nums leading-tight">{oldest ? fmtAgo(oldest.createdAt) : '—'}</div>
-            </div>
-          </div>
-        );
-      })()}
-      {showSettings && draft && <Card className="p-5 space-y-4">
-        <div className="grid md:grid-cols-2 gap-5">
-          <div className="space-y-3">
-            <div className="text-sm font-semibold">{t('fb.cfg.project', 'Project')} · <span className="font-mono">{project}</span></div>
-            <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={draft.project.enabled} onChange={(e) => pd('enabled', e.target.checked)} /> {t('fb.cfg.enabled', 'Accept reports for this project')}</label>
-            <div className="flex gap-4 text-sm">
-              {['feedback', 'bug', 'crash'].map((k) => <label key={k} className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={!!draft.project.kinds[k]} onChange={(e) => pd('kinds', { ...draft.project.kinds, [k]: e.target.checked })} /> {t(`fb.kind.${k}`, k)}</label>)}
-            </div>
-            <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={draft.project.requireContact} onChange={(e) => pd('requireContact', e.target.checked)} /> {t('fb.cfg.contact', 'Anonymous senders must give an e-mail')}</label>
-            <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={draft.project.openThread} onChange={(e) => pd('openThread', e.target.checked)} /> {t('fb.cfg.thread', 'Linked senders get a thread in Messages & reports')}</label>
-            <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={draft.project.mailFallback} onChange={(e) => pd('mailFallback', e.target.checked)} /> {t('fb.cfg.mail', 'Anonymous senders with an e-mail get a confirmation + replies by mail')}</label>
-            <details className="rounded-xl border border-[var(--line)] p-3">
-            <summary className="cursor-pointer text-sm font-medium">{t('fb.cfg.advanced', 'Advanced, caps, sampling, filters')}</summary>
-            <div className="grid grid-cols-2 gap-3 mt-3">
-              <Field label={t('fb.cfg.sampling', 'Crash sampling (% kept)')}><Input type="number" min="0" max="100" value={draft.project.crashSampling} onChange={(e) => pd('crashSampling', num(e.target.value))} /></Field>
-              <Field label={t('fb.cfg.dedupe', 'Dedupe window (min)')}><Input type="number" min="0" value={draft.project.dedupeMinutes} onChange={(e) => pd('dedupeMinutes', num(e.target.value))} /></Field>
-              <Field label={t('fb.cfg.bodykb', 'Max text (KB)')}><Input type="number" min="1" value={draft.project.maxBodyKB} onChange={(e) => pd('maxBodyKB', num(e.target.value))} /></Field>
-              <Field label={t('fb.cfg.attachmb', 'Max attachments total (MB)')}><Input type="number" min="0" value={draft.project.maxAttachMB} onChange={(e) => pd('maxAttachMB', num(e.target.value))} /></Field>
-              <Field label={t('fb.cfg.attachn', 'Max attachments (count)')}><Input type="number" min="0" value={draft.project.maxAttachments} onChange={(e) => pd('maxAttachments', num(e.target.value))} /></Field>
-              <Field label={t('fb.cfg.minver', 'Minimum app version')}><Input value={draft.project.minVersion} onChange={(e) => pd('minVersion', e.target.value)} placeholder="1.4.0" /></Field>
-            </div>
-            <Field label={t('fb.cfg.blockedver', 'Refused versions (comma-separated)')}><Input value={draft.project.blockedVersions.join(', ')} onChange={(e) => pd('blockedVersions', list(e.target.value))} placeholder="1.3.2, 1.3.3" /></Field>
-            <Field label={t('fb.cfg.blockedwords', 'Refused words (comma-separated, matched in title + text)')}><Input value={draft.project.blockedWords.join(', ')} onChange={(e) => pd('blockedWords', list(e.target.value))} /></Field>
-            </details>
-          </div>
-          <div className="space-y-3">
-            <div className="text-sm font-semibold">{t('fb.cfg.limits2', 'Feedback rate limits (all projects)')}</div>
-            <p className="text-xs text-[var(--muted)]">{t('fb.cfg.limits.d2', 'How many reports the feedback endpoint accepts. The platform-wide API ceilings (every route, per IP and per account) are on the Public API screen → Limits; attachment retention is in Hosting settings → Feedback storage.')}</p>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label={t('fb.cfg.perip', 'Feedback per IP')}><Input type="number" min="0" value={draft.limits.perIp.max} onChange={(e) => ld('perIp', { ...draft.limits.perIp, max: num(e.target.value) })} /></Field>
-              <Field label={t('fb.cfg.window', 'per window (min)')}><Input type="number" min="1" value={draft.limits.perIp.windowMin} onChange={(e) => ld('perIp', { ...draft.limits.perIp, windowMin: num(e.target.value) })} /></Field>
-              <Field label={t('fb.cfg.peracct', 'Feedback per account')}><Input type="number" min="0" value={draft.limits.perAccount.max} onChange={(e) => ld('perAccount', { ...draft.limits.perAccount, max: num(e.target.value) })} /></Field>
-              <Field label={t('fb.cfg.window', 'per window (min)')}><Input type="number" min="1" value={draft.limits.perAccount.windowMin} onChange={(e) => ld('perAccount', { ...draft.limits.perAccount, windowMin: num(e.target.value) })} /></Field>
-              <Field label={t('fb.cfg.peranon', 'Feedback per IP, unrecognised sender')} hint={t('fb.cfg.peranon.d', 'On top of the per-IP limit above, for senders we cannot tie to an account. 0 = no extra limit.')}><Input type="number" min="0" value={draft.limits.perAnonIp?.max ?? 4} onChange={(e) => ld('perAnonIp', { ...(draft.limits.perAnonIp || { windowMin: 60 }), max: num(e.target.value) })} /></Field>
-              <Field label={t('fb.cfg.window', 'per window (min)')}><Input type="number" min="1" value={draft.limits.perAnonIp?.windowMin ?? 60} onChange={(e) => ld('perAnonIp', { ...(draft.limits.perAnonIp || { max: 4 }), windowMin: num(e.target.value) })} /></Field>
-              <Field label={t('fb.cfg.perday', 'Feedback per project per day')}><Input type="number" min="0" value={draft.limits.perProjectDay} onChange={(e) => ld('perProjectDay', num(e.target.value))} /></Field>
-            </div>
-            <div className="flex flex-wrap gap-2 pt-1">
-              <Link to="/admin?s=api" className="text-xs text-[var(--accent-ink)] hover:underline">{t('fb.cfg.gotoapi', 'API ceilings → Public API')}</Link>
-              <Link to="/admin?s=hostingsettings" className="text-xs text-[var(--accent-ink)] hover:underline">{t('fb.cfg.gotostorage', 'Attachment retention → Hosting settings')}</Link>
-            </div>
-          </div>
-        </div>
-        <div className="flex items-center gap-2"><Button variant="primary" disabled={savingCfg} onClick={saveCfg}>{savingCfg ? <Spinner /> : t('common.save', 'Save')}</Button><Button variant="ghost" onClick={() => setShowSettings(false)}>{t('common.cancel', 'Cancel')}</Button></div>
-      </Card>}
-      <div className="grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] gap-4 items-start">
-        <Card className="p-4 space-y-3">
-          <div className="flex items-center gap-2 flex-wrap">
-            {['new', 'triaged', 'resolved', 'ignored', ''].map((st) => <button key={st || 'all'} onClick={() => { setStatus(st); setPage(0); }} className={`px-2.5 py-1 rounded-lg text-xs border ${status === st ? 'bg-[var(--surface-2)] border-[var(--primary)]' : 'border-[var(--line)]'}`}>{st ? t(`fb.st.${st}`, st) : t('fb.st.all', 'all')} {st && counts[st] ? <span className="text-[var(--faint)]">· {counts[st]}</span> : null}</button>)}
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <Select value={kind} onChange={(e) => { setKind(e.target.value); setPage(0); }} className="!w-auto"><option value="">{t('fb.kind.all', 'All kinds')}</option>{['feedback', 'bug', 'crash'].map((k) => <option key={k} value={k}>{t(`fb.kind.${k}`, k)}</option>)}</Select>
-            <Select value={version} onChange={(e) => { setVersion(e.target.value); setPage(0); }} className="!w-auto"><option value="">{t('fb.ver.all', 'All versions')}</option>{(data?.versions || []).filter((v) => v.version).map((v) => <option key={v.version} value={v.version}>{v.version} ({v.n})</option>)}</Select>
-            <Select value={sort} onChange={(e) => { setSort(e.target.value); setPage(0); }} className="!w-auto" title={t('fb.sort', 'Sort')}><option value="severity">{t('fb.sort.sev', 'By severity')}</option><option value="new">{t('fb.sort.new', 'Newest')}</option><option value="old">{t('fb.sort.old', 'Oldest')}</option></Select>
-            <form className="flex-1 min-w-[160px] flex gap-1" onSubmit={(e) => { e.preventDefault(); setQApplied(q.trim()); setPage(0); }}><Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('fb.search', 'Search title, text, e-mail, fingerprint')} /><Button size="sm">{t('common.search', 'Search')}</Button></form>
-          </div>
-          {/* Severity has no column to order on, so it ranks a bounded window in memory. Say so
-              when the window is smaller than the table, rather than letting the tail vanish. */}
-          {data?.windowed && (
-            <div className="mt-2 text-[11.5px] rounded-lg border border-[var(--line)] panel text-[var(--muted)] px-2.5 py-2 flex items-start gap-2">
-              <AlertTriangle size={13} className="shrink-0 mt-0.5 text-warning" />
-              <span>{t('fb.windowed', 'Sorting by severity ranks the {n} most recent of {all} reports. Switch to Newest or Oldest to page through all of them.').replace('{n}', data.windowSize).replace('{all}', data.totalAll)}</span>
-            </div>
-          )}
-          {loading ? <div className="py-10 flex justify-center text-[var(--muted)]"><Spinner /></div>
-            : !(data?.items || []).length ? <div className="py-10 text-center text-sm text-[var(--muted)]">{t('fb.empty', 'Nothing here.')}</div>
-            : <div className="space-y-1.5">
-              {data.items.map((f) => <button key={f.id} onClick={() => openItem(f.id)} className={`w-full text-start rounded-xl border pl-4 pr-3 py-2.5 hover:bg-[var(--surface-2)] relative overflow-hidden ${open?.id === f.id ? 'border-[var(--primary)]' : 'border-[var(--line)]'}`}>
-                <span aria-hidden="true" className={`absolute left-0 top-0 bottom-0 w-1 ${f.kind === 'crash' ? 'bg-error' : f.kind === 'bug' ? 'bg-warning' : 'bg-success'}`} />
-                <div className="flex items-center gap-2 flex-wrap"><Badge tone={FB_KIND_TONE[f.kind]}>{t(`fb.kind.${f.kind}`, f.kind)}</Badge><span className="font-medium text-sm truncate min-w-0 flex-1">{f.title || <span className="text-[var(--faint)]">{t('fb.untitled', '(untitled)')}</span>}</span>{f.count > 1 && <Badge>×{f.count}</Badge>}<Badge tone={FB_STATUS_TONE[f.status]}>{t(`fb.st.${f.status}`, f.status)}</Badge></div>
-                <div className="text-xs text-[var(--faint)] mt-0.5 flex items-center gap-2 flex-wrap"><span>{fmtAgo(f.createdAt)}</span>{f.appVersion && <span>· v{f.appVersion}</span>}{f.os && <span>· {f.os}</span>}<span>· {f.userName ? f.userName : f.email ? f.email : t('fb.anon', 'anonymous')}</span>{f.attachments.length > 0 && <span>· 📎 {f.attachments.length}</span>}</div>
-                <div className="text-xs text-[var(--muted)] mt-1 line-clamp-2">{f.body}</div>
-              </button>)}
-              {data.total > data.take && <div className="flex items-center justify-between text-xs text-[var(--muted)] pt-2"><Button size="sm" variant="ghost" disabled={page === 0} onClick={() => setPage(page - 1)}>‹</Button><span>{page * data.take + 1}–{Math.min(data.total, (page + 1) * data.take)} / {data.total}</span><Button size="sm" variant="ghost" disabled={(page + 1) * data.take >= data.total} onClick={() => setPage(page + 1)}>›</Button></div>}
-            </div>}
-        </Card>
-        <Card className="p-5 space-y-4 min-w-0">
-          {!open ? <div className="py-16 text-center text-sm text-[var(--muted)]">{t('fb.pick', 'Pick a report on the left.')}</div> : <>
-            <div className="flex items-start gap-3 flex-wrap">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap"><Badge tone={FB_KIND_TONE[open.kind]}>{t(`fb.kind.${open.kind}`, open.kind)}</Badge><Badge tone={FB_STATUS_TONE[open.status]}>{t(`fb.st.${open.status}`, open.status)}</Badge>{open.count > 1 && <Badge>×{open.count} {t('fb.dup', 'occurrences')}</Badge>}</div>
-                <h2 className="text-lg font-bold mt-1 break-words">{open.title || t('fb.untitled', '(untitled)')}</h2>
-                <div className="text-xs text-[var(--faint)] font-mono mt-0.5">{open.id}{open.fingerprint ? ` · ${open.fingerprint.slice(0, 16)}` : ''}</div>
-              </div>
-              <div className="flex items-center gap-1 flex-wrap">
-                {['triaged', 'resolved', 'ignored'].filter((x) => x !== open.status).map((st) => <Button key={st} size="sm" disabled={busy} onClick={() => setSt(open.id, st)}>{t(`fb.mark.${st}`, `Mark ${st}`)}</Button>)}
-                <Button size="sm" variant="ghost" className="text-[var(--error)]" onClick={() => del(open.id)}><Trash2 size={14} /></Button>
-              </div>
-            </div>
-            <div className="grid sm:grid-cols-2 gap-x-6 gap-y-1 text-xs">
-              <div><span className="text-[var(--faint)]">{t('fb.f.project', 'Project')}</span> · <span className="font-mono">{open.projectKey}</span></div>
-              <div><span className="text-[var(--faint)]">{t('fb.f.when', 'When')}</span> · {new Date(open.createdAt).toLocaleString()}</div>
-              <div><span className="text-[var(--faint)]">{t('fb.f.version', 'Version')}</span> · {open.appVersion || '—'}</div>
-              <div><span className="text-[var(--faint)]">{t('fb.f.os', 'OS')}</span> · {open.os || '—'}</div>
-              <div><span className="text-[var(--faint)]">{t('fb.f.sender', 'Sender')}</span> · {open.user ? <Link to={`/admin?s=users&q=${encodeURIComponent(open.user.email)}`} className="text-[var(--accent-ink)]">{open.user.displayName}</Link> : open.email || t('fb.anon', 'anonymous')}{open.creatorId ? <span className="font-mono text-[var(--faint)]"> · {open.creatorId}</span> : null}</div>
-              <div><span className="text-[var(--faint)]">{t('fb.f.thread', 'Thread')}</span> · {open.reportId ? <Link to={`/admin?s=reports&r=${open.reportId}`} className="text-[var(--accent-ink)]">{t('fb.f.openthread', 'open in Reports')}</Link> : open.email ? t('fb.f.bymail', 'replies go by e-mail') : t('fb.f.none', 'none (read-only)')}</div>
-            </div>
-            <pre className="text-sm whitespace-pre-wrap break-words bg-[var(--surface-2)] rounded-xl p-3 max-h-[50vh] overflow-auto">{open.body || t('fb.nobody', '(no text)')}</pre>
-            {open.attachments?.length > 0 && <div>
-              <div className="text-xs font-semibold text-[var(--faint)] uppercase tracking-wider mb-1.5">{t('fb.attachments', 'Attachments')}</div>
-              <div className="flex flex-wrap gap-2">{open.attachments.map((a) => <a key={a.i} href={`/api/admin/feedback/${open.id}/attachments/${a.i}`} className="inline-flex items-center gap-1.5 text-xs rounded-lg border border-[var(--line)] px-2.5 py-1.5 hover:bg-[var(--surface-2)]"><Download size={12} /> {a.name} <span className="text-[var(--faint)]">{(a.size / 1024).toFixed(0)} KB</span></a>)}</div>
-            </div>}
-            {open.meta && <details className="text-xs"><summary className="cursor-pointer text-[var(--muted)]">{t('fb.meta', 'Context (meta)')}</summary><pre className="mt-1 bg-[var(--surface-2)] rounded-xl p-3 overflow-auto max-h-64">{JSON.stringify(open.meta, null, 2)}</pre></details>}
-            {(open.reportId || open.email) && <div className="space-y-2 pt-2 border-t border-[var(--line)]">
-              <div className="text-sm font-semibold">{open.reportId ? t('fb.reply.thread', 'Reply in their thread') : t('fb.reply.mail', 'Reply by e-mail')}</div>
-              <Textarea rows={3} value={reply} onChange={(e) => setReply(e.target.value)} placeholder={t('fb.reply.ph', 'Thanks, could you tell us…')} />
-              <Button variant="primary" size="sm" disabled={busy || !reply.trim()} onClick={send}>{busy ? <Spinner /> : t('fb.reply.send', 'Send')}</Button>
-            </div>}
-          </>}
-        </Card>
-      </div>
-    </div>
-  );
-}
+   Moved to pages/admin-feedback.jsx, where it gained crash GROUPING: reports that are the
+   same crash collapse into one row by the normalised stack, and a bundle can be read on
+   the page instead of downloaded and opened elsewhere. The copy that used to live here was
+   left behind for a while and nothing rendered it, which is how the next person ends up
+   editing the screen nobody sees. */
 
 // A stack trace where OUR frames stand out.
 //
@@ -19935,7 +19663,7 @@ const pvSheet = 'flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-[
 // Live preview of the public topbar built from the editor's items — faithful to the real
 // component's styling (App.jsx). Desktop = the pill bar with a hover/click dropdown; mobile
 // = the hamburger sheet (tap a group to expand, tap the phone to reveal the sheet).
-function NavPreview({ items, lang, device, onEdit, utility = {}, projectsMode = 'inline', downbar = true, downbarDisplay = 'both', downbarItems = [], projects = [], layout: layoutProp }) {
+function NavPreview({ items, lang, device, onEdit, utility = {}, projectsMode = 'inline', downbar = true, downbarDisplay = 'both', downbarItems = [], downbarQuick = true, projects = [], layout: layoutProp }) {
   const layout = readLayout(layoutProp);
   const iconsOnly = layout.labels === 'icons';
   // Same flag, same name, same meaning as App.jsx. This preview has already drifted from the
@@ -20063,21 +19791,24 @@ function NavPreview({ items, lang, device, onEdit, utility = {}, projectsMode = 
         {!sheetOpen && <div className="text-[11px] text-[var(--faint)] text-center mt-2 flex items-center justify-center gap-1"><MousePointerClick size={11} /> {t('nav.pv.tap', 'Tap the menu to preview')}</div>}
         {/* The real phone gets a bottom tab bar too — home + the leading links (derived), or
             nothing when the admin turned it off. This is the part the old preview never showed. */}
+        {/* Drawn through buildDownbar, the same function the real bar calls.
+            This used to be a second copy of the derive rules living in a comment that said it
+            mirrored them, which is the failure this repo already has a scar from: the topbar
+            preview drifted until it showed "Log out" and "Sign in" together. A preview whose
+            rules are re-derived is a preview that will eventually lie, and the whole point of
+            this panel is that it does not. The preview shows the SIGNED-OUT bar, because that
+            is the one an admin can reason about without their own account's state in it. */}
         {downbar
           ? (() => {
-              // Mirror the real bar (App.jsx MobileTabBar): a link/primary needs an internal
-              // path, a dropup needs at least one valid child. Empty custom set → home + leaves.
-              const clean = (downbarItems || [])
-                .filter((it) => (it.kind === 'dropup' ? (it.children || []).some((c) => c && c.label && String(c.to || '').startsWith('/')) : String(it.to || '').startsWith('/')))
-                .slice(0, 5)
-                .map((it) => ({ kind: it.kind === 'primary' || it.kind === 'dropup' ? it.kind : 'link', icon: it.icon, label: it, custom: true }));
-              const barItems = clean.length ? clean : [{ home: true }, ...validLeaves];
+              const built = buildDownbar({ items, downbar: { enabled: true, display: downbarDisplay, quick: downbarQuick, items: downbarItems } }, { signedIn: false });
+              const barItems = built ? built.items : [];
               const showI = downbarDisplay !== 'text';
               const showT = downbarDisplay !== 'icon';
               return (
                 <div className="mt-2 rounded-2xl border border-[var(--line)] topbar flex items-stretch px-1 py-1">
                   {barItems.map((n, i) => {
-                    const lbl = n.home ? t('nav.home', 'Home') : (n.custom ? pvLabel(n.label, lang) : pvLabel(n, lang));
+                    // A configured slot carries label/labelFr; a built-in one carries a key.
+                    const lbl = n.k ? t(n.k, n.k.split('.').pop()) : pvLabel(n, lang);
                     if (n.kind === 'primary') return (
                       <div key={i} className="flex-1 flex flex-col items-center justify-start">
                         <span className="-mt-4 grid place-items-center w-9 h-9 rounded-full text-white shadow ring-4 ring-[var(--bg)]" style={{ background: 'var(--primary)' }}><NavPvIcon name={n.icon} size={16} /></span>
@@ -20086,7 +19817,7 @@ function NavPreview({ items, lang, device, onEdit, utility = {}, projectsMode = 
                     );
                     return (
                       <div key={i} className="flex-1 flex flex-col items-center justify-center py-1 text-[var(--muted)]">
-                        {showI && <span className="grid place-items-center w-8 h-6 relative"><NavPvIcon name={n.home ? 'home' : n.icon} size={16} />{n.kind === 'dropup' && <ChevronUp size={9} className="absolute -top-1 right-0" />}</span>}
+                        {showI && <span className="grid place-items-center w-8 h-6 relative"><NavPvIcon name={n.icon} size={16} />{n.kind === 'dropup' && <ChevronUp size={9} className="absolute -top-1 right-0" />}</span>}
                         {showT && <span className="text-[9px] leading-none mt-0.5 truncate max-w-[52px]" title={lbl}>{lbl}</span>}
                       </div>
                     );
@@ -20202,6 +19933,11 @@ function AdminNav() {
   const [downbarEnabled, setDownbarEnabled] = useState(true);  // mobile bottom tab bar on/off
   const [downbarDisplay, setDownbarDisplay] = useState('both'); // mobile bottom bar: 'icon' | 'text' | 'both'
   const [downbarItems, setDownbarItems] = useState([]);         // custom bottom-bar buttons; empty = follow the nav
+  // Search, notifications and "my space" on the derived bar. Opt-OUT (default true) so a site
+  // that has never opened this screen gets them: a phone had no way to reach the command
+  // palette at all, which is the gap they exist to close. An explicit custom `items` list
+  // still wins outright and nothing is injected into it.
+  const [downbarQuick, setDownbarQuick] = useState(true);
   const [layout, setLayout] = useState({ align: 'start', density: 'comfortable', labels: 'both', projectsMax: 6 }); // desktop topbar layout
   const [busy, setBusy] = useState(false);
   const [device, setDevice] = useState('desktop'); // preview device
@@ -20234,6 +19970,7 @@ function AdminNav() {
     setProjectsMode(n.projectsMode === 'dropdown' ? 'dropdown' : 'inline');
     setDownbarEnabled(n.downbar?.enabled !== false);
     setDownbarDisplay(n.downbar?.display === 'icon' || n.downbar?.display === 'text' ? n.downbar.display : 'both');
+    setDownbarQuick(n.downbar?.quick !== false);
     setDownbarItems(Array.isArray(n.downbar?.items) ? n.downbar.items.map((it) => ({ kind: it.kind === 'primary' || it.kind === 'dropup' ? it.kind : 'link', label: it.label || '', labelFr: it.labelFr || '', to: it.to || '/', icon: it.icon || 'Boxes', children: (it.children || []).map((c) => ({ label: c.label || '', labelFr: c.labelFr || '', to: c.to || '/', icon: c.icon || 'Boxes' })) })) : []);
     setLayout(readLayout(n.layout));
   }, [loaded.data]);
@@ -20296,7 +20033,7 @@ function AdminNav() {
       })
       .filter((it) => (it.kind === 'dropup' ? it.children.length > 0 : it.to.startsWith('/')))
       .slice(0, 5);
-    return { enabled, items: out, utility, projectsMode, downbar: { enabled: downbarEnabled, display: downbarDisplay, items: dbItems }, layout };
+    return { enabled, items: out, utility, projectsMode, downbar: { enabled: downbarEnabled, display: downbarDisplay, quick: downbarQuick, items: dbItems }, layout };
   };
 
   // Deferred behind an undo window, like the blog/docs editors: the PUT is idempotent and we
@@ -20336,6 +20073,7 @@ function AdminNav() {
       if (parsed.projectsMode === 'dropdown' || parsed.projectsMode === 'inline') setProjectsMode(parsed.projectsMode);
       if (parsed.downbar && typeof parsed.downbar === 'object') {
         setDownbarEnabled(parsed.downbar.enabled !== false);
+        setDownbarQuick(parsed.downbar.quick !== false);
         if (parsed.downbar.display === 'icon' || parsed.downbar.display === 'text' || parsed.downbar.display === 'both') setDownbarDisplay(parsed.downbar.display);
         if (Array.isArray(parsed.downbar.items)) setDownbarItems(parsed.downbar.items.map((it) => ({ label: it.label || '', labelFr: it.labelFr || '', to: it.to || '/', icon: it.icon || 'Boxes' })));
       }
@@ -20401,7 +20139,7 @@ function AdminNav() {
             <button onClick={() => setDevice('mobile')} className={`px-2.5 py-1 text-xs flex items-center gap-1.5 ${device === 'mobile' ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)]'}`}><Smartphone size={13} /> {t('nav.pv.mobile', 'Mobile')}</button>
           </div>
         </div>
-        <div className="rounded-xl bg-[var(--bg)] p-4"><NavPreview items={items} lang={lang} device={device} utility={utility} projectsMode={projectsMode} downbar={downbarEnabled} downbarDisplay={downbarDisplay} downbarItems={downbarItems} layout={layout} projects={pinnedProjects} onEdit={device === 'desktop' ? editItem : undefined} /></div>
+        <div className="rounded-xl bg-[var(--bg)] p-4"><NavPreview items={items} lang={lang} device={device} utility={utility} projectsMode={projectsMode} downbar={downbarEnabled} downbarDisplay={downbarDisplay} downbarItems={downbarItems} downbarQuick={downbarQuick} layout={layout} projects={pinnedProjects} onEdit={device === 'desktop' ? editItem : undefined} /></div>
         {device === 'desktop' && items.length > 0 && <div className="text-[11px] text-[var(--faint)] mt-2 flex items-center gap-1"><MousePointerClick size={11} /> {t('nav.pv.edithint', 'Click any item in the preview to jump to its settings below.')}</div>}
       </Card>
 
@@ -20439,6 +20177,14 @@ function AdminNav() {
               {[['both', t('nav.downbar.both', 'Both')], ['icon', t('nav.downbar.icononly', 'Icons')], ['text', t('nav.downbar.textonly', 'Text')]].map(([v, lbl]) =>
                 <button key={v} type="button" onClick={() => setDownbarDisplay(v)} className={`px-3 py-1.5 text-xs ${downbarDisplay === v ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{lbl}</button>)}
             </div>
+          </div>
+
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="min-w-0">
+              <div className="font-medium text-sm">{t('nav.downbar.quick', 'Search, notifications and your space')}</div>
+              <div className="text-xs text-[var(--faint)]">{t('nav.downbar.quick.d', 'On the derived bar, a raised search button in the middle plus notifications and a link to your own pages. Off, the bar is only nav links. A custom set of buttons below ignores this either way.')}</div>
+            </div>
+            <button type="button" onClick={() => setDownbarQuick((v) => !v)} aria-pressed={downbarQuick} title={downbarQuick ? t('nav.util.hide', 'Hide') : t('nav.util.show', 'Show')} className={`w-11 h-6 rounded-full relative shrink-0 transition ${downbarQuick ? 'bg-[var(--primary)]' : 'bg-[var(--surface-3,var(--line))]'}`}><span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all ${downbarQuick ? 'left-[22px]' : 'left-0.5'}`} /></button>
           </div>
 
           <div>

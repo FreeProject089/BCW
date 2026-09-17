@@ -15,7 +15,7 @@ import {
   RotateCcw,
   BookOpen, Search, BellIcon, Inbox, Users, Shield, Settings2, Boxes, Newspaper, BadgeCheck,
   Server, CreditCard, Rocket, Megaphone, Sparkles, Wand2, KeyRound, MessageSquare, Cpu,
-  TrendingUp, Sliders, Navigation, Palette, Lock, History, Scale, Gavel, HardDrive, Languages,
+  TrendingUp, Sliders, Navigation, Palette, Lock, History, Scale, Gavel, HardDrive, Languages, ListTodo,
   Pencil, Plus, Trash2, Save, ChevronUp, ChevronDown, X, FileText, ChevronsDownUp, ChevronsUpDown, Info, AlertTriangle,
 } from 'lucide-react';
 import { Bug as BugIcon } from 'lucide-react';
@@ -56,6 +56,15 @@ export const GUIDE = [
           { en: 'A project accepts nothing until its switch is on (Project settings & limits). Apps get a clean “not enabled” answer meanwhile — BMM keeps the report locally and retries later.', fr: 'Un projet n’accepte rien tant que son interrupteur est éteint (Réglages du projet & limites). Les applis reçoivent une réponse « pas activé » propre — BMM garde le rapport en local et réessaie plus tard.' },
           { en: 'Essentials are on top (kinds, contact rule, thread, mail); caps, crash sampling, version and word filters are under Advanced. The platform-wide API ceilings live on Public API → Limits, attachment retention in Hosting settings → Feedback storage.', fr: 'L’essentiel est en haut (genres, règle de contact, fil, mail) ; plafonds, échantillonnage des plantages, filtres de version et de mots sont sous Avancé. Les plafonds API globaux sont dans API publique → Limites, la rétention des pièces jointes dans Réglages d’hébergement → Stockage des retours.' },
           { en: 'Resolved or ignored closes the sender’s thread with a line saying so; the “Needs attention” digest counts new reports only.', fr: 'Résolu ou ignoré ferme le fil de l’expéditeur avec une ligne qui le dit ; le résumé « À traiter » ne compte que les nouveaux rapports.' },
+        ]),
+      G('tasks', ListTodo, 'Tasks', 'Tâches',
+        'Work with somebody’s name on it. A task has a state, a priority, a body written in markdown and a history of everything that happened to it. Teams group the people who do the work, each with one chief who dispatches inside their own team; an admin dispatches across teams.',
+        'Du travail qui porte le nom de quelqu’un. Une tâche a un état, une priorité, un corps écrit en markdown et l’historique de tout ce qui lui est arrivé. Les équipes regroupent ceux qui font le travail, chacune avec un seul chef qui répartit dans son équipe ; un admin répartit entre les équipes.',
+        [
+          { en: 'The chief is a column on the TEAM, not a role on a membership row, so "exactly one chief" is something the database holds rather than something three routes have to remember.', fr: 'Le chef est une colonne de l’ÉQUIPE, pas un rôle sur une ligne d’appartenance : « un seul chef » est donc un fait tenu par la base, et non une règle que trois routes doivent se rappeler.' },
+          { en: 'A member who leaves has their UNFINISHED tasks released back to the team and the chief is told. Finished tasks keep their name for ever, because a closed task records who did the work.', fr: 'Quand un membre part, ses tâches NON terminées retournent à l’équipe et le chef est prévenu. Les tâches terminées gardent son nom pour toujours : une tâche close enregistre qui a fait le travail.' },
+          { en: 'Dissolving a team does not delete its tasks: the open ones become unassigned and unfiled, for an admin to re-file.', fr: 'Dissoudre une équipe ne supprime pas ses tâches : les ouvertes deviennent non attribuées et sans équipe, à reclasser par un admin.' },
+          { en: 'Being named on a task notifies you in a category nobody can mute. Work your chief just handed you is not something the site sent you unasked.', fr: 'Être nommé sur une tâche déclenche une notification dans une catégorie que personne ne peut couper. Le travail que ton chef vient de te confier n’est pas un message non sollicité.' },
         ]),
       G('moderation', Inbox, 'Moderation', 'Modération',
         'Submissions, Reports, Messages, Legal and Sanctions. Submissions are new catalogue/repo/project requests awaiting review; approving one creates the page UNPUBLISHED and unlisted — approval is a place in the queue, not going live.',
@@ -288,6 +297,7 @@ export const GUIDE = [
  */
 export const GUIDE_TABS = {
   needs: ['needs'],
+  tasks: ['tasks'],
   moderation: ['moderation', 'reports', 'rights', 'lookalikes', 'messages', 'legal', 'sanctions'],
   feedback: ['feedback'],
   users: ['users', 'planusers'],
@@ -326,6 +336,19 @@ export const guideEntryForTab = (tab) => TAB_TO_ENTRY.get(tab) || null;
 // crowd the screens themselves now live — the screen keeps the control, the guide keeps the
 // manual. Every entry has both lists, so no page of the guide is a title and two lines.
 const GUIDE_MORE = {
+  tasks: {
+    steps: [
+      { en: 'Make a team first (admin only), name its chief, then add the people who do that kind of work.', fr: 'Crée d’abord une équipe (admin uniquement), nomme son chef, puis ajoute ceux qui font ce genre de travail.' },
+      { en: 'Write the task: a title, the body in markdown, a priority and a due date. Leave it unassigned to put it in the team’s pool.', fr: 'Écris la tâche : un titre, le corps en markdown, une priorité et une échéance. Laisse-la non attribuée pour la mettre dans la réserve de l’équipe.' },
+      { en: 'The chief assigns it to somebody in their team; an admin can assign across teams, which clears the assignee when the team changes.', fr: 'Le chef l’attribue à quelqu’un de son équipe ; un admin peut l’attribuer entre équipes, ce qui retire la personne quand l’équipe change.' },
+      { en: 'The assignee moves it through todo, in progress, blocked and done, and can release it back to the pool. Notes are the conversation on it.', fr: 'La personne la fait passer par à faire, en cours, bloquée et faite, et peut la rendre à la réserve. Les notes sont la conversation autour d’elle.' },
+    ],
+    traps: [
+      { en: 'An assignee cannot CANCEL a task, only release it. Cancelling is a decision about whether the work should happen, which belongs to the chief or an admin.', fr: 'La personne assignée ne peut pas ANNULER une tâche, seulement la rendre. Annuler, c’est décider si le travail doit avoir lieu : cela revient au chef ou à un admin.' },
+      { en: 'A staff team is not the Teams a customer buys. Those are billing objects with owners and paid slots; this one is a work roster.', fr: 'Une équipe du staff n’est pas une Équipe achetée par un client. Celles-là sont des objets de facturation avec un propriétaire et des places payées ; celle-ci est une liste de travail.' },
+      { en: 'Deleting a task destroys its history and is admin-only. Cancelling keeps the record of what was decided and by whom.', fr: 'Supprimer une tâche détruit son historique et est réservé aux admins. Annuler garde la trace de ce qui a été décidé, et par qui.' },
+    ],
+  },
   needs: {
     steps: [
       { en: 'Open it first thing: each row is one queue with a count of what is waiting.', fr: 'Ouvre-le en premier : chaque ligne est une file avec le nombre d’éléments en attente.' },

@@ -5304,6 +5304,7 @@ const DICT = {
     'nav.downbar.display': 'Affichage de chaque bouton',
     'nav.downbar.display.d': 'Icônes seules, texte seul, ou les deux.',
     'nav.downbar.both': 'Les deux', 'nav.downbar.icononly': 'Icônes', 'nav.downbar.textonly': 'Texte',
+    'nav.downbar.quick': 'Recherche, notifications et ton espace', 'nav.downbar.quick.d': 'Sur la barre déduite : un bouton de recherche surélevé au centre, plus les notifications et un lien vers tes propres pages. Éteint, la barre ne contient que des liens de navigation. Un jeu de boutons personnalisé ci-dessous l’ignore de toute façon.',
     'nav.downbar.custom': 'Boutons personnalisés',
     'nav.downbar.custom.on': 'Exactement ces boutons, dans cet ordre. Chacun est un simple lien, le bouton central en avant, ou un menu qui s’ouvre vers le haut.',
     'nav.downbar.custom.off': 'Vide, la barre suit tes items de menu (accueil + les premiers liens).',
@@ -6564,6 +6565,9 @@ const DICT = {
     'apoll.copy': "Copier le lien",
 
     // Tableau des tâches du staff (onglet Admin « Tâches »).
+    // `adm.tab.tasks` est le libellé de l'onglet lui-même : il est ajouté ici pour que la
+    // ligne de nav à écrire dans admin.jsx soit traduite dès qu'elle existe.
+    'adm.tab.tasks': "Tâches",
     'atask.view.board': "Tableau", 'atask.view.teams': "Équipes",
     'atask.new': "Nouvelle tâche", 'atask.create': "Créer", 'atask.cancel': "Annuler", 'atask.save': "Enregistrer",
     'atask.saved': "Enregistré.", 'atask.close': "Fermer", 'atask.edit': "Modifier", 'atask.delete': "Supprimer",
