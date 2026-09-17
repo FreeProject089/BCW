@@ -1022,10 +1022,26 @@ export function Dashboard() {
                 : <TwoFactorNudge />;
             })()}
 
-            {/* NotificationsPanel writes its own heading (it needs the unread badge and the
-                mark-all / clear / centre controls beside it), so it is not wrapped. */}
-            <NotificationsPanel />
+            {/* Two columns from lg, and the reading order is unchanged at every width.
+                Measured at 1280: the overview was six full-width bands in an 876px column,
+                1205px of content stacked vertically with each band using a third of its own
+                width — four chips across 876px, two tiles across 876px — so "What you own"
+                began at y=826, below the fold of a 900px window, under onboarding and the
+                notification list. The rail carries what is merely NEWS (the notifications)
+                beside the two blocks you came for, instead of above them.
 
+                `lg:col-start-*` / `lg:row-start-1` rather than DOM order: on a phone this is
+                one column and the source order is the reading order (what just happened, then
+                what you own), which is the order the previous pass settled on and which the
+                two-column version must not quietly reverse. */}
+            <div className="grid gap-6 sm:gap-8 lg:grid-cols-[minmax(0,1fr)_300px] lg:items-start">
+              {/* NotificationsPanel writes its own heading (it needs the unread badge and the
+                  mark-all / clear / centre controls beside it), so it is not wrapped. */}
+              <aside className="min-w-0 lg:col-start-2 lg:row-start-1">
+                <NotificationsPanel />
+              </aside>
+
+              <div className="min-w-0 space-y-6 sm:space-y-8 lg:col-start-1 lg:row-start-1">
             <OverviewSection icon={Boxes} title={t('dash.sec.own', 'What you own')}>
               {/* One column on a phone. Two 3xl numbers side by side at 360px left the caption
                   under each of them breaking every second word; the row shape (number, label,
@@ -1052,7 +1068,11 @@ export function Dashboard() {
             </OverviewSection>
 
             <OverviewSection icon={Zap} title={t('dash.sec.do', 'Start something')}>
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              {/* Two columns at every width, not four from lg: this block now lives in the
+                  552px main column, where four tiles would be 126px each and "Submit content"
+                  does not fit in 126px. Two of them pair with the two cards above, so the
+                  column reads as one 2x2 board. */}
+              <div className="grid grid-cols-2 gap-3">
                 {actions.map((a) => (
                   <Link key={a.label} to={a.to} className="card card-hover p-4 flex items-center gap-2.5">
                     <span className="grid place-items-center w-9 h-9 rounded-lg bg-gradient-to-br from-brand to-brand-2 shrink-0"><a.icon size={16} className="text-white" /></span>
@@ -1061,6 +1081,8 @@ export function Dashboard() {
                 ))}
               </div>
             </OverviewSection>
+              </div>
+            </div>
 
             {/* The record, not a task: what Discord has earned and what has been bought.
                 The condition below is EconomyWidget's own, re-evaluated on the copy of

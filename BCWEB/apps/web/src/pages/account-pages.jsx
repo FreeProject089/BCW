@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { BadgeCheck, Lock, Cookie, Palette, Shield, CheckCircle2, XCircle, Eye, Globe, Mail, Orbit, Package, Server, ShieldCheck, Sliders, Sparkles, Users, Undo2, LogOut, AlertTriangle } from 'lucide-react';
-import { Button, Card, PageHeader, Select, Spinner, useToast, useDialog } from '../ui/ui.jsx';
+import { Button, Card, Explain, PageHeader, Select, Spinner, useToast, useDialog } from '../ui/ui.jsx';
 import { fxPref, setFxPref, prefersReducedMotion } from '../lib/fx-pref.js';
 import { useI18n } from '../i18n.jsx';
 import { useTheme } from '../ui/theme.jsx';
@@ -53,11 +53,15 @@ function TelemetryRequests({ Row }) {
     } finally { setBusy(''); }
   };
   return (
-    <Row icon={Package} title={t('set.tele', 'BMM telemetry, my data')} desc={t('set.tele.d', 'Opt-in usage telemetry sent by Better Mods Manager, keyed by the creator id of each install you linked. Get a copy of everything held under it, or have it erased.')}>
-      <div className="flex flex-col gap-1.5 items-end">
+    <Row icon={Package} title={t('set.tele', 'BMM telemetry, my data')} stack
+      more={t('set.tele.d', 'Opt-in usage telemetry sent by Better Mods Manager, keyed by the creator id of each install you linked. Get a copy of everything held under it, or have it erased.')}>
+      {/* One line per linked install, each one a name and two buttons. It is the widest
+          control on the page, which is why it gets its own line: beside the title it left
+          the explanation 25px of width on a phone. */}
+      <div className="flex flex-col gap-1.5 items-stretch sm:items-end">
         {links.map((l) => (
-          <div key={l.id} className="flex items-center gap-1.5">
-            <span className="font-mono text-[11px] text-[var(--muted)]" title={l.creatorId}>{l.displayName || l.creatorId.slice(0, 10) + '…'}</span>
+          <div key={l.id} className="flex items-center gap-1.5 min-w-0">
+            <span className="font-mono text-[11px] text-[var(--muted)] truncate min-w-0 flex-1 sm:flex-none" title={l.creatorId}>{l.displayName || l.creatorId.slice(0, 10) + '…'}</span>
             <Button size="sm" variant="ghost" loading={busy === `export:${l.creatorId}`} disabled={!!busy} onClick={() => file(l.creatorId, 'export')}>{t('set.tele.export', 'Export')}</Button>
             <Button size="sm" variant="danger" loading={busy === `delete:${l.creatorId}`} disabled={!!busy} onClick={() => file(l.creatorId, 'delete')}>{t('set.tele.erase', 'Erase')}</Button>
           </div>
@@ -97,11 +101,34 @@ export function Settings() {
   const applyGlass = (next) => { setGlass(next); setGlassPrefs(next); };
   const setUndo = (off) => { setUndoOff(off); setUndoDisabled(off); };
 
-  const Row = ({ icon: Icon, title, desc, children }) => (
-    <div className="flex items-center gap-3 py-3.5 border-b border-[var(--line)] last:border-0">
-      <span className="grid place-items-center w-9 h-9 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] shrink-0"><Icon size={16} className="text-[var(--accent-ink)]" /></span>
-      <div className="flex-1 min-w-0"><div className="text-sm font-medium">{title}</div>{desc && <div className="text-xs text-[var(--muted)] mt-0.5">{desc}</div>}</div>
-      <div className="shrink-0">{children}</div>
+  // One setting per line: the icon, the name and the control on the first line, and
+  // everything that EXPLAINS it underneath, across the card's whole width.
+  //
+  // The control used to share that flex line with the description, so any row whose control
+  // was wider than a 40px switch stole the text's width: measured on a 375px phone, the
+  // <Select> rows left the description 104px and the telemetry row left it 25px, which wraps
+  // one short word per line. Below the title it gets 283px on the same phone.
+  //
+  // `more` is the long half of an explanation, folded behind the house disclosure instead of
+  // standing in the page: "Always ask, even with Shift held" was a 301-character paragraph
+  // that made a single toggle 194px tall, on every visit, for everybody.
+  //
+  // `stack` gives the control its own line, for the one row whose control is not a switch but
+  // a list of buttons per linked install.
+  const Row = ({ icon: Icon, title, desc, more, stack = false, children }) => (
+    <div className="py-3 border-b border-[var(--line)] last:border-0">
+      <div className="flex items-center gap-3">
+        <span className="grid place-items-center w-9 h-9 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] shrink-0"><Icon size={16} className="text-[var(--accent-ink)]" /></span>
+        <div className="flex-1 min-w-0 text-sm font-medium">{title}</div>
+        {!stack && <div className="shrink-0">{children}</div>}
+      </div>
+      {(desc || more) && (
+        <div className="ps-12 mt-0.5 space-y-0.5">
+          {desc && <div className="text-xs text-[var(--muted)]">{desc}</div>}
+          {more && <Explain className="text-xs">{more}</Explain>}
+        </div>
+      )}
+      {stack && <div className="ps-12 mt-2">{children}</div>}
     </div>
   );
   const Switch = ({ on, onChange }) => (
@@ -152,18 +179,24 @@ export function Settings() {
           <Row icon={Sparkles} title={t('set.intro', 'Intro animation')} desc={t('set.intro.d', 'Play the orb intro on each page load.')}>
             <Switch on={!skipIntro} onChange={(v) => setIntro(!v)} />
           </Row>
-          <Row icon={Orbit} title={t('set.orb3d', '3D scene')} desc={t('set.orb3d.d', 'The WebGL shape behind the pages. Turning it off skips loading it entirely, lighter on an older machine, and on battery.')}>
+          <Row icon={Orbit} title={t('set.orb3d', '3D scene')} more={t('set.orb3d.d', 'The WebGL shape behind the pages. Turning it off skips loading it entirely, lighter on an older machine, and on battery.')}>
             <Switch on={!orbOff} onChange={(v) => setOrb(!v)} />
           </Row>
-          <Row icon={Orbit} title={t('set.orbtr', 'Orb page transitions')} desc={t('set.orbtr.d', 'On each navigation, the hero orb shatters and dives into a random shard, then rebuilds. Off by default.')}>
+          <Row icon={Orbit} title={t('set.orbtr', 'Orb page transitions')} more={t('set.orbtr.d', 'On each navigation, the hero orb shatters and dives into a random shard, then rebuilds. Off by default.')}>
             <Switch on={orbTransition} onChange={setOrbTr} />
           </Row>
           {/* Three states, not a switch — see the note that used to live here: "off" meant
               either you turned it off or your OS asks for reduced motion, so a switch lied.
               Automatic is the default and says when the OS is the one holding it back. */}
+          {/* The reduced-motion case stays ON the page rather than folding: it is the reason
+              the control looks switched off, and an answer you have to open is an answer
+              nobody reads. The ordinary description folds like its neighbours. */}
           <Row icon={Sparkles} title={t('set.fx', 'Event fireworks')}
             desc={fx === 'auto' && prefersReducedMotion()
               ? t('set.fx.reduced', 'Your system asks for reduced motion, so Automatic keeps these off. Choose On if you want them anyway.')
+              : null}
+            more={fx === 'auto' && prefersReducedMotion()
+              ? null
               : t('set.fx.d', 'Full-screen fireworks during a live event (New Year, national days…). The announcement badge still shows.')}>
             <Select className="!w-auto" value={fx} onChange={(e) => setFx(e.target.value)}>
               <option value="auto">{t('set.fx.auto', 'Automatic')}</option>
@@ -174,14 +207,14 @@ export function Settings() {
         </Group>
 
         <Group icon={Undo2} title={t('set.behaviour', 'Actions')}>
-          <Row icon={Undo2} title={t('set.undo', 'Undo window')} desc={t('set.undo.d', 'Saving, publishing and deleting wait a few seconds behind an “Undo” toast, so a mistake costs nothing. Turn this off to apply every action immediately.')}>
+          <Row icon={Undo2} title={t('set.undo', 'Undo window')} more={t('set.undo.d', 'Saving, publishing and deleting wait a few seconds behind an “Undo” toast, so a mistake costs nothing. Turn this off to apply every action immediately.')}>
             <Switch on={!undoOff} onChange={(v) => setUndo(!v)} />
           </Row>
-          <Row icon={LogOut} title={t('set.logoutconfirm', 'Ask before signing out')} desc={t('set.logoutconfirm.d', 'The sign-out button is an icon in the topbar, one mis-click from your profile, and with 2FA on, getting back in is not one click.')}>
+          <Row icon={LogOut} title={t('set.logoutconfirm', 'Ask before signing out')} more={t('set.logoutconfirm.d', 'The sign-out button is an icon in the topbar, one mis-click from your profile, and with 2FA on, getting back in is not one click.')}>
             <Switch on={logoutConfirm} onChange={(v) => { setLogoutConfirmState(v); setLogoutConfirm(v); }} />
           </Row>
           <Row icon={AlertTriangle} title={t('set.forceconfirm', 'Always ask, even with Shift held')}
-            desc={t('set.forceconfirm.d', 'Holding Shift while clicking normally answers a confirmation without showing it — clearing a queue is one decision, not forty. Turn this on to make every confirmation unskippable, which is what you want on a shared or supervised machine. It never applies to the prompts that ask you to type something.')}>
+            more={t('set.forceconfirm.d', 'Holding Shift while clicking normally answers a confirmation without showing it — clearing a queue is one decision, not forty. Turn this on to make every confirmation unskippable, which is what you want on a shared or supervised machine. It never applies to the prompts that ask you to type something.')}>
             <Switch on={forceConfirm} onChange={(v) => { setForceConfirmState(v); setForceConfirm(v); }} />
           </Row>
         </Group>

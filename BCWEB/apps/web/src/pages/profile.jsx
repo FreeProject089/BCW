@@ -155,28 +155,40 @@ export default function Profile() {
   };
 
   return (
-    <div className="max-w-4xl">
+    <div className="max-w-5xl mx-auto">
       <PageHeader icon={User} title={t('prof.title', 'Profile')} subtitle={t('prof.sub', 'Manage your account, avatar and password.')}
         actions={<Link to="/dashboard"><Button variant="ghost"><LayoutDashboard size={15} /> {t('prof.godash', 'Go to dashboard')}</Button></Link>} />
       <div className="grid md:grid-cols-[260px_minmax(0,1fr)] gap-6">
-        {/* avatar — sticky on desktop so it stays in view while scrolling the sections */}
-        <Card className="p-6 text-center self-start min-w-0 md:sticky md:top-20">
-          <Avatar variant={avatar.variant} seed={avatar.seed || user.id} colors={avatar.colors} image={avatar.image} size={120} className="mx-auto" />
-          <div className="font-semibold mt-3">{form.displayName || user.displayName}</div>
-          {user.bcId && <button onClick={() => { navigator.clipboard?.writeText(user.bcId); toast.success(t('prof.bcidcopied', 'BC id copied.')); }}
-            className="mt-1 inline-flex items-center gap-1 text-[11px] font-mono text-[var(--faint)] hover:text-[var(--accent-ink)] transition" title={t('prof.bcidcopy', 'Your unique BetterCommunity id, click to copy')}>
-            <Fingerprint size={11} /> {user.bcId} <Copy size={10} /></button>}
-          <div><Badge tone={user.role === 'SUPERADMIN' ? 'red' : user.role === 'ADMIN' ? 'amber' : 'primary'} className="mt-1">{user.role}</Badge></div>
+        {/* Who you are, then the studio that draws it — in that order, and the studio folded.
+            Measured before: this card was 780px tall on a 375px phone, so the tab strip began
+            at y=1140 and your own name and e-mail were a screen and a half below a wall of
+            avatar styles, palettes and swatches. An avatar is set once; an account is read
+            every visit. So the card keeps the identity (avatar, name, BC id, role) and the
+            photo buttons, and everything that GENERATES an avatar lives behind the house
+            disclosure — one line, open it when you came for it.
+            Sticky on desktop so it stays in view while scrolling the sections. */}
+        <Card className="p-5 self-start min-w-0 md:sticky md:top-20">
+          <div className="flex items-center gap-4 md:flex-col md:text-center md:gap-0">
+            <Avatar variant={avatar.variant} seed={avatar.seed || user.id} colors={avatar.colors} image={avatar.image} size={80} className="shrink-0" />
+            <div className="min-w-0 md:mt-3">
+              <div className="font-semibold truncate" title={form.displayName || user.displayName}>{form.displayName || user.displayName}</div>
+              {user.bcId && <button onClick={() => { navigator.clipboard?.writeText(user.bcId); toast.success(t('prof.bcidcopied', 'BC id copied.')); }}
+                className="mt-1 inline-flex items-center gap-1 max-w-full text-[11px] font-mono text-[var(--faint)] hover:text-[var(--accent-ink)] transition" title={t('prof.bcidcopy', 'Your unique BetterCommunity id, click to copy')}>
+                <Fingerprint size={11} className="shrink-0" /> <span className="truncate" title={user.bcId}>{user.bcId}</span> <Copy size={10} className="shrink-0" /></button>}
+              <div><Badge tone={user.role === 'SUPERADMIN' ? 'red' : user.role === 'ADMIN' ? 'amber' : 'primary'} className="mt-1">{user.role}</Badge></div>
+            </div>
+          </div>
 
           {/* custom photo */}
-          <div className="flex flex-wrap justify-center gap-1.5 mt-4">
+          <div className="flex flex-wrap md:justify-center gap-1.5 mt-4">
             <Button size="sm" disabled={uploading} onClick={pickPhoto}>{uploading ? <Spinner /> : <><ImagePlus size={14} /> {avatar.image ? t('prof.change', 'Change') : t('prof.uploadphoto', 'Upload photo')}</>}</Button>
             <Button size="sm" variant="ghost" disabled={!avatar.image} onClick={removePhoto}><Trash2 size={14} /> {t('prof.remove', 'Remove')}</Button>
           </div>
           {avatar.image && <div className="text-[11px] text-[var(--faint)] mt-2">{t('prof.customphoto', "Using a custom photo, the generated avatar below is hidden while it's set.")}</div>}
 
+          <Explain className="mt-3 text-[12px]" label={t('prof.avatarstudio', 'Draw a new avatar')}>
           <div className={avatar.image ? 'opacity-40 pointer-events-none' : ''}>
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)] mt-5 mb-1.5 text-start">{t('prof.style', 'Style')}</div>
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)] mt-2 mb-1.5 text-start">{t('prof.style', 'Style')}</div>
           <div className="grid grid-cols-3 gap-2">
             {VARIANTS.map((v) => (
               <button key={v} onClick={() => setAvatar((a) => ({ ...a, variant: v }))}
@@ -207,6 +219,7 @@ export default function Profile() {
           <Button size="sm" variant="ghost" className="w-full mt-1.5" onClick={randomize}><Shuffle size={14} /> {t('prof.randseed', 'Random seed')}</Button>
           </div>
           <Button size="sm" variant="ghost" className="w-full mt-3" onClick={exportZip}><FileArchive size={14} /> {t('prof.exportavatars', 'Export avatars (.zip)')}</Button>
+          </Explain>
         </Card>
 
         {/* Four tabs, not eleven stacked cards.
@@ -252,7 +265,9 @@ export default function Profile() {
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <div>
                 <div className="text-sm font-semibold flex items-center gap-2"><Eye size={15} className="text-[var(--accent-ink)]" /> {t('prof.visibility', 'Profile visibility')}</div>
-                <p className="text-xs text-[var(--muted)] mt-0.5">{t('prof.visibility.d', 'Public shows your name, badges, join date and public repos, never your email. Private: only you and staff.')}</p>
+                <Explain className="text-xs mt-0.5" summary={t('prof.visibility.lead', 'Your email is never shown either way.')}>
+                  {t('prof.visibility.d', 'Public shows your name, badges, join date and public repos, never your email. Private: only you and staff.')}
+                </Explain>
               </div>
               <div className="flex items-center gap-2">
                 <Link to={`/u/${user.id}`}><Button size="sm" variant="ghost"><ArrowRight size={14} /> {t('prof.viewpublic', 'View')}</Button></Link>
@@ -729,17 +744,23 @@ function CloseAccountCard() {
         </>
       ) : (
         <>
-          <p className="text-[13px] text-[var(--muted)] mt-1">
-            {t('acl.ready', 'Nothing is in the way. Closing takes {n} days, during which one click brings it all back. Your invoices and moderation records are kept either way — they are records about transactions, not about your profile.')
-              .replace('{n}', String(data.graceDays))}
-          </p>
-          {/* Said before the button, not in the confirmation: the two facts people get
-              wrong are that the grace period ends for good, and that coming back with the
-              same address is not a fresh start. Both are easier to accept than to discover. */}
-          <p className="text-[13px] text-[var(--muted)] mt-2">
-            {t('acl.final', 'After those {n} days it cannot be undone — there is no restore, and support cannot bring the account back. If you later sign up again with this same email address, we recognise it and reattach your history, including any moderation record; a different address starts genuinely fresh.')
-              .replace('{n}', String(data.graceDays))}
-          </p>
+          {/* Two paragraphs, 490 characters, on a card whose entire job is one button — and
+              nothing on this page is read less often. The lead keeps the fact that decides
+              whether you click at all (it is reversible for {n} days); the rest, which is
+              what people get wrong rather than what they need first, is one click away.
+              Still BEFORE the button, not in the confirmation: easier to accept than to
+              discover. */}
+          <Explain className="text-[13px] mt-1"
+            summary={t('acl.lead', 'Nothing is in the way. It closes in {n} days, and until then one click brings it all back.').replace('{n}', String(data.graceDays))}>
+            <p>
+              {t('acl.ready', 'Nothing is in the way. Closing takes {n} days, during which one click brings it all back. Your invoices and moderation records are kept either way — they are records about transactions, not about your profile.')
+                .replace('{n}', String(data.graceDays))}
+            </p>
+            <p>
+              {t('acl.final', 'After those {n} days it cannot be undone — there is no restore, and support cannot bring the account back. If you later sign up again with this same email address, we recognise it and reattach your history, including any moderation record; a different address starts genuinely fresh.')
+                .replace('{n}', String(data.graceDays))}
+            </p>
+          </Explain>
           <Button className="mt-3" disabled={busy} onClick={request}>{busy ? <Spinner /> : t('acl.start', 'Close my account…')}</Button>
         </>
       )}
@@ -824,9 +845,16 @@ function SessionsCard() {
     const body = { password: pw, code };
     try {
       if (pending === 'others') {
+        // undo: signing other devices out is the button you press BECAUSE somebody else is in
+        // your account, and a six-second undo window is six more seconds of their session. It
+        // is re-authenticated with a password (and a 2FA code when the account has one), so it
+        // is never a mis-click, and re-linking is simply signing in again on that device.
         const r = await api.del('/me/sessions', body);
         toast.success(t('prof.sess.revokedOthers', 'Signed out everywhere else.') + (r.revoked ? ' (' + r.revoked + ')' : ''));
       } else {
+        // undo: same as above — a deferred sign-out keeps a possibly hostile session alive for
+        // the length of the window, and this action is already gated behind a password and,
+        // when enabled, a 2FA code.
         await api.del('/me/sessions/' + pending, body);
         toast.success(t('prof.sess.revoked', 'Signed out on that device.'));
       }
@@ -1212,7 +1240,11 @@ function CreatorLinks() {
   return (
     <Card className="p-5">
       <div className="text-sm font-semibold mb-1 flex items-center gap-2"><Link2 size={15} className="text-[var(--accent-ink)]" /> {t('cid.title', 'Creator IDs')}</div>
-      <p className="text-xs text-[var(--muted)] mb-3">{t('cl.desc', "Link your BMM creator id(s). In BMM, generate a pairing code, then paste it here. One creator id links to one account; linked ids can't be unlinked for 2 weeks.")}</p>
+      {/* The how-to is one line and a disclosure, not a paragraph: somebody who has paired an
+          install once never needs to read it again. */}
+      <Explain className="text-xs mb-3" summary={t('cl.lead', 'Paste the pairing code BMM shows you.')}>
+        {t('cl.desc', "Link your BMM creator id(s). In BMM, generate a pairing code, then paste it here. One creator id links to one account; linked ids can't be unlinked for 2 weeks.")}
+      </Explain>
       {visible.length > 0 && <div className="space-y-2 mb-3">
         {visible.map((l) => (
           <div key={l.id} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--surface-2)] text-sm">
@@ -1371,6 +1403,10 @@ function SignInMethods() {
   const { t } = useI18n(); const toast = useToast();
   const [providers, setProviders] = useState(null);
   const [data, setData] = useState(null);
+  // Providers hidden while their undo window is open. Kept apart from `data` so a reload
+  // landing mid-window cannot resurrect a row the user has already removed.
+  const [pending, setPending] = useState(() => new Set());
+  const unhide = (k) => setPending((s) => { const n = new Set(s); n.delete(k); return n; });
   const load = () => Promise.all([api.get('/auth/oauth/providers').catch(() => ({})), api.get('/me/oauth')])
     .then(([p, d]) => { setProviders(p); setData(d); }).catch(() => { setProviders({}); setData({ links: [], hasPassword: true }); });
   useEffect(() => { load(); }, []);
@@ -1383,11 +1419,28 @@ function SignInMethods() {
     }
   }, []); // eslint-disable-line
   if (!providers || !data) return null;
-  const linked = Object.fromEntries((data.links || []).map((l) => [l.provider, l]));
-  const methods = (data.hasPassword ? 1 : 0) + (data.links || []).length;
-  const unlink = async (k) => {
-    try { await api.del(`/me/oauth/${k}`); toast.success(t('sim.unlinked', 'Unlinked.')); load(); }
-    catch (x) { toast.error(x.data?.error === 'last_method' ? t('sim.last', 'This is the only way into your account, set a password first.') : t('acc.failed', 'Failed.')); }
+  // A removed method is hidden while the undo window runs, and the COUNT drops with it —
+  // otherwise you could unlink two in six seconds and land on an account with no way in,
+  // which the server would refuse only for the second one, after the toast said it worked.
+  const live = (data.links || []).filter((l) => !pending.has(l.provider));
+  const linked = Object.fromEntries(live.map((l) => [l.provider, l]));
+  const methods = (data.hasPassword ? 1 : 0) + live.length;
+  // Deferred, like the creator-id unlink above: the request is only sent once the window
+  // elapses, so Undo means the server was never touched.
+  const unlink = (k) => {
+    setPending((s) => new Set(s).add(k));
+    toast.action({
+      tone: 'success', duration: 6000, cancelLabel: t('common.undo', 'Undo'),
+      msg: t('sim.unlinked', 'Unlinked.'),
+      onCommit: async () => {
+        try { await api.del(`/me/oauth/${k}`); load(); }
+        catch (x) {
+          toast.error(x.data?.error === 'last_method' ? t('sim.last', 'This is the only way into your account, set a password first.') : t('acc.failed', 'Failed.'));
+          unhide(k);
+        }
+      },
+      onCancel: () => unhide(k),
+    });
   };
   return (
     <Card className="p-5">
