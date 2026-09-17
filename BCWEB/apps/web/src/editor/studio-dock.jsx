@@ -46,10 +46,30 @@ export function defaultDockLayout() {
     closed: [],
     // Collapsed to its title bar, in place. Per panel, not per zone.
     folded: [],
+    // The BOARD is furniture too. It was the one region with no size of its own: the panels
+    // could all be dragged wider and the thing being edited took whatever was left. 0 on an
+    // axis means "fill the pane", which is what it always did, so a layout saved before this
+    // existed opens exactly as it did.
+    board: { w: 0, h: 0 },
   };
 }
 
 const clampSize = (zone, n) => Math.round(Math.min(ZONE_MAX[zone], Math.max(ZONE_MIN[zone], Number(n) || 0)));
+
+/** The board's own size on one axis. 0 is "fill the pane"; anything smaller than the floor
+ *  would be a board you cannot see, and anything past the ceiling is a scroll with no end. */
+export const BOARD_MIN = 240;
+export const BOARD_MAX = 4000;
+const clampBoard = (n) => {
+  const v = Math.round(Number(n) || 0);
+  if (v <= 0) return 0;
+  return Math.min(BOARD_MAX, Math.max(BOARD_MIN, v));
+};
+
+/** Set the board's width or height. `0` gives the axis back to the pane. */
+export const setBoardSize = (layout, axis, n) => ({
+  ...layout, board: { ...(layout.board || { w: 0, h: 0 }), [axis]: clampBoard(n) },
+});
 
 /**
  * Make sense of whatever was in storage.
@@ -72,6 +92,7 @@ export function normalizeDockLayout(raw, ids) {
     for (const id of panels) placed.add(id);
     out.zones[z] = { panels, size: clampSize(z, from.size ?? base.zones[z].size), collapsed: !!from.collapsed };
   }
+  out.board = { w: clampBoard(raw?.board?.w), h: clampBoard(raw?.board?.h) };
   out.closed = (Array.isArray(raw?.closed) ? raw.closed : []).filter((id) => known.has(id));
   for (const id of out.closed) placed.add(id);
   out.folded = (Array.isArray(raw?.folded) ? raw.folded : []).filter((id) => known.has(id));
@@ -358,6 +379,61 @@ export function DockResizer({ t, zone, layout, apply, style }) {
   );
 }
 
+/**
+ * The board's own edge: the handle that makes the thing being edited a region like the rest.
+ *
+ * It starts from the MEASURED size rather than the stored one, so the first drag away from
+ * "fill the pane" continues from where the board actually is instead of jumping to a floor.
+ * Double-click, or Home, gives the axis back to the pane — a board the author has shrunk and
+ * cannot grow again is the trap a fixed size would replace one bug with.
+ */
+export function BoardEdge({ t, axis, measured, apply, className = '' }) {
+  const from = useRef(null);
+  // NOT `cst.board.h`: that key is already the board's own hint line. A key reused for a
+  // second string is a string that changes meaning the day somebody translates one of them.
+  const label = axis === 'w'
+    ? t('cst.board.size.w', 'Drag to set the board width, double-click to fill the pane')
+    : t('cst.board.size.h', 'Drag to set the board height, double-click to fill the pane');
+  /**
+   * The board's size RIGHT NOW, read off the element rather than off a prop.
+   *
+   * The prop is measured by a ResizeObserver, which lands a frame late — and a drag that
+   * starts from a stale number does not resize, it jumps. Caught in the browser: resizing the
+   * width and then immediately the height began the second gesture from the height the board
+   * had before the first, and a 120px drag upwards made the board 300px taller.
+   */
+  const live = (el, fallback) => {
+    const host = el?.parentElement?.querySelector('.cst-board');
+    if (!host) return fallback;
+    return axis === 'w' ? host.offsetWidth : host.offsetHeight;
+  };
+  const down = (e) => {
+    e.preventDefault();
+    from.current = { at: axis === 'w' ? e.clientX : e.clientY, size: live(e.currentTarget, measured) };
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  };
+  const move = (e) => {
+    const f = from.current; if (!f) return;
+    const d = (axis === 'w' ? e.clientX : e.clientY) - f.at;
+    apply((l) => setBoardSize(l, axis, f.size + d));
+  };
+  const up = () => { from.current = null; };
+  const key = (e) => {
+    const by = axis === 'w' ? { ArrowLeft: -24, ArrowRight: 24 } : { ArrowUp: -24, ArrowDown: 24 };
+    if (e.key === 'Home') { e.preventDefault(); apply((l) => setBoardSize(l, axis, 0)); return; }
+    if (by[e.key] == null) return;
+    e.preventDefault();
+    const now = live(e.currentTarget, measured);
+    apply((l) => setBoardSize(l, axis, now + by[e.key]));
+  };
+  return (
+    <div className={`cst-board-edge cst-board-edge-${axis} ${className}`} role="separator" tabIndex={0}
+      aria-orientation={axis === 'w' ? 'vertical' : 'horizontal'} aria-label={label} title={label}
+      onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}
+      onDoubleClick={() => apply((l) => setBoardSize(l, axis, 0))} onKeyDown={key} />
+  );
+}
+
 /** What the author is dragging, following the pointer, so the gesture has something to watch. */
 export function DockGhost({ drag, panels }) {
   if (!drag) return null;
@@ -418,6 +494,11 @@ export function PanelsMenu({ t, layout, panels, apply, reset, onClose }) {
           </button>
         );
       })}
+      {!!(layout.board?.w || layout.board?.h) && (
+        <button type="button" className="cst-menu-item" onClick={() => apply((l) => ({ ...l, board: { w: 0, h: 0 } }))}>
+          {t('cst.board.fill', 'Let the board fill the middle again')}
+        </button>
+      )}
       <div className="cst-menu-sep" />
       <button type="button" className="cst-menu-item" onClick={() => { reset(); onClose?.(); }}>
         <RotateCcw size={12} /> {t('cst.dock.reset', 'Put the panels back where they started')}

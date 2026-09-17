@@ -14,9 +14,11 @@ import {
   AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal,
   AlignHorizontalSpaceAround, AlignVerticalSpaceAround,
   ArrowLeft, Save, Tablet, FileText, RotateCcw, Blocks, Puzzle, SlidersHorizontal, LayoutTemplate,
-  Plus, RefreshCw, Unlink, ZoomIn, ZoomOut, Maximize, Grid3x3,
+  Plus, RefreshCw, Unlink, ZoomIn, ZoomOut, Maximize,
   BringToFront, SendToBack, StretchHorizontal, StretchVertical, MoreHorizontal, Keyboard, PanelsTopLeft, X,
+  Hand, MonitorSmartphone,
 } from 'lucide-react';
+import { createPortal } from 'react-dom';
 import { Button, Field, Input, Textarea, Select, Modal, useToast } from '../ui/ui.jsx';
 import { useI18n } from '../i18n.jsx';
 import { api, uploadMedia } from '../lib/api.js';
@@ -34,6 +36,7 @@ const LazyMarkdownEditor = lazy(() => import('./markdown-editor.jsx').then((m) =
 import CanvasView, { CanvasBlock } from '../ui/canvas-view.jsx';
 import {
   DOCK_ZONES, DockZone, DockResizer, DockGhost, PanelsMenu, useDockLayout, useDockDrag, zoneOf, movePanel,
+  BoardEdge,
 } from './studio-dock.jsx';
 import ShortcutsModal from './studio-shortcuts.jsx';
 import {
@@ -108,6 +111,9 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
   // A dock is the wrong shape below the three-pane width — three zones on a 375px screen is
   // three slivers — so there the panels take turns instead of sharing the width.
   const [pane, setPane] = useState('canvas');         // 'canvas' | a panel id
+  // The Hand tool: a press on the board pans it instead of starting a rubber band. The tool
+  // exists because space-drag is a keyboard gesture and a touch author has no space bar.
+  const [panMode, setPanMode] = useState(false);
   const [keysOpen, setKeysOpen] = useState(false);
   const [wide, setWide] = useState(() => (
     typeof window !== 'undefined' && window.matchMedia
@@ -121,6 +127,44 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
     return () => mq.removeEventListener?.('change', read);
   }, []);
   /**
+   * Too small to be a studio at all.
+   *
+   * 768px is not a guess: it is the width at which the SITE changes shape — below it the
+   * fixed bottom tab bar appears, and that bar sat exactly on top of the studio's own tab row
+   * (measured at 375×812: the site bar occupied y 746–802, the studio's five tabs y 763–812,
+   * and elementFromPoint returned the site bar for every one of them). It is also where the
+   * board itself was already being given up for a list. An editor whose every control is
+   * under someone else's furniture is not degraded, it is broken, so below this the page mode
+   * says so and offers the way back instead of drawing a layout that cannot be used.
+   *
+   * Written as a max-width query on purpose: this component's width branches are read through
+   * matchMedia during the first render, and check-studio.mjs drives them by stubbing it.
+   */
+  const [tooSmall, setTooSmall] = useState(() => (
+    typeof window !== 'undefined' && window.matchMedia
+      ? window.matchMedia('(max-width: 767.98px)').matches : false));
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return undefined;
+    const mq = window.matchMedia('(max-width: 767.98px)');
+    const read = () => setTooSmall(mq.matches);
+    read();
+    mq.addEventListener?.('change', read);
+    return () => mq.removeEventListener?.('change', read);
+  }, []);
+  /**
+   * The studio takes the viewport over while it is open, and gives it back on the way out.
+   *
+   * The attribute is what stops the PAGE behind scrolling under a full-screen editor; the
+   * stacking is fixed by the portal further down rather than here, because a rule that hid the
+   * site's header by name would be a rule that breaks the day that header is renamed.
+   */
+  useEffect(() => {
+    if (!pageMode || tooSmall || typeof document === 'undefined') return undefined;
+    const el = document.documentElement;
+    el.setAttribute('data-studio-open', '1');
+    return () => el.removeAttribute('data-studio-open');
+  }, [pageMode, tooSmall]);
+  /**
    * The dock: which panel sits where, how wide each zone is, what is folded or closed.
    *
    * The author's arrangement, not the page's — it lives in this browser (localStorage), so two
@@ -128,6 +172,12 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
    * other's. See studio-dock.jsx for what is and is not built.
    */
   const { layout: dock, apply: applyDock, reset: resetDock } = useDockLayout(PANEL_IDS);
+  /**
+   * The board's own size, from the same stored layout the panels use. 0 = fill the middle.
+   * Page mode only: the modal form is a column in somebody else's settings screen and has no
+   * business being handed a width somebody chose for a full-screen editor.
+   */
+  const boardSize = pageMode ? (dock.board || { w: 0, h: 0 }) : { w: 0, h: 0 };
   const dockDrag = useDockDrag(applyDock);
   const [panelsMenu, setPanelsMenu] = useState(false);
   /** Bring a panel into view wherever it currently lives — the zone on a desktop, the sheet on
@@ -195,6 +245,11 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
    * identically in both, not empty in one.
    */
   const [editTheme, setEditTheme] = useState('light');
+  // The preview follows the board being authored, which is what lets the bar carry one phone
+  // instead of two. Only while a preview is actually open: switching boards must not open one.
+  useEffect(() => {
+    setPreview((p) => (!p ? p : (editTheme === 'phone' ? 'phone' : (p === 'phone' ? 'desktop' : p))));
+  }, [editTheme]);
   const [guides, setGuides] = useState({ v: null, h: null });
   const hostRef = useRef(null);
   const [vw, setVw] = useState(DESIGN_WIDTH);
@@ -222,9 +277,10 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
     bumpHist((n) => n + 1);
   }, []);
 
+  const [vh, setVh] = useState(0);
   useEffect(() => {
     const el = hostRef.current; if (!el) return undefined;
-    const read = () => setVw(el.clientWidth || DESIGN_WIDTH);
+    const read = () => { setVw(el.clientWidth || DESIGN_WIDTH); setVh(el.clientHeight || 0); };
     read();
     if (typeof ResizeObserver === 'undefined') { window.addEventListener('resize', read); return () => window.removeEventListener('resize', read); }
     const ro = new ResizeObserver(read); ro.observe(el); return () => ro.disconnect();
@@ -504,17 +560,37 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
   // Without a threshold every plain click on the background would end as a zero-size marquee
   // and clear the selection twice, which is harmless but makes the deselect feel twitchy.
   const marqueeRef = useRef(null);
+  // A pan in flight, and whether space is held. Both refs: a pan writes on every pointermove,
+  // and re-rendering the board to remember a scroll offset would make it stutter.
+  const panRef = useRef(null);
+  const spaceRef = useRef(false);
   // getBoundingClientRect() is the host's box on screen, which is where the board STARTS only
   // while nothing is scrolled. Zoomed past "fit" the host scrolls, and without its scroll
   // offset the rubber band was drawn one scrollLeft to the left of the pointer.
   const onCanvasDown = (e) => {
     const host = hostRef.current; if (!host) return;
+    // Panning, before anything else claims the press. The board could be zoomed past its pane
+    // and then only a scrollbar moved it — a scrollbar the touch author does not get at all.
+    // Middle button, space held, or the Hand tool: three ways in, one gesture.
+    if (e.button === 1 || spaceRef.current || panMode) {
+      e.preventDefault();
+      panRef.current = { x: e.clientX, y: e.clientY, sl: host.scrollLeft, st: host.scrollTop };
+      e.currentTarget.setPointerCapture?.(e.pointerId);
+      return;
+    }
     const r = host.getBoundingClientRect();
     const x = (e.clientX - r.left + host.scrollLeft) / scale, y = (e.clientY - r.top + host.scrollTop) / scale;
     marqueeRef.current = { x, y, additive: e.shiftKey || e.ctrlKey || e.metaKey, base: selIds };
     if (!marqueeRef.current.additive) setSelIds([]);
   };
   const onMarqueeMove = (e) => {
+    const p = panRef.current;
+    if (p) {
+      const host = hostRef.current; if (!host) return;
+      host.scrollLeft = p.sl - (e.clientX - p.x);
+      host.scrollTop = p.st - (e.clientY - p.y);
+      return;
+    }
     const m = marqueeRef.current; if (!m) return;
     const host = hostRef.current; if (!host) return;
     const r = host.getBoundingClientRect();
@@ -524,7 +600,30 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
     const hit = blocksInRect(canvas.blocks, rect).map((b) => b.id);
     setSelIds(m.additive ? [...new Set([...m.base, ...hit])] : hit);
   };
-  const onMarqueeUp = () => { marqueeRef.current = null; setMarquee(null); };
+  const onMarqueeUp = () => { marqueeRef.current = null; panRef.current = null; setMarquee(null); };
+
+  // ── The page's own height ──────────────────────────────────────────────────
+  // One key for the whole gesture, so a drag from 600 to 1400 is one undo step and not eight
+  // hundred — the same rule every other drag in this file follows.
+  const heightRef = useRef(null);
+  const setBoardHeight = (n) => emit(canvas.blocks, phoneBoard
+    ? { phoneHeight: Math.max(200, Math.round(n)) } : { height: Math.max(200, Math.round(n)) }, 'canvas-height');
+  const onHeightDown = (e) => {
+    e.preventDefault(); e.stopPropagation();
+    heightRef.current = { y: e.clientY, h: boardH };
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  };
+  const onHeightMove = (e) => {
+    const f = heightRef.current; if (!f) return;
+    setBoardHeight(f.h + (e.clientY - f.y) / scale);
+  };
+  const onHeightUp = () => { heightRef.current = null; };
+  const onHeightKey = (e) => {
+    const by = { ArrowUp: -grid, ArrowDown: grid };
+    if (by[e.key] == null) return;
+    e.preventDefault(); e.stopPropagation();
+    setBoardHeight(boardH + by[e.key]);
+  };
 
   // Keyboard nudging. A mouse cannot reliably move a block by exactly one grid step, and
   // "almost aligned" is the thing this whole file exists to avoid.
@@ -564,6 +663,9 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
       // browser's own zoom, which a page cannot take back, so binding them would have given
       // the author a shortcut that silently zooms the wrong thing.
       if (!typing && !mod) {
+        // Space held = pan, the gesture every design tool has. Swallowed here so the page
+        // does not scroll under the board while it is held.
+        if (e.key === ' ' || e.code === 'Space') { e.preventDefault(); spaceRef.current = true; return; }
         if (e.key === '?' || (e.shiftKey && e.key === '/')) { e.preventDefault(); setKeysOpen(true); return; }
         if (e.key === '+' || e.key === '=') { e.preventDefault(); zoomBy(1); return; }
         if (e.key === '-') { e.preventDefault(); zoomBy(-1); return; }
@@ -606,8 +708,20 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
       } else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); remove(); }
       else if (e.key === 'Escape') setSelIds([]);
     };
+    // Let go of space and the press goes back to being a selection. Listened for separately
+    // because the keydown handler returns early on almost every branch.
+    const onKeyUp = (e) => { if (e.key === ' ' || e.code === 'Space') spaceRef.current = false; };
+    // A window that loses focus mid-pan never gets the keyup, and the board would stay stuck
+    // in the hand tool until space was pressed and released again.
+    const blur = () => { spaceRef.current = false; };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', blur);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('blur', blur);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
     // `zoom` and `fitScale` are here because the bare +/- keys step FROM the current zoom:
     // without them the handler kept the zoom it was created with and every press walked from
@@ -620,6 +734,7 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
     selCount: selIds.length, doAlign, doDistribute, grid, setGrid, layersOpen, setLayersOpen, zoom, setZoom, pageOpen, setPageOpen,
     pageMode, showGrid, setShowGrid, zoomBy, fitScale, onSaveComponent: () => setCompOpen(true),
     doZ, matchSize, toggleFlag, selBlocks: chosen, onKeys: () => setKeysOpen(true),
+    panMode, setPanMode,
   };
   const modals = (<>
     {keysOpen && <ShortcutsModal t={t} onClose={() => setKeysOpen(false)} />}
@@ -661,12 +776,12 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
         : t('cst.board.phone.h0', 'Phones get the reading-order stack until you place something here. Move or resize a block and the board takes over.')}</span>
     )}
   </>);
-  const board = (
+  const boardHost = (
     /* `touchAction: none` is what makes this usable with a finger at all: without it the
        browser claims the gesture and drags scroll the page instead of moving the block —
        and a design surface you cannot drag on is not a design surface. The modal body
        around it still scrolls, so nothing is trapped. */
-    <div ref={hostRef} className={`${scale > fitScale ? 'overflow-auto' : 'overflow-hidden'} rounded-xl border border-[var(--line)] bg-[var(--surface-2)]`}
+    <div ref={hostRef} className={`cst-board ${scale > fitScale || boardSize.h ? 'overflow-auto' : 'overflow-hidden'} rounded-xl border border-[var(--line)] bg-[var(--surface-2)] ${panMode ? 'is-panning' : ''}`}
       style={{ touchAction: 'none' }}
       onPointerMove={(e) => { onMarqueeMove(e); onMove(e); }}
       onPointerUp={(e) => { onMarqueeUp(); onUp(e); }}
@@ -677,7 +792,11 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
           no horizontal scrollbar and the right-hand third of a 1200px board could not be
           reached at all. The width is the board's OWN width times the scale, which is the
           space the picture actually occupies. */}
-      <div style={{ width: boardW * scale, height: boardH * scale, position: 'relative', ...(phoneBoard ? { margin: '0 auto' } : {}) }}>
+      {/* +10px of empty room under the plane, and for one reason: the page's own bottom edge
+          is drawn AT `boardH * scale` and this wrapper is what the host clips to. Without the
+          room the handle was half outside the scroll area and elementFromPoint never returned
+          it — a control that is drawn and cannot be pressed. */}
+      <div style={{ width: boardW * scale, height: boardH * scale + 10, position: 'relative', ...(phoneBoard ? { margin: '0 auto' } : {}) }}>
         <div style={{ width: boardW, height: boardH, transform: `scale(${scale})`, transformOrigin: 'top left', position: 'absolute', top: 0, left: 0 }}>
           {/* The grid, drawn so placement is legible rather than guessed at. Switchable: a
               finished page is easier to judge without it. */}
@@ -699,7 +818,40 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
               border: '1px solid var(--primary)', background: 'color-mix(in srgb, var(--primary) 12%, transparent)' }} />
           )}
         </div>
+        {/* The page's own bottom edge. The canvas height had no control anywhere — not in the
+            inspector, which edits a block, and not in the Page panel, which edits the
+            background and the CSS — so the one dimension of the thing being built was the one
+            thing that could not be changed. Dragged in DESIGN pixels, so it means the same at
+            every zoom. */}
+        <div className="cst-board-hedge" role="separator" aria-orientation="horizontal" tabIndex={0}
+          style={{ top: boardH * scale, width: boardW * scale }}
+          aria-label={t('cst.page.h2', 'Drag to set how tall this page is')}
+          title={`${t('cst.page.h2', 'Drag to set how tall this page is')} · ${boardH}px`}
+          onPointerDown={onHeightDown} onPointerMove={onHeightMove}
+          onPointerUp={onHeightUp} onPointerCancel={onHeightUp} onKeyDown={onHeightKey} />
       </div>
+    </div>
+  );
+  /**
+   * The board as a REGION, not as whatever was left between the panels.
+   *
+   * Every panel could already be moved, folded, closed and dragged wider; the board — the one
+   * thing the author actually came here for — was the single fixed cell of the grid. It now
+   * carries its own width and height in the same stored layout the panels use, with an edge
+   * on each axis, and 0 still means "fill the middle" so nobody who never touches them sees
+   * any change.
+   */
+  const board = (
+    <div className="cst-board-region" data-sized={boardSize.w || boardSize.h ? '1' : '0'}
+      style={{
+        '--cst-board-w': boardSize.w ? `${boardSize.w}px` : '100%',
+        '--cst-board-h': boardSize.h ? `${boardSize.h}px` : 'auto',
+      }}>
+      {boardHost}
+      {pageMode && (<>
+        <BoardEdge t={t} axis="w" measured={vw} apply={applyDock} />
+        <BoardEdge t={t} axis="h" measured={vh} apply={applyDock} />
+      </>)}
     </div>
   );
   const stackList = <StackList {...{ t, canvas, emit, selIds, setSelId, setSelIds, remove, add }} />;
@@ -708,6 +860,31 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
   ) : null;
 
   // ── Page mode: the full-viewport studio ──────────────────────────────────
+  if (pageMode && tooSmall) {
+    /**
+     * Refused, not degraded.
+     *
+     * This is NOT the site's own chrome being worked around: it renders as ordinary page
+     * content, inside the shell, so the header and the bottom bar are where they always are
+     * and the way out is the site's as well as this button. Nothing below is drawn — no top
+     * bar under the site's header, no tab row under the site's tab bar, no 0.3-scale board.
+     */
+    return (
+      <div className="cst-refuse" data-studio-too-small>
+        <MonitorSmartphone size={30} className="text-[var(--accent-ink)]" aria-hidden />
+        <h1 className="text-base font-semibold mt-2">{t('cst.small.title', 'The studio needs a bigger window')}</h1>
+        <p className="text-sm text-[var(--muted)] mt-1.5">
+          {t('cst.small.msg', 'This page is drawn on a 1200px board, and a phone is not wide enough to place anything on it. Open this address on a computer, or turn the phone and widen the window to at least 768px.')}
+        </p>
+        <p className="text-xs text-[var(--faint)] mt-2">
+          {t('cst.small.safe', 'Nothing was lost. Anything you had not saved is still kept as a draft in this tab.')}
+        </p>
+        {chrome?.onBack && (
+          <div className="mt-4"><Button size="sm" variant="primary" onClick={chrome.onBack}><ArrowLeft size={14} /> {t('common.back', 'Back')}</Button></div>
+        )}
+      </div>
+    );
+  }
   if (pageMode) {
     // What the dock can hold. The title is what every menu, tab and title bar shows, so it is
     // written once here rather than at each of the four places that name a panel.
@@ -731,6 +908,19 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
       '--cst-bottom': `${zoneSize('bottom')}px`,
     } : undefined;
     const openPane = pane !== 'canvas' && panels[pane] ? panels[pane] : null;
+    /**
+     * Out of <main>, onto the body.
+     *
+     * <main> is `relative z-10`, which is a stacking context — so NO z-index inside it could
+     * ever beat the site's header and bottom bar at z-40, and `.cst-page`'s z-45 was being
+     * read against its siblings inside main rather than against them. Measured before this
+     * change: at every one of 1280 / 1024 / 768 / 375 px, elementFromPoint at the centre of
+     * the studio's Save button returned the site header, and at 375 all five of the studio's
+     * bottom tabs returned the site's tab bar. A portal puts the editor next to #root, where
+     * 45 really is above 40 and below the modal layer at 50, and it needs to know nothing
+     * about what the shell's elements happen to be called.
+     */
+    const host = typeof document !== 'undefined' ? document.body : null;
     const centre = (
       <section className="cst-center">
         <Toolbar {...toolbarProps} narrow={!wide} />
@@ -749,7 +939,7 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
         {stacked ? stackList : board}
       </section>
     );
-    return (
+    const tree = (
       <div className="cst-page" data-pane={pane} data-wide={wide ? '1' : '0'}
         // Every pointer move during a panel drag has to reach the dock even once the pointer
         // has left the handle, and capture keeps them all on the handle's element — so they
@@ -758,7 +948,8 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
         onPointerUp={dockDrag.drag ? dockDrag.end : undefined}
         onPointerCancel={dockDrag.drag ? dockDrag.end : undefined}>
         <PageTopBar {...{ t, chrome, hist, doUndo, doRedo, preview, setPreview, themeSwitch, hasPage: !!renderPage,
-          wide, onKeys: () => setKeysOpen(true), panelsMenu, setPanelsMenu, dock, panels, applyDock, resetDock }} />
+          wide, onKeys: () => setKeysOpen(true), panelsMenu, setPanelsMenu, dock, panels, applyDock, resetDock,
+          board: editTheme, title: canvas.title || '', onTitle: (v) => emit(canvas.blocks, { title: v }, 'title') }} />
         {preview ? (
           <div className="cst-page-body cst-preview-body">{previewEl}</div>
         ) : wide ? (
@@ -814,6 +1005,9 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
         {modals}
       </div>
     );
+    // No document (check-studio.mjs renders this to a string under node): render in place, so
+    // the markup that file asserts on is exactly the markup the browser gets.
+    return host ? createPortal(tree, host) : tree;
   }
 
   // ── Modal mode: the compact form the config editor embeds ────────────────
@@ -1022,7 +1216,8 @@ function PreviewSurface({ t, preview, canvas, renderPage, onReplay }) {
  * line. One row at every width, and nothing falls off the screen.
  */
 function PageTopBar({ t, chrome, hist, doUndo, doRedo, preview, setPreview, themeSwitch, hasPage,
-  wide = true, onKeys, panelsMenu, setPanelsMenu, dock, panels, applyDock, resetDock }) {
+  wide = true, onKeys, panelsMenu, setPanelsMenu, dock, panels, applyDock, resetDock,
+  board = 'light', title = '', onTitle }) {
   const [more, setMore] = useState(false);
   const state = chrome?.state || 'saved';
   const stateLabel = {
@@ -1032,10 +1227,25 @@ function PageTopBar({ t, chrome, hist, doUndo, doRedo, preview, setPreview, them
     error: t('cst.save.error', 'Save failed'),
   }[state] || '';
   const tog = (v) => setPreview((cur) => (cur === v ? '' : v));
+  /**
+   * The preview group, with ONE phone in the bar.
+   *
+   * Measured before this change: `lucide-smartphone` appeared twice in `.cst-topbar`, three
+   * buttons apart — once in the board switch ("author the 390px phone board") and once here
+   * ("preview what a phone gets"). Two controls owning the same idea and the same glyph is
+   * the duplication, so it is removed where it starts rather than hidden: the preview now
+   * previews the board being AUTHORED. On the phone board the first entry IS the phone, and
+   * on the light or dark board it is the desktop. The phone preview is therefore one click
+   * from the phone board, which is where somebody thinking about phones already is.
+   */
+  const phoneTarget = board === 'phone';
   const previewGroup = (
     <div className="inline-flex rounded-lg border border-[var(--line)] overflow-hidden" role="group" aria-label={t('cst.preview', 'Preview')}>
-      {[['desktop', Monitor, t('cst.preview.desktop', 'Desktop preview')], ['tablet', Tablet, t('cst.preview.tablet', 'Tablet preview')], ['phone', Smartphone, t('cst.phone.h', 'What a phone gets: the canvas stacks')],
-        ...(hasPage ? [['page', FileText, t('cst.preview.page', 'The whole project page, with this block in place')]] : [])].map(([k, Icon, label]) => (
+      {[phoneTarget
+        ? ['phone', Smartphone, t('cst.phone.h', 'What a phone gets: the canvas stacks')]
+        : ['desktop', Monitor, t('cst.preview.desktop', 'Desktop preview')],
+      ['tablet', Tablet, t('cst.preview.tablet', 'Tablet preview')],
+      ...(hasPage ? [['page', FileText, t('cst.preview.page', 'The whole project page, with this block in place')]] : [])].map(([k, Icon, label]) => (
         <button key={k} type="button" onClick={() => tog(k)} title={label} aria-label={label} aria-pressed={preview === k}
           className={`inline-flex items-center px-2 py-1 text-xs ${preview === k ? 'tint-primary text-[var(--text)]' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>
           <Icon size={13} />
@@ -1053,7 +1263,18 @@ function PageTopBar({ t, chrome, hist, doUndo, doRedo, preview, setPreview, them
           run out of it and over the buttons after it. */}
       <div className="cst-topbar-id">
         <Button size="sm" variant="ghost" className="!px-2" onClick={chrome?.onBack} title={t('cst.back.h', 'Back to the page settings')} aria-label={t('common.back', 'Back')}><ArrowLeft size={15} /></Button>
-        <span className="font-medium text-sm truncate" title={chrome?.title || t('pce.canvases.untitled', 'Untitled page')}>{chrome?.title || t('pce.canvases.untitled', 'Untitled page')}</span>
+        {/* The page's name, edited where it is shown. It was read-only here and editable only
+            back in the config editor, which meant leaving the studio to rename the thing you
+            are looking at. It looks like the label it replaces until it is focused. */}
+        {onTitle ? (
+          <input className="cst-title" value={title}
+            onChange={(e) => onTitle(e.target.value.slice(0, 120))}
+            placeholder={t('pce.canvases.untitled', 'Untitled page')}
+            aria-label={t('cst.title', 'Name of this page')}
+            title={title || t('cst.title', 'Name of this page')} />
+        ) : (
+          <span className="font-medium text-sm truncate" title={chrome?.title || t('pce.canvases.untitled', 'Untitled page')}>{chrome?.title || t('pce.canvases.untitled', 'Untitled page')}</span>
+        )}
         <span className={`text-[11px] whitespace-nowrap ${state === 'error' ? 'text-error' : state === 'dirty' ? 'text-warning' : 'text-[var(--faint)]'}`} data-save-state={state}>{stateLabel}</span>
         {chrome?.draftRestored && (
           <button type="button" className="text-[11px] text-[var(--accent-ink)] hover:underline whitespace-nowrap" onClick={chrome.onDiscardDraft} title={t('cst.draft.h', 'A draft from this tab was restored. Discard it to go back to what is saved.')}>{t('cst.draft.discard', 'Discard draft')}</button>
@@ -1537,7 +1758,7 @@ function CssFields({ t, p, setProp }) {
 
 function Toolbar({ t, preview, setPreview, snapOn, setSnapOn, add, addShape, sel, duplicate, remove, doUndo, doRedo, hist, selCount, doAlign, doDistribute, grid, setGrid, layersOpen, setLayersOpen, zoom, setZoom, pageOpen, setPageOpen,
   pageMode = false, showGrid = true, setShowGrid, zoomBy, fitScale = 1, onSaveComponent,
-  doZ, matchSize, toggleFlag, selBlocks = [], narrow = false, onKeys }) {
+  doZ, matchSize, toggleFlag, selBlocks = [], narrow = false, onKeys, panMode = false, setPanMode }) {
   const zoomPct = Math.round((zoom === 'fit' ? fitScale : Number(zoom)) * 100);
   const anyLocked = selBlocks.some((b) => b.locked);
   const anyHidden = selBlocks.some((b) => b.hidden);
@@ -1572,7 +1793,12 @@ function Toolbar({ t, preview, setPreview, snapOn, setSnapOn, add, addShape, sel
       </select>
       {pageMode && zoomBy && <Button size="sm" variant="ghost" className="!px-2" onClick={() => zoomBy(1)} title={t('cst.zoom.in', 'Zoom in')} aria-label={t('cst.zoom.in', 'Zoom in')}><ZoomIn size={14} /></Button>}
       {pageMode && zoom !== 'fit' && <Button size="sm" variant="ghost" className="!px-2" onClick={() => setZoom('fit')} title={t('cst.zoom.fit', 'Fit')} aria-label={t('cst.zoom.fit', 'Fit')}><Maximize size={14} /></Button>}
-      {pageMode && setShowGrid && <Button size="sm" variant={showGrid ? 'primary' : 'ghost'} className="!px-2" onClick={() => setShowGrid((v) => !v)} title={t('cst.grid.show', 'Show the grid')} aria-label={t('cst.grid.show', 'Show the grid')} aria-pressed={showGrid}><Grid3x3 size={14} /></Button>}
+      {/* The hand. Zoomed past the pane the board could only be moved by a scrollbar, which a
+          touch author never gets; space-drag and the middle button do the same thing. */}
+      {pageMode && setPanMode && (
+        <Button size="sm" variant={panMode ? 'primary' : 'ghost'} className="!px-2" onClick={() => setPanMode((v) => !v)}
+          title={t('cst.pan.h', 'Drag the board around instead of selecting (or hold space)')} aria-label={t('cst.pan', 'Move the board')} aria-pressed={panMode}><Hand size={14} /></Button>
+      )}
       <span className="w-px h-5 bg-[var(--line)] mx-1" />
       {!pageMode && (<>
         <Button size="sm" variant="ghost" disabled={!hist.past.length} onClick={doUndo} data-undo-steps={hist.past.length} data-undo-key={String(hist.key)} title={`Ctrl+Z · ${hist.past.length}`}><Undo2 size={14} /></Button>
@@ -1617,12 +1843,21 @@ function Toolbar({ t, preview, setPreview, snapOn, setSnapOn, add, addShape, sel
       </>)}
       <span className="w-px h-5 bg-[var(--line)] mx-1" />
       <Button size="sm" variant={snapOn ? 'primary' : 'ghost'} onClick={() => setSnapOn((v) => !v)} title={t('cst.snap.h', 'Snap to the grid and to other blocks')}><Magnet size={14} /></Button>
-      <label className="inline-flex items-center gap-1 text-[11px] text-[var(--muted)]" title={t('cst.grid.h', 'The grid step blocks snap to')}>
-        <Grid2x2 size={13} />
+      {/* ONE grid control, not two.
+          The page-mode bar used to carry a Grid3x3 button ("show the grid") a few pixels from
+          a Grid2x2 label ("the grid step") — two grid glyphs, side by side, for two settings
+          of the same grid, which is the duplicate the studio was reported for. They are one
+          group now: the glyph is the toggle, the number beside it is the step. */}
+      <span className="inline-flex items-center gap-1 rounded-lg border border-[var(--line)] ps-0.5 pe-1.5 py-0.5" title={t('cst.grid.h', 'The grid step blocks snap to')}>
+        {setShowGrid ? (
+          <button type="button" onClick={() => setShowGrid((v) => !v)} aria-pressed={showGrid}
+            className={`inline-flex p-1 rounded-md ${showGrid ? 'tint-primary text-[var(--text)]' : 'text-[var(--muted)]'}`}
+            title={t('cst.grid.show', 'Show the grid')} aria-label={t('cst.grid.show', 'Show the grid')}><Grid2x2 size={13} /></button>
+        ) : <Grid2x2 size={13} className="text-[var(--muted)]" />}
         <select className="bg-transparent text-[var(--text)] text-xs" value={grid} onChange={(e) => setGrid(Number(e.target.value))} aria-label={t('cst.grid', 'Grid')}>
           {GRID_SIZES.map((n) => <option key={n} value={n}>{n}px</option>)}
         </select>
-      </label>
+      </span>
       {!pageMode && (<>
         <Button size="sm" variant={layersOpen ? 'primary' : 'ghost'} onClick={() => setLayersOpen((v) => !v)} title={t('cst.layers.h', 'Every block, top first, name, lock, hide, reorder')}><LayoutList size={14} /> {t('cst.layers', 'Layers')}</Button>
         {/* A desktop author cannot otherwise ever see the stacked version, and the stacked

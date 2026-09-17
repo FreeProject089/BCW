@@ -1442,3 +1442,76 @@ label:has(> input[type="radio"]) {
     transition: none !important;
   }
 }
+
+/* ───────────────────────────────────────────────────────────────────────────
+   STUDIO, Sept 2026 pass: the board as a region, the takeover, the refusal.
+   Appended block — nothing above this line is touched.
+
+   The bug this exists for: <main> is `relative z-10`, which is a stacking
+   context, so `.cst-page`'s z-index was being read against its siblings INSIDE
+   main and never against the site's header and bottom bar at z-40. Measured
+   before the fix, at 1280 / 1024 / 768 / 375 px, elementFromPoint over the
+   studio's Save button returned the site header every time, and at 375 all five
+   of the studio's own tabs returned the site's bottom bar. The stacking is
+   fixed in the component (it portals to the body); what is left here is keeping
+   the page behind from scrolling while the editor owns the viewport.
+   ─────────────────────────────────────────────────────────────────────────── */
+html[data-studio-open="1"], html[data-studio-open="1"] body { overflow: hidden; }
+
+/* The board is furniture now: its own width and height, an edge on each axis.
+   0 on an axis is written as 100% / auto, which is exactly what it did before. */
+.cst-board-region {
+  position: relative; display: block; width: var(--cst-board-w, 100%); max-width: 100%;
+  /* Room under the board for the region's OWN height handle, so it cannot land on top of the
+     page's bottom edge inside the board. Measured: both were at y 618 and the page edge was
+     the one that lost — elementFromPoint returned the region handle for it. */
+  padding-bottom: 14px;
+}
+.cst-board { width: 100%; height: var(--cst-board-h, auto); }
+.cst-board.is-panning { cursor: grab; }
+.cst-board.is-panning:active { cursor: grabbing; }
+
+.cst-board-edge { position: absolute; z-index: 4; touch-action: none; border-radius: 3px; }
+.cst-board-edge:hover, .cst-board-edge:focus-visible {
+  background: color-mix(in srgb, var(--primary) 55%, transparent); outline: none;
+}
+.cst-board-edge-w { top: 0; bottom: 14px; right: -5px; width: 10px; cursor: col-resize; }
+.cst-board-edge-h { left: 0; right: 0; bottom: 0; height: 12px; cursor: row-resize; }
+/* A fingertip needs more than 10px, and these are the two handles a touch author
+   reaches for first when the board is the wrong size. */
+@media (pointer: coarse) {
+  .cst-board-region { padding-bottom: 24px; }
+  .cst-board-edge-w { right: -11px; width: 22px; bottom: 24px; }
+  .cst-board-edge-h { height: 22px; }
+}
+
+/* The page's own bottom edge, inside the board: the canvas height, which had no
+   control anywhere before. Positioned in scaled pixels by the component. */
+.cst-board-hedge {
+  position: absolute; left: 0; height: 9px; margin-top: -4px; z-index: 3;
+  cursor: row-resize; touch-action: none; border-radius: 3px;
+}
+.cst-board-hedge::after {
+  content: ""; position: absolute; left: 50%; top: 3px; width: 56px; height: 3px;
+  transform: translateX(-50%); border-radius: 2px; background: var(--line-strong);
+}
+.cst-board-hedge:hover::after, .cst-board-hedge:focus-visible::after { background: var(--primary); }
+.cst-board-hedge:focus-visible { outline: none; }
+@media (pointer: coarse) { .cst-board-hedge { height: 22px; margin-top: -11px; } }
+
+/* The document name, edited where it is shown. Invisible until it is focused, so
+   the bar reads as a title bar and not as a form. */
+.cst-title {
+  flex: 1 1 auto; min-width: 0; background: transparent; border: 1px solid transparent;
+  border-radius: 8px; padding: 2px 6px; font-size: 14px; font-weight: 500;
+  color: var(--text); text-overflow: ellipsis;
+}
+.cst-title:hover { border-color: var(--line); }
+.cst-title:focus { outline: none; border-color: var(--primary); background: var(--surface-2); }
+
+/* Too small to be a studio. Ordinary page content, inside the shell, so the site's
+   own header and bottom bar are where they always are and there are two ways out. */
+.cst-refuse {
+  max-width: 34rem; margin: 2rem auto; padding: 24px;
+  border: 1px solid var(--line); border-radius: 18px; text-align: center;
+}
