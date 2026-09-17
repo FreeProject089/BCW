@@ -6,7 +6,7 @@ import {
   Film, Play, ListTodo, ScrollText, Users, ShieldCheck, Upload, Eye, ExternalLink, Github, Network, Boxes, Copy, CalendarDays, Sparkles, LayoutTemplate,
 } from 'lucide-react';
 import { Button, Input, Textarea, Field, Badge, Spinner, Select, Modal } from '../ui/ui.jsx';
-import { useToast } from '../ui/ui.jsx';
+import { useDialog, useToast } from '../ui/ui.jsx';
 import { useI18n } from '../i18n.jsx';
 import { useAuth } from '../pages/auth.jsx';
 import { api, uploadMedia } from '../lib/api.js';
@@ -256,7 +256,7 @@ function CodeGraphSettings({ projectKey }) {
 }
 
 function StackDetect({ onDraft, hasExisting }) {
-  const toast = useToast(); const { t } = useI18n();
+  const toast = useToast(); const { t } = useI18n(); const dialog = useDialog();
   const [url, setUrl] = useState('');
   const [busy, setBusy] = useState(false);
   const [draft, setDraft] = useState(null);
@@ -321,8 +321,14 @@ function StackDetect({ onDraft, hasExisting }) {
     i.click();
   };
 
-  const apply = () => {
-    if (hasExisting && !window.confirm(t('pce.st.replace', 'Replace the components below with what was found?'))) return;
+  // The site's own dialog. A browser confirm() puts "localhost:5176" across the top, ignores
+  // the theme and the language, and offers to suppress every further dialog on the page — in
+  // an editor, that would silently remove the confirmations protecting the rest of the form.
+  const apply = async () => {
+    if (hasExisting && !await dialog.confirm({
+      title: t('pce.st.replace.t', 'Replace what is there?'),
+      message: t('pce.st.replace', 'Replace the components below with what was found?'),
+    })) return;
     onDraft(draft);
     setDraft(null);
     toast.success(t('pce.st.applied', 'Added, edit anything that is not right before saving.'));
@@ -397,7 +403,22 @@ function CommitImport({ slug }) {
     catch (x) { toast.error(x?.data?.error === 'no_commits' ? t('pce.ci.nothing', 'Nothing in that text looks like git log output.') : t('common.failed', 'Failed.')); }
     finally { setBusy(false); }
   };
-  const remove = async () => { try { await api.del(`/admin/projects/${slug}/activity-import`); setInfo(false); toast.success(t('pce.ci.removed', 'Import removed: GitHub statistics are used again.')); } catch { toast.error(t('common.failed', 'Failed.')); } };
+  // Removing the import is cheap to regret and expensive to redo: the whole history came out
+  // of a git log somebody exported, uploaded and waited for. The row goes at once and the
+  // DELETE only leaves when the window closes, so Undo means the server was never told.
+  const remove = () => {
+    const prev = info;
+    setInfo(false);
+    toast.action({
+      tone: 'success', duration: 6000, cancelLabel: t('common.undo', 'Undo'),
+      msg: t('pce.ci.removed', 'Import removed: GitHub statistics are used again.'),
+      onCommit: async () => {
+        try { await api.del(`/admin/projects/${slug}/activity-import`); }
+        catch { setInfo(prev); toast.error(t('common.failed', 'Failed.')); }
+      },
+      onCancel: () => setInfo(prev),
+    });
+  };
   return (
     <div className="rounded-xl border border-[var(--line)] panel p-3 mb-3">
       <button type="button" onClick={() => setOpen((v) => !v)} className="w-full flex items-center gap-2 text-start">
