@@ -345,7 +345,8 @@ export default async function communityCatalogRoutes(app) {
     const project = String(req.query?.project || '').trim();
     if (project) where.project = { key: project };
     const rows = await p.communityCatalog.findMany({
-      where, orderBy: [{ featuredUntil: 'desc' }, { downloads: 'desc' }], take: 60,
+      // NULLS LAST: see the note in repos.mjs. A bare DESC ranked the never-boosted first.
+      where, orderBy: [{ featuredUntil: { sort: 'desc', nulls: 'last' } }, { downloads: 'desc' }], take: 60,
       include: { owner: { select: { displayName: true } }, project: { select: { key: true } }, _count: { select: { items: true } } },
     });
     return { catalogs: rows.map((c) => ({ ...ser(c), owner: c.owner?.displayName })) };
@@ -396,7 +397,7 @@ export default async function communityCatalogRoutes(app) {
           status: 'ACTIVE', listed: true, visibility: 'public',
           ...(project ? { projectId: project.id } : {}),
         },
-        orderBy: [{ featuredUntil: 'desc' }, { downloads: 'desc' }], take: 200,
+        orderBy: [{ featuredUntil: { sort: 'desc', nulls: 'last' } }, { downloads: 'desc' }], take: 200,
         include: {
           owner: { select: { displayName: true } },
           project: { select: { key: true } },

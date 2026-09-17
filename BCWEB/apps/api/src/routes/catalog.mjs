@@ -414,7 +414,8 @@ export default async function catalogRoutes(app) {
       const communityUrls = kind === 'APP'
         ? await p.communityCatalog.findMany({
           where: { status: 'ACTIVE', listed: true, visibility: 'public' },
-          orderBy: [{ featuredUntil: 'desc' }, { downloads: 'desc' }], take: 60,
+          // NULLS LAST: see the note in repos.mjs.
+          orderBy: [{ featuredUntil: { sort: 'desc', nulls: 'last' } }, { downloads: 'desc' }], take: 60,
           select: { slug: true },
         }).then((rows) => rows.map((c) => `${origin}/api/c/${c.slug}/catalog.json`)).catch(() => [])
         : [];

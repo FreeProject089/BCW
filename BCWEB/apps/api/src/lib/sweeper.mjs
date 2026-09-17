@@ -216,6 +216,34 @@ async function sweepChangeHistory(p, log) {
  * keeps a finite key out of circulation for ever, which is the failure the hold was added to
  * prevent, arriving by a different road.
  */
+/**
+ * A boost that has run out stops ranking.
+ *
+ * The listings order by `featuredUntil` and the badge asks whether that date is still in the
+ * future, which is two rules for one fact and they disagreed the moment a boost expired: the
+ * card stopped saying "Featured" while the row kept its place above everything unboosted. A
+ * boost bought six months ago outranked one bought never, for ever.
+ *
+ * Clearing the date is safe for the one thing that reads the old value: `boostEndFrom` takes
+ * the LATER of now and the current end, so an expired end contributed nothing to a new boost
+ * anyway.
+ *
+ * `lt: new Date()` and not `lte`: a boost ending this millisecond is still a boost.
+ */
+// Exported under a test-only name so boost-ranking.test.mjs can run this one step without
+// standing up the whole sweeper tick, and so nothing else is tempted to call it.
+export const sweepEndedBoostsForTest = (p) => sweepEndedBoosts(p, null);
+async function sweepEndedBoosts(p, log) {
+  const now = new Date();
+  const [repos, cats] = await Promise.all([
+    p.serverRepo.updateMany({ where: { featuredUntil: { lt: now } }, data: { featuredUntil: null } }).catch(() => ({ count: 0 })),
+    p.communityCatalog.updateMany({ where: { featuredUntil: { lt: now } }, data: { featuredUntil: null } }).catch(() => ({ count: 0 })),
+  ]);
+  const n = repos.count + cats.count;
+  if (n) log?.info?.({ repos: repos.count, catalogs: cats.count }, 'cleared ended boosts');
+  return n;
+}
+
 async function sweepStalePoolHolds(p, log) {
   const r = await p.projectKey.updateMany({
     where: { claimedAt: null, reservedUntil: { lt: new Date() } },
@@ -626,6 +654,93 @@ export async function rollupAnalyticsDaily(p, log) {
 //
 // Live sessions are never touched: `lastSeenAt` is refreshed on use, so an actively used
 // device keeps moving out of the window.
+// ── Unconfirmed sign-ups ─────────────────────────────────────────────────────
+/**
+ * What happens when the confirmation window runs out.
+ *
+ * Two acts, a week apart. At day 7 (VERIFY_REMIND_DAYS) one reminder, naming the date. At the
+ * deadline the account is RELEASED: the row is deleted and the address becomes free to sign up
+ * with again. That is the kind outcome, not the harsh one — the person who typed
+ * `jon@gmial.com` gets nothing taken away that they ever had, and the address they actually
+ * own was never involved.
+ *
+ * Three things keep this from ever being a loss:
+ *
+ *   · it only looks at rows where `verifyDeadline` is SET, and only registration sets it — so
+ *     every account that existed before this rule, and every OAuth account, is out of reach by
+ *     construction rather than by a date somebody has to remember to check;
+ *   · it refuses to delete an account that OWNS anything. Almost nothing can be created while
+ *     unverified, so in practice the set is empty; but if staff granted something, or a row
+ *     predates the gate, deleting it is not a sweeper's decision. Those are left alone, the
+ *     deadline is cleared so they are not reconsidered every ten minutes, and the count is
+ *     logged;
+ *   · the delete is per row, inside a try — one account that cannot be removed (a relation
+ *     nobody thought of) must not stop the others.
+ *
+ * Deliberately a DELETE and not the closure/anonymise path. Anonymising exists to keep
+ * invoices and an audit chain attached to something; an account that never confirmed an
+ * address and owns nothing has neither, and leaving a scrubbed husk behind would keep the
+ * address locked up for ever, which is the one thing this is trying to avoid.
+ */
+export async function sweepUnverifiedAccounts(p, log) {
+  const { VERIFY_REMIND_DAYS } = await import('./verify-gate.mjs');
+  const now = new Date();
+  let reminded = 0; let released = 0; let kept = 0;
+
+  if (emailEnabled()) {
+    const remindBefore = new Date(now.getTime() - VERIFY_REMIND_DAYS * 864e5);
+    const due = await p.user.findMany({
+      where: { emailVerified: false, verifyDeadline: { gt: now }, verifyRemindedAt: null, createdAt: { lte: remindBefore }, closedAt: null },
+      select: { id: true, email: true, emailVerified: true, verifyDeadline: true },
+      take: 100,
+    }).catch(() => []);
+    for (const u of due) {
+      try {
+        // Stamped FIRST. A send that throws half-way through would otherwise be retried every
+        // ten minutes for a week, which turns one reminder into a mail bomb.
+        await p.user.update({ where: { id: u.id }, data: { verifyRemindedAt: now } });
+        const { sendVerificationEmail } = await import('../routes/auth.mjs');
+        await sendVerificationEmail(p, u, { reminder: true });
+        reminded++;
+      } catch (e) { log?.warn?.({ id: u.id, e: String(e?.message || e) }, 'sweeper: verify reminder failed'); }
+    }
+  }
+
+  const expired = await p.user.findMany({
+    where: { emailVerified: false, verifyDeadline: { lte: now } },
+    select: {
+      id: true, email: true,
+      _count: { select: { serverRepos: true, communityCatalogs: true, items: true, submissions: true, payments: true, subscriptions: true, posts: true, oauthAccounts: true, apiKeys: true, reportsMade: true } },
+    },
+    take: 200,
+  }).catch(() => []);
+  for (const u of expired) {
+    const owns = Object.values(u._count).reduce((a, b) => a + b, 0);
+    if (owns) {
+      await p.user.update({ where: { id: u.id }, data: { verifyDeadline: null } }).catch(() => {});
+      kept++;
+      continue;
+    }
+    try { await p.user.delete({ where: { id: u.id } }); released++; }
+    catch (e) { log?.warn?.({ id: u.id, e: String(e?.message || e) }, 'sweeper: unverified release failed'); }
+  }
+  if (reminded || released || kept) {
+    log?.info?.(`[sweeper] unconfirmed sign-ups: reminded ${reminded}, released ${released}, kept ${kept} (owns content)`);
+  }
+  return { reminded, released, kept };
+}
+
+/** Sign-in alert rows outlive the sessions they describe, but not for ever. 180 days is long
+ *  enough for "when did that other laptop first appear" to still be answerable. */
+const LOGIN_ALERT_KEEP_DAYS = 180;
+export async function sweepLoginAlerts(p, log) {
+  try {
+    const { count } = await p.loginAlert.deleteMany({ where: { createdAt: { lt: new Date(Date.now() - LOGIN_ALERT_KEEP_DAYS * 864e5) } } });
+    if (count) log?.info?.(`[sweeper] pruned ${count} old sign-in alert row(s)`);
+    return count;
+  } catch { return 0; }
+}
+
 const SESSION_REVOKED_KEEP_DAYS = 30;
 const SESSION_IDLE_DEAD_DAYS = 8; // 7-day token + 1 day of slack
 export async function sweepDeadSessions(p, log) {
@@ -753,6 +868,7 @@ export function startSweeper(app) {
         await sweepDiscordActivityCap(p, app.log), await sweepDailyFileBackup(p, app.log),
         await sweepEndedSuspensions(p, app.log),
       await sweepStalePoolHolds(p, app.log),
+      await sweepEndedBoosts(p, app.log),
       // Boosts a plan includes. Idempotent by a unique index rather than by a check, so a
       // tick that overlaps the previous one cannot mint the same credit twice.
       await grantIncludedBoosts(p).then((n) => { if (n) app.log.info({ n }, 'included boosts granted'); })
@@ -766,6 +882,8 @@ export function startSweeper(app) {
       ];
       await sweepAnalyticsSizeCap(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'analytics size cap failed'));
       await sweepDeadSessions(p, app.log);
+      await sweepUnverifiedAccounts(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'unverified account sweep failed'));
+      await sweepLoginAlerts(p, app.log);
       await sweepScheduledPrices(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'scheduled price sweep failed'));
       await sweepAccountClosures(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'account closure sweep failed'));
       await rollupAnalyticsDaily(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'analytics rollup failed'));

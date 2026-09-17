@@ -335,7 +335,14 @@ export default async function repoRoutes(app) {
     const origin = (process.env.SITE_URL || 'https://bettercommunity.ch').replace(/\/+$/, '');
     const repos = await p.serverRepo.findMany({
       where: { listed: true, verified: true, pendingReview: false },
-      orderBy: [{ featuredUntil: 'desc' }, { createdAt: 'desc' }],
+      // NULLS LAST, and it is the whole feature.
+      //
+      // Postgres sorts NULLs FIRST on a DESC order, and Prisma emits a bare DESC. So
+      // `featuredUntil DESC` put every repo that has NEVER been boosted ahead of every repo
+      // that has. A boost is a paid promise that says "a boost puts you first", and it was
+      // doing the exact opposite: paying moved you below everyone who did not.
+      // Verified against the database and against the SQL Prisma generates before and after.
+      orderBy: [{ featuredUntil: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }],
       select: { name: true, description: true, tags: true, links: true, publicUrl: true, repoUrl: true, hosted: true, hostPath: true, published: true, featuredUntil: true, sha: true, owner: { select: { displayName: true } } },
     });
     // Same reason as GET /r/:id: publicUrl is the provisioner scaffold's placeholder, not a
