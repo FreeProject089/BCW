@@ -1608,3 +1608,102 @@ html[data-studio-open="1"], html[data-studio-open="1"] body { overflow: hidden; 
 .blog-edit { opacity: 0; }
 .blog-pin-host:hover .blog-edit, .blog-edit:focus-visible { opacity: 1; }
 @media (hover: none) { .blog-edit { opacity: 1; } }
+
+/* ════ BEGIN: home editor pass (save dock, translucent surfaces) ════════════════════════════
+   One block, appended; nothing above it was edited. Later rules at the same specificity win,
+   which is how these override the originals without touching them. */
+
+/* ── Translucent surfaces: one alpha, not two ──
+   `:root[data-surface-glass]` already makes --surface / --surface-2 translucent at the
+   slider's value. The per-element glass rules then mixed THAT colour with transparent at the
+   slider's value again, so in the light theme a card at 85 % was drawn at 0.85 x 0.85 = 72 %,
+   and at the slider's 40 % it was 16 %: a washed-out ghost of a card with the orb showing
+   straight through. The dark rules use literal colours and were drawn at the value itself, so
+   the same slider meant two different things in the two themes. These read the opaque -base
+   tokens, so the slider is the opacity in both themes, which is what the setting says. */
+[data-surface-glass] .card,
+[data-surface-glass] .modal-card {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, #fff 42%, transparent), transparent 56px),
+    color-mix(in srgb, var(--surface-base) calc(var(--glass-alpha, 0.85) * 100%), transparent) !important;
+}
+[data-theme="dark"][data-surface-glass] .card,
+[data-theme="dark"][data-surface-glass] .modal-card {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, #fff 4.5%, transparent), transparent 56px),
+    color-mix(in srgb, #17130e calc(var(--glass-alpha, 0.85) * 100%), transparent) !important;
+}
+/* The edge is what makes frosted glass read as a material rather than as a faded card: a
+   light hairline, the lit top edge above, and the blur behind. `:not(:hover)` so the hover
+   ring (.card-hover:hover) still wins when it should. */
+[data-surface-glass] .card:not(:hover) { border-color: color-mix(in srgb, #fff 62%, var(--line)); }
+[data-theme="dark"][data-surface-glass] .card:not(:hover) { border-color: color-mix(in srgb, #fff 10%, transparent); }
+
+/* Inner panels: the same single alpha, and the quiet one stays quieter than the loud one.
+   Under glass both were drawn identically, so every `.panel-quiet` became a `.panel`. */
+[data-surface-glass] .panel {
+  background: color-mix(in srgb, var(--surface-2-base) calc(var(--glass-alpha, 0.85) * 100%), transparent); }
+[data-surface-glass] .panel-quiet {
+  background: color-mix(in srgb, var(--surface-2-base) calc(var(--glass-alpha, 0.85) * 55%), transparent); }
+[data-theme="dark"][data-surface-glass] .panel {
+  background: color-mix(in srgb, #1c1913 calc(var(--glass-alpha, 0.85) * 100%), transparent); }
+[data-theme="dark"][data-surface-glass] .panel-quiet {
+  background: color-mix(in srgb, #1c1913 calc(var(--glass-alpha, 0.85) * 55%), transparent); }
+
+/* The home page's rail tiles got a background so their text stopped sitting on the lit orb.
+   Under glass that background went see-through with NO blur, which put the orb straight back
+   behind the text; and in dark it was a literal colour the setting never reached. Both
+   themes now frost, with the blur that keeps the words readable. */
+[data-surface-glass] .rail-tile {
+  background: color-mix(in srgb, var(--surface-base) calc(var(--glass-alpha, 0.85) * 100%), transparent);
+  -webkit-backdrop-filter: blur(14px) saturate(1.3);
+  backdrop-filter: blur(14px) saturate(1.3);
+}
+[data-theme="dark"][data-surface-glass] .rail-tile {
+  background: color-mix(in srgb, #15120d calc(var(--glass-alpha, 0.85) * 100%), transparent);
+}
+
+/* ── The save dock ──
+   The sticky bar a long editor keeps its Save in. It was an edge-to-edge strip with a hairline
+   on top, painted with `.scrim` + `backdrop-blur`: translucent and blurred even with
+   Translucent surfaces OFF, and a different object from every card around it. Now a floating
+   bar in the card family: the same radius, border and elevation, solid by default, frosted
+   only under the setting, and a status dot that says whether there is anything to save. */
+.save-dock {
+  position: sticky; bottom: 12px; z-index: 20;
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin-top: 8px;
+  padding: 10px 10px 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--bg-solid);
+  box-shadow: 0 18px 44px -20px rgba(30, 20, 5, 0.32), 0 2px 6px -2px rgba(30, 20, 5, 0.08);
+  transition: border-color .2s ease, box-shadow .2s ease;
+}
+[data-theme="dark"] .save-dock {
+  background: #17130e;
+  border-color: var(--line-strong);
+  box-shadow: 0 18px 44px -18px rgba(0, 0, 0, 0.85);
+}
+.save-dock[data-dirty] { border-color: color-mix(in srgb, var(--primary) 45%, var(--line)); }
+.save-dock-dot {
+  width: 8px; height: 8px; border-radius: 99px; flex: none;
+  background: var(--success);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--success) 18%, transparent);
+}
+.save-dock[data-dirty] .save-dock-dot {
+  background: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 24%, transparent);
+}
+[data-surface-glass] .save-dock {
+  background: color-mix(in srgb, var(--bg-solid) calc(var(--glass-alpha, 0.85) * 100%), transparent);
+  -webkit-backdrop-filter: blur(16px) saturate(1.3);
+  backdrop-filter: blur(16px) saturate(1.3);
+}
+[data-theme="dark"][data-surface-glass] .save-dock {
+  background: color-mix(in srgb, #17130e calc(var(--glass-alpha, 0.85) * 100%), transparent);
+}
+@media (max-width: 640px) {
+  .save-dock { bottom: calc(8px + env(safe-area-inset-bottom, 0px)); padding: 8px 8px 8px 12px; }
+}
+/* ════ END: home editor pass ════════════════════════════════════════════════════════════════ */

@@ -19,7 +19,7 @@ import * as THREE from 'three';
 import {
   palette, isLight, VERTEX_SHADER, FRAGMENT_SHADER,
   FRACTURE_VERTEX_SHADER, FRACTURE_FRAGMENT_SHADER,
-  buildGeometry, SCENE_DEFAULTS,
+  buildGeometry, SCENE_DEFAULTS, glowOpacity, twinkleLook,
 } from './scene-shapes.js';
 
 export default function ScenePreview({ cfg, className = '' }) {
@@ -170,7 +170,7 @@ export default function ScenePreview({ cfg, className = '' }) {
 
       // The belt. Fewer than the hero draws at the same setting would misreport the setting,
       // so it is the number itself — this canvas is small, not cheap.
-      let twGeo = null; let twMat = null;
+      let twGeo = null; let twMat = null; let twPts = null;
       if (c.twinkles > 0) {
         const n = Math.round(c.twinkles);
         const arr = new Float32Array(n * 3);
@@ -187,10 +187,11 @@ export default function ScenePreview({ cfg, className = '' }) {
         const pts = new THREE.Points(twGeo, twMat);
         pts.rotation.z = 0.4; pts.rotation.x = 0.25;
         mesh.add(pts);
+        twPts = pts;
       }
 
       stage.add(root);
-      built = { root, mesh, geo, mat, wire, glowTex, glowMat, twGeo, twMat, fractureGeo, fractureMat };
+      built = { root, mesh, geo, mat, wire, glowTex, glowMat, twGeo, twMat, twPts, fractureGeo, fractureMat };
     };
 
     const applyPalette = () => {
@@ -203,11 +204,19 @@ export default function ScenePreview({ cfg, className = '' }) {
         built.mat.needsUpdate = true;
         if (built.glowMat) built.glowMat.color.setHex(q.colorB);
         if (built.twMat) {
-          built.twMat.color.setHex(isLight() ? q.colorB : 0xffffff);
-          built.twMat.blending = isLight() ? THREE.NormalBlending : THREE.AdditiveBlending;
+          // The hero's own answer (twinkleLook). This used to be white specks in dark and the
+          // pale colour in light, which is not the belt the page draws behind the card.
+          const tw = twinkleLook(isLight(), q);
+          built.twMat.color.setHex(tw.color);
+          built.twMat.size = tw.size;
+          built.twMat.blending = tw.blending;
+          built.twBase = tw.base;
           built.twMat.needsUpdate = true;
         }
       }
+      // The page draws the scene at `heroOp` (55 %) behind everything. Drawn here at 100 %, the
+      // card showed a brighter, bolder scene than the one a visitor gets.
+      el.style.opacity = String(q.heroOp);
     };
 
     // What the last build was made from. A frame compares against it and rebuilds only when
@@ -215,11 +224,16 @@ export default function ScenePreview({ cfg, className = '' }) {
     let key = '';
     let raf = 0;
     let time = 0;
+    let last = 0;
     const themeObserver = new MutationObserver(applyPalette);
     themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
-    const frame = () => {
+    const frame = (now = performance.now()) => {
       raf = requestAnimationFrame(frame);
+      // Real seconds, like the hero: the rotation used to be a fixed step per frame, so the
+      // card spun 2.5 times faster than the page on a 60 Hz screen and faster still on 144 Hz.
+      const dt = Math.min(0.1, Math.max(0.001, last ? (now - last) / 1000 : 1 / 60));
+      last = now;
       const c = live.current;
       const k = `${c.shape}|${c.detail}|${c.surface}|${c.glow > 0}|${Math.round(c.twinkles)}`;
       if (k !== key) { key = k; build(c); applyPalette(); }
@@ -234,8 +248,15 @@ export default function ScenePreview({ cfg, className = '' }) {
       uniforms.uOpacity.value = palette().opacity * (c.opacity / SCENE_DEFAULTS.opacity);
       uniforms.uFracture.value = mode === 'fracture' ? hoverNow : 0;
       built.root.scale.setScalar(c.scale * (mode === 'swell' ? 1 + hoverNow * 0.13 : 1));
-      built.mesh.rotation.y += 0.004 * c.speed * (mode === 'spin' ? 1 + hoverNow * 3.5 : 1);
+      built.mesh.rotation.y += 0.096 * c.speed * dt * (mode === 'spin' ? 1 + hoverNow * 3.5 : 1);
       built.mesh.rotation.x = 0.25;
+      // The halo LEVEL follows the slider on every frame. It was fixed at build time and the
+      // build only reran when the halo crossed zero, so dragging it did nothing visible.
+      if (built.glowMat) built.glowMat.opacity = glowOpacity(c.glow, time);
+      if (built.twMat) {
+        built.twPts.rotation.y = time * 0.3;
+        built.twMat.opacity = (built.twBase ?? 0.32) + Math.sin(time * 0.8) * 0.16;
+      }
       renderer.render(stage, camera);
     };
     raf = requestAnimationFrame(frame);

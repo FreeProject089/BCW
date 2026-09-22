@@ -26,7 +26,7 @@ import { useI18n } from '../i18n.jsx';
 import { Button, EmptyState, Spinner, useDialog, useToast } from '../ui/ui.jsx';
 import CanvasStudio from '../editor/canvas-studio.jsx';
 import ProjectPage, { ShowcaseProjectPage } from './project.jsx';
-import { parseStudioParams, handoffKey, draftKey, canvasAt, withCanvasAt, saveState, studioPath } from '../lib/studio-page.js';
+import { parseStudioParams, handoffKey, draftKey, canvasAt, blankCanvasAt, withCanvasAt, saveState, studioPath } from '../lib/studio-page.js';
 import { Home as HomePage } from './home.jsx';
 
 const readJson = (key) => { try { const raw = sessionStorage.getItem(key); return raw ? JSON.parse(raw) : null; } catch { return null; } };
@@ -100,7 +100,11 @@ export default function StudioPage() {
         if (!alive) return;
         setTarget(tg);
         if (index != null && Number.isInteger(index)) {
-          const base = canvasAt(tg.config, index, kind);
+          // A home section that was never drawn has no canvas yet. It used to land on the
+          // chooser with "There is no page at that position", so a section switched to Drawn
+          // could not be opened at all: it starts on a blank page instead. `savedCanvas` is
+          // that same blank, so opening and leaving is not an unsaved change.
+          const base = canvasAt(tg.config, index, kind) || blankCanvasAt(tg.config, index, kind);
           const draft = readJson(draftKey(kind, id, index));
           setSavedCanvas(base);
           if (draft && draft.canvas && base && draft.canvas.id === base.id && JSON.stringify(draft.canvas) !== JSON.stringify(base)) {

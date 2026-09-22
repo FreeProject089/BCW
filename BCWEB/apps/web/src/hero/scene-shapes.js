@@ -9,6 +9,11 @@
 // a 900-line hero and by a 60mm-wide canvas in a settings card alike.
 import * as THREE from 'three';
 import { mergeEventScene } from './scene-events.js';
+import { SCENE_DEFAULTS, detailMaxFor } from './scene-config.js';
+
+// The vocabulary lives in a three-free module so the admin screen can read it without pulling
+// the renderer in. Re-exported, so every existing `from './scene-shapes.js'` keeps working.
+export { SCENE_DEFAULTS, SCENE_BOUNDS, SHAPE_DETAIL_MAX, detailMaxFor, clampSetting } from './scene-config.js';
 
 export function isLight() { return document.documentElement.getAttribute('data-theme') !== 'dark'; } // default theme is light
 // The orb's colours are DERIVED from the site accent rather than hardcoded, so a superadmin
@@ -201,16 +206,18 @@ void main() {
 export const SCENE_SHAPES = ['orb', 'prism', 'crystal', 'gem', 'ring', 'halo'];
 
 export function buildGeometry(shape, detail) {
-  const d = Math.max(0, Math.min(5, Number(detail) || 0));
+  // The per-shape ceiling comes from scene-config.js, which the editor reads too: the slider
+  // stops where the shape stops instead of offering values that draw the same thing.
+  const d = Math.max(0, Math.min(detailMaxFor(shape), Number(detail) || 0));
   switch (shape) {
     // Four faces. The flattest silhouette here, and the cheapest.
-    case 'prism': return new THREE.TetrahedronGeometry(3.6, Math.min(3, d));
+    case 'prism': return new THREE.TetrahedronGeometry(3.6, d);
     // Eight. Reads as a cut stone rather than a die, and takes the noise well because
     // its faces are large enough for the displacement to show inside one.
-    case 'crystal': return new THREE.OctahedronGeometry(3.2, Math.min(3, d));
+    case 'crystal': return new THREE.OctahedronGeometry(3.2, d);
     // Twelve pentagons. The most face detail before the silhouette becomes a sphere,
     // so it is the one to pick when the noise is turned down and the facets do the work.
-    case 'gem': return new THREE.DodecahedronGeometry(2.95, Math.min(2, d));
+    case 'gem': return new THREE.DodecahedronGeometry(2.95, d);
     // A knotted torus. Its two segment counts are derived from `detail` so the slider still
     // means "smoother" here rather than doing nothing.
     case 'ring': return new THREE.TorusKnotGeometry(1.85, 0.62, 60 + d * 30, 8 + d * 4);
@@ -221,34 +228,57 @@ export function buildGeometry(shape, detail) {
   }
 }
 
+// SCENE_DEFAULTS moved to scene-config.js (re-exported above). The API is the authority on
+// what is STORED; that module is the authority on what is DRAWN when a key is missing.
+
 /**
- * Every default, in one object.
+ * The halo's opacity on a given frame.
  *
- * These are the values the API applies when a row is missing a key, written here as well so a
- * scene can be built from nothing (the preview, a failed request, a first visit). The API is
- * the authority on what is STORED; this is the authority on what is DRAWN, and the check
- * `check-scene-contract.mjs` holds the two lists to each other.
+ * It used to be `0.4 + sin * 0.08` in the hero, whatever the setting said: the Halo slider only
+ * decided whether the sprite existed, so 5 % and 100 % drew the same halo. Now the setting is
+ * the level and the shimmer rides on it, scaled so the shipped 0.45 draws exactly what it
+ * always drew (0.40 ± 0.08). Shared with the preview, which had its own third answer.
  */
-export const SCENE_DEFAULTS = {
-  enabled: true,
-  shape: 'orb',
-  detail: 4,
-  noise: 1,
-  speed: 1,
-  opacity: 0.8,
-  scale: 1,
-  surface: 'solid',
-  // What the pointer does to it. `fracture` is what the hero has always done.
-  hover: 'fracture',
-  // How a section arrives when it scrolls into view. Applied by `applyReveal` below.
-  reveal: 'rise',
-  glow: 0.45,
-  twinkles: 110,
-  // The frame budget while nothing fast is happening. A backdrop drifting at 30 cannot be told
-  // from one drifting at 60; the CPU it costs can. Full rate only during the intro, a hover
-  // reaction or a page transition.
-  fps: 30,
-};
+export function glowOpacity(glow, t, scrollEnergy = 0) {
+  const g = Math.max(0, Number(glow) || 0);
+  if (!g) return 0;
+  return g * (0.889 + Math.sin(t * 0.5) * 0.178) + scrollEnergy * 0.12 * Math.min(1, g / 0.45);
+}
+
+/**
+ * How the dust belt is drawn in each theme. One answer for the hero and the preview: the
+ * preview used white additive specks in dark and the hero the accent, so the card showed a
+ * different belt from the one behind it.
+ */
+export function twinkleLook(light, q) {
+  return light
+    ? { color: cssHex('--primary', 0xf97316), size: 0.11, base: 0.55, blending: THREE.NormalBlending }
+    : { color: q.colorB, size: 0.07, base: 0.32, blending: THREE.AdditiveBlending };
+}
+
+/**
+ * Where the shape rests on screen, and how big it reads, for a still CSS rendering of it.
+ *
+ * The fallback for a machine that cannot run WebGL at all, and the cover while a lost context
+ * comes back. It used to be a vague radial glow in the corner, which is "nothing" with a tint:
+ * the page lost its scene and got an unrelated gradient. This projects the hero's own resting
+ * position through the hero's own camera, so the still one sits where the live one sits, at
+ * the size it draws, in the palette it uses. Percentages of the viewport, so it survives a
+ * resize by being recomputed, not by guessing.
+ */
+export const REST_POS = { x: 5.3, y: 3.0, z: -4 };
+export function restingFrame(scale = 1, w = window.innerWidth, h = window.innerHeight) {
+  const cam = new THREE.PerspectiveCamera(50, Math.max(1, w) / Math.max(1, h), 0.1, 100);
+  cam.position.set(0, 0, 11);
+  cam.lookAt(REST_POS.x * 0.3, REST_POS.y * 0.3, 0);
+  cam.updateMatrixWorld();
+  const c = new THREE.Vector3(REST_POS.x, REST_POS.y, REST_POS.z).project(cam);
+  const e = new THREE.Vector3(REST_POS.x, REST_POS.y + 2.9 * scale, REST_POS.z).project(cam);
+  const x = (c.x + 1) / 2 * 100;
+  const y = (1 - c.y) / 2 * 100;
+  const rPx = Math.abs(e.y - c.y) / 2 * h;
+  return { xPct: x, yPct: y, radiusPx: rPx };
+}
 
 /**
  * Put the reveal style on <html>, where the stylesheet reads it.

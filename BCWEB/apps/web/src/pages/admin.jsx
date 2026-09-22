@@ -43,6 +43,7 @@ import { useAuth } from './auth.jsx';
 import { utilAllowed, effectiveCaps } from '../lib/roles.js';
 import { readLayout, navAlignClass } from '../lib/navLayout.js';
 import { homeVariantList } from '../lib/home-variants-meta.js';
+import { SCENE_DEFAULTS, SCENE_BOUNDS, detailMaxFor, clampSetting } from '../hero/scene-config.js';
 import { featureNameFor } from '../lib/geo-names.js';
 import { listZip, readZipEntry, hashEntries } from '../lib/zip-read.js';
 import { HOSTING_SETTINGS_GROUPS, HOSTING_GROUP_DESC } from '../lib/hosting-settings.js';
@@ -12687,6 +12688,11 @@ function SceneEditor() {
     none: [t('scn.rv.none', 'None'), t('scn.rv.none.d', 'Sections are simply there.')],
   };
 
+  // What the server holds, in the same shape as `cfg`, so "is anything unsaved" is one
+  // comparison and "revert" is one assignment.
+  const saved = (() => { const { shapes: _s, surfaces: _f, hovers: _h, reveals: _r, ...v } = data; return v; })();
+  const dirty = JSON.stringify(cfg) !== JSON.stringify(saved);
+
   const save = async () => {
     setBusy(true);
     try { await api.put('/admin/site/scene', cfg); toast.success(t('common.saved', 'Saved.')); reload(); }
@@ -12694,22 +12700,98 @@ function SceneEditor() {
     finally { setBusy(false); }
   };
 
-  const set = (patch) => setCfg({ ...cfg, ...patch });
+  // Changing the shape also holds `detail` to what the new shape can draw: a knot at 5 turned
+  // into a gem would otherwise keep a 5 that the gem draws as 2, and the slider would sit past
+  // its own end.
+  const set = (patch) => setCfg((c) => {
+    const next = { ...c, ...patch };
+    if (patch.shape) next.detail = clampSetting('detail', next.detail, next.shape);
+    return next;
+  });
+  // Every default, except the switch and the per-event scenes: resetting the look is not
+  // turning the scene back on, and it is not deleting the event overrides.
+  const resetAll = () => setCfg((c) => ({ ...c, ...SCENE_DEFAULTS, enabled: c.enabled, events: c.events }));
 
-  const slider = (key, label, hint, min, max, step, fmt) => (
-    <div>
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="text-[13px] font-medium">{label}</span>
-        <span className="text-[11px] tabular-nums text-[var(--faint)]">{fmt ? fmt(cfg[key]) : cfg[key]}</span>
+  // Units: what a number MEANS, printed beside it and at both ends of its track. A bare "1.2"
+  // under "Speed" asked the reader to know the scale; "x1.2" says it is the shipped speed
+  // times 1.2.
+  const fmt = (key, v) => {
+    const u = SCENE_BOUNDS[key]?.unit;
+    const n = Number(v);
+    if (u === 'pct') return `${Math.round(n * 100)}%`;
+    if (u === 'x') return `\u00d7${n.toFixed(key === 'speed' ? 1 : 2)}`;
+    if (u === 'fps') return t('scn.u.fps', '{n} fps').replace('{n}', String(n));
+    if (u === 'count') return t('scn.u.count', '{n} specks').replace('{n}', String(n));
+    if (u === 'level') return `${n} / ${detailMaxFor(cfg.shape)}`;
+    return String(n);
+  };
+
+  const slider = (key, label, hint) => {
+    const b = SCENE_BOUNDS[key];
+    const max = key === 'detail' ? detailMaxFor(cfg.shape) : b.max;
+    const dflt = key === 'detail' ? clampSetting('detail', SCENE_DEFAULTS.detail, cfg.shape) : SCENE_DEFAULTS[key];
+    const changed = Number(cfg[key]) !== Number(dflt);
+    const id = `scn-${key}`;
+    return (
+      <div key={key}>
+        <div className="flex items-center justify-between gap-2">
+          <label htmlFor={id} className="text-[13px] font-medium">{label}</label>
+          <span className="flex items-center gap-1.5">
+            <span className="text-[12px] tabular-nums font-medium text-[var(--text)]">{fmt(key, cfg[key])}</span>
+            {/* Always in the layout, only visible when it would do something: a button that
+                appears and disappears moves the value beside it on every drag. */}
+            <button type="button" onClick={() => set({ [key]: dflt })} disabled={!changed}
+              title={t('scn.reset.one', 'Back to {v}').replace('{v}', fmt(key, dflt))}
+              aria-label={t('scn.reset.one', 'Back to {v}').replace('{v}', fmt(key, dflt))}
+              className={`p-1 rounded-md text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)] transition ${changed ? '' : 'invisible'}`}>
+              <RotateCcw size={12} />
+            </button>
+          </span>
+        </div>
+        <input id={id} type="range" min={b.min} max={max} step={b.step} value={Math.min(max, cfg[key])}
+          onChange={(e) => set({ [key]: Number(e.target.value) })}
+          className="w-full mt-1 accent-[var(--primary)]" />
+        <div className="flex justify-between text-[10px] tabular-nums text-[var(--faint)] -mt-0.5">
+          <span>{fmt(key, b.min)}</span>
+          <span>{t('scn.default', 'default {v}').replace('{v}', fmt(key, dflt))}</span>
+          <span>{fmt(key, max)}</span>
+        </div>
+        <p className="text-[11px] text-[var(--muted)] leading-snug mt-1">{hint}</p>
       </div>
-      <input type="range" min={min} max={max} step={step} value={cfg[key]}
-        onChange={(e) => set({ [key]: Number(e.target.value) })}
-        className="w-full mt-1 accent-[var(--primary)]" />
-      <p className="text-[11px] text-[var(--muted)] leading-snug">{hint}</p>
+    );
+  };
+
+  const choice = (key, label, options, table, note) => (
+    <div key={key}>
+      <div className="text-[13px] font-medium mb-1.5">{label}</div>
+      <div className="flex flex-wrap gap-2">
+        {options.map((k) => (
+          <button key={k} type="button" onClick={() => set({ [key]: k })}
+            aria-pressed={cfg[key] === k}
+            title={table[k]?.[1] || ''}
+            className={`rounded-lg border px-3 py-1.5 text-[13px] transition-colors ${
+              cfg[key] === k ? 'border-[var(--primary)] tint-primary-soft' : 'border-[var(--line)] hover:border-[var(--line-strong)]'
+            }`}>{table[k]?.[0] || k}</button>
+        ))}
+      </div>
+      {/* The description of the SELECTED one, spelled out: a tooltip is something you have
+          to hover to find. */}
+      <p className="text-[11px] text-[var(--muted)] leading-snug mt-1.5">
+        {table[cfg[key]]?.[1] || ''}{note ? ` ${note}` : ''}
+      </p>
     </div>
   );
 
-  const pct = (v) => `${Math.round(v * 100)}%`;
+  // Groups, in the order somebody decides them: what it is, what it looks like, how it moves,
+  // what is around it, and what it costs. They were one grid of eight sliders under three rows
+  // of buttons, with the frame budget beside the halo.
+  const group = (title, sub, children) => (
+    <section className="rounded-xl border border-[var(--line)] panel-quiet p-3.5">
+      <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)]">{title}</div>
+      {sub && <p className="text-[11px] text-[var(--muted)] leading-snug mt-0.5">{sub}</p>}
+      <div className="mt-3 space-y-4">{children}</div>
+    </section>
+  );
 
   return (
     <Card className="p-5 mb-4">
@@ -12724,91 +12806,81 @@ function SceneEditor() {
         </label>
       </div>
       <p className="text-xs text-[var(--muted)] mb-4 max-w-2xl">
-        {t('scn.desc', 'The WebGL shape behind every page. A visitor can still switch it off for themselves, and it is never drawn at all on a machine without a working GPU — this decides what it draws when it does.')}
+        {t('scn.desc2', 'The WebGL shape behind every page. A visitor can still switch it off for themselves. Where WebGL cannot run, or while the graphics driver recovers, a still drawing of the same shape takes its place.')}
       </p>
 
-      <div className="grid lg:grid-cols-[minmax(0,1fr)_320px] gap-5 items-start">
-        <div className={cfg.enabled === false ? 'opacity-45 pointer-events-none' : ''}>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-            {shapes.map((k) => (
-              <button key={k} type="button" onClick={() => set({ shape: k })}
-                aria-pressed={cfg.shape === k}
-                className={`text-start rounded-xl border p-3 transition-colors ${
-                  cfg.shape === k ? 'border-[var(--primary)] tint-primary-soft' : 'border-[var(--line)] hover:border-[var(--line-strong)]'
-                }`}>
-                <div className="text-sm font-semibold">{NAMES[k]?.[0] || k}</div>
-                <p className="text-[11px] text-[var(--muted)] leading-snug mt-0.5">{NAMES[k]?.[1] || ''}</p>
-              </button>
-            ))}
-          </div>
-
-          {/* Three rows of the same control, because they are three answers of the same
-              kind: what it is made of, what it does when touched, and how the page around
-              it arrives. Sliders would be wrong for all three — none of them is a quantity. */}
-          {[['surface', t('scn.surface', 'Surface'), surfaces, SURFACES, ''],
-            ['hover', t('scn.hover', 'When the pointer is on it'), hovers, HOVERS, t('scn.hover.d', 'Hover the preview to try it.')],
-            ['reveal', t('scn.reveal', 'How sections arrive'), reveals, REVEALS, t('scn.reveal.d', 'Applies to every page, including the ones the scene is not drawn on. Reload to see it.')],
-          ].map(([key, label, options, table, note]) => (
-            <div className="mt-4" key={key}>
-              <div className="text-[13px] font-medium mb-1.5">{label}</div>
-              <div className="flex flex-wrap gap-2">
-                {options.map((k) => (
-                  <button key={k} type="button" onClick={() => set({ [key]: k })}
-                    aria-pressed={cfg[key] === k}
-                    title={table[k]?.[1] || ''}
-                    className={`rounded-lg border px-3 py-1.5 text-[13px] transition-colors ${
-                      cfg[key] === k ? 'border-[var(--primary)] tint-primary-soft' : 'border-[var(--line)] hover:border-[var(--line-strong)]'
-                    }`}>{table[k]?.[0] || k}</button>
-                ))}
-              </div>
-              {/* The description of the SELECTED one, spelled out. A title attribute is a
-                  tooltip you have to hover to find, and four of these are four things to
-                  discover by accident. */}
-              <p className="text-[11px] text-[var(--muted)] leading-snug mt-1.5">
-                {table[cfg[key]]?.[1] || ''}{note ? ` ${note}` : ''}
-              </p>
+      <div className="grid lg:grid-cols-[minmax(0,1fr)_340px] gap-5 items-start">
+        <div className={`space-y-3 ${cfg.enabled === false ? 'opacity-45 pointer-events-none' : ''}`}>
+          {group(t('scn.g.shape', 'Shape'), null, <>
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+              {shapes.map((k) => (
+                <button key={k} type="button" onClick={() => set({ shape: k })}
+                  aria-pressed={cfg.shape === k}
+                  className={`text-start rounded-xl border p-3 transition-colors ${
+                    cfg.shape === k ? 'border-[var(--primary)] tint-primary-soft' : 'border-[var(--line)] hover:border-[var(--line-strong)]'
+                  }`}>
+                  <div className="text-sm font-semibold">{NAMES[k]?.[0] || k}</div>
+                  <p className="text-[11px] text-[var(--muted)] leading-snug mt-0.5">{NAMES[k]?.[1] || ''}</p>
+                </button>
+              ))}
             </div>
-          ))}
+            {slider('detail', t('scn.detail', 'Detail'), t('scn.detail.d2', 'Subdivisions. The cost grows with the square of this. The flat shapes stop earlier (prism and crystal at 3, gem at 2): past that they draw the same thing.'))}
+          </>)}
 
-          {/* Every slider applies to every shape. That is what the deleted "custom" entry
-              pretended to unlock — picking it to make an orb slightly calmer was not a
-              custom shape, it was the orb with a different label. */}
-          <div className="grid sm:grid-cols-2 gap-x-5 gap-y-4 mt-5">
-            {slider('detail', t('scn.detail', 'Detail'), t('scn.detail.d', 'Subdivisions. The cost grows with the square of this, and it is a background element, 4 is the shipped value.'), 0, 5, 1)}
-            {slider('noise', t('scn.noise', 'Distortion'), t('scn.noise.d', 'How far the surface is pushed around. 0 leaves the bare solid, which is a look in itself.'), 0, 1.5, 0.05)}
-            {slider('speed', t('scn.speed', 'Speed'), t('scn.speed.d', 'Rotation and drift. 0 stops it dead, still drawn, no longer moving.'), 0, 3, 0.1)}
-            {slider('opacity', t('scn.opacity', 'Presence'), t('scn.opacity.d', 'How much of the surface there is. It never reaches 0, that is the switch above, and it costs nothing instead of drawing nothing.'), 0.1, 1, 0.05, pct)}
-            {slider('scale', t('scn.scale', 'Size'), t('scn.scale.d', 'Multiplies the framing, so the intro keeps its proportion to the resting size.'), 0.5, 1.8, 0.05, pct)}
-            {slider('glow', t('scn.glow', 'Halo'), t('scn.glow.d', 'The soft light behind it. At 0 it is not drawn at all.'), 0, 1, 0.05, pct)}
-            {slider('twinkles', t('scn.tw', 'Dust'), t('scn.tw.d', 'Specks on a tilted belt orbiting the shape, passing in front and behind. 0 removes them.'), 0, 240, 10)}
-            {slider('fps', t('scn.fps', 'Frame budget'), t('scn.fps.d', 'Frames per second while nothing fast is happening. 30 looks the same as 60 for a drifting backdrop and costs half the CPU; the intro and hover still run at full rate.'), 15, 60, 5)}
-          </div>
+          {group(t('scn.g.look', 'Look'), null, <>
+            {choice('surface', t('scn.surface', 'Surface'), surfaces, SURFACES, '')}
+            <div className="grid sm:grid-cols-2 gap-x-5 gap-y-4">
+              {slider('noise', t('scn.noise', 'Distortion'), t('scn.noise.d', 'How far the surface is pushed around. 0 leaves the bare solid, which is a look in itself.'))}
+              {slider('opacity', t('scn.opacity', 'Presence'), t('scn.opacity.d', 'How much of the surface there is. It never reaches 0, that is the switch above, and it costs nothing instead of drawing nothing.'))}
+              {slider('scale', t('scn.scale', 'Size'), t('scn.scale.d', 'Multiplies the framing, so the intro keeps its proportion to the resting size.'))}
+            </div>
+          </>)}
+
+          {group(t('scn.g.motion', 'Motion'), null, <>
+            {slider('speed', t('scn.speed', 'Speed'), t('scn.speed.d', 'Rotation and drift. 0 stops it dead, still drawn, no longer moving.'))}
+            {choice('hover', t('scn.hover', 'When the pointer is on it'), hovers, HOVERS, t('scn.hover.d', 'Hover the preview to try it.'))}
+          </>)}
+
+          {group(t('scn.g.air', 'Around it'), null, <div className="grid sm:grid-cols-2 gap-x-5 gap-y-4">
+            {slider('glow', t('scn.glow', 'Halo'), t('scn.glow.d2', 'The soft light behind it, and how strong it is. At 0 it is not drawn at all.'))}
+            {slider('twinkles', t('scn.tw', 'Dust'), t('scn.tw.d', 'Specks on a tilted belt orbiting the shape, passing in front and behind. 0 removes them.'))}
+          </div>)}
+
+          {group(t('scn.g.page', 'Page and performance'), null, <>
+            {choice('reveal', t('scn.reveal', 'How sections arrive'), reveals, REVEALS, t('scn.reveal.d', 'Applies to every page, including the ones the scene is not drawn on. Reload to see it.'))}
+            {slider('fps', t('scn.fps', 'Frame budget'), t('scn.fps.d2', 'Frames per second while nothing fast is happening. 30 looks the same as 60 for a drifting backdrop and costs half the CPU; the intro and hover still run at full rate. A machine that cannot hold it gets a still frame of the scene, and is asked again later.'))}
+          </>)}
         </div>
 
         <div className="lg:sticky lg:top-4">
-          <div className="rounded-xl border border-[var(--line)] overflow-hidden bg-[var(--surface-2)]">
+          <div className="rounded-xl border border-[var(--line)] overflow-hidden bg-[var(--bg-solid)]">
             {cfg.enabled === false ? (
-              <div className="h-[220px] grid place-items-center text-center px-4">
+              <div className="h-[240px] grid place-items-center text-center px-4">
                 <p className="text-[12px] text-[var(--muted)] leading-snug">
-                  {t('scn.prev.off', 'Nothing is drawn. Pages render exactly as they do on a machine without WebGL, a path the site has always had to support.')}
+                  {t('scn.prev.off2', 'Nothing is drawn. Pages keep only their soft background glow.')}
                 </p>
               </div>
             ) : (
-              <Suspense fallback={<div className="h-[220px] grid place-items-center"><Spinner /></div>}>
-                <ScenePreview cfg={cfg} className="h-[220px] w-full" />
+              <Suspense fallback={<div className="h-[240px] grid place-items-center"><Spinner /></div>}>
+                <ScenePreview cfg={cfg} className="h-[240px] w-full" />
               </Suspense>
             )}
           </div>
           <p className="text-[11px] text-[var(--muted)] leading-snug mt-2">
-            {t('scn.prev.d2', 'The real thing: same geometry, same shader, same palette as the page behind you — hover it to try the pointer reaction. Only the intro, the cursor parallax and the scroll drift are left out.')}
+            {t('scn.prev.d3', 'Live, and the real thing: same geometry, shader, palette and opacity as the page behind you. Hover it to try the pointer reaction. Only the intro, the cursor parallax and the scroll drift are left out.')}
           </p>
-          <div className="flex items-center gap-2 mt-3">
-            <Button variant="primary" onClick={save} loading={busy}><Save size={15} /> {t('common.save', 'Save')}</Button>
+          <div className="flex items-center gap-2 mt-3 flex-wrap">
+            <Button variant="primary" onClick={save} loading={busy} disabled={!dirty}><Save size={15} /> {t('common.save', 'Save')}</Button>
+            <Button variant="ghost" size="sm" onClick={() => setCfg(saved)} disabled={!dirty}>{t('scn.revert', 'Undo changes')}</Button>
+            <Button variant="ghost" size="sm" onClick={resetAll}><RotateCcw size={13} /> {t('scn.reset.all', 'Shipped look')}</Button>
           </div>
+          <p className="text-[11px] mt-2 text-[var(--muted)]" aria-live="polite">
+            {dirty ? t('scn.dirty', 'Unsaved changes. Visitors still see the saved scene.') : t('scn.clean', 'Saved. This is what visitors see.')}
+          </p>
           {/* The backdrop is built once per page load, so the admin looking past this card is
               looking at the previous scene. Said, rather than left to be discovered by
               staring at an unchanged page. */}
-          <span className="block text-[11px] text-[var(--muted)] mt-2">{t('scn.reload', 'Reload the page to see it behind you, the backdrop is built once, when a page loads.')}</span>
+          <span className="block text-[11px] text-[var(--muted)] mt-1">{t('scn.reload', 'Reload the page to see it behind you, the backdrop is built once, when a page loads.')}</span>
         </div>
       </div>
       <SceneEventScenes cfg={cfg} set={set} shapes={shapes} names={NAMES} />
@@ -13199,9 +13271,23 @@ function HomePageEditor() {
       && (filter !== 'off' || (!g.always && sections[g.id] === false)));
 
   // Drop sections with no title in either language — an untitled block is noise on the page.
-  const cleanCustom = () => custom
-    .map((c) => ({ id: String(c.id || `sec-${Math.random().toString(36).slice(2, 8)}`).slice(0, 60), enabled: c.enabled !== false, position: c.position === 'bottom' ? 'bottom' : 'top', title: c.title || { en: '', fr: '' }, body: c.body || { en: '', fr: '' } }))
-    .filter((c) => (c.title.en || c.title.fr || '').trim());
+  //
+  // `mode` and `canvas` are carried through. This map used to rebuild each section from five
+  // named fields, so the first Save on this screen after drawing a section in the studio
+  // turned it back into a written one and threw the drawing away. A drawn section with blocks
+  // is kept even untitled: on the page its heading is optional, the drawing is the content.
+  const normCustom = (list) => list
+    .map((c) => ({
+      id: String(c.id || `sec-${Math.random().toString(36).slice(2, 8)}`).slice(0, 60),
+      enabled: c.enabled !== false,
+      position: c.position === 'bottom' ? 'bottom' : 'top',
+      mode: c.mode === 'canvas' ? 'canvas' : 'md',
+      title: c.title || { en: '', fr: '' },
+      body: c.body || { en: '', fr: '' },
+      ...(c.canvas && typeof c.canvas === 'object' ? { canvas: c.canvas } : {}),
+    }))
+    .filter((c) => (c.title.en || c.title.fr || '').trim() || (c.mode === 'canvas' && (c.canvas?.blocks || []).length));
+  const cleanCustom = () => normCustom(custom);
 
   const setC = (i, patch) => setCustom(custom.map((c, n) => (n === i ? { ...c, ...patch } : c)));
   const setCLoc = (i, field, locpatch) => setC(i, { [field]: { ...(custom[i][field] || {}), ...locpatch } });
@@ -13240,6 +13326,14 @@ function HomePageEditor() {
   // The page at a glance: one chip per section the chosen layout draws, on or off, in the
   // order the page draws them. The long editor below is the words; this is the shape.
   const glance = grouped.filter((g) => !g.always && inVariant(g.id));
+  // Anything here that the server does not hold yet. Compared on what Save would send, so a
+  // section that only differs in a key Save strips is not reported as unsaved.
+  // Key order is not a change: the API builds its objects in its own order, so both sides go
+  // through the same normaliser and a stringify with sorted keys.
+  const stable = (v) => JSON.stringify(v, (_k, x) => (x && typeof x === 'object' && !Array.isArray(x)
+    ? Object.fromEntries(Object.entries(x).sort(([p], [q]) => p.localeCompare(q))) : x));
+  const dirty = stable({ text: form, sections, variant, suite, customSections: cleanCustom() })
+    !== stable({ text: data.text || {}, sections: data.sections || {}, variant: data.variant || 'v1', suite: { style: data.suite?.style || 'grid', extra: data.suite?.extra || [] }, customSections: normCustom(data.customSections || []) });
   return (
     <div className="space-y-4 max-w-4xl pb-24">
       <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -13560,14 +13654,25 @@ function HomePageEditor() {
       </div>
 
       {/* Sticky: Save used to sit under a 60vh scroller, and it is the one control you need
-          from wherever you happen to be on the page. */}
-      <div className="sticky bottom-0 -mx-1 px-1 pt-3 pb-3 scrim backdrop-blur border-t border-[var(--line)] flex items-center gap-3 flex-wrap">
-        <Button variant="primary" onClick={save} disabled={busy}>{busy ? <Spinner /> : <><Save size={15} /> {t('common.save', 'Save')}</>}</Button>
-        <span className="text-[11px] text-[var(--faint)]">
-          {changed > 0
-            ? t('hp.pending', '{n} line(s) rewritten').replace('{n}', String(changed))
-            : (lang === 'fr' ? t('hp.note.fr', 'Le champ vide affiche le texte livré.') : t('hp.note', 'An empty box shows the shipped wording.'))}
+          from wherever you happen to be on the page.
+          The frame is `.save-dock`: a floating bar in the card family, not an edge-to-edge
+          strip with a hairline on top. It was `.scrim` + `backdrop-blur`, translucent and
+          blurred with Translucent surfaces OFF, the one surface on this screen that ignored
+          the setting. Solid by default, frosted when the visitor asks for it. */}
+      <div className="save-dock" data-dirty={dirty ? '1' : undefined}>
+        <span className="save-dock-dot" aria-hidden="true" />
+        <span className="text-[12px] min-w-0 flex-1">
+          <span className="font-medium text-[var(--text)]">
+            {dirty ? t('hp.dock.dirty', 'Unsaved changes') : t('hp.dock.clean', 'All changes saved')}
+          </span>
+          <span className="text-[var(--muted)]">
+            {' · '}
+            {changed > 0
+              ? t('hp.pending', '{n} line(s) rewritten').replace('{n}', String(changed))
+              : (lang === 'fr' ? t('hp.note.fr', 'Le champ vide affiche le texte livré.') : t('hp.note', 'An empty box shows the shipped wording.'))}
+          </span>
         </span>
+        <Button variant="primary" onClick={save} disabled={busy || !dirty} loading={busy}><Save size={15} /> {t('common.save', 'Save')}</Button>
       </div>
     </div>
   );

@@ -2,7 +2,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  studioPath, parseStudioParams, handoffKey, draftKey, canvasAt, withCanvasAt, stepZoom, ZOOM_STEPS, saveState, STUDIO_KINDS,
+  studioPath, parseStudioParams, handoffKey, draftKey, canvasAt, blankCanvasAt, withCanvasAt, stepZoom, ZOOM_STEPS, saveState, STUDIO_KINDS,
 } from '../src/lib/studio-page.js';
 
 test('the path and the parser agree', () => {
@@ -94,6 +94,25 @@ describe('the home page in the studio', () => {
     // And nothing else on the page moved.
     assert.equal(next.customSections[0].body.en, 'the words');
     assert.deepEqual(next.text, home().text);
+  });
+
+  test('a section never drawn opens on a blank page instead of on the chooser', () => {
+    // canvasAt stays null for it (nothing is drawn yet); blankCanvasAt is what the studio
+    // starts from, with an id stable across opens so the tab's draft still matches it.
+    const blank = blankCanvasAt(home(), 0, 'home');
+    assert.deepEqual(blank.blocks, []);
+    assert.equal(blank.id, 'cv-a');
+    assert.equal(blank.title, 'Written');
+    assert.deepEqual(blankCanvasAt(home(), 0, 'home'), blank);
+    assert.equal(blankCanvasAt(home(), 7, 'home'), null);
+    assert.equal(blankCanvasAt({ canvases: [] }, 0, 'project'), null);
+  });
+
+  test('saving a drawing on a written section makes it a drawn one', () => {
+    const next = withCanvasAt(home(), 0, { id: 'cv-a', blocks: [{ id: 'q' }] }, 'home');
+    assert.equal(next.customSections[0].mode, 'canvas');
+    assert.equal(next.customSections[0].canvas.blocks.length, 1);
+    assert.equal(next.customSections[0].body.en, 'the words');
   });
 
   test('an index that names nothing writes nothing', () => {

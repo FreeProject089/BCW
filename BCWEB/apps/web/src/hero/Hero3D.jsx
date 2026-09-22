@@ -1,13 +1,14 @@
-import { useEffect, useRef, useState } from 'react';
+import { Component, useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import gsap from 'gsap';
 import { useIntro, SKIP_KEY } from '../ui/IntroContext.jsx';
 import { useI18n } from '../i18n.jsx';
 import { api } from '../lib/api.js';
 import {
-  isLight, palette, cssHex, VERTEX_SHADER, FRAGMENT_SHADER,
+  isLight, palette, VERTEX_SHADER, FRAGMENT_SHADER,
   FRACTURE_VERTEX_SHADER, FRACTURE_FRAGMENT_SHADER,
   buildGeometry, SCENE_DEFAULTS, readSceneConfig,
+  glowOpacity, twinkleLook, restingFrame, REST_POS,
 } from './scene-shapes.js';
 
 // v4 — the intro loader and the background are now literally the same canvas:
@@ -29,13 +30,102 @@ function webglAvailable() {
   } catch { return false; }
 }
 
-// Steady-state ("background") framing vs. the dramatic centered intro framing.
-const BG_POS = { x: 5.3, y: 3.0, z: -4 };
+// Steady-state ("background") framing vs. the dramatic centered intro framing. The resting
+// position is shared with the still CSS rendering (restingFrame), so both put it in one place.
+const BG_POS = REST_POS;
 const HERO_POS = { x: 0, y: 0.3, z: 2 };
 const BG_SCALE = 1;
 const HERO_SCALE = 1.5;
 
+// ── the still rendering: the same scene, drawn once in CSS ───────────────────────────────
+//
+// What the page shows when WebGL cannot draw at all, and while a lost context comes back. It
+// used to be a soft radial glow in a corner, which is nothing with a tint: the site's largest
+// visual simply vanished on exactly the machines and moments where it failed. This is the
+// scene's own shape at the scene's own resting place and size (restingFrame projects it
+// through the hero's camera), shaded with the palette the shader uses, with its halo. A disc
+// for the round solids, a clipped polygon for the flat ones, a ring for the two tori.
+const STATIC_CLIP = {
+  prism: 'polygon(50% 4%, 96% 86%, 4% 86%)',
+  crystal: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)',
+  gem: 'polygon(50% 2%, 97% 36%, 79% 94%, 21% 94%, 3% 36%)',
+};
+const hex6 = (n) => `#${Number(n).toString(16).padStart(6, '0')}`;
+export function paintStaticScene(el, cfg) {
+  if (!el) return;
+  const c = { ...SCENE_DEFAULTS, ...(cfg || {}) };
+  let layer = el.querySelector(':scope > [data-scene-static]');
+  if (!layer) {
+    layer = document.createElement('div');
+    layer.setAttribute('data-scene-static', '');
+    layer.style.cssText = 'position:absolute;inset:0;pointer-events:none;';
+    el.appendChild(layer);
+  }
+  const q = palette();
+  const f = restingFrame(c.scale);
+  const d = Math.max(40, f.radiusPx * 2);
+  const at = `left:${f.xPct}%;top:${f.yPct}%;transform:translate(-50%,-50%);position:absolute;`;
+  const ring = c.shape === 'ring' || c.shape === 'halo';
+  const body = `radial-gradient(circle at 34% 30%, ${hex6(q.rim)} 0%, ${hex6(q.colorA)} 30%, ${hex6(q.colorB)} 78%, color-mix(in srgb, ${hex6(q.colorB)} 60%, transparent) 100%)`;
+  const ringMask = 'radial-gradient(circle, transparent 0 38%, #000 40% 69%, transparent 71%)';
+  const glow = Math.max(0, Number(c.glow) || 0);
+  layer.innerHTML = '';
+  if (glow > 0) {
+    const halo = document.createElement('div');
+    halo.style.cssText = `${at}width:${d * 1.9}px;height:${d * 1.9}px;border-radius:50%;`
+      + `background:radial-gradient(circle, color-mix(in srgb, ${hex6(q.colorB)} ${Math.round(glow * 70)}%, transparent) 0%, transparent 62%);`;
+    layer.appendChild(halo);
+  }
+  const shape = document.createElement('div');
+  shape.style.cssText = `${at}width:${d}px;height:${d}px;border-radius:${STATIC_CLIP[c.shape] ? '0' : '50%'};`
+    + `background:${body};opacity:${Math.min(1, (c.opacity / SCENE_DEFAULTS.opacity) * 0.92)};filter:blur(0.6px);`
+    + (STATIC_CLIP[c.shape] ? `clip-path:${STATIC_CLIP[c.shape]};` : '')
+    + (ring ? `-webkit-mask:${ringMask};mask:${ringMask};` : '');
+  layer.appendChild(shape);
+  el.setAttribute('data-scene-state', el.getAttribute('data-scene-state') === 'lost' ? 'lost' : 'static');
+}
+export function clearStaticScene(el) {
+  const layer = el?.querySelector(':scope > [data-scene-static]');
+  if (layer) layer.remove();
+}
+
+// A decorative backdrop must not be able to take the site down. An exception in the scene's
+// setup (a driver that throws inside a shader compile, a geometry that cannot be built) used to
+// travel to the ROOT error boundary, which replaces the whole app with a crash card. Here it
+// stops at the backdrop, and the backdrop falls back to its still rendering rather than to
+// nothing.
+class SceneBoundary extends Component {
+  constructor(props) { super(props); this.state = { failed: false }; this.ref = { current: null }; }
+  static getDerivedStateFromError() { return { failed: true }; }
+  componentDidCatch(err) { console.warn('[scene] the 3D backdrop failed, showing its still rendering instead:', err?.message || err); }
+  render() {
+    if (!this.state.failed) return this.props.children;
+    return <StaticBackdrop />;
+  }
+}
+function StaticBackdrop() {
+  const ref = useRef(null);
+  const { finish } = useIntro();
+  // The intro overlay belonged to the scene that failed; the page it was holding back must
+  // still be revealed, or a crashed backdrop would leave the site hidden behind a loader.
+  useEffect(() => { finish(); }, [finish]);
+  useEffect(() => {
+    let cfg = null;
+    let on = true;
+    const paint = () => { if (ref.current) paintStaticScene(ref.current, cfg); };
+    void readSceneConfig().then((c) => { if (on) { cfg = c; paint(); } });
+    paint();
+    window.addEventListener('resize', paint);
+    return () => { on = false; window.removeEventListener('resize', paint); };
+  }, []);
+  return <div ref={ref} data-scene-state="static" className="fixed inset-0 -z-10 pointer-events-none" aria-hidden="true" style={{ opacity: 0.55 }} />;
+}
+
 export default function Hero3D() {
+  return <SceneBoundary><Hero3DScene /></SceneBoundary>;
+}
+
+function Hero3DScene() {
   const { t } = useI18n();
   const { active, finish } = useIntro();
   const mount = useRef(null);
@@ -60,6 +150,11 @@ export default function Hero3D() {
   // of that effect was a read inside the other one's temporal dead zone, and the page did
   // not render at all.
   const [sceneCfg, setSceneCfg] = useState(null);
+  // Bumped to rebuild the renderer from scratch: a lost WebGL context that the browser does
+  // not hand back within a few seconds gets a NEW canvas and a new context rather than
+  // leaving the page on the still rendering for the rest of the visit. Capped per page load.
+  const [gen, setGen] = useState(0);
+  const rebuilds = useRef(0);
   useEffect(() => {
     let on = true;
     // The shared reader. It carries the deadline and the fallback that used to be here — the
@@ -73,9 +168,23 @@ export default function Hero3D() {
     const el = mount.current;
     if (!el || !sceneCfg) return;
 
-    // Static amber-glow backdrop used whenever the animated orb can't run well (no
-    // WebGL2, or a software renderer that would lag). Reveals the page immediately so
-    // the intro loader never hangs on top of the site.
+    const setState = (v) => { el.setAttribute('data-scene-state', v); };
+    const reveal = () => { setShowOverlay(false); finish(); };
+    // The still rendering of the SAME scene (see paintStaticScene) for a machine that cannot
+    // run WebGL at all. Reveals the page immediately so the intro loader never hangs on top of
+    // the site. Kept in step with a resize, because it is positioned in viewport terms.
+    const goStatic = () => {
+      el.style.background = '';
+      el.style.opacity = String(palette().heroOp);
+      paintStaticScene(el, sceneCfg);
+      setState('static');
+      reveal();
+      const onR = () => paintStaticScene(el, sceneCfg);
+      window.addEventListener('resize', onR);
+      return () => { window.removeEventListener('resize', onR); clearStaticScene(el); };
+    };
+    // The soft page glow, for a scene an ADMIN switched off. Off means off: this is not a
+    // fallback for a failure, so it does not draw the shape, only the atmosphere it sat in.
     const paintStaticGlow = () => {
       // From the palette, not two amber literals. This is the backdrop every machine that
       // cannot run the orb gets — and the one the adaptive watchdog bails to — so a site
@@ -88,13 +197,14 @@ export default function Hero3D() {
         ? `radial-gradient(1100px 780px at 80% 16%, color-mix(in srgb, ${hex(q.colorB)} 34%, transparent), color-mix(in srgb, ${hex(q.colorA)} 12%, transparent) 42%, transparent 70%)`
         : `radial-gradient(1100px 780px at 80% 16%, color-mix(in srgb, ${hex(q.colorB)} 26%, transparent), color-mix(in srgb, ${hex(q.colorA)} 16%, transparent) 42%, transparent 70%)`;
       el.style.opacity = '1';
-      setShowOverlay(false); finish();
+      setState('off');
+      reveal();
+      return () => { el.style.background = ''; };
     };
-    if (!webglAvailable()) { paintStaticGlow(); return; }
-    // Switched off site-wide. The same exit as "this machine cannot draw it" — which is the
-    // point: the page behind has always had to work without the scene, so turning it off is
-    // not a new state to support, it is the one that was already there.
-    if (sceneCfg.enabled === false) { paintStaticGlow(); return; }
+    // Switched off site-wide by an admin: the atmosphere only, by choice.
+    if (sceneCfg.enabled === false) return paintStaticGlow();
+    // No WebGL2 at all: the still rendering of the scene, never nothing.
+    if (!webglAvailable()) return goStatic();
 
     const W = () => window.innerWidth, H = () => window.innerHeight;
 
@@ -104,7 +214,7 @@ export default function Hero3D() {
     let renderer;
     try {
       renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
-    } catch { paintStaticGlow(); return; }
+    } catch { return goStatic(); }
     // Cap at 1.5 (not 2): on HiDPI/4K screens a ratio of 2 quadruples the fragment
     // count for a background element — the single biggest fill-rate cost of the orb.
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
@@ -112,8 +222,10 @@ export default function Hero3D() {
     el.appendChild(renderer.domElement);
 
     // A software renderer (e.g. Firefox with webgl.force-enabled but no working GPU
-    // path, or a VM/RDP) would run the orb's shaders on the CPU and lag hard — detect
-    // it and use the static glow instead.
+    // path, or a VM/RDP) would run the orb's shaders on the CPU and lag hard. It used to be
+    // thrown away for the static glow; it can still draw ONE frame perfectly well, so it draws
+    // the real scene once and holds it (the "still" mode below) instead of animating it.
+    let softwareGpu = false;
     try {
       const gl = renderer.getContext();
       // Plain RENDERER first. WEBGL_debug_renderer_info is deprecated — Firefox logs
@@ -130,12 +242,7 @@ export default function Hero3D() {
         const dbg = gl.getExtension('WEBGL_debug_renderer_info');
         if (dbg) rname = String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) || '');
       }
-      if (/swiftshader|llvmpipe|softpipe|software|basic render|microsoft basic|warp/i.test(rname)) {
-        renderer.dispose();
-        if (renderer.domElement.parentNode === el) el.removeChild(renderer.domElement);
-        paintStaticGlow();
-        return;
-      }
+      if (/swiftshader|llvmpipe|softpipe|software|basic render|microsoft basic|warp/i.test(rname)) softwareGpu = true;
     } catch { /* detection unavailable — proceed with the orb */ }
 
     // ── the orb: one smooth icosahedron, displaced by noise in the vertex shader ──
@@ -283,24 +390,21 @@ export default function Hero3D() {
       fractureMat.blending = q.blending;
       fractureMat.needsUpdate = true;
       glowMat.color.setHex(q.colorB);
-      // Light theme: the pale peach twinkles washed out against the cream page —
-      // use the SATURATED primary orange, bigger points, and normal blending so
-      // they read as real specks; dark theme keeps the airy additive glow.
-      if (isLight()) {
-        // The saturated ACCENT, whatever it is — not orange. Read from the same custom
-        // property palette() reads, so a site palette change moves this too.
-        twinkleMat.color.setHex(cssHex('--primary', 0xf97316));
-        twinkleMat.size = 0.11; twinkleMat.opacity = 0.7; twinkleMat.blending = THREE.NormalBlending;
-        twinkleBase = 0.55;
-      } else {
-        twinkleMat.color.setHex(q.colorB);
-        twinkleMat.size = 0.07; twinkleMat.blending = THREE.AdditiveBlending;
-        twinkleBase = 0.32;
-      }
+      // Light theme: the pale peach twinkles washed out against the cream page, so they
+      // take the saturated accent, bigger points and normal blending; dark keeps the airy
+      // additive glow. One answer shared with the preview (twinkleLook).
+      const tw = twinkleLook(isLight(), q);
+      twinkleMat.color.setHex(tw.color);
+      twinkleMat.size = tw.size; twinkleMat.blending = tw.blending;
+      twinkleBase = tw.base;
       twinkleMat.needsUpdate = true;
       if (mount.current) mount.current.style.opacity = String(q.heroOp);
+      requestStill();
     };
     let twinkleBase = 0.32;
+    // Declared before applyPalette's first call, which asks for a still frame. Replaced by the
+    // real scheduler once the loop exists; until then there is nothing to draw.
+    let requestStill = () => {};
     applyPalette();
     const themeObs = new MutationObserver(applyPalette);
     themeObs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
@@ -405,7 +509,11 @@ export default function Hero3D() {
       } });
     };
     window.addEventListener('bcweb:orb-transition', onPageTransition);
-    const onResize = () => { camera.aspect = W() / H(); camera.updateProjectionMatrix(); renderer.setSize(W(), H()); measurePage(); };
+    const onResize = () => {
+      camera.aspect = W() / H(); camera.updateProjectionMatrix(); renderer.setSize(W(), H()); measurePage();
+      requestStill();
+      if (ctxLost) paintStaticScene(el, sceneCfg);
+    };
     window.addEventListener('resize', onResize);
 
     // ── scroll reactivity ─────────────────────────────────────────────────────
@@ -435,6 +543,7 @@ export default function Hero3D() {
       const max = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
       scrollTarget = Math.min(1, window.scrollY / max);
       measurePage();
+      requestStill();
     };
     window.addEventListener('scroll', onScroll, { passive: true });
     let scrollNow = 0;
@@ -509,13 +618,29 @@ export default function Hero3D() {
       lastSide = side;
       document.documentElement.style.setProperty('--reveal-x', `${side * 44}px`);
     };
-    // Adaptive-quality watchdog. Measure fps in ~1 s windows and degrade in stages so
-    // the hero stays smooth on ANY hardware:
-    //   • window 0        → warm-up (shader compile), ignored
-    //   • still < 48 fps  → drop devicePixelRatio to 1 (the biggest fill-rate lever)
-    //   • still < 30 fps  → give up on the live orb: dispose it and switch to the
-    //                       (free) static glow. Guarantees no sustained lag.
-    let winStart = 0, winFrames = 0, stage = 0, bailed = false;
+    // ── keeping it on screen ─────────────────────────────────────────────────────────
+    //
+    // Three modes, and none of them is "nothing":
+    //   live   the render loop, on its frame budget.
+    //   still  the SAME renderer and scene, drawn once and held: redrawn only when something
+    //          moves it (a scroll, a resize, a theme change). What a software GPU gets from the
+    //          start, and what a machine that cannot hold the budget falls to.
+    //   lost   the WebGL context was taken away (a driver reset, a GPU switch, too many
+    //          contexts in the browser). The still CSS rendering covers it until the browser
+    //          gives the context back; if it does not within a few seconds, the renderer is
+    //          rebuilt on a new canvas.
+    //
+    // The watchdog used to dispose the renderer and paint a gradient the first time a one
+    // second window came in under half the target. One long task (a big admin chunk parsing,
+    // a GC pause) or a throttled window was enough, it happened once per page load at most
+    // and it was permanent: the backdrop was gone until a reload.
+    //
+    // Now: a window that contains a stall (> 250 ms between two frames) says nothing about the
+    // GPU and is thrown away; the target a window is judged against is what that window was
+    // mostly asked for, not what the last frame happened to want; it takes TWO bad windows in a
+    // row; the consequence is `still`, not gone; and a still scene tries live again after 30 s.
+    let winStart = 0, winFrames = 0, winBusy = 0, stage = 0, badWindows = 0, lastRaf = 0;
+    let still = false, stillTimer = 0, reprobe = 0, stillQueued = 0;
     // The frame budget. `sceneCfg.fps` while idle; the display's own rate while something
     // fast is on screen — the intro, a hover reaction, the page-transition dolly — because
     // those are the moments a dropped frame would read as a stutter. A slowly drifting
@@ -524,53 +649,15 @@ export default function Hero3D() {
     let lastDraw = 0;
     // A window behind another one is a window nobody is looking at. Hiding the tab already
     // paused this; leaving the site open behind an editor did not, and that was the report.
+    // Paused is not removed: the canvas keeps its last frame on screen.
     let blurred = typeof document.hasFocus === 'function' ? !document.hasFocus() : false;
     const onBlur = () => { blurred = true; };
     const onFocus = () => { blurred = false; };
     window.addEventListener('blur', onBlur);
     window.addEventListener('focus', onFocus);
-    const bailToStatic = () => {
-      bailed = true;
-      if (raf) cancelAnimationFrame(raf);
-      try { renderer.dispose(); if (renderer.domElement.parentNode === el) el.removeChild(renderer.domElement); } catch { /* ignore */ }
-      paintStaticGlow();
-    };
-    const tick = () => {
-      if (bailed) return;
-      raf = requestAnimationFrame(tick);
-      if (ctxLost) return;
-      // Pause work while the tab/page is hidden or the window is behind another — no point
-      // rendering what nobody sees.
-      if (document.hidden || blurred) { winStart = 0; winFrames = 0; return; }
-      const now = performance.now();
-      // Busy = full rate. Everything else waits for its slot in the budget. `- 2` so a
-      // display at exactly the budget's rate is not skipped every other frame by jitter.
-      // Scrolling counts as busy: it is one of the moments a dropped frame reads as a
-      // stutter, and scrollEnergy decays to nothing about a second after the page stops,
-      // so this cannot pin the core on an idle page.
-      const busy = introRunning || hoverAmt.v > 0.001 || fractureState.value > 0.001 || orbTransition.amt > 0.001 || scrollEnergy > 0.02;
-      const target = busy ? 60 : idleFps;
-      if (!busy && now - lastDraw < 1000 / target - 2) return;
-      // Seconds since the frame we actually DREW, so the damping below runs at the same
-      // real-world rate whatever the frame budget is — a 30 fps budget used to halve every
-      // per-frame easing constant in this loop. Clamped: the first frame (lastDraw 0) and a
-      // frame after a long pause would otherwise integrate a huge step in one go.
-      const dt = Math.min(0.1, Math.max(0.001, (now - lastDraw) / 1000));
-      lastDraw = now;
-      if (!winStart) winStart = now;
-      winFrames++;
-      if (now - winStart >= 1000) {
-        const fps = winFrames / ((now - winStart) / 1000);
-        winStart = now; winFrames = 0;
-        // Judged against the TARGET, not against 60: a 30 fps budget would otherwise read
-        // as a struggling machine and the throttle would drop the pixel ratio on its first
-        // window and bail to the static glow on its second.
-        if (stage === 0) stage = 1;
-        else if (stage === 1) {
-          if (fps < target * 0.8 && renderer.getPixelRatio() > 1) { renderer.setPixelRatio(1); renderer.setSize(W(), H()); }
-          stage = 2;
-        } else if (fps < target * 0.5) { bailToStatic(); return; }
-      }
+
+    // One frame of the scene: every update the loop makes, then a render.
+    const step = (dt) => {
       try {
         t += 0.01 * sceneCfg.speed;
         // What the intro/scroll left the scale at, before `swell` multiplies it. Captured
@@ -645,7 +732,9 @@ export default function Hero3D() {
         // to a fast scroll, in place of the old spin.
         twinkles.rotation.y = t * 0.3;
         twinkleMat.opacity = twinkleBase + Math.sin(t * 0.8) * 0.16 + scrollEnergy * 0.22;
-        glowMat.opacity = 0.4 + Math.sin(t * 0.5) * 0.08 + scrollEnergy * 0.12;
+        // The setting is the level and the shimmer rides on it (glowOpacity). This line used to
+        // be `0.4 + sin * 0.08` whatever the Halo slider said.
+        glowMat.opacity = glowOpacity(sceneCfg.glow, t, scrollEnergy);
         // barely-there parallax on the camera itself too — smoothed into camBase
         // so the page-transition dive can be layered on top without the parallax
         // easing fighting/absorbing it frame to frame.
@@ -656,22 +745,154 @@ export default function Hero3D() {
         camera.position.z = 11 - orbTransition.amt * 5.5; // dolly in toward the shard
         camera.lookAt(orb.position.x * 0.3, orb.position.y * 0.3, 0);
         renderer.render(scene, camera);
-      } catch { /* keep looping — the next frame is already queued */ }
+      } catch { /* a frame that throws is skipped; the next one is already queued */ }
     };
-    const start = () => { if (W() === 0) { setTimeout(start, 120); return; } onResize(); tick(); };
-    start();
-    const onLost = (e) => { e.preventDefault(); ctxLost = true; };
-    const onRestore = () => { ctxLost = false; };
+
+    // Still mode's redraw: one frame, soon, and only one however many things ask for it.
+    // The scroll follow is snapped to its target, since there is no loop to glide it there.
+    requestStill = () => {
+      if (!still || ctxLost || stillQueued) return;
+      stillQueued = requestAnimationFrame(() => {
+        stillQueued = 0;
+        scrollNow = scrollTarget; scrollEnergy = 0;
+        step(1 / 60);
+      });
+    };
+    const goStill = (why) => {
+      if (still) return;
+      still = true;
+      if (raf) cancelAnimationFrame(raf);
+      raf = 0;
+      // A still scene cannot hold a pointer reaction open, so none starts.
+      gsap.killTweensOf(hoverAmt); hoverAmt.v = 0;
+      gsap.killTweensOf(fractureState); fractureState.value = 0;
+      setState('still');
+      el.setAttribute('data-scene-why', why);
+      requestStill();
+      // A weak moment is not a weak machine. Try live again later, on a doubling interval
+      // (30 s, 60 s, 120 s…), so a machine that really cannot keep up is asked less and less.
+      // A software GPU is not re-asked: that answer does not change during a visit.
+      if (why !== 'software') {
+        clearTimeout(stillTimer);
+        stillTimer = setTimeout(() => {
+          reprobe++;
+          still = false; stage = 1; badWindows = 0; winStart = 0; winFrames = 0; winBusy = 0;
+          setState('live');
+          el.removeAttribute('data-scene-why');
+          tick();
+        }, 30000 * 2 ** Math.min(4, reprobe));
+      }
+    };
+
+    const tick = () => {
+      if (still) return;
+      raf = requestAnimationFrame(tick);
+      if (ctxLost) return;
+      // Pause work while the tab/page is hidden or the window is behind another — no point
+      // rendering what nobody sees.
+      if (document.hidden || blurred) { winStart = 0; winFrames = 0; winBusy = 0; lastRaf = 0; return; }
+      const now = performance.now();
+      // A stall (a long task on the main thread, a throttled or backgrounded window) is not
+      // a slow GPU. The window it lands in is discarded rather than judged.
+      if (lastRaf && now - lastRaf > 250) { winStart = 0; winFrames = 0; winBusy = 0; }
+      lastRaf = now;
+      // Busy = full rate. Everything else waits for its slot in the budget. `- 2` so a
+      // display at exactly the budget's rate is not skipped every other frame by jitter.
+      // Scrolling counts as busy: it is one of the moments a dropped frame reads as a
+      // stutter, and scrollEnergy decays to nothing about a second after the page stops,
+      // so this cannot pin the core on an idle page.
+      const busy = introRunning || hoverAmt.v > 0.001 || fractureState.value > 0.001 || orbTransition.amt > 0.001 || scrollEnergy > 0.02;
+      const target = busy ? 60 : idleFps;
+      if (!busy && now - lastDraw < 1000 / target - 2) return;
+      // Seconds since the frame we actually DREW, so the damping below runs at the same
+      // real-world rate whatever the frame budget is — a 30 fps budget used to halve every
+      // per-frame easing constant in this loop. Clamped: the first frame (lastDraw 0) and a
+      // frame after a long pause would otherwise integrate a huge step in one go.
+      const dt = Math.min(0.1, Math.max(0.001, (now - lastDraw) / 1000));
+      lastDraw = now;
+      if (!winStart) winStart = now;
+      winFrames++;
+      if (busy) winBusy++;
+      if (now - winStart >= 1000) {
+        const fps = winFrames / ((now - winStart) / 1000);
+        // What this window was MOSTLY asked for. Judging a mostly idle window against 60
+        // because its last frame was busy read a healthy 30 fps budget as a failing machine.
+        const winTarget = winBusy * 2 > winFrames ? 60 : idleFps;
+        winStart = now; winFrames = 0; winBusy = 0;
+        if (stage === 0) stage = 1; // warm-up (shader compile), ignored
+        else if (stage === 1) {
+          // First lever: the pixel ratio, which is most of the fill cost.
+          if (fps < winTarget * 0.8 && renderer.getPixelRatio() > 1) { renderer.setPixelRatio(1); renderer.setSize(W(), H()); }
+          stage = 2;
+        } else {
+          badWindows = fps < winTarget * 0.45 ? badWindows + 1 : 0;
+          if (badWindows >= 2) { goStill('budget'); return; }
+        }
+      }
+      step(dt);
+    };
+
+    // ── a lost context ──
+    // preventDefault is what tells the browser we want the context back. three.js listens
+    // for the same two events and re-initialises its own state on restore; what is ours is
+    // the cover while it is gone, and the rebuild if it never comes back.
+    let lostTimer = 0;
+    const onLost = (e) => {
+      e.preventDefault();
+      ctxLost = true;
+      el.setAttribute('data-scene-state', 'lost');
+      paintStaticScene(el, sceneCfg);
+      clearTimeout(lostTimer);
+      lostTimer = setTimeout(() => {
+        if (!ctxLost) return;
+        // Three rebuilds per page load. Past that the machine is telling us something, and
+        // the still rendering already on screen is the honest answer.
+        if (rebuilds.current < 3) { rebuilds.current++; setGen((g) => g + 1); }
+        else setState('static');
+      }, 3000);
+    };
+    const onRestore = () => {
+      ctxLost = false;
+      clearTimeout(lostTimer);
+      clearStaticScene(el);
+      // Every GPU-side object is gone with the old context; three re-uploads what it knows
+      // is dirty, so say so rather than trusting its bookkeeping across a restore.
+      for (const m of [mat, fractureMat, glowMat, twinkleMat, wireOverlay?.material]) if (m) m.needsUpdate = true;
+      glowTex.needsUpdate = true;
+      setState(still ? 'still' : 'live');
+      applyPalette();
+      if (still) requestStill();
+    };
     renderer.domElement.addEventListener('webglcontextlost', onLost);
     renderer.domElement.addEventListener('webglcontextrestored', onRestore);
-    const onVisible = () => { if (!document.hidden) { cancelAnimationFrame(raf); tick(); } };
+
+    const start = () => {
+      if (W() === 0) { setTimeout(start, 120); return; }
+      onResize();
+      setState('live');
+      if (softwareGpu) {
+        // No intro on a software GPU: it would be the one animation this machine is not
+        // going to run. The page is revealed and the scene drawn once where it rests.
+        if (skipRef.current && introRunning) skipRef.current();
+        goStill('software');
+        return;
+      }
+      tick();
+    };
+    start();
+    const onVisible = () => { if (!document.hidden && !still) { cancelAnimationFrame(raf); tick(); } };
     document.addEventListener('visibilitychange', onVisible);
 
     return () => {
       cancelAnimationFrame(raf);
+      cancelAnimationFrame(stillQueued);
+      clearTimeout(stillTimer);
+      clearTimeout(lostTimer);
+      still = true; // stops a queued tick from re-arming after cleanup
       clearTimeout(recomposeTimer);
       gsap.killTweensOf(fractureState);
       gsap.killTweensOf(orbTransition);
+      gsap.killTweensOf(hoverAmt);
       themeObs.disconnect();
       document.removeEventListener('bcw:site-theme', applyPalette);
       window.removeEventListener('pointermove', onMove);
@@ -689,9 +910,10 @@ export default function Hero3D() {
       glowTex.dispose(); glowMat.dispose(); twinkleGeo.dispose(); twinkleMat.dispose();
       renderer.dispose();
       if (renderer.domElement.parentNode === el) el.removeChild(renderer.domElement);
+      clearStaticScene(el);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sceneCfg]);
+  }, [sceneCfg, gen]);
 
   return (
     <>

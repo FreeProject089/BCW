@@ -45,6 +45,26 @@ export function canvasAt(config, index, kind = 'project') {
   return index >= 0 && index < list.length ? list[index] : null;
 }
 
+/** The canvas a home section STARTS from when it has never been drawn.
+ *
+ *  `canvasAt` answers null for a section with no canvas, on purpose: nothing has been drawn
+ *  there. But the studio page read that null as "no page at this position" and showed the
+ *  chooser with a warning, so a section switched to Drawn could never be opened, and the
+ *  only way to draw one was to already have drawn it. This is the page it opens on instead.
+ *
+ *  The id is derived from the section's, not random: the draft kept in sessionStorage is
+ *  matched to the canvas by id, and a fresh random one on every open would throw that draft
+ *  away each time. Null for anything that is not an existing home section. */
+export function blankCanvasAt(config, index, kind = 'project') {
+  if (kind !== 'home') return null;
+  const c = config && typeof config === 'object' ? config : {};
+  const list = Array.isArray(c.customSections) ? c.customSections : [];
+  const row = index >= 0 && index < list.length ? list[index] : null;
+  if (!row) return null;
+  const title = String(row.title?.en || row.title?.fr || '').slice(0, 80);
+  return { id: `cv-${String(row.id || index)}`.slice(0, 60), title, blocks: [] };
+}
+
 /** The config with one canvas replaced. Everything else is untouched — this is the same write
  *  the modal made through `patch(studioAt, next)`, moved out of the editor.
  *
@@ -58,7 +78,10 @@ export function withCanvasAt(config, index, canvas, kind = 'project') {
     // The section keeps everything else it carries: its title, its written body, whether it
     // is on, where it sits. Drawing a section does not throw away the words in it, so an
     // admin can switch back.
-    list[index] = { ...list[index], canvas: { ...(list[index].canvas || {}), ...canvas } };
+    // `mode: 'canvas'` as well: saving a drawing from the studio means the drawing is what
+    // the page shows. Without it a section opened by URL (no handoff from the form) stayed
+    // `md`, the save succeeded, and the home page went on rendering the Markdown.
+    list[index] = { ...list[index], mode: 'canvas', canvas: { ...(list[index].canvas || {}), ...canvas } };
     return { ...c, customSections: list };
   }
   const list = Array.isArray(c.canvases) ? c.canvases.slice() : [];
