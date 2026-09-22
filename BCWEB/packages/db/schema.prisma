@@ -914,6 +914,7 @@ model CommunityCatalog {
   favorites         CatalogFavorite[]
   domain            CustomDomain?
   changes           ChangeEvent[]
+  accessEvents      CatalogAccessEvent[]
 
   @@index([ownerId])
   @@index([status, listed])
@@ -923,6 +924,39 @@ model CommunityCatalog {
   /// the next `migrate diff` proposed DROPPING it, because a diff believes the schema. It
   /// backs the `?app=` filter on the catalogue feeds, which is the query it was added for.
   @@index([projectId])
+}
+
+// Consumer-side access to a community catalog, the exact counterpart of RepoAccessEvent:
+// a feed fetch (kind='connect' — a BMM client connected/synced) or an item download
+// (kind='download'). It exists because a catalog only ever kept two lifetime counters
+// (views/downloads), and a counter cannot answer "who is pulling this right now" — which
+// is the question the repo traffic view answers and the one being asked of catalogs.
+//
+// Deliberately NOT a copy of RepoAccessEvent's `accessKey` column. A repo's ?key= is a
+// sandbox access key the owner hands out and wants to see in their own dashboard; a
+// catalog's ?k= is its PRIVATE SHARE LINK — a bearer secret whose whole value is that it
+// was never written down anywhere readable (CWE-532). So the only thing kept about it is
+// whether one was used at all, decided with safeEqual, never stored and never returned.
+//
+// `path` is a stored relative path ('catalog.json', or an item slug), never a request URL:
+// a URL carries the query string, and the query string is the secret.
+model CatalogAccessEvent {
+  id        String           @id @default(cuid())
+  catalog   CommunityCatalog @relation(fields: [catalogId], references: [id], onDelete: Cascade)
+  catalogId String
+  ip        String
+  keyed     Boolean          @default(false) // the client presented the valid private share key
+  userId    String? // resolved via X-Creator-ID -> CreatorLink (or the browser session), if linked
+  discordId String? // that same account's DiscordLink, if any
+  path      String
+  kind      String // connect | download
+  createdAt DateTime         @default(now())
+
+  @@index([catalogId, createdAt])
+  // The global/pool views ask "everything in the last 15 minutes" across many catalogs, so
+  // they filter on createdAt with no catalogId — which the composite index above cannot
+  // serve. RepoAccessEvent has the same query and lacks this; see the traffic lib's note.
+  @@index([createdAt])
 }
 
 // One item in a "managed" community catalog (payloads on our storage). Raw catalogs
@@ -1421,6 +1455,10 @@ model RepoAccessEvent {
   createdAt    DateTime   @default(now())
 
   @@index([serverRepoId, createdAt])
+  // Added with the pool/global traffic views. The composite index above is useless to a
+  // query that asks for "everything in the last 15 minutes" without naming a repo — which
+  // is what /admin/repos/traffic has always done, and what the pool views now do too.
+  @@index([createdAt])
 }
 
 // A single, admin-managed access policy applied identically to EVERY hosted repo, on

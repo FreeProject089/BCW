@@ -9,6 +9,7 @@ import { recordChange } from '../lib/changelog.mjs';
 import { presignPut, presignGet, getObject } from '../lib/storage.mjs';
 import { zipEntryName } from '../lib/zip-path.mjs';
 import { repoMeter } from '../lib/monitor.mjs';
+import { pruneAccessEvents, ACCESS_PRUNE_ODDS } from '../lib/access-traffic.mjs';
 import { flagIfProtected } from './rights.mjs';
 const SITE_URL = (process.env.SITE_URL || 'https://bettercommunity.ch').replace(/\/+$/, '');
 
@@ -48,11 +49,10 @@ function logAccess(p, repoId, req, path, kind, identity) {
   const accessKey = (req.query?.key && String(req.query.key).slice(0, 128)) || null;
   p.repoAccessEvent.create({ data: { serverRepoId: repoId, ip: String(ip || '').slice(0, 64), accessKey, userId: identity?.userId || null, discordId: identity?.discordId || null, path: String(path).slice(0, 220), kind } })
     .then(async () => {
-      if (Math.random() >= 0.02) return;
-      // Retention: 30 days AND at most 5000 rows per repo (oldest overwritten).
-      await p.repoAccessEvent.deleteMany({ where: { serverRepoId: repoId, createdAt: { lt: new Date(Date.now() - 30 * 864e5) } } });
-      const excess = await p.repoAccessEvent.findMany({ where: { serverRepoId: repoId }, orderBy: { createdAt: 'desc' }, skip: 5000, take: 1000, select: { id: true } });
-      if (excess.length) await p.repoAccessEvent.deleteMany({ where: { id: { in: excess.map((e) => e.id) } } });
+      if (Math.random() >= ACCESS_PRUNE_ODDS) return;
+      // Retention: 30 days AND at most 5000 rows per repo (oldest overwritten). The rule
+      // lives in lib/access-traffic.mjs now, shared with CatalogAccessEvent.
+      await pruneAccessEvents(p, 'repo', repoId);
     })
     .catch(() => { /* logging must never break serving */ });
 }

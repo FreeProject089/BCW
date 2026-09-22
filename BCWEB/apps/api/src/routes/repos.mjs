@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { applyCampaign } from './campaigns.mjs';
-import { canManage } from '../lib/teams.mjs';
+import { canManage, teamRoleOf } from '../lib/teams.mjs';
 import { db, requireRole, requireCap, optionalAuth, notify, isValidRepoManifest, accountEntrySchema, pubkeyLineSchema, pubkeyErrorCode, logAudit, httpUrl } from '../lib/lib.mjs';
 import { recordPendingCheckout } from '../lib/pending-checkout.mjs';
 import { gitManifestUrl } from '../lib/gitsource.mjs';
@@ -12,6 +12,7 @@ import { repoFingerprint, normalizeFingerprint, loadOwnerIdentities, userBcId } 
 import { mintAttestation, attestationPublicKeyHex, ATTESTATION_TTL_SECONDS } from '../lib/identity-attestation.mjs';
 import { capacityStatus, capacityFactors, priceCents, termTotalCents, termBounds, termCheck, TERM_LIMIT_MONTHS, stripe, settings, ensureCustomer, recomputePoolBytes } from './hosting.mjs';
 import { findBlock } from '../lib/urlblock.mjs';
+import { loadTraffic, namePools } from '../lib/access-traffic.mjs';
 import { reservedTermIn } from '../lib/reserved-names.mjs';
 
 // A listed repo is a link like any other, so the blocklist reaches it too. Same shape of
@@ -182,6 +183,22 @@ export async function recheckRepos() {
     try { const res = await autoVerify(p, r.id); if (res?.repo?.verified) verified++; if (res?.health?.status === 'ONLINE') online++; } catch { /* skip */ }
   }
   return { checked: repos.length, verified, online };
+}
+
+// Owner or active team member — canManage() minus its staff bypass. Used by the owner-facing
+// traffic view, where staff have their own 2FA-gated admin route instead.
+async function ownsOrTeam(p, uid, entity) {
+  if (!uid || !entity) return false;
+  if (entity.ownerId === uid) return true;
+  return !!(entity.teamId && (await teamRoleOf(p, uid, entity.teamId)));
+}
+
+// One pool's traffic: its repos + its catalogues through the shared aggregation.
+// Response: { pool: { id, name, color }, recent, rollup, pools, totals } — see
+// lib/access-traffic.mjs shapeTraffic() for the row shapes.
+async function poolTrafficResponse(p, g) {
+  const t = await loadTraffic(p, { repoIds: g.repos.map((r) => r.id), catalogIds: g.catalogs.map((c) => c.id) });
+  return { pool: { id: g.id, name: g.name, color: g.color || '' }, ...t };
 }
 
 export default async function repoRoutes(app) {
@@ -1382,23 +1399,43 @@ export default async function repoRoutes(app) {
 
   // Admin: live traffic across every repo — the last 15 minutes of access events
   // (a "who is downloading what right now" feed) plus a 24h per-repo rollup.
+  // The aggregation is lib/access-traffic.mjs (shared with the catalogue, pool and global
+  // views); this maps its unified rows back onto the field names this route always had.
   app.get('/admin/repos/traffic', { preHandler: requireCap('manage_repos', 'MOD') }, async () => {
     const p = await db();
-    const since = new Date(Date.now() - 15 * 60e3);
-    const day = new Date(Date.now() - 24 * 3600e3);
-    const recent = await p.repoAccessEvent.findMany({
-      where: { createdAt: { gt: since } }, orderBy: { createdAt: 'desc' }, take: 200,
-      include: { repo: { select: { id: true, name: true } } },
-    });
-    const rollup = await p.repoAccessEvent.groupBy({ by: ['serverRepoId'], where: { createdAt: { gt: day } }, _count: { _all: true } });
-    const repos = await p.serverRepo.findMany({ where: { id: { in: rollup.map((r) => r.serverRepoId) } }, select: { id: true, name: true, owner: { select: { displayName: true } } } });
-    const nameMap = new Map(repos.map((r) => [r.id, r]));
+    const t = await loadTraffic(p, { catalogIds: [] });
     return {
-      recent: recent.map((e) => ({ id: e.id, repoId: e.serverRepoId, repo: e.repo?.name || '?', ip: e.ip, path: e.path, kind: e.kind, userId: e.userId, discordId: e.discordId, at: e.createdAt })),
-      rollup: rollup
-        .map((r) => ({ repoId: r.serverRepoId, name: nameMap.get(r.serverRepoId)?.name || '?', owner: nameMap.get(r.serverRepoId)?.owner?.displayName || '—', count: r._count._all }))
-        .sort((a, b) => b.count - a.count),
+      recent: t.recent.map((e) => ({ id: e.id, repoId: e.subjectId, repo: e.name, ip: e.ip, path: e.path, kind: e.kind, userId: e.userId, discordId: e.discordId, at: e.at })),
+      rollup: t.rollup.map((r) => ({ repoId: r.subjectId, name: r.name, owner: r.owner, count: r.count })),
     };
+  });
+
+  // Admin: live traffic for ONE storage pool — every repo AND catalogue currently in it.
+  // Membership is read now, so a repo moved between pools brings its history with it.
+  app.get('/admin/hosting/groups/:id/traffic', { preHandler: requireCap('manage_repos', 'MOD') }, async (req, reply) => {
+    const p = await db();
+    const g = await p.hostingGroup.findUnique({ where: { id: req.params.id }, select: { id: true, name: true, color: true, ownerId: true, repos: { select: { id: true } }, catalogs: { select: { id: true } } } });
+    if (!g) return reply.code(404).send({ error: 'not_found' });
+    return poolTrafficResponse(p, g);
+  });
+
+  // Owner: the same pool view for the pool's owner or an active member of its team. Staff
+  // are deliberately NOT let in here (canManage would): the route above is theirs, behind
+  // requireCap's 2FA wall — this one is plain requireRole, and it returns client IPs.
+  app.get('/me/hosting/groups/:id/traffic', { preHandler: requireRole() }, async (req, reply) => {
+    const p = await db();
+    const g = await p.hostingGroup.findUnique({ where: { id: req.params.id }, select: { id: true, name: true, color: true, ownerId: true, teamId: true, repos: { select: { id: true } }, catalogs: { select: { id: true } } } });
+    // 404, not 403, for somebody else's pool: the answer must not confirm the id exists.
+    if (!g || !(await ownsOrTeam(p, req.user.uid, g))) return reply.code(404).send({ error: 'not_found' });
+    return poolTrafficResponse(p, g);
+  });
+
+  // Admin: every pool at once — the platform-wide view. Repos + catalogues, with a per-pool
+  // rollup (poolId null = traffic to something that is not in any pool, e.g. a raw catalogue).
+  app.get('/admin/hosting/traffic', { preHandler: requireCap('manage_repos', 'MOD') }, async () => {
+    const p = await db();
+    const t = await loadTraffic(p, {});
+    return { ...t, pools: await namePools(p, t.pools) };
   });
 
   // Admin: manually re-run validation (recompute the content SHA + verify) for a repo.

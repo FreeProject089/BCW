@@ -1,7 +1,8 @@
 import argon2 from 'argon2';
 import { CATALOG_KINDS, CATALOG_KINDS_LOWER, INDEX_TYPE_ORDER, DOCUMENT_KINDS, DOCUMENT_KIND_FIELD, isDocumentKind, ALL_HOSTABLE_LOWER } from '../lib/catalog-kinds.mjs';
 import { keyAuthOk, keyAudience } from '../lib/keyauth.mjs';
-import { canManage } from '../lib/teams.mjs';
+import { canManage, teamRoleOf } from '../lib/teams.mjs';
+import { recordCatalogAccess, loadTraffic } from '../lib/access-traffic.mjs';
 import { z } from 'zod';
 import crypto from 'node:crypto';
 import { zipReadAll, zipEntry } from '../lib/native.mjs';
@@ -332,6 +333,13 @@ function modpackCatalogSummary(entries) {
   };
 }
 
+// One catalogue's traffic: { catalog: { id, name, slug }, recent, rollup, pools, totals }.
+// Never selects shareKey — `keyed` on each event row is all that is known about the key.
+async function catalogTrafficResponse(p, c) {
+  const t = await loadTraffic(p, { repoIds: [], catalogIds: [c.id] });
+  return { catalog: { id: c.id, name: c.name, slug: c.slug }, ...t };
+}
+
 export default async function communityCatalogRoutes(app) {
   // ── Public: browse listed community catalogs ──
   app.get('/c', async (req) => {
@@ -627,6 +635,9 @@ export default async function communityCatalogRoutes(app) {
     reply.header('Cache-Control', priv || c.access?.bans ? 'private, no-store' : 'public, max-age=300');
     // Count a public feed hit as a view (not for private share-link traffic).
     if (!priv) p.communityCatalog.update({ where: { id: c.id }, data: { views: { increment: 1 } } }).catch(() => {});
+    // Live traffic (private share-link traffic included — the owner wants to see it). The
+    // path is a constant, never req.url: the query string carries ?k=, the share secret.
+    recordCatalogAccess(p, c, req, { path: 'catalog.json', kind: 'connect', identity });
     return c.mode === 'raw' ? emitRawFeed(c, kind) : emitManagedFeed(c, c.items, kind, priv);
   });
 
@@ -644,6 +655,7 @@ export default async function communityCatalogRoutes(app) {
     if (!it?.payloadKey) return reply.code(404).send({ error: 'no_payload' });
     p.communityCatalog.update({ where: { id: c.id }, data: { downloads: { increment: 1 } } }).catch(() => {});
     p.communityCatalogItem.update({ where: { id: it.id }, data: { downloads: { increment: 1 } } }).catch(() => {});
+    recordCatalogAccess(p, c, req, { path: it.slug, kind: 'download', identity }); // the stored slug, not the URL
     return reply.redirect(await presignGet(it.payloadKey));
   });
 
@@ -659,6 +671,19 @@ export default async function communityCatalogRoutes(app) {
     const c = await p.communityCatalog.findUnique({ where: { id: req.params.id }, include: { items: true, project: { select: { key: true } }, _count: { select: { items: true } } } });
     if (!c || !(await canManage(p, req.user, c))) return reply.code(404).send({ error: 'not_found' });
     return { catalog: { ...ser(c), access: c.access || {}, rawJson: c.rawJson || null, items: c.items } };
+  });
+
+  // Owner: live traffic for one of my catalogues (feed fetches + item downloads).
+  // Owner or an active member of its team — NOT staff, although canManage() would let them
+  // in: staff read the same thing at GET /admin/catalogs/:id/traffic, behind requireCap's
+  // 2FA wall, and this route is plain requireRole while returning client IPs.
+  // 404 for anyone else, so the answer never confirms that the id exists.
+  app.get('/me/catalogs/:id/traffic', { preHandler: requireRole() }, async (req, reply) => {
+    const p = await db();
+    const c = await p.communityCatalog.findUnique({ where: { id: req.params.id }, select: { id: true, name: true, slug: true, ownerId: true, teamId: true } });
+    const mine = c && (c.ownerId === req.user.uid || (c.teamId && (await teamRoleOf(p, req.user.uid, c.teamId))));
+    if (!mine) return reply.code(404).send({ error: 'not_found' });
+    return catalogTrafficResponse(p, c);
   });
 
   // Create a catalog. mode "raw" is free (self-hosted downloads); "managed" attaches to
@@ -921,6 +946,22 @@ export default async function communityCatalogRoutes(app) {
   });
 
   // ── Admin/mod: moderate community catalogs (cap: manage_catalogs) ──
+
+  // Admin: live traffic across EVERY catalogue — the catalogue twin of /admin/repos/traffic.
+  // Response: lib/access-traffic.mjs shapeTraffic() — { recent, rollup, pools, totals }.
+  app.get('/admin/catalogs/traffic', { preHandler: requireCap('manage_catalogs', 'MOD') }, async () => {
+    const p = await db();
+    return loadTraffic(p, { repoIds: [] });
+  });
+
+  // Admin: live traffic for one catalogue.
+  app.get('/admin/catalogs/:id/traffic', { preHandler: requireCap('manage_catalogs', 'MOD') }, async (req, reply) => {
+    const p = await db();
+    const c = await p.communityCatalog.findUnique({ where: { id: req.params.id }, select: { id: true, name: true, slug: true } });
+    if (!c) return reply.code(404).send({ error: 'not_found' });
+    return catalogTrafficResponse(p, c);
+  });
+
   app.get('/admin/catalogs', { preHandler: requireCap('manage_catalogs', 'MOD') }, async (req) => {
     const p = await db();
     const q = String(req.query?.q || '').trim();
