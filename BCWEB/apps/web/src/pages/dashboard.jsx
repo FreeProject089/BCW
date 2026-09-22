@@ -1163,7 +1163,17 @@ export function Dashboard() {
           {s === 'economy' && <EconomyShop view={ecoView} onView={setEcoView} />}
           {s === 'polls' && <MyPolls />}
           {s === 'billing' && <Billing />}
-          {s === 'reports' && <><MyThreads /><MyReports /><MyRightsNotices /></>}
+          {/* Three blocks, one spacing rule (the overview's), one card shape.
+              They used to sit in a bare fragment: "Messages & reports" touched the bottom edge
+              of the Conversations card (0 px), and being the only block NOT on a card, its
+              header and rows sat 17 px (phone) to 20 px (desktop) left of the Conversations
+              title. MyReports is framed here, not in admin.jsx, because the admin page never
+              renders it and its own layout is shared with nothing. */}
+          {s === 'reports' && <div className="space-y-6 sm:space-y-8">
+            <MyThreads />
+            <Card className="p-4 sm:p-5"><MyReports /></Card>
+            <MyRightsNotices />
+          </div>}
           {s === 'teams' && <MyTeams />}
           {s === 'data' && <MyData />}
         </>)}
@@ -1640,7 +1650,7 @@ function MyRightsNotices() {
   const list = data?.notices || [];
   if (loading || !list.length) return null;
   return (
-    <Card className="p-4 mt-4">
+    <Card className="p-4 sm:p-5">
       <div className="font-semibold mb-2">{t('rn.my', 'Rights notices you filed')}</div>
       <div className="space-y-1.5">
         {list.map((n) => (

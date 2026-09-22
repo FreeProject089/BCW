@@ -173,49 +173,7 @@ export function MyoPage() {
           And the ones with an unread reply lead, because "there is an answer waiting" is the
           only thing on this page that is time-sensitive. It was a 2 px dot at the bottom of a
           long page; now it is a row that says so, at the top. */}
-      {user && (mine.data?.requests?.length > 0) && (() => {
-        const reqs = [...mine.data.requests].sort((a, b) =>
-          (b.userUnread ? 1 : 0) - (a.userUnread ? 1 : 0)
-          || new Date(b.createdAt) - new Date(a.createdAt));
-        const unread = reqs.filter((r) => r.userUnread).length;
-        return (
-          <div className="mb-10 sm:mb-12">
-            <div className="flex items-baseline gap-3 mb-3 flex-wrap">
-              <h2 className="font-semibold text-lg flex items-center gap-2">
-                <MessageSquare size={18} className="text-[var(--accent-ink)]" /> {t('myo.mine', 'My requests')}
-              </h2>
-              {unread > 0 && (
-                <span className="text-xs font-semibold text-[var(--accent-ink)]">
-                  {t('myo.mineUnread', '{n} waiting for you').replace('{n}', String(unread))}
-                </span>
-              )}
-            </div>
-            <div className="space-y-2">
-              {reqs.map((r) => {
-                const K = kindMeta(r.productKind).icon;
-                return (
-                  <Link key={r.id} to={`/myo/${r.id}`}
-                    className={`card p-3 flex items-center gap-3 hover:border-[var(--primary)] ${r.userUnread ? 'border-[var(--primary)]' : ''}`}>
-                    <span className="w-9 h-9 rounded-lg bg-[var(--surface-2)] grid place-items-center shrink-0 text-[var(--accent-ink)]"><K size={16} /></span>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium truncate" title={r.name}>{r.name}</div>
-                      <div className="text-xs text-[var(--faint)]">{new Date(r.createdAt).toLocaleDateString()}</div>
-                    </div>
-                    {/* A word, not a dot. A coloured circle is only legible to somebody who
-                        already knows what it means. */}
-                    {r.userUnread && (
-                      <span className="text-[11px] font-semibold text-[var(--accent-ink)] whitespace-nowrap">
-                        {t('myo.unread', 'New reply')}
-                      </span>
-                    )}
-                    <Badge tone={STATUS_TONE[r.status]}>{statusLabel(r.status, t)}</Badge>
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })()}
+      {user && (mine.data?.requests?.length > 0) && <MyRequests requests={mine.data.requests} userId={user.id} />}
 
       {/* The survey IS the page.
           It used to open on a catalogue of cards; picking one bounced a signed-out visitor to
@@ -232,6 +190,134 @@ export function MyoPage() {
           onNeedAuth={() => { if (user) return false; nav(`/auth?next=${encodeURIComponent('/myo')}`); return true; }} />
       )}
     </div>
+  );
+}
+
+// ── "My requests", foldable ─────────────────────────────────────────────────────
+// The owner asked for it to minimise: this list sits ABOVE the questionnaire, so somebody
+// with six old commissions scrolled past six cards to start a seventh. Two folds:
+//  - the whole section (its header is the button), and
+//  - each request (its chevron). A folded request still shows its status and its last
+//    activity, which is what the list is for; unfolding adds the brief and the dates.
+// Default: active requests open, closed / cancelled ones folded (they are history). What the
+// viewer chooses wins and is remembered per account in localStorage. Storage can be missing
+// or throw (private mode, blocked site data): every access is wrapped and the page renders
+// the defaults without it.
+const FOLD_KEY = (uid) => `bcw.myo.mine.fold:${uid || 'anon'}`;
+function readFold(uid) {
+  try {
+    const v = JSON.parse(localStorage.getItem(FOLD_KEY(uid)) || 'null');
+    return v && typeof v === 'object' ? { all: !!v.all, req: v.req && typeof v.req === 'object' ? v.req : {} } : { all: false, req: {} };
+  } catch { return { all: false, req: {} }; }
+}
+function writeFold(uid, v) {
+  try { localStorage.setItem(FOLD_KEY(uid), JSON.stringify(v)); } catch { /* private mode, or storage disabled */ }
+}
+const FINISHED = new Set(['closed', 'cancelled']);
+
+// "3 days ago", in the page's language; the full date is on hover.
+function relTime(d, lang) {
+  const ms = new Date(d).getTime();
+  if (!Number.isFinite(ms)) return '';
+  const steps = [[60, 'second'], [60, 'minute'], [24, 'hour'], [7, 'day'], [4.35, 'week'], [12, 'month'], [Infinity, 'year']];
+  let n = (ms - Date.now()) / 1000;
+  for (const [k, unit] of steps) {
+    if (Math.abs(n) < k) {
+      try { return new Intl.RelativeTimeFormat(lang === 'fr' ? 'fr' : 'en', { numeric: 'auto' }).format(Math.round(n), unit); }
+      catch { return new Date(ms).toLocaleDateString(); }
+    }
+    n /= k;
+  }
+  return new Date(ms).toLocaleDateString();
+}
+
+function MyRequests({ requests, userId }) {
+  const { t, lang } = useI18n();
+  const [fold, setFold] = useState(() => readFold(userId));
+  const reqs = useMemo(() => [...requests].sort((a, b) =>
+    (b.userUnread ? 1 : 0) - (a.userUnread ? 1 : 0)
+    || new Date(b.lastActivityAt || b.createdAt) - new Date(a.lastActivityAt || a.createdAt)), [requests]);
+  const unread = reqs.filter((r) => r.userUnread).length;
+  const isFolded = (r) => (r.id in fold.req ? !!fold.req[r.id] : FINISHED.has(r.status));
+  const save = (next) => {
+    // Forget requests that are no longer listed, so the stored map cannot grow forever.
+    const live = new Set(reqs.map((r) => r.id));
+    const v = { all: !!next.all, req: Object.fromEntries(Object.entries(next.req).filter(([id]) => live.has(id))) };
+    setFold(v); writeFold(userId, v);
+  };
+  const allOpen = !fold.all;
+  const ring = 'focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)]';
+  return (
+    <section className="mb-10 sm:mb-12" aria-labelledby="myo-mine-h">
+      <div className="flex items-center gap-3 mb-3 flex-wrap">
+        <h2 id="myo-mine-h" className="font-semibold text-lg">
+          <button type="button" onClick={() => save({ ...fold, all: !fold.all })} aria-expanded={allOpen} aria-controls="myo-mine-list"
+            className={`flex items-center gap-2 rounded-lg -mx-1 px-1 py-0.5 hover:text-[var(--accent-ink)] ${ring}`}>
+            <MessageSquare size={18} className="text-[var(--accent-ink)] shrink-0" />
+            <span>{t('myo.mine', 'My requests')}</span>
+            <span className="text-sm font-normal text-[var(--faint)]">({reqs.length})</span>
+            <ChevronDown size={16} aria-hidden className={`shrink-0 transition-transform ${allOpen ? 'rotate-180' : ''}`} />
+          </button>
+        </h2>
+        {unread > 0 && (
+          <span className="text-xs font-semibold text-[var(--accent-ink)]">
+            {t('myo.mineUnread', '{n} waiting for you').replace('{n}', String(unread))}
+          </span>
+        )}
+      </div>
+      <div id="myo-mine-list" hidden={!allOpen} className="space-y-2">
+        {reqs.map((r) => {
+          const K = kindMeta(r.productKind).icon;
+          const folded = isFolded(r);
+          const last = r.lastActivityAt || r.createdAt;
+          const bodyId = `myo-req-${r.id}`;
+          const brief = (r.objective || r.description || '').trim();
+          return (
+            <div key={r.id} className={`card p-3 ${r.userUnread ? 'border-[var(--primary)]' : ''}`}>
+              <div className="flex items-center gap-2 sm:gap-3">
+                <button type="button" onClick={() => save({ ...fold, req: { ...fold.req, [r.id]: !folded } })}
+                  aria-expanded={!folded} aria-controls={bodyId}
+                  aria-label={(folded ? t('myo.mine.show', 'Show details: {n}') : t('myo.mine.hide', 'Hide details: {n}')).replace('{n}', r.name)}
+                  title={folded ? t('myo.mine.showShort', 'Show details') : t('myo.mine.hideShort', 'Hide details')}
+                  className={`w-8 h-8 shrink-0 grid place-items-center rounded-lg text-[var(--muted)] hover:bg-[var(--surface-2)] hover:text-[var(--text)] ${ring}`}>
+                  <ChevronDown size={16} aria-hidden className={`transition-transform ${folded ? '-rotate-90' : ''}`} />
+                </button>
+                <Link to={`/myo/${r.id}`} className={`flex items-center gap-3 flex-1 min-w-0 rounded-lg hover:text-[var(--accent-ink)] ${ring}`}>
+                  <span className="w-9 h-9 rounded-lg bg-[var(--surface-2)] grid place-items-center shrink-0 text-[var(--accent-ink)]"><K size={16} /></span>
+                  <span className="flex-1 min-w-0">
+                    <span className="block font-medium truncate" title={r.name}>{r.name}</span>
+                    <span className="block text-xs text-[var(--faint)] truncate" title={new Date(last).toLocaleString()}>
+                      {t('myo.mine.last', 'Last activity {when}').replace('{when}', relTime(last, lang))}
+                    </span>
+                  </span>
+                </Link>
+                {/* A word, not a dot. A coloured circle is only legible to somebody who
+                    already knows what it means. On a phone it moves under the row. */}
+                {r.userUnread && (
+                  <span className="hidden sm:inline text-[11px] font-semibold text-[var(--accent-ink)] whitespace-nowrap">
+                    {t('myo.unread', 'New reply')}
+                  </span>
+                )}
+                <Badge tone={STATUS_TONE[r.status]}>{statusLabel(r.status, t)}</Badge>
+              </div>
+              {r.userUnread && (
+                <div className="sm:hidden mt-1 ps-10 text-[11px] font-semibold text-[var(--accent-ink)]">{t('myo.unread', 'New reply')}</div>
+              )}
+              <div id={bodyId} hidden={folded} className="mt-3 ps-10 sm:ps-11 space-y-2">
+                {brief && <p className="text-[13px] text-[var(--muted)] leading-relaxed line-clamp-3 break-words">{brief}</p>}
+                <div className="flex items-center gap-x-4 gap-y-1 flex-wrap text-xs text-[var(--faint)]">
+                  <span>{t('myo.mine.created', 'Opened {d}').replace('{d}', new Date(r.createdAt).toLocaleDateString())}</span>
+                  {r.urgent && <span className="font-semibold text-[var(--warning)]">{t('myo.urgent', 'urgent')}</span>}
+                  <Link to={`/myo/${r.id}`} className="ms-auto inline-flex items-center gap-1 font-semibold text-[var(--accent-ink)] hover:underline">
+                    {t('myo.mine.open', 'Open the conversation')} <ArrowRight size={13} aria-hidden />
+                  </Link>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 

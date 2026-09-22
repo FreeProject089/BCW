@@ -17,6 +17,54 @@ function genCode() {
 const KOFI_PERCENT_OFF = 25;
 const KOFI_MIN_MONTHS = 12;
 
+// ── What "raised X of Y" counts ──
+// The goal counts tips received SINCE the goal was set (or last reset), IN the goal's
+// currency. It used to sum every KofiDonation ever logged, in any currency, and print that
+// under the goal's currency: a new EUR goal opened already "funded" by last year's dollars.
+//
+// Tips in another currency are NOT converted. There is no rate we could apply honestly (the
+// payout rate is Ko-fi's/PayPal's, on the day, after fees), so they stay out of the bar and are
+// reported apart as `otherCurrencies: [{ currency, amount, count }]` for a page to mention.
+// Currency match is case-insensitive (the admin types "eur", Ko-fi sends "EUR").
+//
+// `since` is stamped on the goal when it is created, when its currency changes (the old
+// progress was in another unit), or on an explicit `reset: true`. Editing the title or the
+// target keeps it: raising the target must not zero the bar. A goal saved before `since`
+// existed has none; it counts from the first tip (the only honest reading of "unknown"),
+// still in its own currency, until an admin resets it.
+export function nextGoalValue(prev, input, now = new Date()) {
+  const { reset, ...value } = input;
+  const cur = String(value.currency || 'USD').trim();
+  const sameCurrency = prev && String(prev.currency || 'USD').trim().toUpperCase() === cur.toUpperCase();
+  const keep = prev && sameCurrency && !reset;
+  const since = keep ? prev.since : now.toISOString();
+  return { ...value, currency: cur, ...(since ? { since } : {}) };
+}
+
+export async function kofiGoalTotals(p, goal) {
+  const currency = String(goal?.currency || 'USD').trim() || 'USD';
+  const since = goal?.since && !Number.isNaN(Date.parse(goal.since)) ? new Date(goal.since) : null;
+  const window = since ? { createdAt: { gte: since } } : {};
+  const [agg, byCur] = await Promise.all([
+    p.kofiDonation.aggregate({ where: { ...window, currency: { equals: currency, mode: 'insensitive' } }, _sum: { amount: true }, _count: { _all: true } }),
+    p.kofiDonation.groupBy({ by: ['currency'], where: { ...window, NOT: { currency: { equals: currency, mode: 'insensitive' } } }, _sum: { amount: true }, _count: { _all: true } }),
+  ]);
+  // groupBy is case-sensitive: fold "usd"/"USD" into one line.
+  const other = new Map();
+  for (const r of byCur) {
+    const k = r.currency.toUpperCase();
+    const o = other.get(k) || { currency: k, amount: 0, count: 0 };
+    o.amount += r._sum.amount || 0; o.count += r._count._all;
+    other.set(k, o);
+  }
+  const round = (n) => Math.round(n * 100) / 100; // float sums of cents drift (0.1 + 0.2)
+  return {
+    totalAmount: round(agg._sum.amount || 0), tipCount: agg._count._all, currency,
+    since: since ? since.toISOString() : null,
+    otherCurrencies: [...other.values()].map((o) => ({ ...o, amount: round(o.amount) })).sort((a, b) => a.currency.localeCompare(b.currency)),
+  };
+}
+
 // Shared grant logic — used by both the real webhook and the admin's manual
 // fallback (for a donation that happened before the webhook was configured).
 // Idempotent per account: only ever grants once (gated on kofiDonorAt).
@@ -92,12 +140,9 @@ export default async function kofiRoutes(app) {
     reply.header('Cache-Control', 'public, max-age=15');
     return replyCachedJson(req, reply, 'kofi.stats', 15_000, async () => {
       const p = await db();
-      const [agg, goalRow] = await Promise.all([
-        p.kofiDonation.aggregate({ _sum: { amount: true }, _count: { _all: true } }),
-        p.adminSetting.findUnique({ where: { key: 'kofi.goal' } }),
-      ]);
+      const goalRow = await p.adminSetting.findUnique({ where: { key: 'kofi.goal' } });
       const goal = goalRow?.value?.targetAmount > 0 ? goalRow.value : null;
-      return { totalAmount: agg._sum.amount || 0, tipCount: agg._count._all, currency: goalRow?.value?.currency || 'USD', goal };
+      return { ...(await kofiGoalTotals(p, goalRow?.value)), goal };
     });
   });
 
@@ -122,24 +167,25 @@ export default async function kofiRoutes(app) {
   // ── Admin: the funding-goal target shown on the public widget ──
   app.get('/admin/kofi/goal', { preHandler: requireCap('manage_donations') }, async () => {
     const p = await db();
-    const [row, agg] = await Promise.all([
-      p.adminSetting.findUnique({ where: { key: 'kofi.goal' } }),
-      p.kofiDonation.aggregate({ _sum: { amount: true }, _count: { _all: true } }),
-    ]);
-    return { goal: row?.value || null, totalAmount: agg._sum.amount || 0, tipCount: agg._count._all };
+    const row = await p.adminSetting.findUnique({ where: { key: 'kofi.goal' } });
+    return { goal: row?.value || null, ...(await kofiGoalTotals(p, row?.value)) };
   });
 
   app.put('/admin/kofi/goal', { preHandler: requireCap('manage_donations') }, async (req, reply) => {
-    const b = z.object({ title: z.string().max(120).default(''), targetAmount: z.number().min(0).max(10_000_000), currency: z.string().min(1).max(8).default('USD') }).safeParse(req.body);
+    const b = z.object({ title: z.string().max(120).default(''), targetAmount: z.number().min(0).max(10_000_000), currency: z.string().trim().min(1).max(8).default('USD'), reset: z.boolean().optional() }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
-    await p.adminSetting.upsert({ where: { key: 'kofi.goal' }, create: { key: 'kofi.goal', value: b.data }, update: { value: b.data } });
-    return { ok: true };
+    const prev = await p.adminSetting.findUnique({ where: { key: 'kofi.goal' } });
+    const value = nextGoalValue(prev?.value || null, b.data);
+    await p.adminSetting.upsert({ where: { key: 'kofi.goal' }, create: { key: 'kofi.goal', value }, update: { value } });
+    invalidate('kofi.stats'); // the public widget shows the new goal now, not in 15 s
+    return { ok: true, since: value.since || null };
   });
 
   app.delete('/admin/kofi/goal', { preHandler: requireCap('manage_donations') }, async () => {
     const p = await db();
     await p.adminSetting.delete({ where: { key: 'kofi.goal' } }).catch(() => {});
+    invalidate('kofi.stats');
     return { ok: true };
   });
 
