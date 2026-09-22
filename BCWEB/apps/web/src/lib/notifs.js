@@ -68,6 +68,18 @@ export const deleteAllNotifs = () =>
   write(() => api.del('/me/notifications'), { deletedAll: true });
 
 /**
+ * A report thread was SEEN — opened, or marked seen from a list — and the server read the
+ * notifications that point at it as part of the same write (lib/feedback-thread.mjs). The ids
+ * come back in the response, so the lists hear about it the same way as a direct mark-read,
+ * and the reports badge (lib/reports-unseen.js) listens to the same event. `reportsSeen` is
+ * set even when no notification matched, because the badge still has to drop.
+ */
+export const notifsReadElsewhere = (ids) => broadcast({ read: Array.isArray(ids) ? ids : [], reportsSeen: true });
+
+/** POST one of the report "seen" routes and tell every list what it read. */
+export const markReportsSeen = (path) => api.post(path).then((r) => { notifsReadElsewhere(r?.notifIds); return r; });
+
+/**
  * Apply an event's detail to a list, without asking the server.
  *
  * Shared so the three lists cannot disagree about what "read-all" means to a list that also

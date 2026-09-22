@@ -21,6 +21,7 @@ import ProjectConfigEditor from '../editor/project-config-editor.jsx';
 import { createRoot } from 'react-dom/client';
 import { KofiIcon, DiscordIcon } from '../ui/brand.jsx';
 import { api, uploadPayload, uploadImage, uploadAsset, uploadMedia } from '../lib/api.js';
+import { markReportsSeen, notifsReadElsewhere } from '../lib/notifs.js';
 import Avatar from '../ui/Avatar.jsx';
 import { THEME_PRESETS } from '../ui/theme-presets.js';
 import { defaultFooterConfig, DEFAULT_FOOTER_SOCIALS } from '../ui/footer-default.js';
@@ -21223,11 +21224,17 @@ const REPORT_TARGET_ICON = { user: Users, repo: Server, catalog: Boxes, item: Pa
 // here only because the old pages monolith was split this way. Exported so the dashboard
 // imports it instead of referencing a bare identifier, which crashed the tab at render.
 export function MyReports() {
-  const { t } = useI18n();
+  const { t } = useI18n(); const toast = useToast();
   const { data, loading, reload } = useAsync(() => api.get('/me/reports'), []);
-  const [openId, setOpenId] = useState(null);
+  // `?r=<id>` opens that thread: it is where every report notification and mail points.
+  const [sp] = useSearchParams();
+  const [openId, setOpenId] = useState(() => sp.get('r') || null);
   const [newOpen, setNewOpen] = useState(false);
   const reports = data?.reports || [];
+  const unseen = reports.filter((r) => r.userUnread && !r.participant).length;
+  // "Mark as seen" without opening: the thread's unread flag and the notifications about it,
+  // in one write, and the bell and the topbar badge hear about it (lib/notifs.js).
+  const seen = async (path) => { try { await markReportsSeen(path); reload(true); } catch { toast.error(t('acc.failed', 'Failed.')); } };
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
@@ -21235,17 +21242,23 @@ export function MyReports() {
           <h2 className="font-semibold flex items-center gap-2"><MessageSquare size={16} className="text-[var(--accent-ink)]" /> {t('mr.title', 'Messages & reports')}</h2>
           <p className="text-sm text-[var(--muted)]">{t('mr.sub', 'Reports you filed and support conversations. Replies from the team show up here.')}</p>
         </div>
-        <Button size="sm" variant="primary" onClick={() => setNewOpen(true)}><Plus size={14} /> {t('mr.new2', 'New report / contact')}</Button>
+        <div className="flex items-center gap-2 flex-wrap">
+          {unseen > 0 && <Button size="sm" variant="ghost" onClick={() => seen('/me/reports/seen-all')}><CheckCheck size={14} /> {t('mr.seenall', 'Mark all as seen')}</Button>}
+          <Button size="sm" variant="primary" onClick={() => setNewOpen(true)}><Plus size={14} /> {t('mr.new2', 'New report / contact')}</Button>
+        </div>
       </div>
       {loading ? <Loading /> : reports.length ? <div className="space-y-1.5">
         {reports.map((r) => { const Ico = REPORT_TARGET_ICON[r.targetType] || MessageSquare; return (
-          <button key={r.id} onClick={() => setOpenId(r.id)} className="w-full text-start"><Card className="p-3 flex items-center gap-3 card-hover">
-            <span className="grid place-items-center w-9 h-9 rounded-lg bg-[var(--surface-2)] shrink-0"><Ico size={15} className="text-[var(--accent-ink)]" /></span>
-            <div className="flex-1 min-w-0">
-              <div className="font-medium flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0">{r.targetLabel || t('mr.general', 'Support request')}</span> <Badge tone={REPORT_STATUS_TONE[r.status]}>{r.status}</Badge>{r.userUnread && <Badge tone="red">{t('mr.new', 'new reply')}</Badge>}</div>
-              <div className="text-xs text-[var(--faint)]">{t('mr.on', 'on {t}').replace('{t}', r.targetType)} · {r.messageCount} {t('mr.msgs', 'messages')} · {fmtAgo(r.lastActivityAt)}</div>
-            </div>
-          </Card></button>
+          <Card key={r.id} className={`p-3 flex items-center gap-3 card-hover ${r.userUnread && !r.participant ? 'border-[var(--primary)]' : ''}`}>
+            <button onClick={() => setOpenId(r.id)} className="flex-1 min-w-0 flex items-center gap-3 text-start">
+              <span className="grid place-items-center w-9 h-9 rounded-lg bg-[var(--surface-2)] shrink-0"><Ico size={15} className="text-[var(--accent-ink)]" /></span>
+              <div className="flex-1 min-w-0">
+                <div className="font-medium flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0" title={r.targetLabel || undefined}>{r.targetLabel || t('mr.general', 'Support request')}</span> <Badge tone={REPORT_STATUS_TONE[r.status]}>{r.status}</Badge>{r.userUnread && !r.participant && <Badge tone="red">{t('mr.new', 'new reply')}</Badge>}</div>
+                <div className="text-xs text-[var(--faint)]">{t('mr.on', 'on {t}').replace('{t}', r.targetType)} · {r.messageCount} {t('mr.msgs', 'messages')} · {fmtAgo(r.lastActivityAt)}</div>
+              </div>
+            </button>
+            {r.userUnread && !r.participant && <Button size="sm" variant="ghost" onClick={() => seen(`/me/reports/${r.id}/seen`)} title={t('mr.seen', 'Mark as seen')} aria-label={t('mr.seen', 'Mark as seen')}><Eye size={14} /></Button>}
+          </Card>
         ); })}
       </div> : <EmptyState icon={MessageSquare} title={t('mr.none.t', 'No reports yet')} sub={t('mr.none.s', 'Use the Report button on a profile, repo or catalog, or start one here.')}
         action={{ label: t('mr.new2', 'New report / contact'), icon: Plus, onClick: () => setNewOpen(true) }} />}
@@ -21256,10 +21269,13 @@ export function MyReports() {
 }
 
 // Shared thread modal — user (admin=false) or staff (admin=true) view of one report.
-function ReportThreadModal({ id, admin, onClose }) {
-  const { t } = useI18n(); const toast = useToast(); const dialog = useDialog(); const { user } = useAuth();
+function ReportThreadModal({ id, admin, onClose, onDelete }) {
+  const { t } = useI18n(); const toast = useToast(); const { user } = useAuth();
   const base = admin ? `/admin/reports/${id}` : `/me/reports/${id}`;
-  const { data, loading, reload } = useAsync(() => api.get(base), [id]);
+  const { data, err, loading, reload } = useAsync(() => api.get(base), [id]);
+  // Opening the thread marked it seen on the server, notifications about it included; the
+  // response names those, so the bell and the topbar badge drop now rather than on their poll.
+  useEffect(() => { if (data?.seenNotifIds) notifsReadElsewhere(data.seenNotifIds); }, [data]);
   // Live thread. The stream lives under /me/ for BOTH views: canAccessReport already covers
   // staff, so there is no second authorisation path to keep in step with the first.
   useThreadStream(id ? `/me/reports/${id}/stream` : null, () => reload(true));
@@ -21281,11 +21297,15 @@ function ReportThreadModal({ id, admin, onClose }) {
   // without waiting for staff to clear the thread.
   const mine = r && r.reporterId === user?.id;
   const setOwnStatus = async (status) => { try { await api.post(`/me/reports/${id}/status`, { status }); reload(true); } catch { toast.error(t('acc.failed', 'Failed.')); } };
-  const del = async () => { if (!(await dialog.confirm({ title: t('ar.del.t', 'Delete report?'), message: t('ar.del.m', 'Permanently delete this report and its messages?'), okLabel: t('common.delete', 'Delete'), danger: true }))) return; try { await api.del(`/admin/reports/${id}`); toast.success(t('ar.deleted', 'Deleted.')); onClose(); } catch { toast.error(t('acc.failed', 'Failed.')); } };
+  // The delete is the LIST's (onDelete): it hides the row, holds the request for the undo
+  // window, and only then sends it. The modal closes first so nothing on screen still shows a
+  // thread that is on its way out.
+  const del = () => { onClose(); onDelete?.(r); };
   return (
     <Modal open onClose={onClose} icon={admin ? Inbox : MessageSquare} width="max-w-2xl"
       title={loading ? t('common.loading', 'Loading…') : (r?.targetLabel || t('mr.general', 'Support request'))}>
-      {loading || !r ? <Loading /> : <div className="space-y-4">
+      {err && !r ? <p className="text-sm text-[var(--muted)] text-center py-6">{t('mr.gone', 'This conversation no longer exists. It may have been deleted.')}</p>
+        : loading || !r ? <Loading /> : <div className="space-y-4">
         <div className="flex items-center gap-2 flex-wrap text-xs text-[var(--muted)]">
           <Badge tone={REPORT_STATUS_TONE[r.status]}>{r.status}</Badge>
           <span>{t('mr.on', 'on {t}').replace('{t}', r.targetType)}{r.reason ? ` · ${r.reason}` : ''}</span>
@@ -21387,37 +21407,69 @@ function ReportPeoplePanel({ report, onChange }) {
 
 // Admin: the report / support queue. Filter by status; open a thread to reply + moderate.
 function AdminReports() {
-  const { t } = useI18n(); const { user } = useAuth();
+  const { t } = useI18n(); const { user } = useAuth(); const toast = useToast();
   const [status, setStatus] = useState('open');
-  const [openId, setOpenId] = useState(null);
+  // `?r=<id>` opens that thread: the feedback centre's "open in Reports" link and every staff
+  // report notification point here.
+  const [sp] = useSearchParams();
+  const [openId, setOpenId] = useState(() => sp.get('r') || null);
   const [cfgOpen, setCfgOpen] = useState(false);
+  // Rows deleted but still inside their undo window: hidden here, untouched on the server.
+  const [pendingDel, setPendingDel] = useState(() => new Set());
   const { data, loading, reload } = useAsync(() => api.get(`/admin/reports?status=${status}`), [status]);
-  const reports = data?.reports || []; const counts = data?.counts || {};
+  const reports = (data?.reports || []).filter((r) => !pendingDel.has(r.id)); const counts = data?.counts || {};
+  const unseen = reports.filter((r) => r.staffUnread && r.reporterId !== user?.id).length;
   const STATUSES = [['open', t('ar.s.open', 'Open')], ['archived', t('ar.s.archived', 'Archived')], ['closed', t('ar.s.closed', 'Closed')]];
+  const seen = async (path) => { try { await markReportsSeen(path); reload(true); } catch { toast.error(t('acc.failed', 'Failed.')); } };
+  // Deferred delete. The request is not sent until the undo window closes, so an undone delete
+  // never reached the server and there is nothing to reverse. When it IS sent, the server
+  // deletes the thread and, for a feedback thread, its entry in Feedback & crashes in one
+  // transaction: no half-applied state either way.
+  const del = (r) => {
+    if (!r) return;
+    const unhide = () => setPendingDel((s) => { const n = new Set(s); n.delete(r.id); return n; });
+    setPendingDel((s) => new Set(s).add(r.id));
+    toast.action({
+      tone: 'info', cancelLabel: t('common.undo', 'Undo'),
+      msg: r.targetType === 'feedback' ? t('ar.deleted.fb', 'Report deleted, with its entry in Feedback & crashes.') : t('ar.deleted', 'Deleted.'),
+      onCommit: async () => {
+        try { await api.del(`/admin/reports/${r.id}`); } catch (x) { if (x?.status !== 404) toast.error(t('acc.failed', 'Failed.')); }
+        unhide(); reload(true);
+      },
+      onCancel: () => { unhide(); setOpenId(r.id); },
+    });
+  };
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div><h2 className="font-semibold flex items-center gap-2"><Inbox size={16} className="text-[var(--accent-ink)]" /> {t('ar.title', 'Reports')}</h2>
           <p className="text-sm text-[var(--muted)]">{t('ar.sub', 'User reports and support threads. Reply, archive, close or delete.')}</p></div>
-        <Button size="sm" variant="ghost" onClick={() => setCfgOpen(true)}><Settings2 size={14} /> {t('ar.settings', 'Settings')}</Button>
+        <div className="flex items-center gap-2 flex-wrap">
+          {unseen > 0 && <Button size="sm" variant="ghost" onClick={() => seen('/admin/reports/seen-all')}><CheckCheck size={14} /> {t('ar.seenall', 'Mark all as seen')}</Button>}
+          <Button size="sm" variant="ghost" onClick={() => setCfgOpen(true)}><Settings2 size={14} /> {t('ar.settings', 'Settings')}</Button>
+        </div>
       </div>
       <div className="flex rounded-lg border border-[var(--line)] overflow-hidden w-fit">
         {STATUSES.map(([k, lbl]) => <button key={k} onClick={() => setStatus(k)} className={`px-3 py-1.5 text-sm ${status === k ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{lbl}{counts[k] ? <span className="ms-1.5 text-[10px] tabular-nums text-[var(--faint)]">{counts[k]}</span> : null}</button>)}
       </div>
       {loading ? <Loading /> : reports.length ? <div className="space-y-1.5">
-        {reports.map((r) => { const Ico = REPORT_TARGET_ICON[r.targetType] || MessageSquare; return (
-          <button key={r.id} onClick={() => setOpenId(r.id)} className="w-full text-start"><Card className="p-3 flex items-center gap-3 card-hover">
-            <span className="grid place-items-center w-9 h-9 rounded-lg bg-[var(--surface-2)] shrink-0"><Ico size={15} className="text-[var(--accent-ink)]" /></span>
-            <div className="flex-1 min-w-0">
-              <div className="font-medium flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0">{r.targetLabel || t('mr.general', 'Support request')}</span> {r.staffUnread && <Badge tone="red">{t('ar.unread', 'new')}</Badge>}{r.reporterId === user?.id && <Badge tone="amber">{t('ar.yours', 'your report')}</Badge>}<Badge tone="">{r.reason === 'showcase_submission' ? t('mr.submission', 'Project submission') : (r.reason || r.targetType)}</Badge></div>
-              <div className="text-xs text-[var(--faint)] truncate flex items-center gap-2 flex-wrap"><span className="flex items-center gap-1"><Users size={11} /> {r.reporter}</span>{r.reporterBcId && <span className="font-mono flex items-center gap-1"><Fingerprint size={10} /> {r.reporterBcId}</span>}<span>· {r.messageCount} {t('mr.msgs', 'messages')} · {fmtAgo(r.lastActivityAt)}</span></div>
-            </div>
-          </Card></button>
+        {reports.map((r) => { const Ico = REPORT_TARGET_ICON[r.targetType] || MessageSquare; const isNew = r.staffUnread && r.reporterId !== user?.id; return (
+          <Card key={r.id} className={`p-3 flex items-center gap-3 card-hover ${isNew ? 'border-[var(--primary)]' : ''}`}>
+            <button onClick={() => setOpenId(r.id)} className="flex-1 min-w-0 flex items-center gap-3 text-start">
+              <span className="grid place-items-center w-9 h-9 rounded-lg bg-[var(--surface-2)] shrink-0"><Ico size={15} className="text-[var(--accent-ink)]" /></span>
+              <div className="flex-1 min-w-0">
+                <div className="font-medium flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0" title={r.targetLabel || undefined}>{r.targetLabel || t('mr.general', 'Support request')}</span> {isNew && <Badge tone="red">{t('ar.unread', 'new')}</Badge>}{r.reporterId === user?.id && <Badge tone="amber">{t('ar.yours', 'your report')}</Badge>}<Badge tone="">{r.reason === 'showcase_submission' ? t('mr.submission', 'Project submission') : (r.reason || r.targetType)}</Badge></div>
+                <div className="text-xs text-[var(--faint)] truncate flex items-center gap-2 flex-wrap"><span className="flex items-center gap-1"><Users size={11} /> {r.reporter}</span>{r.reporterBcId && <span className="font-mono flex items-center gap-1"><Fingerprint size={10} /> {r.reporterBcId}</span>}<span>· {r.messageCount} {t('mr.msgs', 'messages')} · {fmtAgo(r.lastActivityAt)}</span></div>
+              </div>
+            </button>
+            {r.targetType === 'feedback' && r.targetId && <Link to={`/admin?s=feedback&fb=${encodeURIComponent(r.targetId)}`} className="text-[var(--faint)] hover:text-[var(--accent-ink)] p-1.5 shrink-0" title={t('ar.openfb', 'Open in Feedback & crashes')} aria-label={t('ar.openfb', 'Open in Feedback & crashes')}><BugIcon size={14} /></Link>}
+            {isNew && <Button size="sm" variant="ghost" onClick={() => seen(`/admin/reports/${r.id}/seen`)} title={t('mr.seen', 'Mark as seen')} aria-label={t('mr.seen', 'Mark as seen')}><Eye size={14} /></Button>}
+          </Card>
         ); })}
       </div> : <EmptyState icon={Inbox} title={status === 'open' ? t('ar.none.open.t', 'Nothing waiting') : t('ar.none.t', 'Nothing here')}
         sub={status === 'open' ? t('ar.none.open.s', 'Every report has been answered and archived or closed. New ones arrive here on their own.') : t('ar.none.s', 'No reports with this status.')}
         action={status === 'open' ? null : { label: t('ar.none.goopen', 'Back to the open queue'), icon: Inbox, onClick: () => setStatus('open') }} />}
-      {openId && <ReportThreadModal id={openId} admin onClose={() => { setOpenId(null); reload(); }} />}
+      {openId && <ReportThreadModal id={openId} admin onDelete={del} onClose={() => { setOpenId(null); reload(true); }} />}
       {cfgOpen && <AdminReportsConfig onClose={() => setCfgOpen(false)} />}
     </div>
   );

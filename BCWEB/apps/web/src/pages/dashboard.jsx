@@ -5,6 +5,7 @@ import {
 import { Button, Card, Badge, Input, Textarea, Select, Field, EmptyState, Explain, Spinner, Modal, useDialog, useToast, copyText, SkeletonCard } from '../ui/ui.jsx';
 import { api, uploadPayload } from '../lib/api.js';
 import { onNotifsChanged, applyNotifChange, markNotifRead, markAllNotifsRead, deleteNotif, deleteAllNotifs } from '../lib/notifs.js';
+import { useReportsUnseen } from '../lib/reports-unseen.js';
 import { useAuth } from './auth.jsx';
 import { useI18n } from '../i18n.jsx';
 import { useIntro } from '../ui/IntroContext.jsx';
@@ -947,7 +948,10 @@ export function Dashboard() {
   const pollsOpen = pollMe?.open?.length || 0;
   // Unanswered messages about my repos, catalogues, teams and profile — same rule as the polls.
   const { data: inbox } = useAsync(() => api.get('/me/threads').catch(() => null), []);
-  const threadsUnread = inbox?.unread || 0;
+  // Plus report threads with a staff reply not yet seen: the same tab lists both, and a
+  // badge that counted only one of them hid the other. Shared with the topbar's poll.
+  const reportsUnseen = useReportsUnseen(true);
+  const threadsUnread = (inbox?.unread || 0) + (reportsUnseen.mine || 0);
 
   // B10: the "My Discord servers" tab only appears for people who actually manage a server the
   // bot is in — resolved server-side from their linked Discord account(s). `.catch` so a badge

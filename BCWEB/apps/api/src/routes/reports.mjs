@@ -5,8 +5,10 @@ import { userBcId, findUserIdByBcId, looksLikeBcId } from '../lib/repofingerprin
 import { sendMail, mailShell, emailEnabled } from '../lib/mail.mjs';
 import { powVerify } from './auth.mjs';
 import { publishToThread, streamThread } from '../lib/threadbus.mjs';
+import { deleteSubmission, detachAndDeleteThreads, markThreadSeen, readNotifs, LEGACY_REPORT_KINDS } from '../lib/feedback-thread.mjs';
 
 const STAFF_ROLES = ['MOD', 'ADMIN', 'SUPERADMIN'];
+const isStaff = (user) => STAFF_ROLES.includes(user?.role) || !!user?.perms?.includes?.('manage_reports');
 
 // Report / support-thread subsystem. A user opens a report against another user / repo /
 // catalog / catalog item (or a general support thread), then the reporter and staff
@@ -134,8 +136,10 @@ export default async function reportRoutes(app) {
     } });
     // Ping staff who can handle reports.
     const staff = await p.user.findMany({ where: { OR: [{ role: { in: ['MOD', 'ADMIN', 'SUPERADMIN'] } }, { permissions: { has: 'manage_reports' } }] }, select: { id: true, email: true } });
+    // With a destination: the notification opens THIS thread, and seeing the thread reads
+    // the notification (markThreadSeen matches on the href).
     for (const s of staff) {
-      notify(p, s.id, 'report_new', `New report on ${b.data.targetType}${b.data.targetLabel ? ` "${b.data.targetLabel}"` : ''}.`).catch(() => {});
+      notify(p, s.id, 'report_new', `New report on ${b.data.targetType}${b.data.targetLabel ? ` "${b.data.targetLabel}"` : ''}.`, { href: `/admin?s=reports&r=${report.id}` }).catch(() => {});
     }
     // Email the first staff member (best-effort) so an open report is never silent.
     if (staff[0]) mailReport(p, staff[0].email, 'New report opened', `A user opened a report on ${b.data.targetType}${b.data.targetLabel ? ` "${b.data.targetLabel}"` : ''}.`, report.id, 'report-new');
@@ -150,12 +154,44 @@ export default async function reportRoutes(app) {
     return { reports: rows.map((r) => ({ ...reportPublic(r), participant: r.reporterId !== req.user.uid })) };
   });
 
+  // What the topbar badges count: threads with a reply this person has not seen, and, for
+  // staff, threads with a reporter message no moderator has seen. The Report flags ARE the
+  // unread state; this only counts them. A staff member's own reports are theirs to read as
+  // the reporter, not staff work, so they are left out of the queue count.
+  app.get('/me/reports/unseen', { preHandler: requireRole() }, async (req) => {
+    const p = await db();
+    const mine = await p.report.count({ where: { reporterId: req.user.uid, userUnread: true } });
+    if (!isStaff(req.user)) return { mine };
+    const staff = await p.report.count({ where: { staffUnread: true, NOT: { reporterId: req.user.uid } } });
+    return { mine, staff };
+  });
+
+  // "Mark as seen", without opening the thread. Only the reporter's own flag: a participant
+  // has no per-person unread state, and clearing the reporter's from their seat would hide a
+  // reply from the one person it was written to.
+  app.post('/me/reports/seen-all', { preHandler: requireRole() }, async (req) => {
+    const p = await db();
+    const { count } = await p.report.updateMany({ where: { reporterId: req.user.uid, userUnread: true }, data: { userUnread: false } });
+    const notifIds = await readNotifs(p, req.user.uid, { OR: [{ href: { startsWith: '/dashboard?s=reports' } }, { href: null, kind: { in: LEGACY_REPORT_KINDS.mine } }] });
+    return { ok: true, threads: count, notifIds };
+  });
+  app.post('/me/reports/:id/seen', { preHandler: requireRole() }, async (req, reply) => {
+    const p = await db();
+    const r = await p.report.findUnique({ where: { id: req.params.id }, select: { id: true, reporterId: true } });
+    if (!(await canAccessReport(p, r, req.user))) return reply.code(404).send({ error: 'not_found' });
+    const notifIds = r.reporterId === req.user.uid
+      ? await markThreadSeen(p, r.id, req.user.uid, 'mine')
+      : await readNotifs(p, req.user.uid, { href: `/dashboard?s=reports&r=${r.id}` });
+    return { ok: true, notifIds };
+  });
+
   app.get('/me/reports/:id', { preHandler: requireRole() }, async (req, reply) => {
     const p = await db();
     const r = await p.report.findUnique({ where: { id: req.params.id }, include: { messages: { orderBy: { createdAt: 'asc' }, include: { author: { select: { displayName: true } } } }, participants: { include: { user: { select: { displayName: true } } } }, _count: { select: { messages: true } } } });
     if (!(await canAccessReport(p, r, req.user))) return reply.code(404).send({ error: 'not_found' });
-    if (r.reporterId === req.user.uid && r.userUnread) await p.report.update({ where: { id: r.id }, data: { userUnread: false } });
-    return { report: { ...reportPublic(r), participants: r.participants.map((x) => ({ userId: x.userId, name: x.user?.displayName, role: x.role })), messages: r.messages.map(msgPublic) } };
+    // Opening the thread is seeing it: the flag AND the notifications that led here.
+    const seenNotifIds = r.reporterId === req.user.uid ? await markThreadSeen(p, r.id, req.user.uid, 'mine') : [];
+    return { seenNotifIds, report: { ...reportPublic(r), participants: r.participants.map((x) => ({ userId: x.userId, name: x.user?.displayName, role: x.role })), messages: r.messages.map(msgPublic) } };
   });
 
   app.post('/me/reports/:id/messages', { preHandler: requireRole(), config: { rateLimit: { max: 30, timeWindow: '1 hour' } } }, async (req, reply) => {
@@ -231,8 +267,10 @@ export default async function reportRoutes(app) {
     const p = await db();
     const r = await p.report.findUnique({ where: { id: req.params.id }, include: { reporter: { select: { id: true, displayName: true, email: true } }, messages: { orderBy: { createdAt: 'asc' }, include: { author: { select: { displayName: true } } } }, participants: { include: { user: { select: { id: true, displayName: true, email: true } } } }, invites: { orderBy: { createdAt: 'desc' } }, sanctions: { orderBy: { issuedAt: 'desc' }, select: { id: true, code: true, kind: true, status: true, reason: true, issuedAt: true } } } });
     if (!r) return reply.code(404).send({ error: 'not_found' });
-    if (r.staffUnread) await p.report.update({ where: { id: r.id }, data: { staffUnread: false } });
-    return { report: {
+    // Seen by staff, and by this staff member's bell. Not for their OWN report: that one they
+    // read as the reporter, from the dashboard, and the flag belongs to the queue.
+    const seenNotifIds = r.reporterId === req.user.uid ? [] : await markThreadSeen(p, r.id, req.user.uid, 'staff');
+    return { seenNotifIds, report: {
       ...reportPublic(r), reporterId: r.reporterId, reporter: r.reporter?.displayName, reporterEmail: r.reporter?.email, reporterBcId: r.reporter ? userBcId(r.reporter.id) : null,
       messages: r.messages.map(msgPublic),
       participants: r.participants.map((x) => ({ userId: x.userId, name: x.user?.displayName, email: x.user?.email, bcId: userBcId(x.userId), role: x.role })),
@@ -241,6 +279,23 @@ export default async function reportRoutes(app) {
       // from nothing, which is how the same complaint gets acted on twice.
       sanctions: r.sanctions,
     } };
+  });
+
+  // Staff "mark as seen": one thread, or the whole queue. The flag is shared by every
+  // moderator (it always was: opening a thread cleared it for all); the notifications are this
+  // person's own.
+  app.post('/admin/reports/seen-all', { preHandler: requireCap('manage_reports', 'MOD') }, async (req) => {
+    const p = await db();
+    const { count } = await p.report.updateMany({ where: { staffUnread: true, NOT: { reporterId: req.user.uid } }, data: { staffUnread: false } });
+    const notifIds = await readNotifs(p, req.user.uid, { OR: [{ href: { startsWith: '/admin?s=reports' } }, { href: null, kind: { in: LEGACY_REPORT_KINDS.staff } }] });
+    return { ok: true, threads: count, notifIds };
+  });
+  app.post('/admin/reports/:id/seen', { preHandler: requireCap('manage_reports', 'MOD') }, async (req, reply) => {
+    const p = await db();
+    const r = await p.report.findUnique({ where: { id: req.params.id }, select: { id: true, reporterId: true } });
+    if (!r) return reply.code(404).send({ error: 'not_found' });
+    if (r.reporterId === req.user.uid) return reply.code(403).send({ error: 'own_report' });
+    return { ok: true, notifIds: await markThreadSeen(p, r.id, req.user.uid, 'staff') };
   });
 
   // Add a participant to a thread by account id / email / BC id (role: staff | invited).
@@ -263,7 +318,7 @@ export default async function reportRoutes(app) {
       create: { reportId: r.id, userId: user.id, role: b.data.role, addedById: req.user.uid },
       update: { role: b.data.role },
     });
-    notify(p, user.id, 'report_added', 'You were added to a report conversation.').catch(() => {});
+    notify(p, user.id, 'report_added', 'You were added to a report conversation.', { href: `/dashboard?s=reports&r=${r.id}` }).catch(() => {});
     mailReport(p, user.email, 'You were added to a conversation', 'A moderator added you to a report conversation.', r.id, 'report-added');
     return { ok: true, userId: user.id, name: user.displayName };
   });
@@ -347,7 +402,7 @@ export default async function reportRoutes(app) {
     const m = await p.reportMessage.create({ data: { reportId: r.id, authorId: req.user.uid, staff: true, body: b.data.body, images: b.data.images } });
     // A staff reply reopens an archived thread and flags the reporter (notif + email).
     await p.report.update({ where: { id: r.id }, data: { status: r.status === 'closed' ? 'closed' : 'open', archivedAt: r.status === 'closed' ? r.archivedAt : null, userUnread: true, lastActivityAt: new Date() } });
-    notify(p, r.reporterId, 'report_reply', 'A staff member replied to your report.').catch(() => {});
+    notify(p, r.reporterId, 'report_reply', 'A staff member replied to your report.', { href: `/dashboard?s=reports&r=${r.id}` }).catch(() => {});
     mailReport(p, r.reporter?.email, 'Reply to your report', 'A staff member replied to your report.', r.id, 'report-reply');
     publishToThread('report', r.id, { type: 'message', message: msgPublic({ ...m, author: null }) });
     return { message: msgPublic({ ...m, author: null }) };
@@ -404,7 +459,7 @@ export default async function reportRoutes(app) {
     if (b.data.tellReporter) {
       const m = await p.reportMessage.create({ data: { reportId: r.id, authorId: req.user.uid, staff: true, body: note, images: [] } });
       await p.report.update({ where: { id: r.id }, data: { userUnread: true, lastActivityAt: new Date() } });
-      notify(p, r.reporterId, 'report_reply', note).catch(() => {});
+      notify(p, r.reporterId, 'report_reply', note, { href: `/dashboard?s=reports&r=${r.id}` }).catch(() => {});
       mailReport(p, r.reporter?.email, 'Your report was acted on', note, r.id, 'report-acted');
       publishToThread('report', r.id, { type: 'message', message: msgPublic({ ...m, author: null }) });
     }
@@ -432,10 +487,16 @@ export default async function reportRoutes(app) {
     return { ok: true };
   });
 
+  // Messages, participants and invites cascade. A thread that IS a feedback submission takes
+  // its Feedback row with it: leaving that behind put an item in Retours & plantages whose
+  // thread link and reply box pointed at nothing (and whose reply answered 500). See
+  // lib/feedback-thread.mjs. This used to swallow every error and answer ok; a delete that did
+  // not happen now says so. The admin screen holds the call until its undo window closes.
   app.delete('/admin/reports/:id', { preHandler: requireCap('manage_reports') }, async (req, reply) => {
     const p = await db();
-    await p.report.delete({ where: { id: req.params.id } }).catch(() => null); // cascades messages
-    return { ok: true };
+    const out = await deleteSubmission(p, { reportId: req.params.id });
+    if (!out.found) return reply.code(404).send({ error: 'not_found' });
+    return { ok: true, feedback: out.feedback };
   });
 
   // Admin config (image size / count caps + archive/delete lifecycle).
@@ -482,6 +543,16 @@ export async function sweepReports(p) {
   }
   if (cfg.deleteEnabled) {
     const cutoff = new Date(now - cfg.deleteDays * 864e5);
-    await p.report.deleteMany({ where: { status: 'archived', archivedAt: { lt: cutoff } } });
+    const ids = (await p.report.findMany({ where: { status: 'archived', archivedAt: { lt: cutoff } }, select: { id: true }, take: 1000 })).map((r) => r.id);
+    await sweepReportIds(p, ids);
   }
+}
+
+/**
+ * Expire threads. Not a person deciding anything about a submission, so a feedback row keeps
+ * living without its thread (it is what groups crashes); only an admin's delete removes both.
+ * Exported for the test suite, which cannot wait out `deleteDays`.
+ */
+export async function sweepReportIds(p, ids) {
+  return detachAndDeleteThreads(p, ids);
 }

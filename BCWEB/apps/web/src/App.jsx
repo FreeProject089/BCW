@@ -5,6 +5,7 @@ import { Code2, Boxes, Music2, Newspaper, Server, Rocket, LayoutDashboard, Shiel
 import { useAuth } from './pages/auth.jsx';
 import { api } from './lib/api.js';
 import { onNotifsChanged, applyNotifChange, markNotifRead, markAllNotifsRead, deleteNotif } from './lib/notifs.js';
+import { useReportsUnseen } from './lib/reports-unseen.js';
 import { getHero3dDisabled } from './lib/prefs.js';
 import WelcomePrefs from './ui/WelcomePrefs.jsx';
 import { Button, useToast, Modal, useDialog } from './ui/ui.jsx';
@@ -762,8 +763,8 @@ function Nav() {
       case 'lang': return <LangToggle key="u-lang" type={uCfg.lang?.type || 'auto'} />;
       case 'theme': return <ThemeToggle key="u-theme" />;
       case 'settings': return <NavLink key="u-set" to="/settings" className={({ isActive }) => `nav-link !px-2 ${isActive ? 'nav-link-active' : ''}`} title={t('nav.settings', 'Settings')} aria-label={t('nav.settings', 'Settings')}><SettingsIcon size={16} /></NavLink>;
-      case 'dashboard': return <NavLink key="u-dash" to="/dashboard" className={(s) => pill(s) + ' !py-2 !px-2.5'} title={t('nav.dashboard')} aria-label={t('nav.dashboard')}><LayoutDashboard size={15} /></NavLink>;
-      case 'admin': return <NavLink key="u-adm" to="/admin" className={(s) => pill(s) + ' !py-2 !px-2.5'} title={t('nav.admin')} aria-label={t('nav.admin')}><Shield size={15} /></NavLink>;
+      case 'dashboard': return <NavLink key="u-dash" to={unseen.mine > 0 ? '/dashboard?s=reports' : '/dashboard'} className={(s) => pill(s) + ' !py-2 !px-2.5 relative'} title={t('nav.dashboard')} aria-label={t('nav.dashboard')}><LayoutDashboard size={15} />{unseenDot(unseen.mine, t('nav.unseen.mine', '{n} report thread(s) with a reply you have not seen').replace('{n}', String(unseen.mine)))}</NavLink>;
+      case 'admin': return <NavLink key="u-adm" to={unseen.staff > 0 ? '/admin?s=reports' : '/admin'} className={(s) => pill(s) + ' !py-2 !px-2.5 relative'} title={t('nav.admin')} aria-label={t('nav.admin')}><Shield size={15} />{unseenDot(unseen.staff, t('nav.unseen.staff', '{n} report thread(s) waiting for staff').replace('{n}', String(unseen.staff)))}</NavLink>;
       case 'profile': return <Link key="u-prof" to="/profile" className="rounded-full p-0.5 hover:ring-2 hover:ring-[var(--line-strong)] transition" title={user.displayName}><Avatar user={user} size={28} /></Link>;
       case 'logout': return <Button key="u-out" variant="ghost" size="sm" onClick={logout} title={t('nav.signout')}><LogOut size={15} /></Button>;
       case 'login': return <Link key="u-login" to="/auth"><Button variant="primary" size="sm" className="whitespace-nowrap rounded-full">{t('nav.signin')}</Button></Link>;
@@ -771,6 +772,10 @@ function Nav() {
     }
   };
   const renderUtil = (k) => (uVisible(k) ? utilNode(k) : null);
+  // Unseen report threads, on the entry that leads to them: your own on Dashboard, the staff
+  // queue on Admin. The count is lib/reports-unseen.js (one shared poll of the Report flags).
+  const unseen = useReportsUnseen(!!user);
+  const unseenDot = (n, label) => n > 0 && <span className="absolute -top-1 -right-1 min-w-[15px] h-[15px] px-1 rounded-full bg-[var(--primary)] text-white text-[9px] font-bold grid place-items-center" title={label} aria-label={label}>{n > 9 ? '9+' : n}</span>;
   return (
     <header className="sticky top-0 z-40 px-2 sm:px-3 pt-2 sm:pt-3">
       <div className="max-w-7xl mx-auto rounded-2xl border border-[var(--line)] px-2.5 sm:px-3 h-14 flex items-center gap-1 flex-nowrap topbar"

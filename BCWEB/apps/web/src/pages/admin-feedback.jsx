@@ -20,15 +20,29 @@
 // The bundle is read in the browser rather than on the server even though the server is
 // holding it: unzipping arbitrary archives in the API is a decompression bomb waiting for a
 // slow afternoon, and the limits are already written and tested on this side.
-import { useState, useEffect } from 'react';
+//
+// Reading a report (Sept 2026 pass): attached logs and the context are HIGHLIGHTED with the
+// Prism the site already bundles (pages.jsx loads it for the JSON editor; `prism-log` and the
+// config grammars ship inside the same `prismjs` package, so no dependency was added), images
+// are previewed inline, text attachments open in place, and a delete has an undo window
+// instead of a confirm dialog — and removes the report's thread in Signalements with it, on
+// the server, in one transaction (lib/feedback-thread.mjs in the API).
+import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
+import Prism from 'prismjs';
+import 'prismjs/components/prism-log';
+import 'prismjs/components/prism-json';
+import 'prismjs/components/prism-ini';
+import 'prismjs/components/prism-toml';
+import 'prismjs/components/prism-yaml';
 import {
   Bug as BugIcon, Sliders, AlertTriangle, Clock, Trash2, Download, Users, Layers,
-  Inbox, ShieldAlert, XCircle, Info, ChevronRight,
+  Inbox, ShieldAlert, XCircle, Info, ChevronRight, ChevronLeft, Copy, Link2, FileText,
+  Image as ImageIcon, Eye, EyeOff, Search, Filter, ClipboardList, MessageSquare, Paperclip,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
-import { Button, Card, Badge, Input, Textarea, Select, Field, Spinner, Explain, useDialog, useToast } from '../ui/ui.jsx';
+import { Button, Card, Badge, Input, Textarea, Select, Field, Spinner, Explain, Modal, useToast, copyText } from '../ui/ui.jsx';
 import { useAsync } from './pages.jsx';
 import { analyseBundle, LIMITS } from '../lib/crash-bundle.js';
 
@@ -79,9 +93,218 @@ function Spread({ rows, total, label }) {
   );
 }
 
+/* ── Highlighting ──────────────────────────────────────────────────────────────────────────
+ *
+ * Prism TOKENISES; React renders. Prism.highlight() returns an HTML string, which would mean
+ * dangerouslySetInnerHTML over text a stranger's machine wrote — safe only for as long as
+ * Prism's escaping is, and never necessary. Tokens become <span>s here, so the text is always
+ * a React text node and nothing a sender typed can become markup.
+ *
+ * The `token <type>` classes pick up the site's existing palette (index.css). The log levels
+ * get their own, `!`-prefixed because the global `.token.keyword` rule (two classes) would
+ * otherwise paint INFO the colour of a warning.
+ */
+const LEVEL_CLASS = {
+  error: '!text-error font-semibold', warning: '!text-warning font-semibold', info: '!text-info',
+  debug: '!text-[var(--faint)]', trace: '!text-[var(--faint)]', exception: '!text-error',
+  date: '!text-[var(--faint)]', time: '!text-[var(--faint)]', 'file-path': '!text-[var(--accent-ink)]',
+  url: '!text-[var(--accent-ink)] underline decoration-dotted', domain: '!text-[var(--accent-ink)]',
+};
+const GRAMMAR = { log: 'log', txt: 'log', json: 'json', ini: 'ini', cfg: 'ini', toml: 'toml', yaml: 'yaml', yml: 'yaml' };
+/** A file name (or a MIME type) to a Prism grammar id; logs are the default. */
+function langOf(name = '', type = '') {
+  const ext = String(name).toLowerCase().match(/\.([a-z0-9]+)$/)?.[1] || '';
+  if (GRAMMAR[ext]) return GRAMMAR[ext];
+  if (/json/.test(type)) return 'json';
+  return 'log';
+}
+function renderTokens(tokens, key = 't') {
+  return tokens.map((tk, i) => {
+    if (typeof tk === 'string') return tk;
+    const aliases = Array.isArray(tk.alias) ? tk.alias : tk.alias ? [tk.alias] : [];
+    const extra = LEVEL_CLASS[tk.type] || aliases.map((a) => LEVEL_CLASS[a]).find(Boolean) || '';
+    const inner = Array.isArray(tk.content) ? renderTokens(tk.content, `${key}.${i}`) : typeof tk.content === 'string' ? tk.content : renderTokens([tk.content], `${key}.${i}`);
+    return <span key={`${key}.${i}`} className={`token ${tk.type} ${aliases.join(' ')} ${extra}`}>{inner}</span>;
+  });
+}
+function Highlighted({ text, lang = 'log' }) {
+  const out = useMemo(() => {
+    const g = Prism?.languages?.[lang];
+    if (!g) return String(text || '');
+    try { return renderTokens(Prism.tokenize(String(text || ''), g)); } catch { return String(text || ''); }
+  }, [text, lang]);
+  return <>{out}</>;
+}
+
+const ISSUE_LINE = /\b(?:ERROR|ERR|FATAL|PANIC|panicked|CRIT(?:ICAL)?|SEVERE|WARN(?:ING)?|Exception|Traceback)\b/i;
+const MAX_LINES = 4000;
+
+/**
+ * A log, readable: highlighted, filterable to the lines that matter, copyable.
+ *
+ * The TAIL is kept when a log is too long, not the head — a crash log ends at the crash.
+ * "Issues only" keeps the line numbers of the full log, so a line quoted to somebody can be
+ * found again.
+ */
+function LogView({ text, lang = 'log', maxH = 'max-h-[45vh]' }) {
+  const { t } = useI18n(); const toast = useToast();
+  const [issues, setIssues] = useState(false);
+  const [q, setQ] = useState('');
+  const all = useMemo(() => String(text || '').split('\n'), [text]);
+  const cut = all.length > MAX_LINES ? all.length - MAX_LINES : 0;
+  const rows = useMemo(() => {
+    const out = [];
+    const needle = q.trim().toLowerCase();
+    for (let i = cut; i < all.length; i++) {
+      const ln = all[i];
+      if (issues && !ISSUE_LINE.test(ln)) continue;
+      if (needle && !ln.toLowerCase().includes(needle)) continue;
+      out.push([i + 1, ln]);
+    }
+    return out;
+  }, [all, cut, issues, q]);
+  const nIssues = useMemo(() => all.filter((l) => ISSUE_LINE.test(l)).length, [all]);
+  const structured = lang !== 'log';
+  return (
+    <div className="rounded-lg border border-[var(--line)] overflow-hidden min-w-0">
+      <div className="flex items-center gap-1.5 flex-wrap px-2 py-1.5 border-b border-[var(--line)] panel text-[11px]">
+        <span className="text-[var(--faint)] tabular-nums">{t('fbx.lines', '{n} line(s)').replace('{n}', String(all.length))}</span>
+        {!structured && nIssues > 0 && <button type="button" onClick={() => setIssues((v) => !v)}
+          className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md border ${issues ? 'border-[var(--error)] text-error' : 'border-[var(--line)] text-[var(--muted)]'}`}
+          aria-pressed={issues}>
+          <Filter size={11} /> {t('fbx.issuesonly', 'Errors and warnings only')} <span className="tabular-nums">({nIssues})</span>
+        </button>}
+        <span className="relative ms-auto">
+          <Search size={11} className="absolute start-1.5 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('fbx.filter', 'Filter lines')} aria-label={t('fbx.filter', 'Filter lines')}
+            className="w-32 sm:w-40 ps-5 pe-1.5 py-0.5 rounded-md border border-[var(--line)] bg-[var(--bg-solid)] text-[11px]" />
+        </span>
+        <button type="button" className="p-1 rounded-md text-[var(--faint)] hover:text-[var(--text)]" title={t('fbx.copy', 'Copy')} aria-label={t('fbx.copy', 'Copy')}
+          onClick={async () => { if (await copyText(String(text || ''))) toast.success(t('ccp.copied', 'Copied.')); }}><Copy size={12} /></button>
+      </div>
+      {cut > 0 && <div className="px-2 py-1 text-[10.5px] text-[var(--faint)] border-b border-[var(--line)]">{t('fbx.tail', 'Showing the last {n} lines of {all}. Download the file for the rest.').replace('{n}', String(MAX_LINES)).replace('{all}', String(all.length))}</div>}
+      <div className={`${maxH} overflow-auto`}>
+        {rows.length ? <table className="w-full text-[11px] font-mono border-collapse">
+          <tbody>
+            {structured && !issues && !q.trim()
+              ? <tr><td className="p-2 whitespace-pre-wrap break-words"><Highlighted text={all.slice(cut).join('\n')} lang={lang} /></td></tr>
+              : rows.map(([n, ln]) => (
+                <tr key={n} className={ISSUE_LINE.test(ln) ? 'tint-warning' : ''}>
+                  <td className="select-none text-end align-top pe-2 ps-2 text-[var(--faint)] tabular-nums w-10">{n}</td>
+                  <td className="pe-2 whitespace-pre-wrap break-words align-top"><Highlighted text={ln || ' '} lang={lang} /></td>
+                </tr>
+              ))}
+          </tbody>
+        </table> : <div className="p-3 text-[11px] text-[var(--faint)]">{t('fbx.nomatch', 'No line matches.')}</div>}
+      </div>
+    </div>
+  );
+}
+
+const isImage = (a) => /^image\/(png|jpe?g|gif|webp|bmp|avif)$/i.test(a.type || '') || /\.(png|jpe?g|gif|webp|bmp|avif)$/i.test(a.name || '');
+const isText = (a) => /^text\//i.test(a.type || '') || /json/i.test(a.type || '') || /\.(log|txt|json|toml|ini|cfg|ya?ml|md|csv)$/i.test(a.name || '');
+const isZip = (a) => /\.zip$/i.test(a.name || '') || a.type === 'application/zip';
+const TEXT_PREVIEW_MAX = 4 * 1024 * 1024;
+const fmtSize = (n) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
+
+/**
+ * Every attachment, shown for what it is. Images as thumbnails (opened large in place), text
+ * files readable here with the log view, the rest as downloads. The crash zip has its own
+ * reader above; it is listed here too so the download is always one click away.
+ *
+ * An <img> pointed at the attachment route renders despite its `Content-Disposition:
+ * attachment` (that header only governs navigation), and cannot run anything whatever type
+ * the sender claimed; the route also sends `nosniff`.
+ */
+function Attachments({ item }) {
+  const { t } = useI18n();
+  const [big, setBig] = useState(null);
+  const [text, setText] = useState({});   // i → { loading } | { text } | { error }
+  const url = (a) => `/api/admin/feedback/${item.id}/attachments/${a.i}`;
+  const list = item.attachments || [];
+  const images = list.filter(isImage);
+  const others = list.filter((a) => !isImage(a));
+  const preview = async (a) => {
+    if (text[a.i]?.text != null) { setText((s) => ({ ...s, [a.i]: undefined })); return; }
+    setText((s) => ({ ...s, [a.i]: { loading: true } }));
+    try {
+      const res = await fetch(url(a), { credentials: 'include' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const body = await res.text();
+      setText((s) => ({ ...s, [a.i]: { text: body } }));
+    } catch (e) { setText((s) => ({ ...s, [a.i]: { error: String(e?.message || e) } })); }
+  };
+  if (!list.length) return null;
+  return (
+    <section className="space-y-2">
+      <h3 className="text-xs font-semibold text-[var(--faint)] uppercase tracking-wider flex items-center gap-1.5"><Paperclip size={12} /> {t('fb.attachments', 'Attachments')} <span className="tabular-nums">({list.length})</span></h3>
+      {images.length > 0 && <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+        {images.map((a) => (
+          <figure key={a.i} className="rounded-lg border border-[var(--line)] overflow-hidden min-w-0">
+            <button type="button" onClick={() => setBig(a)} className="block w-full panel" title={t('fbx.enlarge', 'Open large')}>
+              <img src={url(a)} alt={a.name} loading="lazy" className="w-full h-32 object-contain" />
+            </button>
+            <figcaption className="flex items-center gap-1 px-2 py-1 text-[10.5px]">
+              <ImageIcon size={11} className="shrink-0 text-[var(--faint)]" />
+              <span className="truncate min-w-0 flex-1" title={a.name}>{a.name}</span>
+              <span className="text-[var(--faint)] shrink-0">{fmtSize(a.size)}</span>
+              <a href={url(a)} className="p-0.5 text-[var(--faint)] hover:text-[var(--text)] shrink-0" title={t('fbx.download', 'Download')} aria-label={t('fbx.download', 'Download')}><Download size={11} /></a>
+            </figcaption>
+          </figure>
+        ))}
+      </div>}
+      {others.length > 0 && <div className="space-y-1.5">
+        {others.map((a) => { const st = text[a.i]; const canPreview = isText(a) && a.size <= TEXT_PREVIEW_MAX; return (
+          <div key={a.i} className="space-y-1.5">
+            <div className="flex items-center gap-2 text-xs rounded-lg border border-[var(--line)] px-2.5 py-1.5 min-w-0">
+              {isZip(a) ? <BugIcon size={12} className="shrink-0 text-[var(--faint)]" /> : <FileText size={12} className="shrink-0 text-[var(--faint)]" />}
+              <span className="truncate min-w-0 flex-1" title={a.name}>{a.name}</span>
+              <span className="text-[var(--faint)] shrink-0">{fmtSize(a.size)}</span>
+              {canPreview && <Button size="sm" variant="ghost" disabled={st?.loading} onClick={() => preview(a)}>
+                {st?.loading ? <Spinner /> : st?.text != null ? <><EyeOff size={12} /> {t('fbx.hide', 'Hide')}</> : <><Eye size={12} /> {t('fbx.preview', 'Read here')}</>}
+              </Button>}
+              <a href={url(a)} className="inline-flex items-center gap-1 px-1.5 py-1 rounded-md hover:bg-[var(--surface-2)] shrink-0"><Download size={12} /> <span className="hidden sm:inline">{t('fbx.download', 'Download')}</span></a>
+            </div>
+            {st?.error && <p className="text-[11px] text-error">{st.error}</p>}
+            {st?.text != null && <LogView text={st.text} lang={langOf(a.name, a.type)} />}
+          </div>
+        ); })}
+      </div>}
+      {big && <Modal open onClose={() => setBig(null)} title={big.name} icon={ImageIcon} width="max-w-5xl">
+        <img src={url(big)} alt={big.name} className="max-w-full max-h-[75vh] mx-auto object-contain" />
+        <div className="mt-3 flex justify-end"><a href={url(big)} className="inline-flex items-center gap-1.5 text-sm text-[var(--accent-ink)] hover:underline"><Download size={14} /> {t('fbx.download', 'Download')}</a></div>
+      </Modal>}
+    </section>
+  );
+}
+
+/** Does this text read as a log (timestamps or levels at line starts) rather than prose? */
+function looksLikeLog(s) {
+  const lines = String(s || '').split('\n').slice(0, 200);
+  const hits = lines.filter((l) => /^\s*(?:\[?\d{1,4}[-/:.]\d{1,2}[-/:.]\d{1,4}|\[?(?:ERROR|WARN|INFO|DEBUG|TRACE)\b)/i.test(l)).length;
+  return hits >= 3 && hits >= lines.length / 4;
+}
+
+/** A plain-text summary of one report, for pasting into an issue tracker or a chat. */
+function summaryOf(f, t) {
+  const lines = [
+    `### ${f.title || t('fb.untitled', '(untitled)')}`,
+    '',
+    `- ${t('fbx.s.kind', 'Kind')}: ${f.kind} · ${t('fbx.s.status', 'Status')}: ${f.status}${f.count > 1 ? ` · ×${f.count}` : ''}`,
+    `- ${t('fb.f.project', 'Project')}: ${f.projectKey} · ${t('fb.f.version', 'Version')}: ${f.appVersion || '-'} · ${t('fb.f.os', 'OS')}: ${f.os || '-'}`,
+    `- ${t('fb.f.when', 'When')}: ${new Date(f.createdAt).toISOString()}`,
+    `- ${t('fbx.s.ref', 'Reference')}: ${f.id}`,
+  ];
+  if (f.meta?._crash?.sig) lines.push(`- ${t('fbx.s.sig', 'Crash signature')}: ${f.meta._crash.sig}`);
+  lines.push('', '```', String(f.body || '').slice(0, 4000), '```');
+  return lines.join('\n');
+}
+
 export function AdminFeedbackCentre() {
-  const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
+  const { t } = useI18n(); const toast = useToast();
   const [cfg, setCfg] = useState(null);
+  // Deleted, but still inside the undo window: hidden here, not yet sent to the server.
+  const [pendingDel, setPendingDel] = useState(() => new Set());
   const [project, setProject] = useState(() => { try { return new URLSearchParams(location.search).get('p') || ''; } catch { return ''; } });
   const [view, setView] = useState('inbox');       // inbox | crashes
   const [kind, setKind] = useState(''); const [status, setStatus] = useState('new'); const [version, setVersion] = useState(''); const [sort, setSort] = useState('severity');
@@ -92,7 +315,7 @@ export function AdminFeedbackCentre() {
   const [bundle, setBundle] = useState(null);      // { loading } | analysed bundle | { error }
   const [openGroup, setOpenGroup] = useState(null);
 
-  const loadCfg = () => api.get('/admin/feedback/config').then((c) => { setCfg(c); if (!project) { const first = Object.keys(c.projects)[0] || c.knownProjects[0]?.key || ''; setProject(first); } }).catch(() => toast.error(t('common.failed', 'Failed.')));
+  const loadCfg = () => api.get('/admin/feedback/config').then((c) => { setCfg(c); const first = Object.keys(c.projects)[0] || c.knownProjects[0]?.key || ''; setProject((cur) => cur || first); }).catch(() => toast.error(t('common.failed', 'Failed.')));
   useEffect(() => { loadCfg(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const qs = `project=${encodeURIComponent(project)}${kind ? `&kind=${kind}` : ''}${status ? `&status=${status}` : ''}${version ? `&version=${encodeURIComponent(version)}` : ''}${qApplied ? `&q=${encodeURIComponent(qApplied)}` : ''}&sort=${sort}&page=${page}`;
   const { data, loading, reload } = useAsync(() => project && view === 'inbox' ? api.get(`/admin/feedback?${qs}`) : Promise.resolve(null), [qs, view]);
@@ -100,21 +323,52 @@ export function AdminFeedbackCentre() {
 
   const openItem = async (id) => {
     setBundle(null);
-    try { const r = await api.get(`/admin/feedback/${id}`); setOpen(r.item); setReply(''); }
-    catch { toast.error(t('common.failed', 'Failed.')); }
+    try { const r = await api.get(`/admin/feedback/${id}`); setOpen(r.item); setReply(''); return r.item; }
+    catch (x) { toast.error(x?.status === 404 ? t('fbx.gone', 'This report no longer exists.') : t('common.failed', 'Failed.')); return null; }
   };
+  // `?fb=<id>` opens one report: the link Signalements puts on a feedback thread, and the one
+  // "Copy link" below produces. It lands on that report's own project.
+  useEffect(() => {
+    let id = ''; try { id = new URLSearchParams(location.search).get('fb') || ''; } catch { /* no location */ }
+    if (!id) return;
+    openItem(id).then((it) => { if (it?.projectKey) setProject(it.projectKey); });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const setSt = async (id, st) => { setBusy(true); try { const r = await api.post(`/admin/feedback/${id}/status`, { status: st }); setOpen((o) => o && o.id === id ? { ...o, status: r.item.status } : o); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); } };
   const send = async () => { if (!open || !reply.trim()) return; setBusy(true); try { const r = await api.post(`/admin/feedback/${open.id}/reply`, { body: reply.trim() }); toast.success(r.via === 'mail' ? t('fb.replied.mail', 'Sent by e-mail.') : t('fb.replied.thread', 'Posted in their dashboard thread.')); setReply(''); reload(); } catch (x) { toast.error(x.data?.error === 'no_channel' ? t('fb.nochannel', 'No way to reach this sender: no account and no e-mail.') : x.data?.error === 'mail_failed' ? t('fb.mailfail', 'The mail could not be sent.') : t('common.failed', 'Failed.')); } finally { setBusy(false); } };
-  const del = async (id) => {
-    // The site's own dialog. A browser confirm() puts the origin across the top, ignores the
-    // theme and the language, and offers to suppress every future dialog on the page.
-    if (!await dialog.confirm({
-      title: t('fb.del.t', 'Delete this report?'),
-      message: t('fb.del.confirm', 'Delete this report and its attachments?'),
-      danger: true,
-    })) return;
-    try { await api.del(`/admin/feedback/${id}`); setOpen(null); setBundle(null); reload(); } catch { toast.error(t('common.failed', 'Failed.')); }
+  /**
+   * Delete, with an undo window instead of a confirm dialog.
+   *
+   * The row disappears at once; the DELETE is sent only when the window closes. So an undone
+   * delete never reached the server, and a delete that is still inside its window has touched
+   * nothing — not the feedback row, not its thread in Signalements. When it is sent, the API
+   * removes the report, its thread, the thread's notifications and the attachments together
+   * (lib/feedback-thread.mjs), which is what stopped a deleted report living on in Signalements
+   * and in the sender's dashboard.
+   */
+  const del = (item) => {
+    const unhide = () => setPendingDel((s) => { const n = new Set(s); n.delete(item.id); return n; });
+    setPendingDel((s) => new Set(s).add(item.id));
+    setOpen(null); setBundle(null);
+    toast.action({
+      tone: 'info', cancelLabel: t('common.undo', 'Undo'),
+      msg: item.reportId
+        ? t('fb.deleted.thread', 'Report deleted, with its conversation in Reports and in the sender’s dashboard.')
+        : t('fb.deleted', 'Report deleted, with its attachments.'),
+      onCommit: async () => {
+        try { await api.del(`/admin/feedback/${item.id}`); } catch (x) { if (x?.status !== 404) toast.error(t('common.failed', 'Failed.')); }
+        unhide(); reload(); crashes.reload?.(true);
+      },
+      onCancel: () => { unhide(); openItem(item.id); },
+    });
   };
+
+  // Previous / next within what the list is showing, so a triage pass does not need the mouse
+  // to travel back to the list for every report.
+  const listIds = (data?.items || []).filter((f) => !pendingDel.has(f.id)).map((f) => f.id);
+  const at = open ? listIds.indexOf(open.id) : -1;
+  const step = (d) => { const id = listIds[at + d]; if (id) openItem(id); };
+  const copy = async (text, done) => { if (await copyText(text)) toast.success(done || t('ccp.copied', 'Copied.')); };
+  const linkTo = (id) => `${location.origin}/admin?s=feedback&fb=${encodeURIComponent(id)}`;
 
   /**
    * Open the attached crash bundle, here.
@@ -294,10 +548,10 @@ export function AdminFeedbackCentre() {
             {loading ? <div className="py-10 flex justify-center text-[var(--muted)]"><Spinner /></div>
               : !(data?.items || []).length ? <div className="py-10 text-center text-sm text-[var(--muted)]">{t('fb.empty', 'Nothing here.')}</div>
                 : <div className="space-y-1.5">
-                  {data.items.map((f) => <button key={f.id} onClick={() => openItem(f.id)} className={`w-full text-start rounded-xl border pl-4 pr-3 py-2.5 hover:bg-[var(--surface-2)] relative overflow-hidden ${open?.id === f.id ? 'border-[var(--primary)]' : 'border-[var(--line)]'}`}>
+                  {data.items.filter((f) => !pendingDel.has(f.id)).map((f) => <button key={f.id} onClick={() => openItem(f.id)} className={`w-full text-start rounded-xl border pl-4 pr-3 py-2.5 hover:bg-[var(--surface-2)] relative overflow-hidden ${open?.id === f.id ? 'border-[var(--primary)]' : 'border-[var(--line)]'}`}>
                     <span aria-hidden="true" className={`absolute left-0 top-0 bottom-0 w-1 ${f.kind === 'crash' ? 'bg-error' : f.kind === 'bug' ? 'bg-warning' : 'bg-success'}`} />
                     <div className="flex items-center gap-2 flex-wrap"><Badge tone={FB_KIND_TONE[f.kind]}>{t(`fb.kind.${f.kind}`, f.kind)}</Badge><span className="font-medium text-sm truncate min-w-0 flex-1" title={f.title || undefined}>{f.title || <span className="text-[var(--faint)]">{t('fb.untitled', '(untitled)')}</span>}</span>{f.count > 1 && <Badge>×{f.count}</Badge>}<Badge tone={FB_STATUS_TONE[f.status]}>{t(`fb.st.${f.status}`, f.status)}</Badge></div>
-                    <div className="text-xs text-[var(--faint)] mt-0.5 flex items-center gap-2 flex-wrap"><span>{fmtAgo(f.createdAt)}</span>{f.appVersion && <span>· v{f.appVersion}</span>}{f.os && <span>· {f.os}</span>}<span>· {f.userName ? f.userName : f.email ? f.email : t('fb.anon', 'anonymous')}</span>{f.attachments.length > 0 && <span>· {t('fbx.natt', '{n} attached').replace('{n}', String(f.attachments.length))}</span>}</div>
+                    <div className="text-xs text-[var(--faint)] mt-0.5 flex items-center gap-2 flex-wrap"><span>{fmtAgo(f.createdAt)}</span>{f.appVersion && <span>· v{f.appVersion}</span>}{f.os && <span>· {f.os}</span>}<span>· {f.userName ? f.userName : f.email ? f.email : t('fb.anon', 'anonymous')}</span>{f.attachments.length > 0 && <span className="inline-flex items-center gap-0.5">· {f.attachments.some(isImage) ? <ImageIcon size={10} /> : <Paperclip size={10} />} {t('fbx.natt', '{n} attached').replace('{n}', String(f.attachments.length))}</span>}{f.reportId && <span className="inline-flex items-center gap-0.5" title={t('fbx.hasthread', 'Has a conversation in Reports')}>· <MessageSquare size={10} /></span>}</div>
                     <div className="text-xs text-[var(--muted)] mt-1 line-clamp-2">{f.body}</div>
                   </button>)}
                   {data.total > data.take && <div className="flex items-center justify-between text-xs text-[var(--muted)] pt-2"><Button size="sm" variant="ghost" disabled={page === 0} onClick={() => setPage(page - 1)} aria-label={t('common.prev', 'Previous')}>‹</Button><span>{page * data.take + 1}–{Math.min(data.total, (page + 1) * data.take)} / {data.total}</span><Button size="sm" variant="ghost" disabled={(page + 1) * data.take >= data.total} onClick={() => setPage(page + 1)} aria-label={t('common.next', 'Next')}>›</Button></div>}
@@ -350,7 +604,7 @@ export function AdminFeedbackCentre() {
                           <pre className="text-[11px] font-mono panel rounded-lg p-2 overflow-x-auto whitespace-pre-wrap break-words">{g.frames.join('\n')}</pre>
                         </div>}
                         <div className="flex flex-wrap gap-1.5">
-                          {g.ids.slice(0, 12).map((id) => (
+                          {g.ids.filter((id) => !pendingDel.has(id)).slice(0, 12).map((id) => (
                             <Button key={id} size="sm" variant={open?.id === id ? 'primary' : 'default'} onClick={() => openItem(id)}>
                               <span className="font-mono text-[11px]">{id.slice(0, 8)}</span>
                             </Button>
@@ -372,31 +626,57 @@ export function AdminFeedbackCentre() {
 
         <Card className="p-5 space-y-4 min-w-0">
           {!open ? <div className="py-16 text-center text-sm text-[var(--muted)]">{t('fb.pick', 'Pick a report on the left.')}</div> : <>
-            <div className="flex items-start gap-3 flex-wrap">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap"><Badge tone={FB_KIND_TONE[open.kind]}>{t(`fb.kind.${open.kind}`, open.kind)}</Badge><Badge tone={FB_STATUS_TONE[open.status]}>{t(`fb.st.${open.status}`, open.status)}</Badge>{open.count > 1 && <Badge>×{open.count} {t('fb.dup', 'occurrences')}</Badge>}</div>
-                <h2 className="text-lg font-bold mt-1 break-words">{open.title || t('fb.untitled', '(untitled)')}</h2>
-                <div className="text-xs text-[var(--faint)] font-mono mt-0.5 break-all">{open.id}{open.fingerprint ? ` · ${open.fingerprint.slice(0, 16)}` : ''}</div>
-              </div>
-              <div className="flex items-center gap-1 flex-wrap">
-                {['triaged', 'resolved', 'ignored'].filter((x) => x !== open.status).map((st) => <Button key={st} size="sm" disabled={busy} onClick={() => setSt(open.id, st)}>{t(`fb.mark.${st}`, `Mark ${st}`)}</Button>)}
-                <Button size="sm" variant="ghost" className="text-[var(--error)]" onClick={() => del(open.id)} aria-label={t('common.delete', 'Delete')}><Trash2 size={14} /></Button>
-              </div>
+            {/* ── Header: what it is, where it sits in the list, and what to do with it ── */}
+            <div className="flex items-center gap-1 flex-wrap -mt-1">
+              <Button size="sm" variant="ghost" disabled={at <= 0} onClick={() => step(-1)} title={t('fbx.prev', 'Previous report')} aria-label={t('fbx.prev', 'Previous report')}><ChevronLeft size={14} /></Button>
+              <span className="text-[11px] text-[var(--faint)] tabular-nums">{at >= 0 ? `${at + 1} / ${listIds.length}` : ''}</span>
+              <Button size="sm" variant="ghost" disabled={at < 0 || at >= listIds.length - 1} onClick={() => step(1)} title={t('fbx.next', 'Next report')} aria-label={t('fbx.next', 'Next report')}><ChevronRight size={14} /></Button>
+              <span className="flex-1" />
+              <Button size="sm" variant="ghost" onClick={() => copy(open.id)} title={t('fbx.copyid', 'Copy the reference')} aria-label={t('fbx.copyid', 'Copy the reference')}><Copy size={13} /></Button>
+              <Button size="sm" variant="ghost" onClick={() => copy(linkTo(open.id), t('fbx.linkcopied', 'Link copied.'))} title={t('fbx.copylink', 'Copy a link to this report')} aria-label={t('fbx.copylink', 'Copy a link to this report')}><Link2 size={13} /></Button>
+              <Button size="sm" variant="ghost" onClick={() => copy(summaryOf(open, t), t('fbx.summarycopied', 'Summary copied, ready to paste into an issue.'))} title={t('fbx.copysummary', 'Copy a summary for an issue tracker')} aria-label={t('fbx.copysummary', 'Copy a summary for an issue tracker')}><ClipboardList size={13} /></Button>
+              <Button size="sm" variant="ghost" className="!text-error" onClick={() => del(open)} title={t('common.delete', 'Delete')} aria-label={t('common.delete', 'Delete')}><Trash2 size={14} /></Button>
             </div>
-            <div className="grid sm:grid-cols-2 gap-x-6 gap-y-1 text-xs">
-              <div><span className="text-[var(--faint)]">{t('fb.f.project', 'Project')}</span> · <span className="font-mono">{open.projectKey}</span></div>
-              <div><span className="text-[var(--faint)]">{t('fb.f.when', 'When')}</span> · {new Date(open.createdAt).toLocaleString()}</div>
-              <div><span className="text-[var(--faint)]">{t('fb.f.version', 'Version')}</span> · {open.appVersion || '-'}</div>
-              <div><span className="text-[var(--faint)]">{t('fb.f.os', 'OS')}</span> · {open.os || '-'}</div>
-              <div><span className="text-[var(--faint)]">{t('fb.f.sender', 'Sender')}</span> · {open.user ? <Link to={`/admin?s=users&q=${encodeURIComponent(open.user.email)}`} className="text-[var(--accent-ink)]">{open.user.displayName}</Link> : open.email || t('fb.anon', 'anonymous')}{open.creatorId ? <span className="font-mono text-[var(--faint)] break-all"> · {open.creatorId}</span> : null}</div>
-              <div><span className="text-[var(--faint)]">{t('fb.f.thread', 'Thread')}</span> · {open.reportId ? <Link to={`/admin?s=reports&r=${open.reportId}`} className="text-[var(--accent-ink)]">{t('fb.f.openthread', 'open in Reports')}</Link> : open.email ? t('fb.f.bymail', 'replies go by e-mail') : t('fb.f.none', 'none (read-only)')}</div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap"><Badge tone={FB_KIND_TONE[open.kind]}>{t(`fb.kind.${open.kind}`, open.kind)}</Badge><Badge tone={FB_STATUS_TONE[open.status]}>{t(`fb.st.${open.status}`, open.status)}</Badge>{open.count > 1 && <Badge>×{open.count} {t('fb.dup', 'occurrences')}</Badge>}{open.meta?._crash?.sig && <Badge tone="red"><span className="font-mono">{open.meta._crash.sig}</span></Badge>}</div>
+              <h2 className="text-lg font-bold mt-1 break-words">{open.title || t('fb.untitled', '(untitled)')}</h2>
+              <div className="text-xs text-[var(--faint)] font-mono mt-0.5 break-all">{open.id}{open.fingerprint ? ` · ${open.fingerprint.slice(0, 16)}` : ''}</div>
             </div>
+            {/* Status as one control: where it is now, and the three places it can go. */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="inline-flex rounded-[10px] bg-[var(--surface-2)] p-0.5" role="group" aria-label={t('fbx.status', 'Status')}>
+                {['new', 'triaged', 'resolved', 'ignored'].map((st) => (
+                  <button key={st} type="button" disabled={busy || st === open.status} onClick={() => setSt(open.id, st)} aria-pressed={st === open.status}
+                    className={`px-2.5 py-1 rounded-[8px] text-[12px] ${st === open.status ? 'bg-[var(--bg-solid)] font-semibold' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>
+                    {st === open.status ? t(`fb.st.${st}`, st) : st === 'new' ? t('fbx.mark.new', 'Back to new') : t(`fb.mark.${st}`, `Mark ${st}`)}
+                  </button>
+                ))}
+              </div>
+              {(open.status === 'resolved' || open.status === 'ignored') && open.reportId && <span className="text-[11px] text-[var(--faint)]">{t('fbx.closedthread', 'Its conversation was closed with a note to the sender.')}</span>}
+            </div>
+            <dl className="grid sm:grid-cols-2 gap-x-6 gap-y-1 text-xs rounded-xl border border-[var(--line)] p-3">
+              <div className="min-w-0"><dt className="inline text-[var(--faint)]">{t('fb.f.project', 'Project')}</dt> · <dd className="inline font-mono">{open.projectKey}</dd></div>
+              <div className="min-w-0"><dt className="inline text-[var(--faint)]">{t('fb.f.when', 'When')}</dt> · <dd className="inline">{new Date(open.createdAt).toLocaleString()}</dd></div>
+              <div className="min-w-0"><dt className="inline text-[var(--faint)]">{t('fb.f.version', 'Version')}</dt> · <dd className="inline">{open.appVersion
+                ? <button type="button" className="font-mono hover:text-[var(--accent-ink)] hover:underline" title={t('fbx.sameversion', 'Show only this version')} onClick={() => { setVersion(open.appVersion); setView('inbox'); setPage(0); }}>{open.appVersion}</button>
+                : '-'}</dd></div>
+              <div className="min-w-0"><dt className="inline text-[var(--faint)]">{t('fb.f.os', 'OS')}</dt> · <dd className="inline">{open.os || '-'}</dd></div>
+              <div className="min-w-0"><dt className="inline text-[var(--faint)]">{t('fb.f.sender', 'Sender')}</dt> · <dd className="inline">{open.user ? <Link to={`/admin?s=users&q=${encodeURIComponent(open.user.email)}`} className="text-[var(--accent-ink)]">{open.user.displayName}</Link> : open.email || t('fb.anon', 'anonymous')}{open.creatorId ? <span className="font-mono text-[var(--faint)] break-all"> · {open.creatorId}</span> : null}</dd></div>
+              <div className="min-w-0"><dt className="inline text-[var(--faint)]">{t('fb.f.thread', 'Thread')}</dt> · <dd className="inline">{open.reportId ? <Link to={`/admin?s=reports&r=${open.reportId}`} className="text-[var(--accent-ink)] inline-flex items-center gap-1"><MessageSquare size={11} /> {t('fb.f.openthread', 'open in Reports')}</Link> : open.email ? t('fb.f.bymail', 'replies go by e-mail') : t('fb.f.none', 'none (read-only)')}</dd></div>
+              {open.fingerprint && <div className="min-w-0 sm:col-span-2"><dt className="inline text-[var(--faint)]">{t('fbx.fingerprint', 'Fingerprint')}</dt> · <dd className="inline"><button type="button" className="font-mono break-all hover:text-[var(--accent-ink)] hover:underline" title={t('fbx.samefp', 'Find every report with this fingerprint')} onClick={() => { setQ(open.fingerprint); setQApplied(open.fingerprint); setStatus(''); setView('inbox'); setPage(0); }}>{open.fingerprint}</button></dd></div>}
+            </dl>
 
             {/* The report's own text. A crash body is a trace as often as it is prose, so it
-                is drawn as one: app frames keep their contrast, the runtime dims. */}
-            {open.kind === 'crash' && /^\s*(?:at\s|\d+:)/m.test(open.body || '')
-              ? <Trace text={open.body} />
-              : <pre className="text-sm whitespace-pre-wrap break-words panel rounded-xl p-3 max-h-[50vh] overflow-auto">{open.body || t('fb.nobody', '(no text)')}</pre>}
+                is drawn as one: app frames keep their contrast, the runtime dims. A body that is
+                a pasted log gets the log view; prose stays prose. */}
+            <section className="space-y-1.5">
+              <h3 className="text-xs font-semibold text-[var(--faint)] uppercase tracking-wider">{t('fbx.description', 'What they wrote')}</h3>
+              {open.kind === 'crash' && /^\s*(?:at\s|\d+:)/m.test(open.body || '')
+                ? <Trace text={open.body} />
+                : looksLikeLog(open.body)
+                  ? <LogView text={open.body} />
+                  : <pre className="text-sm whitespace-pre-wrap break-words panel rounded-xl p-3 max-h-[50vh] overflow-auto">{open.body || t('fb.nobody', '(no text)')}</pre>}
+            </section>
 
             {/* ── The attached crash bundle, opened here ── */}
             {zipAtt.length > 0 && <div className="rounded-xl border border-[var(--line)] p-3 space-y-2">
@@ -440,22 +720,22 @@ export function AdminFeedbackCentre() {
                 </details>}
                 <details>
                   <summary className="cursor-pointer text-[12px] text-[var(--muted)]">{t('fbx.b.log', 'The last thing it logged')}</summary>
-                  <pre className="mt-1 text-[11px] font-mono panel rounded-lg p-2 overflow-auto max-h-[35vh] whitespace-pre-wrap break-words">
-                    {bundle.logs.slice(-60).map((l) => `${l.ts ? `${l.ts} ` : ''}${l.text}`).join('\n') || t('dcr.nolog', 'No log lines.')}
-                  </pre>
+                  {/* The whole session log (the bundle keeps its last 500 lines), highlighted,
+                      with the errors one click away. It used to be the last 60 lines as plain
+                      text, which is usually just after the thing worth reading. */}
+                  <div className="mt-1">{bundle.logs.length
+                    ? <LogView text={bundle.logs.map((l) => `${l.ts ? `[${l.ts}] ` : ''}${l.text}`).join('\n')} maxH="max-h-[40vh]" />
+                    : <p className="text-[11px] text-[var(--faint)]">{t('dcr.nolog', 'No log lines.')}</p>}</div>
                 </details>
                 {bundle.state?.settings && <details>
                   <summary className="cursor-pointer text-[12px] text-[var(--muted)]">{t('fbx.b.settings', 'The configuration that was in effect')}</summary>
-                  <pre className="mt-1 text-[11px] font-mono panel rounded-lg p-2 overflow-auto max-h-[35vh] whitespace-pre-wrap break-words">{JSON.stringify(bundle.state.settings, null, 2)}</pre>
+                  <div className="mt-1"><LogView text={JSON.stringify(bundle.state.settings, null, 2)} lang="json" maxH="max-h-[35vh]" /></div>
                 </details>}
               </div>}
             </div>}
 
-            {open.attachments?.length > 0 && <div>
-              <div className="text-xs font-semibold text-[var(--faint)] uppercase tracking-wider mb-1.5">{t('fb.attachments', 'Attachments')}</div>
-              <div className="flex flex-wrap gap-2">{open.attachments.map((a) => <a key={a.i} href={`/api/admin/feedback/${open.id}/attachments/${a.i}`} className="inline-flex items-center gap-1.5 text-xs rounded-lg border border-[var(--line)] px-2.5 py-1.5 hover:bg-[var(--surface-2)] max-w-full"><Download size={12} className="shrink-0" /> <span className="truncate min-w-0" title={a.name}>{a.name}</span> <span className="text-[var(--faint)] shrink-0">{(a.size / 1024).toFixed(0)} KB</span></a>)}</div>
-            </div>}
-            {open.meta && <details className="text-xs"><summary className="cursor-pointer text-[var(--muted)]">{t('fb.meta', 'Context (meta)')}</summary><pre className="mt-1 panel rounded-xl p-3 overflow-auto max-h-64 whitespace-pre-wrap break-words">{JSON.stringify(open.meta, null, 2)}</pre></details>}
+            <Attachments key={open.id} item={open} />
+            {open.meta && <details className="text-xs"><summary className="cursor-pointer text-[var(--muted)]">{t('fb.meta', 'Context (meta)')}</summary><div className="mt-1"><LogView text={JSON.stringify(open.meta, null, 2)} lang="json" maxH="max-h-64" /></div></details>}
             {(open.reportId || open.email) && <div className="space-y-2 pt-2 border-t border-[var(--line)]">
               <div className="text-sm font-semibold">{open.reportId ? t('fb.reply.thread', 'Reply in their thread') : t('fb.reply.mail', 'Reply by e-mail')}</div>
               <Textarea rows={3} value={reply} onChange={(e) => setReply(e.target.value)} placeholder={t('fb.reply.ph', 'Thanks, could you tell us…')} />

@@ -5,6 +5,7 @@ import { findUserIdByBcId, looksLikeBcId } from '../lib/repofingerprint.mjs';
 import { verifyCreatorProof, expectedProofAudience } from '../lib/creator-proof.mjs';
 import { putObject, getObject, deleteObject, prefixUsage } from '../lib/storage.mjs';
 import { sendMail, mailShell, emailEnabled } from '../lib/mail.mjs';
+import { deleteSubmission } from '../lib/feedback-thread.mjs';
 
 // Feedback & crash centre. One inbox per project (BMM, BSM, whatever comes next) that any app
 // can post feedback, bug reports and crash dumps to — the thing BMM used BetaHub for, now on
@@ -703,6 +704,11 @@ export default async function feedbackRoutes(app) {
       const obj = await getObject(a.key);
       reply.header('Content-Type', a.type || 'application/octet-stream');
       reply.header('Content-Disposition', `attachment; filename="${a.name}"`);
+      // The type is whatever the SENDER claimed. The admin screen previews images with an
+      // <img> pointed here; nosniff keeps a browser from second-guessing a mislabelled file
+      // into something it would execute, and nothing here should sit in a shared cache.
+      reply.header('X-Content-Type-Options', 'nosniff');
+      reply.header('Cache-Control', 'private, no-store');
       if (obj.length) reply.header('Content-Length', obj.length);
       return reply.send(obj.body);
     } catch { return reply.code(404).send({ error: 'not_found' }); }
@@ -730,6 +736,13 @@ export default async function feedbackRoutes(app) {
     const p = await db();
     const r = await p.feedback.findUnique({ where: { id: req.params.id } });
     if (!r) return reply.code(404).send({ error: 'not_found' });
+    // A thread that is gone (expired by the reports sweep before it learned to detach, or
+    // removed by hand) used to throw inside the update below and answer 500. Clear the stale
+    // pointer and fall through to the mail path, which is where an unthreaded report goes.
+    if (r.reportId && !(await p.report.findUnique({ where: { id: r.reportId }, select: { id: true } }))) {
+      await p.feedback.update({ where: { id: r.id }, data: { reportId: null } });
+      r.reportId = null;
+    }
     if (r.reportId) {
       await p.report.update({ where: { id: r.reportId }, data: { userUnread: true, lastActivityAt: new Date(), status: 'open', messages: { create: { authorId: req.user.uid, staff: true, body: b.data.body } } } });
       if (r.userId) notify(p, r.userId, 'report_reply', `Staff replied about your ${r.kind} "${r.title || r.id}".`, { bodyFr: `L’équipe a répondu à ton ${r.kind} « ${r.title || r.id} ».`, href: `/dashboard?s=reports&r=${r.reportId}` }).catch(() => {});
@@ -784,13 +797,15 @@ export default async function feedbackRoutes(app) {
   }, 60 * 60 * 1000);
   timer.unref?.();
 
+  // The submission, everywhere it is shown. This used to delete the Feedback row alone, and
+  // the Report thread that represents the same submission in Signalements and in the sender's
+  // dashboard stayed behind — see lib/feedback-thread.mjs. The admin screen holds this call
+  // until its undo window closes, so nothing here is ever half of an undoable action.
   app.delete('/admin/feedback/:id', { preHandler: WRITE }, async (req, reply) => {
     const p = await db();
-    const r = await p.feedback.findUnique({ where: { id: req.params.id }, select: { attachments: true } });
-    if (!r) return reply.code(404).send({ error: 'not_found' });
-    for (const a of r.attachments || []) await deleteObject(a.key);
-    await p.feedback.delete({ where: { id: req.params.id } });
-    return { ok: true };
+    if (!(await p.feedback.findUnique({ where: { id: req.params.id }, select: { id: true } }))) return reply.code(404).send({ error: 'not_found' });
+    const out = await deleteSubmission(p, { feedbackId: req.params.id });
+    return { ok: true, threads: out.reports };
   });
 }
 
@@ -814,7 +829,12 @@ export async function sweepFeedbackStorage(p, storage = DEFAULT_STORAGE, { force
   if (st.closedRowDays > 0) {
     const cutoff = new Date(Date.now() - st.closedRowDays * 86_400_000);
     const rows = await p.feedback.findMany({ where: { status: { in: ['resolved', 'ignored'] }, updatedAt: { lt: cutoff } }, select: { id: true, attachments: true } });
-    for (const r of rows) { for (const a of r.attachments || []) { await deleteObject(a.key); deletedFiles++; freedBytes += Number(a.size) || 0; } await p.feedback.delete({ where: { id: r.id } }).catch(() => {}); deletedRows++; }
+    // With their thread: a closed report past retention is deleted, not half-deleted — the
+    // same rule as the admin's own delete, from the same function.
+    for (const r of rows) {
+      const out = await deleteSubmission(p, { feedbackId: r.id }).catch(() => null);
+      if (out?.found) { deletedFiles += out.files; freedBytes += out.bytes; deletedRows++; }
+    }
   }
   // 3. The cap: oldest attachments first until under it.
   if (st.maxTotalMB > 0) {
