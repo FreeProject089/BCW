@@ -213,10 +213,20 @@ the Timeline tab keeps avatar markers with the scrubber; Countries shades a chor
 ## Privacy
 
 - **Opt-in only** — nothing is collected without consent.
-- **Approximate geo only** — IP → country/region, rounded + jittered; precise
-  location is never stored or shown.
+- **Addresses are truncated before they are stored** — IPv4 to `/24`, IPv6 to `/48`
+  (`server/src/anon.rs`). That is what goes into `user_ips`, into the `geo` cache key, into
+  the stored `$identify` profile, into the live cards and into the admin audit trail. The
+  exact address exists only in memory, for the length of one request, as the key of the
+  ingest rate limiter — it is never written down. The LAN address a client used to report
+  about itself (`private_ip`) is dropped at ingest.
+- **Approximate geo only** — the lookup runs on the truncated address and the answer is
+  stored rounded to one decimal degree (~11 km): country / region / city, never a precise
+  location. The map rounds + jitters on top of that.
 - **Right to erasure** — per packet (`/delete-request`) or per person (`/data-request`,
   kind `delete`), logged, confirmed by mail when a recipient is known.
 - **Right to access** — one zip per person, see above.
-- **Retention** — data older than `RETENTION_DAYS` (live-editable) is purged automatically.
+- **Retention** — data older than `RETENTION_DAYS` (live-editable) is purged automatically:
+  events, benchmarks and replay chunks, and — since `0011` — the side tables too
+  (`user_ips`, `geo`, `live_instances`), which used to outlive by years the events they
+  described. Erasing a packet also drops what is left of an install that now has no data.
 - **Sampling** — reduces what is collected, never touches what is already stored.

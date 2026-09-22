@@ -1,7 +1,11 @@
-//! IP geolocation (ip-api.com), cached in the `geo` table.
-//! We only ever keep country / region / city / lat / lon — and the dashboard
-//! shows them APPROXIMATELY (rounded + jittered) so no precise home location
-//! is ever derivable.
+//! IP geolocation (ipwho.is), cached in the `geo` table.
+//!
+//! The lookup is performed on the TRUNCATED address (`/24` or `/48`) — the only form of
+//! an address that reaches the database at all — and the answer is stored rounded to one
+//! decimal degree. A `/24` is a single provider allocation: the country, region and city
+//! it resolves to are the same ones the full address resolved to, so nothing the
+//! dashboard shows changes, while the exact address is never sent to a third party
+//! either. Only country / region / city / rounded lat / rounded lon are kept.
 
 use serde_json::{json, Value};
 use sqlx::PgPool;
@@ -92,7 +96,7 @@ pub fn resolve_geo(
         if let Ok(resp) = res {
             if let Ok(j) = resp.json::<Value>().await {
                 if j.get("success").and_then(Value::as_bool) == Some(true) {
-                    let data = json!({
+                    let mut data = json!({
                         "country": j.get("country"),
                         "cc": j.get("country_code"),
                         "region": j.get("region"),
@@ -100,6 +104,11 @@ pub fn resolve_geo(
                         "lat": j.get("latitude"),
                         "lon": j.get("longitude"),
                     });
+                    // City level, stored that way. The provider answers with coordinates
+                    // good to a few hundred metres; what is written down is one decimal
+                    // degree (~11 km), because the map draws a city and a city is all the
+                    // dashboard has ever needed to know.
+                    crate::anon::round_geo(&mut data);
                     let _ = sqlx::query(
                         "INSERT INTO geo(key,data,at) VALUES($1,$2,$3)
                          ON CONFLICT(key) DO UPDATE SET data=excluded.data, at=excluded.at",

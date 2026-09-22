@@ -2,6 +2,7 @@
 //! Data persists in Postgres, so a server restart keeps every past event.
 #![recursion_limit = "512"]
 
+mod anon;
 mod bc;
 mod config;
 mod db;
@@ -337,7 +338,11 @@ async fn ingest_handler(
         return (StatusCode::UNAUTHORIZED, Json(json!({ "error": "bad key" })));
     }
     let ip = client_ip(&headers, addr);
-    // Per-IP rate limit so a single client can't spam / exhaust resources.
+    // Per-IP rate limit so a single client can't spam / exhaust resources. This is the one
+    // place the exact address is used: a token bucket in memory (`AppState.rate`), keyed by
+    // address, never persisted, gone when the process ends. Rate limiting on a truncated
+    // address would punish everyone behind the same /24 for one abuser, which is why this
+    // one stays exact — and why it stays in memory.
     if let Some(ip) = &ip {
         if !st.allow(ip, st.cfg.rate_per_min) {
             return (StatusCode::TOO_MANY_REQUESTS, Json(json!({ "error": "rate limited", "retry_after_s": 1 })));
@@ -367,9 +372,10 @@ async fn ingest_handler(
     for ev in &batch {
         db::ingest(&st, ev, &pid, true).await;
     }
-    // Capture the request IP server-side and resolve geo from it (no reliance on
-    // the client self-reporting its IP).
-    if let Some(ip) = ip {
+    // Capture the request's NETWORK server-side and resolve geo from it (no reliance on
+    // the client self-reporting its IP). The exact address existed only above, for the
+    // rate limiter's in-memory bucket; what leaves this function is the /24 or /48.
+    if let Some(ip) = ip.as_deref().and_then(anon::truncate_ip) {
         let mut seen = std::collections::HashSet::new();
         for ev in &batch {
             if let Some(d) = ev.get("distinct_id").and_then(Value::as_str) {
@@ -804,8 +810,14 @@ async fn get_replay(State(st): State<Shared>, Query(q): Query<HashMap<String, St
 
 // Admin identity for the audit trail: request IP (server-observed) + the
 // dashboard-supplied browser fingerprint header.
+/// Who an admin action is attributed to in the audit trail: the NETWORK the request came
+/// from (`/24` / `/48`, like every other address here) plus the admin fingerprint, which
+/// is the part that actually identifies the operator. A full address in a log is still a
+/// stored address, and the trail is about which admin acted, not from which flat.
 fn admin_identity(headers: &HeaderMap, addr: SocketAddr) -> (String, String) {
-    let ip = client_ip(headers, addr).unwrap_or_default();
+    let ip = client_ip(headers, addr)
+        .and_then(|raw| anon::truncate_ip(&raw))
+        .unwrap_or_default();
     let fp = headers.get("x-admin-fp").and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
     (ip, fp)
 }

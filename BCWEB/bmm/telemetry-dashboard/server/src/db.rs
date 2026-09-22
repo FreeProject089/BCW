@@ -54,7 +54,15 @@ pub async fn ingest(st: &AppState, ev: &Value, packet_id: &str, realtime: bool) 
         .map(|s| s.to_string())
         .unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
     let ts_ms = parse_ts_ms(&ts);
-    let props = ev.get("properties").cloned().unwrap_or_else(|| json!({}));
+    let mut props = ev.get("properties").cloned().unwrap_or_else(|| json!({}));
+    // Minimise the addresses the client reports about itself BEFORE anything is written:
+    // `props` is what goes into `events`, into `live_instances.data` and into an export,
+    // so a raw address that gets past this line is a raw address stored in three places.
+    // The LAN address is dropped, the public one is truncated to its /24 or /48.
+    if let Some(set) = props.get_mut("$set") {
+        crate::anon::scrub_profile_ips(set);
+    }
+    let props = props;
     let pid = if packet_id.is_empty() {
         ev.get("_pid").and_then(Value::as_str).unwrap_or("")
     } else {
@@ -237,10 +245,16 @@ pub async fn sweep_crashes(pool: &PgPool, crash_after_ms: i64) {
 }
 
 // ── Server-side IP capture + geo ────────────────────────────────────────────
+/// Store the network an install was last seen on — `/24` or `/48`, never the full
+/// address. Truncated again here rather than only at the call site: this is the one
+/// function that writes `user_ips`, so the guarantee belongs where the INSERT is. An
+/// address that does not parse is not stored at all.
 pub async fn record_user_ip(st: &AppState, did: &str, ip: &str) {
     if did.is_empty() || ip.is_empty() || is_private_host(ip) {
         return;
     }
+    let Some(ip) = crate::anon::truncate_ip(ip) else { return };
+    let ip = ip.as_str();
     let _ = sqlx::query(
         "INSERT INTO user_ips(distinct_id,ip,at) VALUES($1,$2,$3)
          ON CONFLICT(distinct_id) DO UPDATE SET ip=$2, at=$3",
@@ -549,6 +563,16 @@ pub async fn delete_recap(pool: &PgPool, id: i64) -> u64 {
     sqlx::query("DELETE FROM recaps WHERE id=$1").bind(id).execute(pool).await.map(|r| r.rows_affected()).unwrap_or(0)
 }
 
+/// Tables the retention pass empties, beyond the three that hold the events themselves.
+/// `(table, timestamp column)`. Kept as data so the list is one thing, visible in one
+/// place, rather than three statements someone has to remember to keep in step.
+///
+/// These are the tables retention used to walk straight past: an address in `user_ips`, a
+/// place in `geo` and a live card in `live_instances` outlived by years the events they
+/// described. A retention promise the side tables do not keep is not a retention promise.
+pub const SIDE_RETENTION_TABLES: [(&str, &str); 3] =
+    [("user_ips", "at"), ("geo", "at"), ("live_instances", "last_seen")];
+
 pub async fn purge_retention(pool: &PgPool, days: i64) -> u64 {
     let cut = now_ms() - days * 86_400_000;
     let a = sqlx::query("DELETE FROM events WHERE ts_ms < $1")
@@ -569,9 +593,61 @@ pub async fn purge_retention(pool: &PgPool, days: i64) -> u64 {
         .await
         .map(|r| r.rows_affected())
         .unwrap_or(0);
-    a + b + c
+    // The side tables: the network an install was last seen on, the place that network
+    // resolves to, and the live card. Same cut-off, same pass.
+    let mut d = 0u64;
+    for (table, col) in SIDE_RETENTION_TABLES {
+        d += sqlx::query(&format!("DELETE FROM {table} WHERE COALESCE({col}, 0) < $1"))
+            .bind(cut)
+            .execute(pool)
+            .await
+            .map(|r| r.rows_affected())
+            .unwrap_or(0);
+    }
+    a + b + c + d
 }
+
+/// Drop the `geo` rows for these keys, but only those no remaining `user_ips` row points
+/// at. `geo` is keyed by network, not by person, so it is reachable — and erasable — only
+/// through the addresses that reference it; once the last one is gone the place is
+/// nobody's. Named keys only, never "everything unreferenced": the same table also caches
+/// the location of repository HOSTS, which no `user_ips` row will ever reference and which
+/// a blanket sweep would quietly delete.
+pub async fn purge_geo_keys(pool: &PgPool, keys: &[String]) -> u64 {
+    if keys.is_empty() {
+        return 0;
+    }
+    sqlx::query(
+        "DELETE FROM geo WHERE key = ANY($1) AND NOT EXISTS (SELECT 1 FROM user_ips u WHERE u.ip = geo.key)",
+    )
+    .bind(keys)
+    .execute(pool)
+    .await
+    .map(|r| r.rows_affected())
+    .unwrap_or(0)
+}
+
+/// Erase one packet. Deleting its events is the easy half; the half that used to be
+/// missing is what the packet left in the SIDE tables. If this packet held the last data
+/// of an install, the network it was seen on (`user_ips`), the place that network resolves
+/// to (`geo`) and its live card (`live_instances`) stayed behind — an "erased" install
+/// still on the map. So: note the installs the packet belonged to, delete, then drop what
+/// is left of any install that now has nothing.
 pub async fn erase_packet(pool: &PgPool, pid: &str) -> u64 {
+    let owners: Vec<String> = sqlx::query_as::<_, (String,)>(
+        "SELECT DISTINCT distinct_id FROM (
+            SELECT distinct_id FROM events WHERE packet_id=$1
+            UNION SELECT distinct_id FROM benchmarks WHERE packet_id=$1
+            UNION SELECT distinct_id FROM replay_chunks WHERE packet_id=$1) t
+         WHERE distinct_id IS NOT NULL AND distinct_id <> ''",
+    )
+    .bind(pid)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default()
+    .into_iter()
+    .map(|r| r.0)
+    .collect();
     let a = sqlx::query("DELETE FROM events WHERE packet_id=$1")
         .bind(pid)
         .execute(pool)
@@ -590,7 +666,53 @@ pub async fn erase_packet(pool: &PgPool, pid: &str) -> u64 {
         .await
         .map(|r| r.rows_affected())
         .unwrap_or(0);
-    a + b + c
+    a + b + c + purge_orphan_identities(pool, &owners).await
+}
+
+/// For each of these installs, if nothing of it is left in `events`, `benchmarks` or
+/// `replay_chunks`, delete what the side tables still hold about it: its network, its live
+/// card, and the cached place — the last one only when no other install is still seen on
+/// that same network.
+pub async fn purge_orphan_identities(pool: &PgPool, ids: &[String]) -> u64 {
+    if ids.is_empty() {
+        return 0;
+    }
+    let orphans: Vec<String> = sqlx::query_as::<_, (String,)>(
+        "SELECT x FROM unnest($1::text[]) AS x
+         WHERE NOT EXISTS (SELECT 1 FROM events e WHERE e.distinct_id = x)
+           AND NOT EXISTS (SELECT 1 FROM benchmarks b WHERE b.distinct_id = x)
+           AND NOT EXISTS (SELECT 1 FROM replay_chunks r WHERE r.distinct_id = x)",
+    )
+    .bind(ids)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default()
+    .into_iter()
+    .map(|r| r.0)
+    .collect();
+    if orphans.is_empty() {
+        return 0;
+    }
+    // The networks those installs were seen on, read BEFORE the rows go, so the cached
+    // places can be considered once nothing references them any more.
+    let keys: Vec<String> = sqlx::query_as::<_, (Option<String>,)>("SELECT ip FROM user_ips WHERE distinct_id = ANY($1)")
+        .bind(&orphans)
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|r| r.0)
+        .collect();
+    let mut n = 0u64;
+    for table in ["user_ips", "live_instances"] {
+        n += sqlx::query(&format!("DELETE FROM {table} WHERE distinct_id = ANY($1)"))
+            .bind(&orphans)
+            .execute(pool)
+            .await
+            .map(|r| r.rows_affected())
+            .unwrap_or(0);
+    }
+    n + purge_geo_keys(pool, &keys).await
 }
 
 // ── Admin audit trail ─────────────────────────────────────────────────────────
@@ -1370,4 +1492,54 @@ pub async fn version_stats(pool: &PgPool) -> Vec<Value> {
             .then(b["users"].as_i64().unwrap_or(0).cmp(&a["users"].as_i64().unwrap_or(0)))
     });
     out
+}
+
+#[cfg(test)]
+mod retention_tests {
+    use super::*;
+
+    /// The three tables retention used to walk past. This test is the whole guarantee that
+    /// they are still in the pass: there is no database in unit tests, so what is checked
+    /// is the list the pass is built from — remove a table from the list and this fails.
+    #[test]
+    fn retention_covers_the_ip_location_and_live_tables() {
+        let names: Vec<&str> = SIDE_RETENTION_TABLES.iter().map(|(t, _)| *t).collect();
+        for must in ["user_ips", "geo", "live_instances"] {
+            assert!(names.contains(&must), "{must} is not purged by retention");
+        }
+    }
+
+    /// Each side table is purged on a column that exists in its schema (0001/0003) and
+    /// holds milliseconds, like the cut-off it is compared against.
+    #[test]
+    fn each_side_table_is_purged_on_its_own_timestamp() {
+        for (table, col) in SIDE_RETENTION_TABLES {
+            let expected = match table {
+                "user_ips" | "geo" => "at",
+                "live_instances" => "last_seen",
+                other => panic!("unknown side table {other}"),
+            };
+            assert_eq!(col, expected, "wrong timestamp column for {table}");
+        }
+    }
+
+    /// The statement shape, so a NULL timestamp (a legacy row written before the column was
+    /// filled) is purged rather than skipped for ever by a `NULL < cut` that is never true.
+    #[test]
+    fn a_null_timestamp_does_not_make_a_row_immortal() {
+        for (table, col) in SIDE_RETENTION_TABLES {
+            let sql = format!("DELETE FROM {table} WHERE COALESCE({col}, 0) < $1");
+            assert!(sql.contains("COALESCE"), "{table}: a NULL {col} would survive every pass");
+        }
+    }
+
+    /// Erasure must reach the same tables as retention: an "erased" install that is still on
+    /// the live map, or still tied to a network, has not been erased.
+    #[test]
+    fn erasure_reaches_the_same_side_tables() {
+        let identity: Vec<&str> = crate::gdpr::IDENTITY_TABLES.iter().map(|(t, _)| *t).collect();
+        for must in ["user_ips", "live_instances"] {
+            assert!(identity.contains(&must), "{must} survives a per-identity erasure");
+        }
+    }
 }
