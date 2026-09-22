@@ -62,6 +62,7 @@ import { DEFAULT_FOOTER_SOCIALS, DEFAULT_FOOTER_COLUMNS } from './ui/footer-defa
 import { LucideCdnIcon } from './editor/icon-picker.jsx';
 import { FooterStatus } from './pages/status-widget.jsx';
 import { lazyChunk, lazyNamed, installPreloadErrorHandler } from './lib/lazy-chunk.js';
+import { ErrorBoundary } from './ui/ErrorBoundary.jsx';
 installPreloadErrorHandler();
 // Lazy: route-split so the initial bundle no longer ships the whole admin back-office,
 // repo tools, editors, etc. — each loads on demand behind the Suspense boundary below.
@@ -1425,7 +1426,11 @@ export default function App() {
             landing page with its own full-bleed hero needs, and why there is no `orb: 'on'`.
             Read at mount like the preference itself: tearing down a live WebGL context on a
             route change is worse than the backdrop being constant. */}
-        {!getHero3dDisabled() && <Suspense fallback={null}><Hero3D /></Suspense>}
+        {/* Its own boundary: if the 3D chunk cannot be fetched at all (after lazyChunk's retry and
+            reload), the throw used to reach the ROOT boundary and replace the whole site with the
+            error card, for a decorative backdrop. Contained here, the page renders without it;
+            every other failure mode is handled inside Hero3D with a still drawing of the scene. */}
+        {!getHero3dDisabled() && <ErrorBoundary fallback={null}><Suspense fallback={null}><Hero3D /></Suspense></ErrorBoundary>}
         <AppReveal>
           <PromoBadge />
           <EventEffect />
