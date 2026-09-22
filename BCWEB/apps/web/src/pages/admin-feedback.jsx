@@ -433,7 +433,7 @@ export function AdminFeedbackCentre() {
         <p className="text-sm text-[var(--muted)] mt-0.5">{t('fb.sub', 'What apps send through the feedback centre: suggestions, bug reports, crash dumps, one inbox per project, answered from here.')}</p>
       </div>
       <div className="flex items-center gap-2 flex-wrap">
-        {projects.map((x) => <button key={x.key} onClick={() => { setProject(x.key); setPage(0); setOpen(null); setBundle(null); setShowSettings(false); }} className={`px-3 py-1.5 rounded-lg text-sm border ${x.key === project ? 'bg-[var(--primary)] text-white border-transparent' : 'border-[var(--line)] hover:bg-[var(--surface-2)]'}`}>
+        {projects.map((x) => <button key={x.key} onClick={() => { setProject(x.key); setPage(0); setOpen(null); setBundle(null); setShowSettings(false); }} className={`px-3 py-1.5 rounded-lg text-sm border ${x.key === project ? 'bg-[var(--primary)] text-[var(--on-primary)] border-transparent' : 'border-[var(--line)] hover:bg-[var(--surface-2)]'}`}>
           {x.name} {cfg.projects[x.key]?.enabled ? <span className="inline-block w-1.5 h-1.5 rounded-full bg-[var(--success)] ms-1 align-middle" /> : <span className="text-[10px] text-[var(--faint)] ms-1">{t('fb.off', 'off')}</span>}
         </button>)}
         <div className="flex-1" />

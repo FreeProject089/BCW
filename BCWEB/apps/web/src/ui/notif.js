@@ -2,7 +2,7 @@
 // (no page code) so the nav bell menu (App.jsx) can import it eagerly WITHOUT pulling the
 // whole dashboard page into the initial bundle — which lets dashboard.jsx be route-split.
 // `tint` is the soft background of the icon chip; `label` is the small type badge.
-import { CheckCircle2, XCircle, ShieldCheck, RefreshCw, TrendingUp, Rocket, Server, Clock, Bell, Bell as BellIcon, Send, Star, AlertTriangle, BadgeCheck, Ticket, Gift } from 'lucide-react';
+import { CheckCircle2, XCircle, ShieldCheck, RefreshCw, TrendingUp, Server, Clock, Bell, Bell as BellIcon, Send, Star, AlertTriangle, BadgeCheck, Ticket, Gift, Cloud } from 'lucide-react';
 import { KofiIcon } from './brand.jsx';
 
 export const NOTIF = {
@@ -14,7 +14,7 @@ export const NOTIF = {
   repo_access_granted: { icon: ShieldCheck, tone: 'text-[var(--success)]', tint: 'bg-emerald-500/12', label: 'Access' },
   repo_renew: { icon: RefreshCw, tone: 'text-[var(--accent-ink)]', tint: 'bg-orange-500/12', label: 'Renewal' },
   repo_upgrade: { icon: TrendingUp, tone: 'text-[var(--accent-ink)]', tint: 'bg-orange-500/12', label: 'Upgrade' },
-  hosting_started: { icon: Rocket, tone: 'text-[var(--accent-ink)]', tint: 'bg-orange-500/12', label: 'Hosting' },
+  hosting_started: { icon: Cloud, tone: 'text-[var(--accent-ink)]', tint: 'bg-orange-500/12', label: 'Hosting' },
   hosting_online: { icon: Server, tone: 'text-[var(--success)]', tint: 'bg-emerald-500/12', label: 'Online' },
   hosting_stopped: { icon: XCircle, tone: 'text-[var(--error)]', tint: 'bg-red-500/12', label: 'Stopped' },
   hosting_expiring: { icon: Clock, tone: 'text-[var(--warning)]', tint: 'bg-amber-500/12', label: 'Expiring' },

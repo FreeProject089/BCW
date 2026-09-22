@@ -259,7 +259,7 @@ export function TwoFactor() {
           copy. Shown whenever there is something to lose, and coloured as a warning
           rather than folded into the calm note above, which reads as reassurance. */}
       {accounts.length > 0 && (
-        <div className="rounded-xl border border-warning/40 bg-warning/10 p-3 mb-4 flex items-start gap-2.5 text-xs">
+        <div className="rounded-xl border b-warning tint-warning p-3 mb-4 flex items-start gap-2.5 text-xs">
           <AlertTriangle size={15} className="text-warning shrink-0 mt-0.5" />
           <div className="text-[var(--text)]">
             <span className="font-semibold">{t('tfa.warn.t', 'Back this up, it exists only here.')}</span>{' '}

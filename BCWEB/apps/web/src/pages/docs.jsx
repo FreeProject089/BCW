@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { BookOpen, Plus, Pencil, Trash2, Search, PanelLeftClose, Menu, Save, Languages, Smile, Meh, Frown, CornerDownLeft, X, ChevronRight, Hash, History, MessageSquare, Globe, FolderTree, Eye } from 'lucide-react';
+import { BookOpen, Plus, Pencil, Trash2, Search, PanelLeftClose, Menu, Save, Languages, Smile, Meh, Frown, CornerDownLeft, X, ChevronRight, Hash, History, MessageSquare, Globe, FolderTree, Eye, Newspaper } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { merge3, hasConflictMarkers } from '../lib/merge3.js';
 import HistoryModal from '../editor/history-modal.jsx';
@@ -250,7 +250,7 @@ export default function Docs() {
               sub={canEdit ? t('docs.none.sub.admin2', 'Guides and reference for the apps live here, and no page has been written yet.') : t('docs.none.sub2', 'Guides and reference for the apps will live here, and nothing has been published yet.')}
               action={canEdit
                 ? { label: t('docs.newpage'), onClick: () => setEditing({}), icon: Plus }
-                : { label: t('docs.none.a', 'Read the blog'), to: '/blog', icon: BookOpen }} />
+                : { label: t('docs.none.a', 'Read the blog'), to: '/blog', icon: Newspaper }} />
           )}
       </main>
 

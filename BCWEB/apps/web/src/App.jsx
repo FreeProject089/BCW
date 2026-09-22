@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Routes, Route, Link, NavLink, Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { Code2, Boxes, Music2, Newspaper, Server, Rocket, LayoutDashboard, Shield, LogOut, Download, Menu, X, Sparkles, Bell, Trash2, CheckCheck, Mail, Home as HomeIcon, ChevronDown, MoreHorizontal, LayoutGrid, ShieldCheck, ArrowUpRight, Info, AlertTriangle, CheckCircle2, Settings as SettingsIcon, BookOpen, Search, Languages, LogIn } from 'lucide-react';
+import { Code2, Boxes, Music2, Newspaper, Server, Rocket, LayoutDashboard, Shield, LogOut, Download, Menu, X, Sparkles, Bell, Trash2, CheckCheck, Mail, Home as HomeIcon, ChevronDown, MoreHorizontal, LayoutGrid, ShieldCheck, ArrowUpRight, Info, AlertTriangle, CheckCircle2, Settings as SettingsIcon, BookOpen, Search, Languages, LogIn, Cloud, HelpCircle } from 'lucide-react';
 import { useAuth } from './pages/auth.jsx';
 import { api } from './lib/api.js';
 import { onNotifsChanged, applyNotifChange, markNotifRead, markAllNotifsRead, deleteNotif } from './lib/notifs.js';
@@ -144,13 +144,13 @@ const DEFAULT_ITEMS = [
   { type: 'link', to: '/docs', k: 'nav.docs', icon: BookOpen },
   { type: 'link', to: '/dev', k: 'nav.dev', icon: Code2 },
   { type: 'link', to: '/repos', k: 'nav.repos', icon: Server },
-  { type: 'link', to: '/hosting', k: 'nav.hosting', icon: Rocket },
+  { type: 'link', to: '/hosting', k: 'nav.hosting', icon: Cloud },
 ];
 
 // Icons an admin can pick for a configured nav item — a curated, safe whitelist
 // (only these render; an unknown name falls back to Boxes). Keys are the values
 // stored in the nav config; keep them stable.
-const NAV_ICONS = { Boxes, Music2, Newspaper, Server, Rocket, Shield, Download, Sparkles, Mail, Home: HomeIcon, BookOpen, LayoutGrid, Info, Bell, Code: Code2, Search };
+const NAV_ICONS = { Boxes, Music2, Newspaper, Server, Rocket, Shield, Download, Sparkles, Mail, Home: HomeIcon, BookOpen, LayoutGrid, Info, Bell, Code: Code2, Search, Cloud, LogIn, LayoutDashboard, HelpCircle };
 
 // Built-in topbar utility elements, split by their responsive cluster (see Topbar).
 // Admins reorder/hide WITHIN a cluster; the keys are the config identifiers — keep stable.
@@ -576,13 +576,13 @@ function NavNotifications({ icon = null } = {}) {
     <div className="relative" ref={ref}>
       <button className="nav-link !px-2 relative" onClick={() => { setOpen((o) => !o); if (!open) { load(); markPendingSeen(); } }} title={t('nav.notifications')} aria-label={t('nav.notifications')}>
         {icon || <Bell size={16} />}
-        {badge > 0 && <span className="absolute top-0.5 right-0.5 min-w-[15px] h-[15px] px-1 rounded-full bg-[var(--primary)] text-white text-[9px] font-bold grid place-items-center">{badge > 9 ? '9+' : badge}</span>}
+        {badge > 0 && <span className="absolute top-0.5 right-0.5 min-w-[15px] h-[15px] px-1 rounded-full bg-[var(--primary)] text-[var(--on-primary)] text-[9px] font-bold grid place-items-center">{badge > 9 ? '9+' : badge}</span>}
       </button>
       {open && (
         <div className="fixed left-2 right-2 top-16 w-auto sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-[21rem] flex flex-col max-h-[26rem] rounded-xl border border-[var(--line-strong)] z-[60] anim-fade overflow-hidden"
           style={{ background: 'var(--bg-solid)', boxShadow: '0 20px 60px -12px rgba(0,0,0,0.55), 0 0 0 1px var(--line)' }}>
           <div className="flex items-center justify-between px-3 py-2.5 border-b border-[var(--line)] shrink-0" style={{ background: 'var(--bg-solid)' }}>
-            <span className="text-sm font-semibold flex items-center gap-1.5"><Bell size={14} className="text-[var(--accent-ink)]" /> {t('nav.notifications')}{unread > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--primary)] text-white">{unread}</span>}</span>
+            <span className="text-sm font-semibold flex items-center gap-1.5"><Bell size={14} className="text-[var(--accent-ink)]" /> {t('nav.notifications')}{unread > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--primary)] text-[var(--on-primary)]">{unread}</span>}</span>
             <span className="flex items-center gap-2.5 shrink-0">
               {unread > 0 && <button className="text-xs text-[var(--accent-ink)] hover:underline flex items-center gap-1" onClick={markAll}><CheckCheck size={12} /> {t('notif.markall')}</button>}
               {items.length > 0 && <button className="text-xs text-[var(--faint)] hover:text-[var(--text)] hover:underline flex items-center gap-1" onClick={clearMenu} title={t('notif.clearmenu.hint')}><X size={12} /> {t('notif.clear')}</button>}
@@ -805,7 +805,7 @@ export function Nav({ preview = null } = {}) {
   // Unseen report threads, on the entry that leads to them: your own on Dashboard, the staff
   // queue on Admin. The count is lib/reports-unseen.js (one shared poll of the Report flags).
   const unseen = useReportsUnseen(!!user && !preview);
-  const unseenDot = (n, label) => n > 0 && <span className="absolute -top-1 -right-1 min-w-[15px] h-[15px] px-1 rounded-full bg-[var(--primary)] text-white text-[9px] font-bold grid place-items-center" title={label} aria-label={label}>{n > 9 ? '9+' : n}</span>;
+  const unseenDot = (n, label) => n > 0 && <span className="absolute -top-1 -right-1 min-w-[15px] h-[15px] px-1 rounded-full bg-[var(--primary)] text-[var(--on-primary)] text-[9px] font-bold grid place-items-center" title={label} aria-label={label}>{n > 9 ? '9+' : n}</span>;
   return (
     <header className="sticky top-0 z-40 px-2 sm:px-3 pt-2 sm:pt-3">
       <div className="max-w-7xl mx-auto rounded-2xl border border-[var(--line)] px-2.5 sm:px-3 h-14 flex items-center gap-1 flex-nowrap topbar"
@@ -1178,8 +1178,11 @@ function FooterCol({ title, links }) {
     <div className="border-b border-[var(--line)] md:border-0">
       <button type="button" onClick={() => setOpen((o) => !o)}
         className="w-full flex items-center justify-between py-3.5 md:py-0 md:mb-3 md:cursor-default text-start">
-        <span className="text-xs font-semibold text-[var(--faint)] uppercase tracking-wider">{title}</span>
-        <ChevronDown size={15} className={`md:hidden text-[var(--faint)] transition-transform ${open ? 'rotate-180' : ''}`} />
+        {/* `--muted`, not `--faint`: this is a column HEADING, not a caption. On the footer
+            band it measured 2.79:1 in the light theme — --faint is sized for text on a card,
+            and the band is the page colour with the grain over it. */}
+        <span className="text-xs font-semibold text-[var(--muted)] uppercase tracking-wider">{title}</span>
+        <ChevronDown size={15} className={`md:hidden text-[var(--muted)] transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       <div className={`flex-col gap-2.5 pb-4 md:pb-0 md:flex ${open ? 'flex' : 'hidden'}`}>{links.map(render)}</div>
     </div>
@@ -1213,7 +1216,7 @@ function FooterNewsletter({ cfg }) {
       <div className="flex gap-2">
         <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder={pick(cfg?.placeholder, cfg?.placeholderFr, t('news.ph', 'you@example.com'))}
           className="input flex-1 min-w-0" />
-        <button type="submit" disabled={busy} className="shrink-0 rounded-lg bg-[var(--primary)] text-white px-3.5 py-2 text-sm font-semibold hover:brightness-110 disabled:opacity-50 transition">{busy ? '…' : pick(cfg?.button, cfg?.buttonFr, t('news.cta', 'Subscribe'))}</button>
+        <button type="submit" disabled={busy} className="shrink-0 rounded-lg bg-[var(--primary)] text-[var(--on-primary)] px-3.5 py-2 text-sm font-semibold hover:brightness-110 disabled:opacity-50 transition">{busy ? '…' : pick(cfg?.button, cfg?.buttonFr, t('news.cta', 'Subscribe'))}</button>
       </div>
     </form>
   );
@@ -1305,7 +1308,9 @@ function Footer() {
   const year = new Date().getFullYear();
   const bottomText = frOr(bottom.textFr, bottom.text);
   return (
-    <footer className="mt-16 md:mt-24 relative clear-both">
+    // `plate plate-band`: the footer is a band of the page colour, so its small faint text
+    // is read on the page and not on whatever frame of the 3D backdrop is behind it.
+    <footer className="plate plate-band mt-16 md:mt-24 relative clear-both">
       {/* gradient accent line */}
       <div className="h-px bg-gradient-to-r from-transparent via-[var(--primary)] to-transparent" />
       <div className={`max-w-6xl mx-auto px-4 py-14 md:grid md:gap-10 ${cfg?.mobile?.layout === 'grid' ? 'grid grid-cols-2 gap-x-6 gap-y-8' : 'flex flex-col'}`}

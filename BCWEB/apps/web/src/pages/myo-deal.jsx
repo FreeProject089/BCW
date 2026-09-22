@@ -80,7 +80,7 @@ export default function DealRail({ cfg = {}, compact = false }) {
           <li key={s.title} className={compact ? 'flex items-start gap-2.5' : 'relative'}>
             <span aria-hidden className={`relative grid place-items-center rounded-full shrink-0 ${compact ? 'w-7 h-7' : 'w-9 h-9'} ${
               s.pays
-                ? 'bg-[var(--primary)] text-white'
+                ? 'bg-[var(--primary)] text-[var(--on-primary)]'
                 : 'bg-[var(--bg-solid)] border-2 border-[var(--line-strong)] text-[var(--muted)]'
             }`}>
               <s.icon size={compact ? 14 : 17} />

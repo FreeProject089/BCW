@@ -73,6 +73,31 @@ export function setGlassPrefs({ on, pct }) {
   applyGlassPrefs({ on, pct: pct ?? getGlassPrefs().pct });
 }
 
+// Page grain: the noise tiles on the page backdrop, the footer band and `.tex-surface`
+// (index.css, `--tex` / `--tex-page`). One switch, not a level: the grain only has to be
+// subtle or absent, and a slider for "how much dirt" is a question nobody wants asked.
+//
+// ON by default, and that default was earned by measurement rather than taste: the two tiles
+// composited onto the page colour and the pixels read back give an sRGB standard deviation of
+// 3.86/255 (1.5%) in the light theme and 1.71/255 (0.67%) in the dark one, moving the mean
+// relative luminance 0.868 -> 0.851 and 0.00275 -> 0.00292. At the intensity the first pass
+// shipped (.30 light) it was 10.9/255 with single specks at 2.12:1 against the page, which is
+// the reading that came back as "it looks bad" — that one would not have defaulted on.
+//
+// Applied as `data-texture` on <html>; forced colours and reduced transparency turn it off in
+// CSS whatever this says. Older values ('soft' / 'rich', from the first pass) read as on.
+export const TEXTURE_KEY = 'bcw_texture';
+export function getTexturePref() {
+  try { return localStorage.getItem(TEXTURE_KEY) === 'off' ? 'off' : 'on'; } catch { return 'on'; }
+}
+export function applyTexturePref(level = getTexturePref()) {
+  document.documentElement.setAttribute('data-texture', level === 'off' ? 'off' : 'on');
+}
+export function setTexturePref(level) {
+  try { localStorage.setItem(TEXTURE_KEY, level === 'off' ? 'off' : 'on'); } catch { /* ignore */ }
+  applyTexturePref(level);
+}
+
 // ── Shift to skip a confirmation ─────────────────────────────────────────────
 //
 // Holding Shift while clicking answers the confirm dialog "yes" without showing it. For

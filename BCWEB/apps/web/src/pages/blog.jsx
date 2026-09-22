@@ -5,7 +5,7 @@ import {
   Newspaper, PenSquare, ImagePlus, Youtube, Link2, Video, Bold, Heading, List, Eye,
   Trash2, Pencil, ArrowLeft, CalendarDays, User as UserIcon, Plus, X, Tag as TagIcon, HelpCircle, Languages, Sparkles,
   Blocks as BlocksIcon, LayoutGrid, ChevronDown, ListOrdered, Milestone, Columns2, Code2, Keyboard, Smile, ListTree, FileDown, AlignCenter, GitMerge, History, MessageSquare, Globe,
-  Table, Quote, Minus, AlignLeft, AlignRight, Mail, PlayCircle, Upload, Download, Lock, Unlock,
+  Table, Quote, Minus, AlignLeft, AlignRight, Mail, PlayCircle, Upload, Download, Lock, Unlock, BookOpen
 } from 'lucide-react';
 import { api, uploadBlogImage, uploadReplay } from '../lib/api.js';
 import { thumb } from '../lib/img.js';
@@ -294,7 +294,7 @@ export function BlogList() {
             : t('blog.empty.s.r', 'Release notes and announcements are published here, and there is nothing yet.')}
           action={canWrite
             ? { label: t('blog.newpost', 'New post'), onClick: () => setEditing({}), icon: Plus }
-            : { label: t('blog.empty.a', 'Read the docs'), to: '/docs', icon: Newspaper }} />}
+            : { label: t('blog.empty.a', 'Read the docs'), to: '/docs', icon: BookOpen }} />}
       {!loading && hasMore && <div className="flex justify-center mt-8">
         <Button onClick={loadMore} disabled={loadingMore}>{loadingMore ? <><Spinner /> {t('common.loading', 'Loading…')}</> : <><ChevronDown size={16} /> {t('blog.loadmore', 'Load more')}</>}</Button>
       </div>}
@@ -388,7 +388,7 @@ export function BlogPostPage() {
               const count = rx?.counts?.[type] || 0; const mine = rx?.mine === type;
               return (
                 <button key={type} onClick={() => react(type)}
-                  className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm transition ${mine ? 'border-[var(--primary)] tint-primary text-[var(--accent-ink)]' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm transition ${mine ? 'border-[var(--primary)] panel text-[var(--accent-ink)] font-medium' : 'border-[var(--line)] panel hover:border-[var(--line-strong)]'}`}>
                   <ReactionIcon name={type} size={16} />{count > 0 && <span className="text-xs tabular-nums">{count}</span>}
                 </button>
               );

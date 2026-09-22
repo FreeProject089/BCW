@@ -218,7 +218,7 @@ export default function SelectionToolbar({ taRef, value, onChange }) {
           <input placeholder={t('st.ph.link', "Link (optional)")} onMouseDown={(e) => e.stopPropagation()} onChange={(e) => { cmt.current.link = e.target.value; }} className="w-full text-xs rounded-md border border-[var(--line)] bg-transparent px-2 py-1 outline-none" />
           <input placeholder={t('st.ph.img', "Image URL (optional)")} onMouseDown={(e) => e.stopPropagation()} onChange={(e) => { cmt.current.img = e.target.value; }} className="w-full text-xs rounded-md border border-[var(--line)] bg-transparent px-2 py-1 outline-none" />
           <input placeholder={t('st.ph.video', "Video URL (optional)")} onMouseDown={(e) => e.stopPropagation()} onChange={(e) => { cmt.current.video = e.target.value; }} className="w-full text-xs rounded-md border border-[var(--line)] bg-transparent px-2 py-1 outline-none" />
-          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={addComment} className="w-full text-sm rounded-md bg-[var(--primary)] text-white py-1 font-medium">{t('st.addcomment', "Add comment")}</button>
+          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={addComment} className="w-full text-sm rounded-md bg-[var(--primary)] text-[var(--on-primary)] py-1 font-medium">{t('st.addcomment', "Add comment")}</button>
         </div>
       )}
     </div>, document.body);

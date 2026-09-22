@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Github, MessageSquare, Globe, Fingerprint, FolderGit2, Boxes, Download, Star, Share2, Calendar, Lock, Search, UserX, Youtube, Twitch, Gamepad2, ShieldOff, Sparkles, Mic } from 'lucide-react';
+import { Activity, Github, MessageSquare, Globe, Fingerprint, FolderGit2, Boxes, Download, Star, Share2, Calendar, Lock, Search, UserX, Youtube, Twitch, Gamepad2, ShieldOff, Sparkles, Mic, TrendingUp, X } from 'lucide-react';
 import { KofiIcon } from '../ui/brand.jsx';
 import { IconGlyph } from '../ui/md.jsx';
 import { api } from '../lib/api.js';
@@ -85,7 +85,7 @@ export default function PublicProfile() {
               <h1 className="text-2xl font-bold truncate" title={u.displayName}>{u.displayName}</h1>
               <Badges badges={u.badges} size={17} />
               {u.role !== 'USER' && <Badge tone={roleTone(u.role)}>{u.role}</Badge>}
-              {u.economy?.level > 0 && <Badge tone="primary"><Sparkles size={11} /> {t('pp.level', 'Level {n}').replace('{n}', u.economy.level)}</Badge>}
+              {u.economy?.level > 0 && <Badge tone="primary"><TrendingUp size={11} /> {t('pp.level', 'Level {n}').replace('{n}', u.economy.level)}</Badge>}
               {u.private && <Badge tone="amber"><Lock size={11} /> {t('pp.privatebadge', 'private')}</Badge>}
             </div>
             {u.bio && <p className="text-sm text-[var(--muted)] mt-1.5 whitespace-pre-wrap break-words">{u.bio}</p>}
@@ -108,7 +108,7 @@ export default function PublicProfile() {
       </Card>
 
       {u.economy?.level > 0 && <Card className="p-5">
-        <h2 className="font-semibold mb-3 text-sm flex items-center gap-2"><Sparkles size={15} className="text-[var(--accent-ink)]" /> {t('pp.discord', 'Discord activity')}</h2>
+        <h2 className="font-semibold mb-3 text-sm flex items-center gap-2"><Activity size={15} className="text-[var(--accent-ink)]" /> {t('pp.discord', 'Discord activity')}</h2>
         <div className="flex flex-wrap gap-2">
           <div className="rounded-xl border border-[var(--line)] panel px-3.5 py-2 text-center">
             <div className="text-xl font-bold tabular-nums leading-none text-[var(--accent-ink)]">{u.economy.level}</div>
@@ -198,7 +198,7 @@ export function UserSearch() {
           ); })}
         </div> : <EmptyState icon={UserX} title={t('us.none.t', 'No members found')}
           sub={t('us.none.s2', 'No member matches that name or id. A private profile is still found by its exact BC id.')}
-          action={{ label: t('us.none.a', 'Clear the search'), onClick: () => setQ(''), icon: Search }} />}
+          action={{ label: t('us.none.a', 'Clear the search'), onClick: () => setQ(''), icon: X }} />}
     </div>
   );
 }

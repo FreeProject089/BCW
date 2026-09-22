@@ -23,6 +23,11 @@ const SRC = 'src';
 // tree painting nothing while the check ran green over them — including the wash behind
 // the RECOMMENDED hosting plan, which is why that card was only a ring.
 const RE = /\b(?:bg|text|border|ring|from|via|to|shadow|outline|divide|accent|caret|fill|stroke)-\[var\(--[a-z0-9-]+\)\]\/(?:[0-9]+|\[[0-9.]+%?\])/g;
+// The third spelling: a THEME colour that is itself a variable. tailwind.config.js maps
+// success / warning / error / info / brand onto `var(--...)`, so `bg-success/5` is the same
+// alpha-on-a-variable and emits the same nothing. 50 of them were in the tree, including the
+// "free plan" column on /hosting, which was a bare border on the 3D backdrop as a result.
+const RE_THEME = /\b(?:bg|text|border|ring|from|via|to|shadow|outline|divide|accent|caret|fill|stroke)-(?:success|warning|error|info|brand)(?:-2|-bg|-border)?\/(?:[0-9]+|\[[0-9.]+%?\])/g;
 
 const files = (dir) => readdirSync(dir).flatMap((f) => {
   const p = join(dir, f);
@@ -33,7 +38,7 @@ let bad = 0;
 for (const f of files(SRC)) {
   const lines = readFileSync(f, 'utf8').split('\n');
   lines.forEach((l, i) => {
-    for (const m of l.match(RE) || []) {
+    for (const m of [...(l.match(RE) || []), ...(l.match(RE_THEME) || [])]) {
       console.error(`✗ ${f}:${i + 1}  ${m}`);
       bad += 1;
     }

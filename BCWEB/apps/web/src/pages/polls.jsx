@@ -663,8 +663,10 @@ export default function PollsPage() {
 
   return (
     <div className="max-w-3xl mx-auto py-8">
+      <div className="plate mb-5">
       <h1 className="text-xl font-bold mb-1">{t('poll.page.title', 'Polls')}</h1>
-      <p className="text-sm text-[var(--muted)] mb-5">{t('poll.page.sub', 'Short questions about where this goes next. Answering takes a moment and genuinely decides things.')}</p>
+      <p className="text-sm text-[var(--muted)]">{t('poll.page.sub', 'Short questions about where this goes next. Answering takes a moment and genuinely decides things.')}</p>
+      </div>
 
       <MyAnswers />
 
@@ -690,10 +692,14 @@ export default function PollsPage() {
               <button key={id} type="button" onClick={() => setFilter(id)} disabled={!counts[id] && filter !== id}
                 className={`px-2.5 py-1 rounded-full text-[12px] border transition ${
                   filter === id
-                    ? 'border-[var(--primary-2)] tint-accent text-[var(--accent-ink)]'
+                    ? 'border-[var(--primary-2)] panel text-[var(--accent-ink)] font-medium'
                     : counts[id]
-                      ? 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--line-strong)]'
-                      : 'border-[var(--line)] text-[var(--faint)] opacity-50 cursor-default'
+                      ? 'border-[var(--line)] panel text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--line-strong)]'
+                      // Unavailable, not invisible. It was `--faint` AND `opacity-50`, which
+                      // multiplies: the label measured 1.28:1, so "a control plainly
+                      // unavailable" was in practice a control nobody could read. The dashed
+                      // border says disabled without touching the ink.
+                      : 'border-dashed border-[var(--line-strong)] panel text-[var(--faint)] cursor-default'
                 }`}>
                 {label} <span className="tabular-nums">{counts[id]}</span>
               </button>

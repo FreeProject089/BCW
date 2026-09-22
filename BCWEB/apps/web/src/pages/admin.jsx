@@ -8,8 +8,8 @@ const HomeLive = lazy(() => import('./home.jsx').then((m) => ({ default: m.Home 
 import { ChipList, AccountChipList, PubkeyList } from '../ui/access-lists.jsx';
 import { lucideFileName } from '../editor/icon-picker.jsx';
 import { Link, useSearchParams } from 'react-router-dom';
-import {
-  BarChart3, Boxes, Music2, Puzzle, Server, Rocket, Download, Power, PowerOff, ArrowRight, ArrowRightLeft, Search, Upload, Bell, CheckCircle2, XCircle, Wallet, Scale, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Vote, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronUp, ChevronRight, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical, Check, ExternalLink, Palette, Pencil, Gavel, Code2, Database, Network, Share2, Link as LinkIcon, PlayCircle, Anchor, Boxes as BoxesIcon, Image as ImageIcon, ShoppingBag, Key, Coins, ShieldAlert, ServerCog, HeartPulse, Wrench, Bot, OctagonAlert, Flag as FlagIcon } from 'lucide-react';
+import { PartyPopper, ThumbsUp,
+  BarChart3, Boxes, Music2, Puzzle, Server, Rocket, Download, Power, PowerOff, ArrowRight, ArrowRightLeft, Search, Upload, Bell, CheckCircle2, XCircle, Wallet, Scale, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Vote, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronUp, ChevronRight, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical, Check, ExternalLink, Palette, Pencil, Gavel, Code2, Database, Network, Share2, Link as LinkIcon, PlayCircle, Anchor, Boxes as BoxesIcon, Image as ImageIcon, ShoppingBag, Key, Coins, ShieldAlert, ServerCog, HeartPulse, Wrench, Bot, OctagonAlert, Flag as FlagIcon, ChevronsUp, Cloud, PanelBottom } from 'lucide-react';
 import { Bug as BugIcon } from 'lucide-react';
 // The `all` sub-tab on Hosting settings; nothing else here needs a plain list glyph.
 import { List, FlaskConical } from 'lucide-react';
@@ -289,9 +289,9 @@ export function Admin() {
       ].filter(Boolean) },
 
     { heading: t('adm.h.content', 'What the site shows') },
-    canProjectsTab && { id: 'projects', label: t('adm.tab.projects', 'Projects'), icon: Settings2,
+    canProjectsTab && { id: 'projects', label: t('adm.tab.projects', 'Projects'), icon: Boxes,
       sub: [
-        { id: 'projects', label: t('adm.tab.projects2', 'Better* projects'), icon: Settings2 },
+        { id: 'projects', label: t('adm.tab.projects2', 'Better* projects'), icon: Boxes },
         // "Other projects" had a tab of its own next to Projects, which read as a separate
         // subsystem rather than as the second kind of project it is.
         canShowcaseTab && { id: 'showcase', label: t('adm.tab.showcase', 'Other projects'), icon: Sparkles },
@@ -312,7 +312,7 @@ export function Admin() {
         isAdmin && { id: 'mail', label: t('adm.tab.mail', 'Mail delivery'), icon: Send },
         isAdmin && { id: 'reviews', label: t('adm.tab.reviews', 'Reviews'), icon: Star },
         can('manage_polls') && { id: 'polls', label: t('adm.tab.polls', 'Polls'), icon: BarChart3 },
-        can('manage_announcements') && { id: 'reactions', label: t('adm.tab.reactions', 'Reader feedback'), icon: Heart },
+        can('manage_announcements') && { id: 'reactions', label: t('adm.tab.reactions', 'Reader feedback'), icon: ThumbsUp },
       ].filter(Boolean) },
     isAdmin && { id: 'badges', label: t('adm.tab.badges', 'Badges'), icon: BadgeCheck },
 
@@ -323,11 +323,11 @@ export function Admin() {
         { id: 'pools', label: t('adm.tab.pools', 'Storage pools'), icon: HardDrive },
         can('manage_hosting') && { id: 'entityhosting', label: t('adm.tab.entityhosting', 'Storage per blog & inbox'), icon: HardDrive },
         { id: 'transfers', label: t('adm.tab.transfers', 'Ownership'), icon: ArrowRightLeft },
-        can('manage_hosting') && { id: 'hosting', label: t('adm.tab.hosting', 'Free hosting'), icon: Rocket },
+        can('manage_hosting') && { id: 'hosting', label: t('adm.tab.hosting', 'Free hosting'), icon: Gift },
       ].filter(Boolean) },
     // Hosting plans stay here: they DEFINE the hosting product (sizes, speeds, what each tier
     // includes) and are edited beside the pools they size. What people paid lives in Money.
-    isAdmin && { id: 'plans', label: t('adm.tab.plans2', 'Hosting plans'), icon: CreditCard },
+    isAdmin && { id: 'plans', label: t('adm.tab.plans2', 'Hosting plans'), icon: Layers },
 
     { heading: t('adm.h.money', 'Money') },
     // Money: one place for what came in, what is owed and what was given away.
@@ -351,11 +351,11 @@ export function Admin() {
       ].filter(Boolean) },
 
     { heading: t('adm.h.growth2', 'Growth') },
-    can('manage_events') && { id: 'events', label: t('adm.tab.events', 'Events'), icon: Sparkles },
+    can('manage_events') && { id: 'events', label: t('adm.tab.events', 'Events'), icon: PartyPopper },
     can('manage_myo') && { id: 'myo', label: t('adm.tab.myo', 'Commissions'), icon: Wand2, badge: pc.myo || undefined },
 
     { heading: t('adm.h.integrations', 'Integrations') },
-    isAdmin && { id: 'sso', label: t('adm.tab.sso', 'SSO / OAuth'), icon: Shield },
+    isAdmin && { id: 'sso', label: t('adm.tab.sso', 'SSO / OAuth'), icon: KeyRound },
     can('manage_api') && { id: 'api', label: t('adm.tab.api', 'Public API'), icon: KeyRound },
     can('manage_bot') && { id: 'bot', label: t('adm.tab.bot', 'Discord bot'), icon: Bot },
 
@@ -382,7 +382,7 @@ export function Admin() {
     isAdmin && { id: 'navui', label: t('adm.tab.chrome', 'Navigation & footer'), icon: Navigation,
       sub: [
         { id: 'navui', label: t('adm.tab.navui2', 'Topbar'), icon: Navigation },
-        { id: 'footer', label: t('adm.tab.footer', 'Footer'), icon: PanelTop },
+        { id: 'footer', label: t('adm.tab.footer', 'Footer'), icon: PanelBottom },
         { id: 'homepage', label: t('adm.tab.homepage', 'Home page'), icon: LayoutGrid },
       ] },
     // Languages is its own tab so a TRANSLATOR (who is not an admin) can reach it — the whole
@@ -1830,7 +1830,7 @@ function AdminSecurity() {
             const reasonLabel = { content_altered: t('sec.r.content', 'Content altered'), chain_broken: t('sec.r.chain', 'Chain broken'), anchored_entry_deleted: t('sec.r.truncated', 'Log truncated'), anchored_entry_altered: t('sec.r.anchored', 'Anchored entry altered') }[brk?.reason] || t('sec.r.tampered', 'Tampered');
             const sb = verify.sinceBreak;
             return (
-              <div className="mt-3 rounded-[12px] border border-error/40 bg-error/10 p-3">
+              <div className="mt-3 rounded-[12px] border b-error tint-error p-3">
                 <div className="flex items-center gap-2 font-medium text-sm text-error"><AlertTriangle size={14} /> {reasonLabel}</div>
                 {sb && <>
                   <div className="text-sm mt-1">{t('sec.brk.since', 'Untrustworthy since')} {new Date(sb.at).toLocaleString()} <span className="text-[var(--faint)]">({sb.hoursSince}{t('sec.brk.hours', 'h ago')})</span></div>
@@ -1849,7 +1849,7 @@ function AdminSecurity() {
                 {/* What a broken chain MEANS, per reason. The four reasons are not the same
                     incident and do not have the same answer, and an admin reading "Chain
                     broken" at 3am should not have to work out which one they have. */}
-                <div className="mt-3 pt-3 border-t border-error/25 text-[12px] leading-relaxed">
+                <div className="mt-3 pt-3 border-t b-error text-[12px] leading-relaxed">
                   <div className="font-medium mb-1">{t('sec.rb.what', 'What this means')}</div>
                   <p className="text-[var(--muted)]">{{
                     content_altered: t('sec.rb.content', 'A row\u2019s own content no longer matches its signature. Somebody edited an entry in the database directly — the log records the edited version, and the original is gone unless a backup has it.'),
@@ -1865,7 +1865,7 @@ function AdminSecurity() {
                 {/* Three tools, in the order they have to be used. Export first: every other
                     action here writes to the database under suspicion, and re-sealing over a
                     break destroys the only record of what the break looked like. */}
-                <div className="mt-3 pt-3 border-t border-error/25">
+                <div className="mt-3 pt-3 border-t b-error">
                   <div className="font-medium text-[12px] mb-2">{t('sec.rb.do', 'What to do, in this order')}</div>
                   <ol className="space-y-2.5">
                     <li className="flex flex-wrap items-start gap-2">
@@ -3698,7 +3698,7 @@ function ContentImportPreview({ file, bytes, sections, onClose, onConfirm }) {
             {' · '}{fmtBytes(d.bytes || 0)}
           </div>
           {/* One sentence with the number that decides it, before the table. */}
-          <div className={`rounded-xl border p-3 text-[13px] ${willReplace ? 'border-warning/40 bg-warning/5' : 'border-success/40 bg-success/5'}`}>
+          <div className={`rounded-xl border p-3 text-[13px] ${willReplace ? 'b-warning tint-warning-soft' : 'b-success tint-success-soft'}`}>
             {willReplace
               ? <span>{t('cb.pre.replace', 'This would overwrite')} <b>{willReplace}</b> {t('cb.pre.replace2', 'existing record(s). What the site says now is saved first, so it can be undone.')}</span>
               : t('cb.pre.add', 'Nothing already on the site is overwritten by this file.')}
@@ -4007,7 +4007,7 @@ function ImportPreview({ file, b64, kind, onClose, onImported }) {
       </div>}>
       {loading ? <Loading /> : (
         <div className="space-y-3">
-          <div className={`rounded-xl border p-3 ${d.valid ? 'border-success/40 bg-success/5' : 'border-error/40 bg-error/5'}`}>
+          <div className={`rounded-xl border p-3 ${d.valid ? 'b-success tint-success-soft' : 'b-error tint-error-soft'}`}>
             <div className="flex items-center gap-2 text-[14px] font-semibold">
               {d.valid ? <CheckCircle2 size={16} className="text-success" /> : <XCircle size={16} className="text-error" />}
               {d.valid ? t('snap.pre.ok.t', 'Git reads this file as a backup.') : t('snap.pre.bad.t', 'This file will not open as a backup.')}
@@ -4087,7 +4087,7 @@ function SnapshotInspector({ id, onClose, onRestored }) {
           {/* One verdict, in a sentence, before the detail. The three checks were four badges
               of jargon in a row — a reader had to know what a digest is, and to work out for
               themselves whether the combination meant "safe to restore". */}
-          <div className={`rounded-xl border p-3 ${d.valid && d.digestMatches ? 'border-success/40 bg-success/5' : d.valid ? 'border-warning/40 bg-warning/5' : 'border-error/40 bg-error/5'}`}>
+          <div className={`rounded-xl border p-3 ${d.valid && d.digestMatches ? 'b-success tint-success-soft' : d.valid ? 'b-warning tint-warning-soft' : 'b-error tint-error-soft'}`}>
             <div className="flex items-center gap-2 text-[14px] font-semibold">
               {d.valid && d.digestMatches ? <CheckCircle2 size={16} className="text-success" />
                 : d.valid ? <AlertTriangle size={16} className="text-warning" />
@@ -4165,7 +4165,7 @@ function SnapshotInspector({ id, onClose, onRestored }) {
           )}
 
           {d.valid && (
-            <div className="rounded-lg border border-warning/40 bg-warning/5 p-3 space-y-2">
+            <div className="rounded-lg border b-warning tint-warning-soft p-3 space-y-2">
               <div className="text-[13px] font-semibold flex items-center gap-1.5"><RotateCcw size={13} /> {t('snap.rollback', 'Roll back to this backup')}</div>
               <p className="text-[11px] text-[var(--muted)]">
                 {t('snap.rollback.s', 'The current state is backed up first and the rollback is refused if that fails — a rollback with no way back is just a hopeful restore. This resets the backup history only.')}
@@ -4738,7 +4738,7 @@ const ADMIN_CAPS = [
   { id: 'manage_legal', cat: 'content', icon: Scale, label: 'Manage the legal pages', labelFr: 'Gérer les pages légales', desc: 'Edit the policy pages and publish a new version of them. Not the acceptances themselves.', descFr: 'Modifier les pages de politique et en publier une nouvelle version. Pas les acceptations elles-mêmes.' },
   { id: 'manage_bot', cat: 'ops', icon: Bot, label: 'Manage the Discord bot', labelFr: 'Gérer le bot Discord', desc: 'The bot dashboard: config, features, servers, logs — and two broad ones: exporting the member database, and DMing every member. Not its token, and not the economy.', descFr: 'Le tableau de bord du bot : config, fonctionnalités, serveurs, journaux — et deux gros : exporter la base des membres, et envoyer un MP à tout le monde. Pas son token, ni l’économie.' },
   { id: 'manage_economy', cat: 'ops', icon: Coins, label: 'Manage the economy', labelFr: 'Gérer l’économie', desc: 'Grant and reset points, read the ledger, deliver a shop purchase by hand. Points buy things, grant it as you would grant money.', descFr: 'Créditer et remettre à zéro les points, lire le registre, livrer un achat à la main. Les points achètent des choses — accorde-le comme tu accorderais de l’argent.' },
-  { id: 'manage_hosting', cat: 'ops', icon: Rocket, label: 'Manage hosting', labelFr: 'Gérer l’hébergement', desc: 'Plans, storage pools, capacity and free-hosting grants.', descFr: 'Formules, pools de stockage, capacité et hébergements gratuits accordés.' },
+  { id: 'manage_hosting', cat: 'ops', icon: Cloud, label: 'Manage hosting', labelFr: 'Gérer l’hébergement', desc: 'Plans, storage pools, capacity and free-hosting grants.', descFr: 'Formules, pools de stockage, capacité et hébergements gratuits accordés.' },
   { id: 'manage_assets', cat: 'ops', icon: Download, label: 'Manage downloads & assets', labelFr: 'Gérer téléchargements et ressources', desc: 'The installers people download, and the links file the apps read at startup.', descFr: 'Les installeurs que les gens téléchargent, et le fichier de liens que les apps lisent au démarrage.' },
   { id: 'manage_sanctions', cat: 'people', icon: Gavel, label: 'Manage sanctions', labelFr: 'Gérer les sanctions', desc: 'Site bans and the appeals against them.', descFr: 'Les bannissements du site et les recours contre eux.' },
   { id: 'manage_history', cat: 'people', icon: History, label: 'Manage the site history', labelFr: 'Gérer l’historique du site', desc: 'The public timeline of what changed and when.', descFr: 'La chronologie publique de ce qui a changé et quand.' },
@@ -4987,7 +4987,7 @@ function AdminAccess({ isSuperAdmin }) {
             ) : (<>
               <p className="text-xs text-[var(--muted)] mb-2.5">{t('acc.perms.desc', 'Grant this user access to specific admin sections — each unlocks exactly that area of the dashboard and nothing else. Actions are still checked on the server.')} {!picked.totpEnabled && <span className="text-warning">{t('acc.perms.no2fa', 'They must enable 2FA before the dashboard will open.')}</span>}</p>
               {unresolvedRoles && (
-                <div className="text-[11.5px] rounded-lg border border-warning-border bg-warning-bg/40 text-warning px-2.5 py-2 mb-2.5 flex items-start gap-2">
+                <div className="text-[11.5px] rounded-lg border border-warning-border tint-warning-soft text-warning px-2.5 py-2 mb-2.5 flex items-start gap-2">
                   <AlertTriangle size={13} className="shrink-0 mt-0.5" />
                   <span>{t('acc.perms.unresolved', 'This account also holds {n} custom role(s). Their capabilities are not shown here — only a SUPERADMIN can read the role definitions, so the switches below may under-report what this user can do.').replace('{n}', rolesSel.length)}</span>
                 </div>
@@ -5864,7 +5864,7 @@ function UserModerationCard({ user, onChange }) {
           <div>
             <div className="text-[11px] text-[var(--faint)] mb-1">{t('mod.duration', 'Duration')}</div>
             <div className="flex flex-wrap gap-1.5">
-              {MOD_DURATIONS.map((d) => <button key={d.key} type="button" onClick={() => setDur(d.key)} className={`px-2.5 py-1 rounded-lg text-xs border transition ${dur === d.key ? 'border-[var(--primary)] tint-primary text-[var(--accent-ink)]' : 'border-[var(--line)] text-[var(--muted)] hover:border-[var(--line-strong)]'}`}>{t(`mod.dur.${d.key}`, d.label)}</button>)}
+              {MOD_DURATIONS.map((d) => <button key={d.key} type="button" onClick={() => setDur(d.key)} className={`px-2.5 py-1 rounded-lg text-xs border transition ${dur === d.key ? 'border-[var(--primary)] panel text-[var(--accent-ink)] font-medium' : 'border-[var(--line)] panel text-[var(--muted)] hover:border-[var(--line-strong)]'}`}>{t(`mod.dur.${d.key}`, d.label)}</button>)}
             </div>
           </div>
           <Textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t('mod.reasonph', 'Reason, shown to the user and emailed to them…')} rows={2} />
@@ -6262,7 +6262,7 @@ function ClosureBanner({ user, onChanged, form, setForm }) {
   if (user.closureScheduledFor) {
     const staff = !!user.closureBy;
     return (
-      <div className="rounded-xl border border-warning bg-warning/10 p-3">
+      <div className="rounded-xl border border-warning tint-warning p-3">
         <div className="text-[13px] font-semibold flex items-center gap-2">
           <AlertTriangle size={14} className="text-warning" />
           {t('ud.cl.pending', 'Closing on {d}').replace('{d}', day(user.closureScheduledFor))}
@@ -7020,7 +7020,7 @@ function UserDetailModal({ id, onClose }) {
           </>)}
           {tab === 'content' && (<>
           <div>
-            <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><Rocket size={12} /> {t('ud.hosted', 'Hosted repos')} ({hosted.length})</div>
+            <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><Cloud size={12} /> {t('ud.hosted', 'Hosted repos')} ({hosted.length})</div>
             {hosted.length ? <div className="space-y-1 max-h-40 overflow-auto pe-1">{hosted.map((r) => <div key={r.id} className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-[var(--surface-2)]"><Server size={13} className="text-[var(--accent-ink)] shrink-0" /><span className="flex-1 truncate" title={r.name}>{r.name}</span><BcChip code={r.fingerprint} /><Badge tone={r.status === 'ONLINE' ? 'green' : ''}>{r.status}</Badge></div>)}</div>
               : <div className="text-sm text-[var(--faint)]">{t('ud.none', 'None.')}</div>}
           </div>
@@ -7039,7 +7039,7 @@ function UserDetailModal({ id, onClose }) {
           {tab === 'billing' && (<>
           {u.subscriptions?.length > 0 && (
             <div>
-              <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><RefreshCw size={12} /> {t('ud.subs', 'Active subscriptions')} · <span className="text-success normal-case">≈ ${(u.mrrCents / 100).toFixed(2)}/{t('pu.mo', 'mo')}</span></div>
+              <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><CreditCard size={12} /> {t('ud.subs', 'Active subscriptions')} · <span className="text-success normal-case">≈ ${(u.mrrCents / 100).toFixed(2)}/{t('pu.mo', 'mo')}</span></div>
               <div className="space-y-1">{u.subscriptions.map((s) => {
                 const cur = (s.currency || 'usd').toUpperCase(); const sym = cur === 'USD' ? '$' : cur === 'EUR' ? '€' : cur === 'GBP' ? '£' : '';
                 const amt = sym ? `${sym}${(s.amountCents / 100).toFixed(2)}` : `${(s.amountCents / 100).toFixed(2)} ${cur}`;
@@ -7456,7 +7456,7 @@ function AdminHistory() {
           const Icon = HIST_ICON[src.key] || Activity; const on = sources.includes(src.key);
           return (
             <button key={src.key} onClick={() => toggle(src.key)}
-              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs border transition ${on ? 'border-[var(--primary)] tint-primary text-[var(--accent-ink)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}>
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs border transition ${on ? 'border-[var(--primary)] panel text-[var(--accent-ink)] font-medium' : 'border-[var(--line)] panel text-[var(--muted)] hover:text-[var(--text)]'}`}>
               <Icon size={12} /> {t(`hist.src.${src.key}`, src.label)}
             </button>
           );
@@ -8661,7 +8661,7 @@ function AdminFreeHost() {
   };
   return (
     <div>
-      <h2 className="font-semibold mb-1 flex items-center gap-2"><Rocket size={16} className="text-[var(--accent-ink)]" /> {t('fh.title2', 'Free hosting (storage pool)')}</h2>
+      <h2 className="font-semibold mb-1 flex items-center gap-2"><Gift size={16} className="text-[var(--accent-ink)]" /> {t('fh.title2', 'Free hosting (storage pool)')}</h2>
       <p className="text-sm text-[var(--muted)] mb-4">{t('fh.sub2', 'Provisions a storage pool directly — no payment — that the owner fills with repos and catalogs. Leave the email blank to host it under your own account.')}</p>
       <Card className="p-5 space-y-3">
         <div className="grid sm:grid-cols-2 gap-3">
@@ -8684,7 +8684,7 @@ function AdminFreeHost() {
           </Select></Field>
         )}
         <label className="flex items-center gap-2 text-sm text-[var(--muted)]"><input type="checkbox" checked={f.listed} onChange={(e) => setF({ ...f, listed: e.target.checked })} /> {t('fh.listpub', 'List publicly once verified')}</label>
-        <div className="flex justify-end"><Button variant="primary" disabled={busy} onClick={submit}>{busy ? <Spinner /> : <><Rocket size={15} /> {t('fh.provision', 'Provision (free)')}</>}</Button></div>
+        <div className="flex justify-end"><Button variant="primary" disabled={busy} onClick={submit}>{busy ? <Spinner /> : <><Gift size={15} /> {t('fh.provision', 'Provision (free)')}</>}</Button></div>
       </Card>
     </div>
   );
@@ -14063,7 +14063,7 @@ function ServerBubble({ name, icon, sub, active, dot, onClick }) {
     <button onClick={onClick} title={name}
       className={`relative flex items-center gap-2.5 px-3 py-2 rounded-xl border text-start transition shrink-0 w-[180px] ${active ? 'border-[var(--primary)] tint-primary' : 'border-[var(--line)] hover:border-[var(--line-strong)] hover:panel'}`}>
       {icon ? <img src={icon} alt="" className="w-9 h-9 rounded-full shrink-0" />
-        : <span className="w-9 h-9 rounded-full shrink-0 grid place-items-center text-xs font-bold bg-gradient-to-br from-brand to-brand-2 text-white">{initial}</span>}
+        : <span className="w-9 h-9 rounded-full shrink-0 grid place-items-center text-xs font-bold bg-gradient-to-br from-brand to-brand-2 text-[var(--on-primary)]">{initial}</span>}
       <div className="min-w-0 flex-1">
         <div className="text-sm font-medium truncate" title={name}>{name}</div>
         {sub && <div className="text-[10px] text-[var(--faint)] truncate" title={sub}>{sub}</div>}
@@ -14695,7 +14695,7 @@ function AdminBot() {
             </div>
 
             {/* Master switch — its own pill so it never reads as one of the stats. */}
-            <label className={`flex items-center gap-2.5 cursor-pointer rounded-lg border px-3 py-2 grow sm:grow-0 ${cfg.enabled !== false ? 'border-success-border bg-success-bg/60' : 'border-[var(--line)] panel'}`}>
+            <label className={`flex items-center gap-2.5 cursor-pointer rounded-lg border px-3 py-2 grow sm:grow-0 ${cfg.enabled !== false ? 'border-success-border tint-success-soft' : 'border-[var(--line)] panel'}`}>
               <span className={`relative inline-flex h-5 w-9 items-center rounded-full transition ${cfg.enabled !== false ? 'bg-success' : 'bg-[var(--surface-3,var(--line))]'}`}>
                 <input type="checkbox" className="sr-only" checked={cfg.enabled !== false} onChange={(e) => set('enabled', e.target.checked)} />
                 <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition ${cfg.enabled !== false ? 'translate-x-[18px]' : 'translate-x-[3px]'}`} />
@@ -14731,7 +14731,7 @@ function AdminBot() {
 
       {/* connection error (e.g. privileged intents disabled) — actionable message */}
       {data?.error && (
-        <div className="mb-4 rounded-xl border border-error-border bg-error/[0.07] p-3 flex items-start gap-2.5">
+        <div className="mb-4 rounded-xl border border-error-border tint-error-soft p-3 flex items-start gap-2.5">
           <AlertTriangle size={16} className="text-error shrink-0 mt-0.5" />
           <div className="min-w-0"><div className="text-sm font-medium text-error">{t('db.cantconnect', 'Bot can’t connect')}</div><div className="text-xs text-error mt-0.5 break-words">{data.error}</div></div>
         </div>
@@ -15122,7 +15122,7 @@ function AdminBot() {
           const KINDS = [
             ['badge', BadgeCheck, t('db.eco.kind.badge', 'BCWEB badge'), t('db.eco.kind.badge.h', 'Granted on the spot. Bound to the buyer.')],
             ['pool', HardDrive, t('db.eco.kind.pool', 'Storage pool'), t('db.eco.kind.pool.h', 'A code for a free pool of N GB, minted when the buyer reveals it.')],
-            ['boost', Rocket, t('db.eco.kind.boost', 'Catalog / repo boost'), t('db.eco.kind.boost.h', 'A code for N days of boost.')],
+            ['boost', ChevronsUp, t('db.eco.kind.boost', 'Catalog / repo boost'), t('db.eco.kind.boost.h', 'A code for N days of boost.')],
             ['hosting', Server, t('db.eco.kind.hosting', 'Free hosting'), t('db.eco.kind.hosting.h', 'A code for N GB over M months of hosting.')],
             ['promo', Ticket, t('db.eco.kind.promo', 'Promo code'), t('db.eco.kind.promo.h', 'A fixed code you typed, or a generated discount.')],
             ['role', Shield, t('db.eco.kind.role', 'Discord role'), t('db.eco.kind.role.h', 'You hand it out (Members → Purchases to hand out).')],
@@ -15442,7 +15442,7 @@ function AdminBot() {
                     <button type="button" onClick={() => { sset('welcome.bgImage', ''); setPreviewNonce((n) => n + 1); }}
                       className="p-1.5 rounded-lg text-error hover:bg-error-bg" title={t('common.remove', 'Remove')}><Trash2 size={13} /></button>
                   )}
-                  <Button size="sm" variant="ghost" onClick={() => setPreviewNonce((n) => n + 1)}><RefreshCw size={12} /> {t('db.f.bgimg.see', 'Preview')}</Button>
+                  <Button size="sm" variant="ghost" onClick={() => setPreviewNonce((n) => n + 1)}><Eye size={12} /> {t('db.f.bgimg.see', 'Preview')}</Button>
                 </div>
               </Field>
               {/* Said where somebody is pasting, not in a doc. A path that fails this shape
@@ -15464,7 +15464,7 @@ function AdminBot() {
               <div className="p-3 flex items-start gap-2.5">
                 <img src="/logo.png" alt="" className="w-9 h-9 rounded-full shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5 text-sm"><span className="font-semibold text-[var(--text)]">{scopeName || 'BetterCommunity'}</span><span className="text-[9px] font-bold px-1 py-0.5 rounded bg-[var(--primary)] text-white uppercase">Bot</span><span className="text-[10px] text-[var(--faint)]">{t('db.today', 'Today')}</span></div>
+                  <div className="flex items-center gap-1.5 text-sm"><span className="font-semibold text-[var(--text)]">{scopeName || 'BetterCommunity'}</span><span className="text-[9px] font-bold px-1 py-0.5 rounded bg-[var(--primary)] text-[var(--on-primary)] uppercase">Bot</span><span className="text-[10px] text-[var(--faint)]">{t('db.today', 'Today')}</span></div>
                   <div className="text-sm text-[var(--muted)] mt-0.5">{previewMsg(sg('welcome.joinMessage')) || '—'}</div>
                   <img alt="Welcome banner preview" className="mt-1.5 w-full max-w-md rounded-lg block border border-[var(--line)]"
                     src={`/api/admin/bot/welcome-preview.png?server=${encodeURIComponent(scopeName)}&members=${status?.users || 1024}&username=NewMember&bg=${sg('welcome.gifBg') || 'dark'}&bgImage=${encodeURIComponent(sg('welcome.bgImage') || '')}&_=${previewNonce}`}
@@ -16032,7 +16032,7 @@ function PendingDeliveries({ currency }) {
         <div className="space-y-1.5 max-h-[40vh] overflow-auto pe-1">
           {rows.slice(0, 40).map((r) => (
             <div key={r.id} className={`flex items-center gap-3 rounded-lg border border-[var(--line)] px-3 py-2 ${r.status === 'pending' ? '' : 'opacity-70'}`}>
-              <span className={`grid place-items-center w-8 h-8 rounded-lg shrink-0 ${r.status === 'pending' ? 'bg-warning/15 text-warning' : 'bg-success/15 text-success'}`}>{r.status === 'pending' ? <Clock size={14} /> : <CheckCircle2 size={14} />}</span>
+              <span className={`grid place-items-center w-8 h-8 rounded-lg shrink-0 ${r.status === 'pending' ? 'tint-warning text-warning' : 'tint-success text-success'}`}>{r.status === 'pending' ? <Clock size={14} /> : <CheckCircle2 size={14} />}</span>
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium truncate">{r.name} <span className="text-[11px] text-[var(--faint)] font-normal">· {kind(r.kind)}</span></div>
                 <div className="text-[11px] text-[var(--faint)] truncate"><Link to={`/u/${r.userId}`} className="hover:text-[var(--accent-ink)]">{r.displayName}</Link> · {r.cost.toLocaleString()} {currency} · {new Date(r.createdAt).toLocaleDateString()} · {r.via === 'discord' ? 'Discord' : t('eco.inv.site', 'site')}{r.delivery?.code ? ` · ${r.delivery.code}` : ''}</div>
@@ -18017,7 +18017,7 @@ function AdminErrors() {
       </div>
       <p className="text-sm text-[var(--muted)] mb-3">{t('er.sub2', 'Server errors (API 5xx), the Discord bot’s handler failures and uncaught JavaScript errors from real visits, grouped by message. A new server or bot error raises an alert (Discord alerts channel + in-app notification) and sits in “Needs attention” until it is marked handled.')}</p>
       {fresh.length > 0 && (
-        <div className="mb-3 rounded-lg border border-warning-border bg-warning-bg/50 px-3 py-2 text-sm flex items-center gap-2 flex-wrap">
+        <div className="mb-3 rounded-lg border border-warning-border tint-warning-soft px-3 py-2 text-sm flex items-center gap-2 flex-wrap">
           <AlertTriangle size={14} className="text-warning shrink-0" />
           <span>{t('er.fresh', '{n} error group(s) new since you last opened this page.').replace('{n}', fresh.length)}</span>
         </div>
@@ -18154,7 +18154,7 @@ function EventsFeed({ days, hours }) {
         <Activity size={15} className="text-[var(--accent-ink)]" />
         <h2 className="font-semibold">{t('an.ev.title', 'Events')}</h2>
         <button onClick={() => setLive((l) => !l)}
-          className={`text-xs px-2 py-1 rounded-lg inline-flex items-center gap-1.5 ${live ? 'bg-success/15 text-success' : 'bg-[var(--surface-2)] text-[var(--muted)]'}`}>
+          className={`text-xs px-2 py-1 rounded-lg inline-flex items-center gap-1.5 ${live ? 'tint-success text-success' : 'bg-[var(--surface-2)] text-[var(--muted)]'}`}>
           <span className={`w-1.5 h-1.5 rounded-full ${live ? 'bg-success' : 'bg-[var(--faint)]'}`} />
           {live ? t('an.ev.live.on', 'Live') : t('an.ev.live.off', 'Paused')}
         </button>
@@ -18948,7 +18948,7 @@ function AdminShowcase() {
             <div className="flex items-start gap-3">
               {pr.icon
                 ? <div className="grid place-items-center w-10 h-10 rounded-lg bg-[var(--surface-2)] border border-[var(--line)] shrink-0 text-[var(--accent-ink)]"><ShowcaseIcon icon={pr.icon} size={24} rounded={6} /></div>
-                : <div className="grid place-items-center w-10 h-10 rounded-lg bg-gradient-to-br from-brand to-brand-2 text-white font-extrabold text-xs shrink-0">{pr.short}</div>}
+                : <div className="grid place-items-center w-10 h-10 rounded-lg bg-gradient-to-br from-brand to-brand-2 text-[var(--on-primary)] font-extrabold text-xs shrink-0">{pr.short}</div>}
               <div className="flex-1 min-w-0">
                 <div className="font-medium flex items-center gap-2 flex-wrap min-w-0">
                   <span className="truncate min-w-0" title={pr.name}>{pr.name}</span>
@@ -19373,7 +19373,7 @@ function SeoHealthCard() {
         <>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2 mb-3">
             {state.checks.map((c) => (
-              <div key={c.label} className={`rounded-lg border px-3 py-2 flex items-start gap-2 ${c.ok ? 'border-[var(--line)]' : c.soft ? 'border-[var(--line)]' : 'border-warning-border bg-warning-bg/40'}`}>
+              <div key={c.label} className={`rounded-lg border px-3 py-2 flex items-start gap-2 ${c.ok ? 'border-[var(--line)]' : c.soft ? 'border-[var(--line)]' : 'border-warning-border tint-warning-soft'}`}>
                 {c.ok ? <CheckCircle2 size={15} className="text-success shrink-0 mt-0.5" /> : <AlertTriangle size={15} className={`${c.soft ? 'text-[var(--faint)]' : 'text-warning'} shrink-0 mt-0.5`} />}
                 <div className="min-w-0"><div className="text-xs font-medium">{c.label}</div><div className="text-[11px] text-[var(--muted)] leading-snug break-words">{c.detail}</div></div>
               </div>
@@ -19971,7 +19971,7 @@ function DiscordStorageCapCard() {
 
 // Icon names an admin may attach to a nav item — must mirror NAV_ICONS in App.jsx
 // (an unknown name harmlessly falls back to the Boxes icon at render time).
-const NAV_ICON_CHOICES = ['Boxes', 'Music2', 'Newspaper', 'Server', 'Rocket', 'Shield', 'Download', 'Sparkles', 'Mail', 'Home', 'BookOpen', 'LayoutGrid', 'Info', 'Bell', 'Code'];
+const NAV_ICON_CHOICES = ['Boxes', 'Music2', 'Newspaper', 'Server', 'Rocket', 'Shield', 'Download', 'Sparkles', 'Mail', 'Home', 'BookOpen', 'LayoutGrid', 'Info', 'Bell', 'Code', 'Cloud', 'LogIn', 'LayoutDashboard', 'HelpCircle'];
 // A ready-to-edit starting point mirroring the built-in topbar, so an admin isn't
 // staring at a blank editor. Uses plain labels + icon names (both languages).
 // Mirrors the site's real built-in NAV (App.jsx) so "Reset to default" restores exactly
@@ -19988,7 +19988,7 @@ const DEFAULT_NAV_SEED = [
   { type: 'link', label: 'Docs', labelFr: 'Docs', to: '/docs', icon: 'BookOpen', children: [] },
   { type: 'link', label: 'Developers', labelFr: 'Développeurs', to: '/dev', icon: 'Code', children: [] },
   { type: 'link', label: 'Server repos', labelFr: 'Dépôts serveur', to: '/repos', icon: 'Server', children: [] },
-  { type: 'link', label: 'Hosting', labelFr: 'Hébergement', to: '/hosting', icon: 'Rocket', children: [] },
+  { type: 'link', label: 'Hosting', labelFr: 'Hébergement', to: '/hosting', icon: 'Cloud', children: [] },
 ];
 const blankItem = (type) => ({ type, label: '', labelFr: '', to: type === 'link' ? '/' : '', icon: 'Boxes', children: [] });
 const blankChild = () => ({ label: '', labelFr: '', to: '/', desc: '', descFr: '', icon: 'Boxes' });
@@ -20079,7 +20079,7 @@ function LiveNavPreview({ cfg, device, theme, onTheme, viewer, onEdit }) {
           <div className="h-3 w-full max-w-2xl rounded bg-[var(--surface-2)]" />
           <div className="h-3 w-5/6 max-w-xl rounded bg-[var(--surface-2)]" />
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3 pt-3">
-            {[0, 1, 2].map((i) => <div key={i} className="h-24 rounded-2xl border border-[var(--line)] bg-[var(--surface-1)]" />)}
+            {[0, 1, 2].map((i) => <div key={i} className="h-24 rounded-2xl border border-[var(--line)] panel" />)}
           </div>
         </div>
         <MobileTabBar preview={preview} />
@@ -20723,7 +20723,10 @@ function AdminNav() {
 
       {/* Save follows you down the page. It used to be the last thing after six cards, so
           editing an item near the top meant scrolling to the bottom to keep the change. */}
-      <div className="sticky bottom-0 -mx-1 px-1 py-2 flex items-center gap-2 scrim backdrop-blur border-t border-[var(--line)]">
+      {/* `.save-dock`, like the home editor: a floating bar in the card family. It was `.scrim`
+          + `backdrop-blur`, i.e. translucent and blurred even with Translucent surfaces OFF, which
+          over the 3D backdrop read as a dark slab. */}
+      <div className="save-dock">
         <span className="text-[11px] text-[var(--muted)] min-w-0 flex-1">
           {validCount} {t('nav.valid', 'item(s) will be saved')}
         </span>
@@ -21460,7 +21463,7 @@ function ReportThreadModal({ id, admin, onClose, onDelete }) {
         </div>
         {own && <div className="text-xs rounded-lg px-3 py-2 bg-warning-bg border border-warning-border text-warning flex items-center gap-2"><AlertTriangle size={14} /> {t('ar.ownreport', 'You opened this report, reply to it from your dashboard (Reports & contact), not as staff here.')}</div>}
         {admin && !own && <div className="flex flex-wrap gap-2">
-          {r.status !== 'open' && <Button size="sm" variant="ghost" onClick={() => setStatus('open')}><RefreshCw size={13} /> {t('ar.reopen', 'Reopen')}</Button>}
+          {r.status !== 'open' && <Button size="sm" variant="ghost" onClick={() => setStatus('open')}><RotateCcw size={13} /> {t('ar.reopen', 'Reopen')}</Button>}
           {r.status !== 'archived' && <Button size="sm" variant="ghost" onClick={() => setStatus('archived')}><Archive size={13} /> {t('ar.archive', 'Archive')}</Button>}
           {r.status !== 'closed' && <Button size="sm" variant="ghost" onClick={() => setStatus('closed')}><CheckCircle2 size={13} /> {t('ar.close', 'Close')}</Button>}
           <Button size="sm" variant="ghost" onClick={() => setPeople((v) => !v)}><Users size={13} /> {t('ar.people', 'People')}{r.participants?.length ? ` (${r.participants.length})` : ''}</Button>
@@ -22402,7 +22405,10 @@ function AdminFooter() {
       </div>
       )}
 
-      <div className="sticky bottom-0 -mx-1 px-1 py-2 flex items-center gap-2 scrim backdrop-blur border-t border-[var(--line)]">
+      {/* `.save-dock`, like the home editor: a floating bar in the card family. It was `.scrim`
+          + `backdrop-blur`, i.e. translucent and blurred even with Translucent surfaces OFF, which
+          over the 3D backdrop read as a dark slab. */}
+      <div className="save-dock">
         <span className="text-[11px] text-[var(--muted)] min-w-0 flex-1">
           {(f.columns || []).length} {t('afoot.ncols', 'column(s)')}
         </span>
@@ -23351,7 +23357,7 @@ function EcoResetControl() {
   // Guarded by manage_economy on the server, so a bot-dashboard grant no longer reaches it.
   if (!(user?.role === 'ADMIN' || user?.role === 'SUPERADMIN' || effectiveCaps(user).includes('manage_economy'))) return null;
   return (
-    <div className="rounded-xl border border-dashed border-error/40 p-3 flex items-center gap-3 flex-wrap text-sm">
+    <div className="rounded-xl border border-dashed b-error p-3 flex items-center gap-3 flex-wrap text-sm">
       <RotateCcw size={16} className="text-error shrink-0" />
       <span className="flex-1 text-[var(--muted)] min-w-[12rem]">{t('db.eco.reset.desc', 'Season reset, zero every member’s points at once. To reset a single member, use a negative grant on the Members page.')}</span>
       <label className="flex items-center gap-1.5 text-xs text-[var(--muted)] cursor-pointer"><input type="checkbox" checked={xp} onChange={(e) => setXp(e.target.checked)} /> {t('db.eco.reset.xp', 'Also XP & level')}</label>

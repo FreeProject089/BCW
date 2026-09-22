@@ -7,7 +7,7 @@
 //
 // One function, two callers. A second copy of this is a second list to keep in step with the
 // projects an admin actually manages, which is the thing this replaced in the first place.
-import { Boxes, Music2, Download, Rocket } from 'lucide-react';
+import { Boxes, Music2, Download, Cloud } from 'lucide-react';
 
 
 /**
@@ -49,7 +49,7 @@ export function productCards(projData, t, extra = []) {
     ]),
     // Hosting is hand-written because it is a service, not a project: it has no project page
     // and no row in the admin's list, and the suite would be poorer without it.
-    { icon: Rocket, name: 'Hosting', desc: t('prod.hosting.d'), to: '/hosting' },
+    { icon: Cloud, name: 'Hosting', desc: t('prod.hosting.d'), to: '/hosting' },
     // …and everything else somebody added on the same grounds. This row existed as a single
     // hard-coded exception; the exception is now the feature. The icon falls back to the
     // generic one rather than to nothing: an empty square in a row of logos reads as a broken

@@ -419,7 +419,7 @@ export default function DevHub() {
           opens with a feature list is a brochure; the question people arrive with is "can I
           do the thing I came to do, and how long will it take". */}
       <div className="text-center max-w-2xl mx-auto mb-8 sm:mb-12">
-        <span className="inline-grid place-items-center w-14 h-14 rounded-2xl bg-gradient-to-br from-brand to-brand-2 text-white shadow-lg shadow-orange-500/25 mb-4"><Code2 size={26} /></span>
+        <span className="inline-grid place-items-center w-14 h-14 rounded-2xl bg-gradient-to-br from-brand to-brand-2 text-[var(--on-primary)] shadow-lg shadow-orange-500/25 mb-4"><Code2 size={26} /></span>
         <h1 className="text-3xl sm:text-4xl font-extrabold leading-tight">
           {hero.title || <>{t('dev.hub.h1a', 'Build on')} <span className="gradient-text">BetterCommunity</span></>}
         </h1>

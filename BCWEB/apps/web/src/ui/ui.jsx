@@ -500,7 +500,8 @@ export function PageHeader({ icon: Icon, title, subtitle, actions }) {
   // a size on mobile, and min-w-0 lets a long name/subtitle wrap instead of forcing overflow.
   return (
     <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4 mb-6">
-      <div className="flex items-center gap-3 min-w-0">
+      {/* `plate`: the title sits on the page, and the page is the 3D backdrop. See index.css. */}
+      <div className="plate flex items-center gap-3 min-w-0">
         {Icon && <div className="grid place-items-center w-10 h-10 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] shrink-0"><Icon size={20} className="text-[var(--accent-ink)]" /></div>}
         <div className="min-w-0"><h1 className="text-xl sm:text-2xl font-bold leading-tight">{title}</h1>{subtitle && <p className="text-sm text-[var(--muted)] mt-0.5">{subtitle}</p>}</div>
       </div>

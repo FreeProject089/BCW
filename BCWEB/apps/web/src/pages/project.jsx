@@ -1,10 +1,10 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
-import {
+import { ArrowRight, Scale,
   Download, Github, MessageCircle, Heart, Globe, BookOpen, Users, ScrollText, ShieldCheck,
   FileText, ListTodo, Boxes, ExternalLink, FolderGit2, ChevronRight, ChevronDown,
   CheckCircle2, Clock, Circle, CalendarDays, Rocket, Wrench, Sparkles, FlaskConical, Newspaper, Network, Pencil,
-  Play, Radio, Megaphone, GitBranch, ShoppingBag, Key, Copy, LayoutTemplate,
+  Play, Radio, Megaphone, GitBranch, ShoppingBag, Key, Copy, LayoutTemplate, Lock
 } from 'lucide-react';
 import Markdown, { matchesLang, ShowcaseIcon, IconGlyph } from '../ui/md.jsx';
 
@@ -264,7 +264,7 @@ function useCountdown(target) {
 function CtaButton({ button }) {
   if (!button?.url) return null;
   const internal = button.url.startsWith('/');
-  const inner = <Button variant="primary"><Sparkles size={15} /> {button.label || 'Learn more'}</Button>;
+  const inner = <Button variant="primary">{button.label || 'Learn more'} <ArrowRight size={15} /></Button>;
   return <div className="mt-6">{internal ? <Link to={button.url}>{inner}</Link> : <a href={button.url} target="_blank" rel="noreferrer">{inner}</a>}</div>;
 }
 
@@ -336,7 +336,7 @@ export default function ProjectPage({ preview = null }) {
   const market = useFetch(() => api.get(`/marketplace/products?projectKey=${encodeURIComponent(key)}`).catch(() => ({ products: [] })), [key]);
   const marketProducts = market.data?.products || [];
   if (loading) return <div className="flex items-center gap-2 text-[var(--muted)] py-10"><Spinner /> {t('common.loading')}</div>;
-  if (err?.status === 403) return <EmptyState icon={ShieldCheck} title={t('proj.notAvailable', 'Not available')} sub={t('proj.noAccess', "You don't have access to this page.")}
+  if (err?.status === 403) return <EmptyState icon={Lock} title={t('proj.notAvailable', 'Not available')} sub={t('proj.noAccess', "You don't have access to this page.")}
     action={{ label: t('proj.err.a', 'See the projects'), to: '/projects', icon: Boxes }} />;
   if (err) return <EmptyState icon={Boxes} title={t('proj.notFound', 'Project not found')}
     sub={t('proj.notFound.s2', 'This address does not match any project, it may have been renamed or removed.')}
@@ -372,7 +372,7 @@ export default function ProjectPage({ preview = null }) {
       <div className="flex flex-col md:flex-row md:items-center gap-5 mb-8">
         {APP_LOGO[key]
           ? <img src={APP_LOGO[key]} alt="" className="logo-plate w-16 h-16 rounded-2xl object-contain shrink-0 bg-[var(--surface-2)] border border-[var(--line)] p-1.5" />
-          : <div className="grid place-items-center w-16 h-16 rounded-2xl bg-gradient-to-br from-brand to-brand-2 shrink-0"><span className="text-2xl font-extrabold text-white">{c.name?.[0] || 'B'}</span></div>}
+          : <div className="grid place-items-center w-16 h-16 rounded-2xl bg-gradient-to-br from-brand to-brand-2 shrink-0"><span className="text-2xl font-extrabold text-[var(--on-primary)]">{c.name?.[0] || 'B'}</span></div>}
         <div className="flex-1">
           <div className="flex items-center gap-3 flex-wrap"><h1 className="text-3xl font-extrabold">{c.name}</h1>{c.version && <button onClick={() => setShowVersions(true)} title={t('ver.open', 'Version history')} className="press-sm"><Badge tone="primary"><Clock size={11} /> v{c.version}</Badge></button>}</div>
           <p className="text-[var(--muted)] mt-1">{c.tagline}</p>
@@ -1033,7 +1033,7 @@ function Community({ c, communityUrl }) {
               <Card key={i} hover className="p-5 group transition-all duration-200 hover:-translate-y-1">
                 <div className="flex items-center gap-3">
                   {p.pfp ? <img src={p.pfp} alt="" loading="lazy" className="w-12 h-12 rounded-full object-cover border border-[var(--line)] transition-transform duration-200 group-hover:scale-110 group-hover:border-[var(--primary)]" />
-                    : <div className="w-12 h-12 rounded-full bg-[var(--surface-2)] border border-[var(--line)] grid place-items-center text-white font-bold transition-transform duration-200 group-hover:scale-110">{(p.name || '?')[0]}</div>}
+                    : <div className="w-12 h-12 rounded-full bg-[var(--surface-2)] border border-[var(--line)] grid place-items-center text-[var(--text)] font-bold transition-transform duration-200 group-hover:scale-110">{(p.name || '?')[0]}</div>}
                   <div className="min-w-0"><div className="font-semibold truncate group-hover:text-[var(--accent-ink)] transition-colors" title={p.name}>{p.name}</div><div className="text-xs text-[var(--accent-ink)]">{p.role}</div></div>
                 </div>
                 {p.description && <p className="text-sm text-[var(--muted)] mt-3 line-clamp-3">{p.description}</p>}
@@ -1064,7 +1064,7 @@ function Legal({ c }) {
         icon: LEGAL_ICON[card.icon] || ShieldCheck, title: card.title || 'Document', sub: card.sub || '', url: card.url,
       }))
     : [
-      obj.licenseUrl && { icon: ScrollText, title: obj.license || 'License', sub: 'Open-source license', url: obj.licenseUrl },
+      obj.licenseUrl && { icon: Scale, title: obj.license || 'License', sub: 'Open-source license', url: obj.licenseUrl },
       (obj.tos || obj.tosFr) && { icon: ShieldCheck, title: 'Terms of Use', sub: 'How you may use the app', url: pick(obj.tos, obj.tosFr) },
       (obj.privacy || obj.privacyFr) && { icon: FileText, title: 'Privacy Policy', sub: 'How your data is handled', url: pick(obj.privacy, obj.privacyFr) },
       (obj.readme || obj.readmeFr) && { icon: BookOpen, title: 'README', sub: 'Project documentation', url: pick(obj.readme, obj.readmeFr) },
@@ -1212,7 +1212,7 @@ function RequestListing() {
               <div className="flex flex-wrap gap-2 mb-3">
                 {[['open', true], ['closed', false]].map(([k, v]) => (
                   <button key={k} type="button" onClick={() => set({ isOpenSource: v, ownership: v ? f.ownership : 'owner' })}
-                    className={`px-3 py-1.5 rounded-lg border text-sm transition ${f.isOpenSource === v ? 'border-[var(--primary)] tint-primary text-[var(--accent-ink)]' : 'border-[var(--line)] text-[var(--muted)] hover:b-primary'}`}>
+                    className={`px-3 py-1.5 rounded-lg border text-sm transition ${f.isOpenSource === v ? 'border-[var(--primary)] panel text-[var(--accent-ink)] font-medium' : 'border-[var(--line)] panel text-[var(--muted)] hover:b-primary'}`}>
                     {k === 'open' ? t('rl.src.open', 'Open source') : t('rl.src.closed', 'Closed source')}
                   </button>
                 ))}
@@ -1311,7 +1311,7 @@ export function OtherProjects() {
                   <div className="flex items-center gap-3">
                     {p.icon
                       ? <div className="grid place-items-center w-11 h-11 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] shrink-0 p-1.5 text-[var(--accent-ink)]"><ShowcaseIcon icon={p.icon} size={28} rounded={8} /></div>
-                      : <div className="grid place-items-center w-11 h-11 rounded-xl bg-gradient-to-br from-brand to-brand-2 text-white font-extrabold text-sm shrink-0">{p.short}</div>}
+                      : <div className="grid place-items-center w-11 h-11 rounded-xl bg-gradient-to-br from-brand to-brand-2 text-[var(--on-primary)] font-extrabold text-sm shrink-0">{p.short}</div>}
                     <div className="min-w-0">
                       <div className="font-semibold truncate">{p.isAnnouncing ? (p.announceTitle || p.name) : p.name}</div>
                       {p.isAnnouncing && <div className="text-[11px] text-[var(--accent-ink)] flex items-center gap-1"><Clock size={11} /> {t('prj.comingsoon', "Coming soon")}</div>}
@@ -1386,7 +1386,7 @@ export function ShowcaseProjectPage({ preview = null }) {
     : Promise.resolve({ products: [] })), [scId]);
   const marketProducts = market.data?.products || [];
   if (loading) return <div className="flex items-center gap-2 text-[var(--muted)] py-10"><Spinner /> {t('common.loading')}</div>;
-  if (err?.status === 403) return <EmptyState icon={ShieldCheck} title={t('proj.notAvailable', 'Not available')} sub={t('proj.noAccess', "You don't have access to this page.")}
+  if (err?.status === 403) return <EmptyState icon={Lock} title={t('proj.notAvailable', 'Not available')} sub={t('proj.noAccess', "You don't have access to this page.")}
     action={{ label: t('proj.err.a', 'See the projects'), to: '/projects', icon: Boxes }} />;
   if (err) return <EmptyState icon={Boxes} title={t('proj.notFound', 'Project not found')}
     sub={t('proj.notFound.s2', 'This address does not match any project, it may have been renamed or removed.')}
@@ -1437,7 +1437,7 @@ export function ShowcaseProjectPage({ preview = null }) {
       <div className="flex flex-col md:flex-row md:items-center gap-5 mb-8">
         {proj.icon
           ? <div className="grid place-items-center w-16 h-16 rounded-2xl bg-[var(--surface-2)] border border-[var(--line)] shrink-0 p-2 text-[var(--accent-ink)]"><ShowcaseIcon icon={proj.icon} size={44} rounded={10} /></div>
-          : <div className="grid place-items-center w-16 h-16 rounded-2xl bg-gradient-to-br from-brand to-brand-2 shrink-0"><span className="text-xl font-extrabold text-white">{proj.short}</span></div>}
+          : <div className="grid place-items-center w-16 h-16 rounded-2xl bg-gradient-to-br from-brand to-brand-2 shrink-0"><span className="text-xl font-extrabold text-[var(--on-primary)]">{proj.short}</span></div>}
         <div className="flex-1"><div className="flex items-center gap-3 flex-wrap"><h1 className="text-3xl font-extrabold">{proj.name}</h1>{cfg.version && <button onClick={() => setShowVersions(true)} title={t('ver.open', 'Version history')} className="press-sm"><Badge tone="primary"><Clock size={11} /> v{cfg.version}</Badge></button>}</div>{cfg.tagline && <p className="text-[var(--muted)] mt-1">{cfg.tagline}</p>}</div>
         <div className="flex flex-wrap items-start gap-2">
           <DownloadMenu downloads={cfg.downloads} />

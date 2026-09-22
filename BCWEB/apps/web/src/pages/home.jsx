@@ -8,7 +8,7 @@ const CanvasView = lazy(() => import('../ui/canvas-view.jsx'));
 import { ErrorBoundary } from '../ui/ErrorBoundary.jsx';
 import { Link } from 'react-router-dom';
 import {
-  Server, Rocket, ArrowRight, Upload, CheckCircle2, ShieldCheck, Inbox, Eye, Lock, Zap, Users, Newspaper, LayoutDashboard, Star, Link2, Code2, Wand2, AppWindow, Globe, Sparkles, Clock, ChevronLeft, ChevronRight, BadgeCheck, AlertTriangle, Ban, MessageSquare, Plus, KeyRound, LogIn, Webhook, FlaskConical, HeartHandshake,
+  Server, ArrowRight, Upload, CheckCircle2, ShieldCheck, Inbox, Eye, Lock, Users, Newspaper, LayoutDashboard, Star, Link2, Code2, Wand2, AppWindow, Globe, Sparkles, Clock, ChevronLeft, ChevronRight, BadgeCheck, AlertTriangle, Ban, MessageSquare, Plus, KeyRound, LogIn, Webhook, FlaskConical, HeartHandshake, Cloud
 } from 'lucide-react';
 import { Button, Card, Badge, Explain } from '../ui/ui.jsx';
 import { api } from '../lib/api.js';
@@ -131,8 +131,11 @@ function YourProjectHere() {
 function SectionKicker({ n, label }) {
   return (
     <div className="reveal-on-scroll flex items-center gap-3 mb-6">
-      <span className="text-[11px] font-mono font-bold text-[var(--accent-ink)] tracking-widest">{n}</span>
-      <span className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--faint)]">{label}</span>
+      {/* `plate`: the kicker is small faint type directly on the 3D backdrop otherwise. */}
+      <span className="plate flex items-center gap-3 px-1">
+        <span className="text-[11px] font-mono font-bold text-[var(--accent-ink)] tracking-widest">{n}</span>
+        <span className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--faint)]">{label}</span>
+      </span>
       <span className="flex-1 h-px bg-gradient-to-r from-[var(--line-strong)] to-transparent" />
     </div>
   );
@@ -444,7 +447,7 @@ export function Home({ draft = null }) {
           <h1 className="anim-slide font-extrabold leading-[0.98] tracking-[-0.035em] text-[clamp(2.25rem,9.5vw,7rem)]" style={{ animationDelay: '80ms' }}>
             {t('home.brand')}<span className="gradient-text">{t('home.brand2', 'Community')}</span>
           </h1>
-          <p className="anim-slide text-[var(--muted)] text-lg md:text-xl max-w-xl mx-auto mt-7 leading-relaxed" style={{ animationDelay: '160ms' }}>{t('home.sub2', 'Catalogues, presets and Server-Repos for every Better* project, browse them, publish your own, and host them here.')}</p>
+          <p className="anim-slide plate text-[var(--muted)] text-lg md:text-xl max-w-xl mx-auto mt-7 leading-relaxed" style={{ animationDelay: '160ms' }}>{t('home.sub2', 'Catalogues, presets and Server-Repos for every Better* project, browse them, publish your own, and host them here.')}</p>
           <div className="anim-slide flex flex-wrap gap-3 justify-center mt-10" style={{ animationDelay: '240ms' }}>
             {heroCtas(user, t).map((c) => (
               <Link key={c.to} to={c.to}>
@@ -457,7 +460,7 @@ export function Home({ draft = null }) {
           {/* Answers the question that stops a stranger before any of the copy does. Absent
               for a member, who settled it when they signed up. */}
           {heroNote(user, t) && (
-            <p className="anim-slide text-[13px] text-[var(--faint)] mt-3.5" style={{ animationDelay: '280ms' }}>{heroNote(user, t)}</p>
+            <p className="anim-slide plate w-fit mx-auto px-2 text-[13px] text-[var(--faint)] mt-3.5" style={{ animationDelay: '280ms' }}>{heroNote(user, t)}</p>
           )}
           {/* A Discord community runs alongside the site; the bot is how a server owner plugs
               their own server into it. Only rendered once the bot is live (has an appId). */}
@@ -652,7 +655,7 @@ export function Home({ draft = null }) {
           </Card>
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-5">
             {[[LayoutDashboard, t('home.feat.accounts'), t('home.feat.accounts.d')],
-              [Zap, t('home.feat.hosting'), t('home.feat.hosting.d')],
+              [Cloud, t('home.feat.hosting'), t('home.feat.hosting.d')],
               [Link2, t('home.feat.install', 'One-click install'), t('home.feat.install.d', 'Catalog entries install straight into the app in one click through deeplinks, no manual downloads, no hunting for files.')],
               [Lock, t('home.feat.privacy', 'Privacy-first'), t('home.feat.privacy.d', 'No third-party trackers and no ads. Analytics are first-party and anonymous, off until you opt in, and you can turn them back off anytime.')]].map(([I, title, d]) => (
               // A rule instead of a border — four bordered boxes under a bordered card is
@@ -676,7 +679,7 @@ export function Home({ draft = null }) {
       {show('steps') && (
       <section>
         <SectionKicker n="03" label={t('home.k.start', 'Get started')} />
-        <div className="reveal-on-scroll text-center mb-9"><h2 className="text-3xl md:text-4xl font-extrabold tracking-tight">{t('home.steps.title')}</h2><p className="text-[var(--muted)] mt-2.5">{t('home.steps.sub')}</p></div>
+        <div className="reveal-on-scroll plate w-fit max-w-full mx-auto text-center mb-9"><h2 className="text-3xl md:text-4xl font-extrabold tracking-tight">{t('home.steps.title')}</h2><p className="text-[var(--muted)] mt-2.5">{t('home.steps.sub')}</p></div>
         {/* A path, and one that knows where the reader already is.
 
             It was three cards side by side, numbered 1-2-3 with a hairline behind them. Three
@@ -696,7 +699,7 @@ export function Home({ draft = null }) {
              user ? t('home.step1.done', "You're set, view profile") : t('home.step1.cta', 'Sign up free'), !!user],
             [Upload, t('home.step2'), t('home.step2.d'), '/catalog',
              step2done ? t('home.step2.done', 'Seen, go back to the catalogue') : t('home.step2.cta', 'Browse the catalog'), step2done],
-            [Rocket, t('home.step3'), t('home.step3.d'), progress?.hosting ? '/dashboard' : '/hosting#plans',
+            [Cloud, t('home.step3'), t('home.step3.d'), progress?.hosting ? '/dashboard' : '/hosting#plans',
              progress?.hosting ? t('home.step3.done', 'Hosting is live, open your dashboard') : t('home.step3.cta', 'See hosting plans'), !!progress?.hosting],
           ].map(([I, title, d, to, cta, done], i) => (
             <li key={title} className="relative pb-9 last:pb-0">
@@ -705,7 +708,7 @@ export function Home({ draft = null }) {
               <span aria-hidden
                 className={`absolute -left-11 sm:-left-14 top-0 grid place-items-center w-8 h-8 sm:w-10 sm:h-10 rounded-full border-2 text-[13px] sm:text-sm font-bold transition-colors ${
                   done
-                    ? 'bg-success border-success text-white'
+                    ? 'bg-success border-success text-[var(--bg-solid)]'
                     : 'bg-[var(--bg-solid)] border-[var(--line-strong)] text-[var(--muted)]'
                 }`}>
                 {done ? <CheckCircle2 size={17} /> : i + 1}
@@ -713,7 +716,7 @@ export function Home({ draft = null }) {
               <Link to={to} className="group block">
                 <div className={`rounded-2xl border p-5 sm:p-6 transition-colors ${
                   done
-                    ? 'border-[var(--line)] bg-transparent'
+                    ? 'border-[var(--line)] panel-quiet'
                     : 'border-[var(--line)] bg-[var(--surface)] group-hover:border-[color-mix(in_srgb,var(--primary)_45%,var(--line))]'
                 }`}>
                   <div className="flex items-start gap-4">
@@ -799,7 +802,7 @@ export function Home({ draft = null }) {
             <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight">
               {pollData.polls.length > 1 ? t('home.poll.many', 'A few questions') : t('home.poll', 'One question')}
             </h2>
-            <Link to="/polls" className="text-sm text-[var(--accent-ink)] flex items-center gap-1 hover:gap-2 transition-all">
+            <Link to="/polls" className="plate px-2 text-sm text-[var(--accent-ink)] flex items-center gap-1 hover:gap-2 transition-all">
               {t('home.poll.all', 'All polls')} <ArrowRight size={13} />
             </Link>
           </div>
@@ -816,7 +819,7 @@ export function Home({ draft = null }) {
       {show('news') && (
       <section>
         <SectionKicker n={reviewsData?.enabled && reviewsData.reviews?.length ? '05' : '04'} label={t('home.k.news', 'From the blog')} />
-        <div className="reveal-on-scroll flex items-center justify-between mb-5"><h2 className="text-2xl md:text-3xl font-extrabold tracking-tight">{t('home.news')}</h2><Link to="/blog" className="text-sm text-[var(--accent-ink)] flex items-center gap-1 hover:gap-2 transition-all">{t('home.news.all')} <ArrowRight size={13} /></Link></div>
+        <div className="reveal-on-scroll flex items-center justify-between mb-5"><h2 className="text-2xl md:text-3xl font-extrabold tracking-tight">{t('home.news')}</h2><Link to="/blog" className="plate px-2 text-sm text-[var(--accent-ink)] flex items-center gap-1 hover:gap-2 transition-all">{t('home.news.all')} <ArrowRight size={13} /></Link></div>
         {!data?.posts?.length ? <Card className="p-6 text-[var(--muted)] text-sm">{t('home.news.none')}</Card> : (() => {
           const posts = data.posts; const featured = posts[0]; const rest = posts.slice(1, 4);
           const fdate = (d) => d ? new Date(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '';

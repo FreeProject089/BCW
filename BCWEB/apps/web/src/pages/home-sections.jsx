@@ -16,7 +16,7 @@
 //     testimonial next to French everything else. `bodyFr` was fetched and never used.
 import { Suspense, lazy } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Download, Sparkles, MessageSquareQuote } from 'lucide-react';
+import { ArrowRight, Sparkles, MessageSquareQuote, Wand2 } from 'lucide-react';
 import { Button, Card, Badge } from '../ui/ui.jsx';
 import { thumb } from '../lib/img.js';
 import { AppLogo } from '../ui/brand.jsx';
@@ -250,7 +250,7 @@ export function OffersCard({ myo, limit = 3 }) {
         ))}
       </ul>
       <Button as={Link} to="/myo" size="sm" className="mt-3 w-full justify-center">
-        <Download size={13} /> {t('home.v3.myoCta', 'Commission something')}
+        <Wand2 size={13} /> {t('home.v3.myoCta', 'Commission something')}
       </Button>
     </Card>
   );

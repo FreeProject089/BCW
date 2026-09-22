@@ -8,12 +8,13 @@ import { DialogProvider, ToastProvider } from './ui/ui.jsx';
 import { UploadProvider } from './pages/uploads.jsx';
 import { ErrorBoundary } from './ui/ErrorBoundary.jsx';
 import App from './App.jsx';
-import { applyGlassPrefs } from './lib/prefs.js';
+import { applyGlassPrefs, applyTexturePref } from './lib/prefs.js';
 import { readSceneConfig, applyReveal } from './hero/scene-shapes.js';
 import './index.css';
 
 // Apply saved translucent-surface prefs before first paint (no style flash).
 applyGlassPrefs();
+applyTexturePref();
 
 // How sections arrive when they scroll into view — a site setting, applied on EVERY page.
 //

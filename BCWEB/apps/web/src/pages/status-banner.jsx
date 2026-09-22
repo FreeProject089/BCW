@@ -55,7 +55,7 @@ export default function StatusBanner({ compact = false }) {
   const lastNote = (i) => (i.updates || []).slice(-1)[0] || null;
 
   return (
-    <div className="rounded-2xl border border-warning/40 bg-warning/[0.06] overflow-hidden">
+    <div className="rounded-2xl border b-warning tint-warning-soft overflow-hidden">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -94,7 +94,7 @@ export default function StatusBanner({ compact = false }) {
       </button>
 
       {open && !compact && (
-        <div className="px-4 pb-3 space-y-2.5 border-t border-warning/25 pt-3">
+        <div className="px-4 pb-3 space-y-2.5 border-t b-warning pt-3">
           {openIncidents.map((i) => {
             const n = lastNote(i);
             return (

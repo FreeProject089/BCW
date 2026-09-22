@@ -19,7 +19,7 @@ function DiffView({ a, b }) {
       <div className="text-xs font-mono mb-2"><span className="text-success">+{stat.added}</span> <span className="text-error">−{stat.removed}</span> <span className="text-[var(--faint)]">{t('hm.vsprev', 'vs previous version')}</span></div>
       <div className="font-mono text-[12.5px] leading-[1.55] rounded-lg border border-[var(--line)] overflow-hidden">
         {rows.map((r, i) => (
-          <div key={i} className={`flex ${r.type === 'add' ? 'bg-success/[0.09]' : r.type === 'del' ? 'bg-error/[0.09]' : ''}`}>
+          <div key={i} className={`flex ${r.type === 'add' ? 'tint-success' : r.type === 'del' ? 'tint-error' : ''}`}>
             <span className={`select-none w-6 shrink-0 text-center ${r.type === 'add' ? 'text-success' : r.type === 'del' ? 'text-error' : 'text-transparent'}`}>{r.type === 'add' ? '+' : r.type === 'del' ? '−' : ''}</span>
             <span className="whitespace-pre-wrap break-words flex-1 pe-2">{r.text || ' '}</span>
           </div>

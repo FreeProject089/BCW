@@ -163,7 +163,7 @@ export default function WebhooksPanel() {
       {/* The secret, once. Same rule as an API key: we keep it to sign with, never to show
           again. */}
       {secret && (
-        <div className="rounded-lg border border-success/40 bg-success/10 p-3 my-3">
+        <div className="rounded-lg border b-success tint-success p-3 my-3">
           <div className="text-[12px] font-semibold mb-1">{t('wh.secret', 'Your signing secret, copy it now, it is not shown again')}</div>
           <div className="flex items-center gap-2">
             <code className="font-mono text-[12px] break-all flex-1">{secret.secret}</code>

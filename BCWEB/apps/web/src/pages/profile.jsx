@@ -249,7 +249,7 @@ export default function Profile() {
           </div>}
 
           {tab === 'account' && <div>
-          <SectionLabel icon={Sparkles}>{t('prof.sec.public', 'Public profile')}</SectionLabel>
+          <SectionLabel icon={Globe}>{t('prof.sec.public', 'Public profile')}</SectionLabel>
           <Card className="p-5 space-y-3">
             <Field label={t('prof.dispname', 'Display name')}><Input value={form.displayName} onChange={(e) => setForm({ ...form, displayName: e.target.value })} /></Field>
             <Field label={t('prof.bio', 'Bio')}><Textarea value={form.bio} onChange={(e) => setForm({ ...form, bio: e.target.value })} placeholder={t('prof.bio.ph', 'A little about you…')} /></Field>

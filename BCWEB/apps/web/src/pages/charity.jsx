@@ -258,7 +258,7 @@ export function CharityCard({ pot, design, t, onGive, preview = false }) {
         <div className="absolute -bottom-16 left-1/2 -translate-x-1/2 w-96 h-96 rounded-full opacity-30 pointer-events-none" style={{ background: 'radial-gradient(circle, var(--primary-glow), transparent 62%)' }} />
         <div className="absolute top-3 right-3 text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-full bg-[var(--surface-2)] text-[var(--muted)]">{new Date().toLocaleString(undefined, { month: "long" })}</div>
         <div className="relative">
-          <div className="mx-auto mb-3 w-14 h-14 rounded-2xl grid place-items-center bg-gradient-to-br from-brand to-brand-2 text-white shadow-lg shadow-orange-500/25"><Heart size={26} /></div>
+          <div className="mx-auto mb-3 w-14 h-14 rounded-2xl grid place-items-center bg-gradient-to-br from-brand to-brand-2 text-[var(--on-primary)] shadow-lg shadow-orange-500/25"><Heart size={26} /></div>
           {heading}
           <PotSummary pot={pot} t={t} />
           {buttons}
@@ -308,7 +308,7 @@ export function CharityCard({ pot, design, t, onGive, preview = false }) {
 
 // The month pill and the big heart tile, as pieces a `code` design can place (or leave out).
 const MonthBadge = () => <div data-el="month" className="chy-month text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-full bg-[var(--surface-2)] text-[var(--muted)]">{new Date().toLocaleString(undefined, { month: 'long' })}</div>;
-const IconTile = () => <div data-el="icon" className="chy-icon w-14 h-14 rounded-2xl grid place-items-center bg-gradient-to-br from-brand to-brand-2 text-white shadow-lg"><Heart size={26} /></div>;
+const IconTile = () => <div data-el="icon" className="chy-icon w-14 h-14 rounded-2xl grid place-items-center bg-gradient-to-br from-brand to-brand-2 text-[var(--on-primary)] shadow-lg"><Heart size={26} /></div>;
 
 // ── Mode 3: the card the admin writes themselves ──────────────────────────────────────────
 // The site draws NO chrome here beyond an optional frame: the card is the admin's ordered
@@ -384,7 +384,7 @@ export default function CharityPage() {
   const enabled = data && data.enabled !== false;
   return (
     <div className="max-w-2xl mx-auto space-y-6">
-      <div>
+      <div className="plate">
         <h1 className="text-3xl font-extrabold tracking-tight flex items-center gap-2"><Heart className="text-[var(--accent-ink)]" /> {t('ch.title', 'Community Charity')}</h1>
         <p className="text-[var(--muted)] mt-2">{t('ch.page.intro', 'Each month, a share of BetterCommunity’s eligible revenue — plus voluntary gifts from the community — is pooled and donated to an association the Discord community votes for.')}</p>
       </div>

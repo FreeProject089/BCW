@@ -14,7 +14,7 @@
 // The geometry lives in ../lib/circuit.js, checked point for point against the renderer in
 // apps/web/test/circuit.test.mjs.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { RefreshCw, Upload, Trash2, Flag, Film, FileJson, X, Check } from 'lucide-react';
+import { RefreshCw, Upload, Trash2, Flag, Film, FileJson, X, Plus } from 'lucide-react';
 import { useI18n } from '../i18n.jsx';
 import { Button, Input, Field, Select, useToast, Explain } from '../ui/ui.jsx';
 import { api } from '../lib/api.js';
@@ -248,7 +248,7 @@ export function RaceConfig({ eco, set, Switch }) {
                 ))}
               </div>
               <div className="flex gap-2">
-                <Button size="sm" onClick={() => { addCircuits(pending.list); setPending(null); setJson(''); }}><Check size={13} /> {t('db.race.add', 'Add')}</Button>
+                <Button size="sm" onClick={() => { addCircuits(pending.list); setPending(null); setJson(''); }}><Plus size={13} /> {t('db.race.add', 'Add')}</Button>
                 <Button size="sm" variant="ghost" onClick={() => setPending(null)}><X size={13} /> {t('common.cancel', 'Cancel')}</Button>
               </div>
             </div>

@@ -33,7 +33,7 @@ function AdminThreadDetail({ id, onBack, onChanged, onDelete }) {
         </div>
         <div className="space-y-2 max-h-[50vh] overflow-auto">
           {th.messages.map((m) => (
-            <div key={m.id} className={`rounded-xl border px-3 py-2 text-sm ${m.hidden ? 'border-dashed border-error/50 opacity-70' : 'border-[var(--line)]'}`}>
+            <div key={m.id} className={`rounded-xl border px-3 py-2 text-sm ${m.hidden ? 'border-dashed b-error opacity-70' : 'border-[var(--line)]'}`}>
               <div className="text-[11px] text-[var(--faint)] flex items-center gap-2"><span>{m.side} · {m.author || '—'} · {when(m.createdAt)}</span><span className="flex-1" />
                 <button type="button" className="inline-flex items-center gap-1 hover:text-[var(--text)]" onClick={() => act(`/admin/threads/${th.id}/messages/${m.id}/${m.hidden ? 'unhide' : 'hide'}`)}>{m.hidden ? <><Eye size={11} /> {t('adm.th.unhide', 'Unhide')}</> : <><EyeOff size={11} /> {t('adm.th.hide', 'Hide')}</>}</button>
               </div>

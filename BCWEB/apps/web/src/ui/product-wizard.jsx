@@ -104,7 +104,7 @@ function StepRail({ step, visited, errors, onGo, t }) {
             <button type="button" disabled={!can} onClick={() => can && onGo(s)} aria-current={i === cur ? 'step' : undefined}
               title={can ? labels[s] : t('mkw.s.locked', 'Finish the steps before it first')}
               className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs border transition ${
-                state === 'current' ? 'border-[var(--primary)] bg-[var(--primary)] text-white'
+                state === 'current' ? 'border-[var(--primary)] bg-[var(--primary)] text-[var(--on-primary)]'
                   : state === 'done' ? 'border-[var(--success)] text-[var(--success)] hover:bg-[var(--surface-2)]'
                     : state === 'visited' ? 'border-[var(--line)] text-[var(--text)] hover:bg-[var(--surface-2)]'
                       : 'border-[var(--line)] text-[var(--faint)] cursor-not-allowed'}`}>

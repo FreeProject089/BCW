@@ -3,10 +3,10 @@ import { useParams, Link } from 'react-router-dom';
 import {
   Link2 as LinkIcon, Fingerprint,
   Server, GitBranch, ArrowLeft, Wifi, WifiOff, ShieldCheck, HardDrive, Zap, Lock, Copy, ExternalLink,
-  FileJson, FileText, Trash2, UploadCloud, FolderUp, Rocket, CheckCircle2, AlertTriangle, KeyRound,
+  FileJson, FileText, Trash2, UploadCloud, FolderUp, CheckCircle2, AlertTriangle, KeyRound,
   Users, Mail, Plus, X, Eye, EyeOff, Files, Settings2, Loader2, Globe, History, Hash, Search, ChevronDown,
   UploadCloud as UploadIcon, Trash, Wifi as WifiOn, WifiOff as WifiGone, Download, Ban, Radio, Star,
-  Terminal, RefreshCw, ListTree,
+  Terminal, RefreshCw, ListTree, Unlock, Gauge,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { repoStatusMeta, repoCategoryMeta, repoLocked } from './repos.jsx';
@@ -68,7 +68,7 @@ function PasswordGate({ id, onUnlocked }) {
         <h1 className="text-lg font-semibold">{t('rd.locked.t', 'Private repo dashboard')}</h1>
         <p className="text-sm text-[var(--muted)] mt-1 mb-4">{t('rd.locked.s', 'Enter the dashboard password to manage this repo.')}</p>
         <Input type="password" value={pw} autoFocus placeholder={t('rd.password', 'Password')} onChange={(e) => setPw(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && unlock()} />
-        <Button variant="primary" className="w-full mt-3" disabled={busy} onClick={unlock}>{busy ? <Spinner /> : <><Lock size={15} /> {t('rd.unlock', 'Unlock')}</>}</Button>
+        <Button variant="primary" className="w-full mt-3" disabled={busy} onClick={unlock}>{busy ? <Spinner /> : <><Unlock size={15} /> {t('rd.unlock', 'Unlock')}</>}</Button>
         <Link to="/dashboard?s=repos" className="text-xs text-[var(--faint)] hover:text-[var(--text)] mt-4 inline-block">{t('rd.backdash', '← Back to dashboard')}</Link>
       </Card>
     </div>
@@ -264,7 +264,7 @@ function RepoUploadPanel({ jobs, cancel }) {
               <span className="font-medium flex-1 truncate">
                 {up ? t('rd.up.uploading', 'Uploading…') : j.status === 'cancelled' ? t('rd.up.cancelled', 'Upload cancelled') : j.failed ? t('rd.up.witherrors', 'Finished with errors') : t('rd.up.complete', 'Upload complete')}
               </span>
-              {up && <button onClick={() => cancel(j.id)} className="press-sm text-[11px] px-2 py-0.5 rounded-md border border-[var(--line)] text-[var(--muted)] hover:text-[var(--error)] hover:b-error flex items-center gap-1"><Ban size={11} /> {t('up.cancel', 'Cancel')}</button>}
+              {up && <button onClick={() => cancel(j.id)} className="press-sm text-[11px] px-2 py-0.5 rounded-md border border-[var(--line)] text-[var(--muted)] hover:text-[var(--error)] hover:b-error flex items-center gap-1"><X size={11} /> {t('up.cancel', 'Cancel')}</button>}
             </div>
             <div className="progress-track"><div className={`progress-fill ${up ? '' : 'is-done'} ${!up && !j.failed ? 'is-success' : ''}`} style={{ width: `${pct}%` }} /></div>
             <div className="flex items-center justify-between gap-2 text-[11px] text-[var(--muted)] mt-1.5">
@@ -719,7 +719,7 @@ function OnlineTab({ r, reload, publicUrl }) {
         </div>
         {online
           ? <Button disabled={busy} onClick={off}>{busy ? <Spinner /> : <><WifiOff size={14} /> {t('repos.takeoffline', 'Take offline')}</>}</Button>
-          : <Button variant="primary" disabled={busy || !hasRepoJson} onClick={go}>{busy ? <Spinner /> : <><Rocket size={14} /> {t('repos.goonline', 'Go online')}</>}</Button>}
+          : <Button variant="primary" disabled={busy || !hasRepoJson} onClick={go}>{busy ? <Spinner /> : <><Wifi size={14} /> {t('repos.goonline', 'Go online')}</>}</Button>}
       </div>
       {online && publicUrl && (
         <div className="mt-4 flex items-center gap-2 rounded-lg bg-[var(--surface-2)] border border-[var(--line)] px-3 py-2">
@@ -862,7 +862,7 @@ function SettingsTab({ r, reload }) {
         </Card>
       )}
       <Card className="p-4">
-        <div className="flex items-center justify-between mb-1.5 text-sm"><span className="flex items-center gap-1.5 text-[var(--muted)]"><Zap size={14} /> {t('repos.uploadlimit', 'Upload limit')}</span><span className="font-semibold">{reqMbps >= capKbps / 1024 ? t('repos.max', 'Max') : `${reqMbps.toFixed(1)} Mbps`}</span></div>
+        <div className="flex items-center justify-between mb-1.5 text-sm"><span className="flex items-center gap-1.5 text-[var(--muted)]"><Gauge size={14} /> {t('repos.uploadlimit', 'Upload limit')}</span><span className="font-semibold">{reqMbps >= capKbps / 1024 ? t('repos.max', 'Max') : `${reqMbps.toFixed(1)} Mbps`}</span></div>
         <input type="range" min={0.5} max={Math.max(1, capKbps / 1024)} step={0.5} value={Math.min(reqMbps, capKbps / 1024)} className="bcw-range w-full" onChange={(e) => setReqMbps(Number(e.target.value))} />
         <div className="text-xs mt-2 flex items-center gap-1.5"><Lock size={12} className="text-[var(--faint)]" /><span className="text-[var(--muted)]">{t('repos.sandboxcap', 'Sandbox cap:')} <b>{(capKbps / 1024).toFixed(1)} Mbps</b>. {t('repos.effective', 'Effective:')} <b className="text-[var(--accent-ink)]">{(effectiveKbps / 1024).toFixed(1)} Mbps</b>.</span></div>
       </Card>

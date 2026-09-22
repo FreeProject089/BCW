@@ -143,7 +143,7 @@ export function UploadProvider({ children }) {
                         : <CheckCircle2 size={14} className="text-success shrink-0" />}
                       <span className="text-sm font-medium flex-1 truncate" title={j.repoName}>{j.repoName}</span>
                       {uploading
-                        ? <button onClick={() => cancel(j.id)} className="text-[11px] px-2 py-0.5 rounded-md border border-[var(--line)] text-[var(--muted)] hover:text-error hover:border-error-border flex items-center gap-1"><Ban size={11} /> {t('up.cancel', 'Cancel')}</button>
+                        ? <button onClick={() => cancel(j.id)} className="text-[11px] px-2 py-0.5 rounded-md border border-[var(--line)] text-[var(--muted)] hover:text-error hover:border-error-border flex items-center gap-1"><X size={11} /> {t('up.cancel', 'Cancel')}</button>
                         : <button onClick={() => dismiss(j.id)} className="text-[var(--faint)] hover:text-[var(--text)]"><X size={13} /></button>}
                     </div>
                     <div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden">

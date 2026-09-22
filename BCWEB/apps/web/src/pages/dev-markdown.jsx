@@ -269,7 +269,7 @@ export default function DevMarkdown() {
   return (
     <div className="max-w-5xl mx-auto py-8 sm:py-12 space-y-10">
       <header className="max-w-2xl">
-        <span className="inline-grid place-items-center w-12 h-12 rounded-2xl bg-gradient-to-br from-brand to-brand-2 text-white shadow-lg shadow-orange-500/25 mb-4"><Puzzle size={22} /></span>
+        <span className="inline-grid place-items-center w-12 h-12 rounded-2xl bg-gradient-to-br from-brand to-brand-2 text-[var(--on-primary)] shadow-lg shadow-orange-500/25 mb-4"><Puzzle size={22} /></span>
         <h1 className="text-3xl sm:text-4xl font-extrabold leading-tight">
           {t('devmd.title', 'B.MD, better.markdown')}
         </h1>
@@ -293,7 +293,7 @@ export default function DevMarkdown() {
           <div className="ms-auto flex items-center gap-3 flex-wrap">
             <div className="inline-flex rounded-lg border border-[var(--line)] overflow-hidden text-xs">
               {[['text', t('devmd.mode.text', 'Text')], ['blocks', t('devmd.mode.blocks', 'Blocks')]].map(([m, l]) => (
-                <button key={m} type="button" onClick={() => setEditMode(m)} className={`px-2.5 py-1 ${editMode === m ? 'bg-[var(--primary)] text-white font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{l}</button>
+                <button key={m} type="button" onClick={() => setEditMode(m)} className={`px-2.5 py-1 ${editMode === m ? 'bg-[var(--primary)] text-[var(--on-primary)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{l}</button>
               ))}
             </div>
             <button type="button" onClick={checkLinks} className="text-xs text-[var(--muted)] hover:text-[var(--text)] inline-flex items-center gap-1"><Link2 size={12} /> {t('devmd.links', 'Check links')}</button>

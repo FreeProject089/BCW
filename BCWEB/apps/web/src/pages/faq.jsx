@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { HelpCircle, ChevronDown, Search, Settings2 } from 'lucide-react';
+import { HelpCircle, ChevronDown, Search, Settings2, BookOpen, X } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { useAuth } from './auth.jsx';
@@ -57,7 +57,7 @@ export default function Faq() {
         : groups.length ? <div className="space-y-7">
           {groups.map(([cat, items]) => (
             <section key={cat}>
-              <h2 className="text-xs font-bold uppercase tracking-wider text-[var(--faint)] mb-2 px-1">{cat}</h2>
+              <h2 className="plate w-fit text-xs font-bold uppercase tracking-wider text-[var(--faint)] mb-2 px-1">{cat}</h2>
               <div className="space-y-2">
                 {items.map((it) => { const isOpen = open.has(it.id); return (
                   <Card key={it.id} className="overflow-hidden">
@@ -76,10 +76,10 @@ export default function Faq() {
           title={q ? t('faq.nomatch', 'No matching questions') : t('faq.none', 'No questions yet')}
           sub={q ? t('faq.nomatch.s2', 'Nothing in the questions or the answers matches what you typed.') : t('faq.none.s2', 'Answers to the questions people ask most are collected here, and none have been written yet.')}
           action={q
-            ? { label: t('faq.nomatch.a', 'Clear the search'), onClick: () => setQ(''), icon: Search }
+            ? { label: t('faq.nomatch.a', 'Clear the search'), onClick: () => setQ(''), icon: X }
             : canEdit
               ? { label: t('faq.manage', 'Manage'), to: '/admin?s=faq', icon: Settings2 }
-              : { label: t('faq.none.a', 'Read the docs'), to: '/docs', icon: HelpCircle }} />}
+              : { label: t('faq.none.a', 'Read the docs'), to: '/docs', icon: BookOpen }} />}
     </div>
   );
 }

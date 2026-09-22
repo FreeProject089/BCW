@@ -110,7 +110,7 @@ export default function OAuthUrlBuilder({ clients = [], scopes = [] }) {
           </Field>
         </div>
 
-        <div className={`rounded-lg border p-3 mt-1 ${needsPkce && !pkce ? 'border-warning/50 bg-warning/10' : 'border-[var(--line)] panel'}`}>
+        <div className={`rounded-lg border p-3 mt-1 ${needsPkce && !pkce ? 'b-warning tint-warning' : 'border-[var(--line)] panel'}`}>
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-[12px] font-semibold">PKCE</span>
             {needsPkce && <span className="text-[11px] text-warning">{t('ourl.pkce.req', 'required, this app is a public client')}</span>}

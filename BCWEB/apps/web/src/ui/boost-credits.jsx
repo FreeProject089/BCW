@@ -7,7 +7,7 @@
 // repeated on each and no way to compare.
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Rocket, Boxes, Server, CheckCircle2, Plus } from 'lucide-react';
+import { Boxes, Server, CheckCircle2, Plus, ChevronsUp } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useToast, Button, Card, Badge, Spinner } from './ui.jsx';
 import { useI18n } from '../i18n.jsx';
@@ -48,7 +48,7 @@ export default function BoostCredits() {
     <Card className="p-5 mb-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2 font-semibold text-[15px]">
-          <Rocket size={16} className="text-warning" /> {t('boost.t', 'Boosts included with your plan')}
+          <ChevronsUp size={16} className="text-warning" /> {t('boost.t', 'Boosts included with your plan')}
         </div>
         <Badge tone={data.available ? 'success' : ''}>
           {t('boost.n', '{n} available').replace('{n}', data.available)}

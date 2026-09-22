@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   AppWindow, Globe, Wand2, ShieldCheck, Check, Clock, Package, Download,
-  ExternalLink, Lock, ArrowLeft, ArrowRight, Plus, X, FileText, AlertTriangle, CreditCard, MessageSquare, Send, Sparkles, ChevronDown,
+  ExternalLink, Lock, ArrowLeft, ArrowRight, Plus, X, FileText, AlertTriangle, CreditCard, MessageSquare, Send, Sparkles, ChevronDown, PauseCircle, Upload
 } from 'lucide-react';
 import { api, uploadMyoDeliverable } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
@@ -87,7 +87,7 @@ export function MyoPage() {
 
 
   if (cfg.enabled === false) {
-    return <div className="max-w-2xl mx-auto py-20 px-4"><EmptyState icon={Package} title={t('myo.off.t', 'Not accepting requests right now')} sub={t('myo.off.s', 'The Make Your Own service is temporarily closed. Check back soon.')} /></div>;
+    return <div className="max-w-2xl mx-auto py-20 px-4"><EmptyState icon={PauseCircle} title={t('myo.off.t', 'Not accepting requests right now')} sub={t('myo.off.s', 'The Make Your Own service is temporarily closed. Check back soon.')} /></div>;
   }
 
   const Consult = ({ cents, urgent }) => <span className="font-semibold">{fmtMoney(cents, cfg.currency)}{urgent ? ` ${t('myo.urgentTag', '(urgent)')}` : ''}</span>;
@@ -95,7 +95,7 @@ export function MyoPage() {
   return (
     <div className="max-w-6xl mx-auto px-4 py-10 sm:py-14">
       {/* ── Hero ── */}
-      <div className="relative text-center max-w-2xl mx-auto mb-8 sm:mb-10">
+      <div className="plate relative text-center max-w-2xl mx-auto mb-8 sm:mb-10">
         <div aria-hidden className="absolute left-1/2 -translate-x-1/2 -top-24 w-[680px] max-w-[135%] h-80 rounded-full tint-primary blur-3xl -z-10" />
         <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold uppercase tracking-wider text-[var(--accent-ink)] tint-primary-soft border b-primary mb-4">
           <Sparkles size={13} /> {t('myo.eyebrow', 'Made to order')}
@@ -117,7 +117,7 @@ export function MyoPage() {
             nothing tying the two together. A bordered pill that visibly toggles, and a panel
             under it, so the sequence belongs to the thing you clicked. */}
         <details className="group myo-deal">
-          <summary className="mx-auto w-fit cursor-pointer list-none select-none flex items-center gap-2 text-xs text-[var(--muted)] rounded-full border border-[var(--line)] px-3.5 py-1.5 hover:b-primary hover:text-[var(--text)] transition-colors">
+          <summary className="panel mx-auto w-fit cursor-pointer list-none select-none flex items-center gap-2 text-xs text-[var(--muted)] rounded-full border border-[var(--line)] px-3.5 py-1.5 hover:b-primary hover:text-[var(--text)] transition-colors">
             <Sparkles size={13} className="text-[var(--accent-ink)] shrink-0" />
             <span>{t('myo.deal.fold', 'How it works, and when you are charged')}</span>
             <ChevronDown size={13} className="shrink-0 transition-transform group-open:rotate-180" />
@@ -138,7 +138,7 @@ export function MyoPage() {
             is a summary line that opens, so the page states it and the reader chooses when
             to read the detail. The intake modal repeats it in full at the moment money is
             about to move, which is the moment it must not be foldable. */}
-        <details className="mt-4 border-t border-[var(--line)] pt-3.5 max-w-3xl mx-auto">
+        <details className="plate [--plate-r:0px] mt-4 border-t border-[var(--line)] pt-3.5 max-w-3xl mx-auto">
           <summary className="text-xs text-[var(--muted)] cursor-pointer flex items-center gap-2.5 list-none">
             <AlertTriangle size={15} className="shrink-0 text-warning" />
             {t('myo.disclaimer.head', 'What the consultation fee covers, and what it does not')}
@@ -182,7 +182,7 @@ export function MyoPage() {
           question — nothing invested, nothing to come back to. "What do you want built?" is now
           question 1 of 8 on the page itself, the answers carry the visitor to a recap, and
           signing in happens at the moment of paying, which is the moment it is worth doing. */}
-      <div className="flex items-baseline gap-3 mb-4 justify-center text-center flex-wrap">
+      <div className="plate w-fit max-w-full mx-auto flex items-baseline gap-3 mb-4 justify-center text-center flex-wrap">
         <h2 className="text-lg font-bold">{t('myo.pick.t2', 'Tell us what you need')}</h2>
         <span className="text-xs text-[var(--faint)]">{t('myo.pick.s2', 'A few questions, two minutes, no commitment.')}</span>
       </div>
@@ -371,7 +371,7 @@ export function MyoConversation({ id, admin = false }) {
 
   if (loading) return <div className="py-16 grid place-items-center"><Spinner /></div>;
   if (!r) return <EmptyState icon={AlertTriangle} title={t('myo.notfound', 'Request not found')} sub={t('myo.notfound.s', "It may have been removed, or you don't have access.")}
-    action={{ label: t('myo.notfound.a', 'Start a new request'), to: '/myo', icon: Sparkles }} />;
+    action={{ label: t('myo.notfound.a', 'Start a new request'), to: '/myo', icon: Plus }} />;
   const K = kindMeta(r.productKind).icon;
   const viewerIsStaff = data.viewerIsStaff;
 
@@ -589,7 +589,7 @@ function DeliverForm({ requestId, onDone }) {
         <div>
           <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">{t('myo.d.file', 'File')}</div>
           {file ? <div className="flex items-center gap-2 text-sm"><FileText size={14} /> <span className="truncate flex-1" title={file.name}>{file.name}</span><button onClick={() => setFile(null)} className="text-[var(--faint)] hover:text-error"><X size={14} /></button></div>
-            : <label className="btn btn-sm cursor-pointer inline-flex"><input type="file" className="hidden" onChange={pick} />{uploading ? <Spinner /> : <><Download size={13} className="rotate-180" /> {t('myo.d.upload', 'Upload deliverable')}</>}</label>}
+            : <label className="btn btn-sm cursor-pointer inline-flex"><input type="file" className="hidden" onChange={pick} />{uploading ? <Spinner /> : <><Upload size={13} /> {t('myo.d.upload', 'Upload deliverable')}</>}</label>}
         </div>
         <Field label={t('myo.d.link', 'or external link')}><Input value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)} placeholder="https://…" /></Field>
       </div>

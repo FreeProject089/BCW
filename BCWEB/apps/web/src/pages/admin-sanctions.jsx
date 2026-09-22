@@ -138,7 +138,7 @@ function Row({ s, onLift, onResend, onAnswer, onEdit, onArchive, onReapply, onCh
   const contestOpen = s.contestedAt && !s.contestOutcome;
 
   return (
-    <div className={`border-b border-[var(--line)] last:border-0 ${contestOpen ? 'bg-warning/5' : ''}`}>
+    <div className={`border-b border-[var(--line)] last:border-0 ${contestOpen ? 'tint-warning-soft' : ''}`}>
       <button onClick={() => setOpen((o) => !o)} className="w-full text-start px-3 py-2.5 flex items-start gap-3 hover:bg-[var(--surface-2)]">
         <span className="grid place-items-center w-7 h-7 rounded-lg bg-[var(--surface-2)] shrink-0 mt-0.5"><Icon size={14} className="text-[var(--muted)]" /></span>
         <span className="min-w-0 flex-1">
@@ -339,7 +339,7 @@ export function AdminSanctions() {
       <div className="flex items-center gap-2 mb-4 flex-wrap">
         <h2 className="font-semibold flex items-center gap-2 me-2"><Gavel size={16} className="text-[var(--accent-ink)]" /> {t('sanc.title', 'Sanctions')}</h2>
         {data?.openContests > 0 && (
-          <button onClick={() => setStatus('contested')} className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-lg bg-warning/15 text-warning hover:bg-warning/25">
+          <button onClick={() => setStatus('contested')} className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-lg tint-warning text-warning hover:tint-warning">
             <Scale size={12} /> {t('sanc.opencontests', '{n} waiting for an answer').replace('{n}', String(data.openContests))}
           </button>
         )}

@@ -1,8 +1,7 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import {
-  Rocket, Upload, CheckCircle2, XCircle, HardDrive, Gauge, Zap, Sliders, Receipt, Plus, Mail, RefreshCw, X, ChevronDown, AlertTriangle, Ticket, CreditCard, Gift, Layers, ShoppingCart, Save, MessageSquare, Server, Boxes, Check, Globe, Star, CalendarClock,
+import { Upload, CheckCircle2, XCircle, HardDrive, Gauge, Sliders, Receipt, Plus, Mail, RefreshCw, X, ChevronDown, AlertTriangle, Ticket, CreditCard, Gift, Layers, ShoppingCart, Save, MessageSquare, Server, Boxes, Check, Globe, Star, CalendarClock, Anchor, AppWindow, ChevronsUp
 } from 'lucide-react';
 import { Button, Card, Badge, Input, Select, PageHeader, Spinner, Modal, bestByteUnit, bytesInUnit, useDialog, useToast, Explain } from '../ui/ui.jsx';
 import { api } from '../lib/api.js';
@@ -183,11 +182,11 @@ function RedeemPromoModal({ code, promo, onClose }) {
     } finally { setBusy(false); }
   };
   return (
-    <Modal open onClose={onClose} title={t('hosting.promo.modal', 'Redeem code')} icon={Gift} width="max-w-md"
+    <Modal open onClose={onClose} title={t('hosting.promo.modal', 'Redeem code')} icon={Ticket} width="max-w-md"
       footer={<><Button variant="ghost" onClick={onClose}>{t('common.cancel', 'Cancel')}</Button>
         <Button variant="primary" disabled={busy || (isBoost && !repoId)} onClick={apply}>{busy ? <Spinner /> : t('hosting.promo.apply', 'Apply code')}</Button></>}>
-      <div className="flex items-center gap-3 p-3 rounded-xl border border-success-border bg-success/[0.06] mb-4">
-        <Gift size={20} className="text-success shrink-0" />
+      <div className="flex items-center gap-3 p-3 rounded-xl border border-success-border tint-success-soft mb-4">
+        <Ticket size={20} className="text-success shrink-0" />
         <div className="text-sm">
           <div className="font-semibold">{code}</div>
           <div className="text-[var(--muted)]">
@@ -442,7 +441,7 @@ export function Hosting() {
         const freeDisabled = !freeOffered;
         const freeTierPct = c?.freeTierCapEnabled && c.freeTierCapGB ? Math.min(100, (c.freeTierUsedGB / c.freeTierCapGB) * 100) : null;
         return (
-          <Card className="p-5 mb-2 bg-success/[0.04] overflow-hidden relative" style={{ borderColor: 'var(--success-border)' }}>
+          <Card className="p-5 mb-2 tint-success-soft overflow-hidden relative" style={{ borderColor: 'var(--success-border)' }}>
             <div className="flex flex-col sm:flex-row sm:items-center gap-4">
               <Gift size={20} className="text-success shrink-0" />
               <div className="flex-1 min-w-0">
@@ -457,7 +456,7 @@ export function Hosting() {
                   : t('hosting.freeplan.note2', 'One free repo per account (and per linked creator id). It runs for the term chosen above and renewing it costs nothing. You can always upgrade the size later — the free floor still applies, so you only ever pay for what\'s above it.')}</div>
               </div>
               <Button variant="primary" className="!bg-success hover:!bg-success !border-transparent shrink-0" disabled={freeDisabled} onClick={() => checkout({ planId: free.id })}>
-                <Gift size={16} /> {freeTierSoldOut ? t('hosting.freeplan.soldout', 'Free plan sold out') : freeDisabled ? t('hosting.nospace', 'Not enough space') : t('hosting.freeplan.cta', 'Get it free')}</Button>
+                {freeTierSoldOut ? t('hosting.freeplan.soldout', 'Free plan sold out') : freeDisabled ? t('hosting.nospace', 'Not enough space') : t('hosting.freeplan.cta', 'Get it free')}</Button>
             </div>
             {/* The free ceiling and the disk are metered separately, so this pool can be full
                 while there is plenty of room next door. Somebody waiting for a free repo is
@@ -526,7 +525,7 @@ export function Hosting() {
             : [t('hosting.card.nofree', 'No free plan at the moment'), false];
           const features = [
             [HardDrive, t('hosting.card.storage', '{s} of storage, split how you like').replace('{s}', storageLabel), true],
-            [Zap, t('hosting.card.upload', '{m} Mbps of download bandwidth').replace('{m}', mbps), true],
+            [Gauge, t('hosting.card.upload', '{m} Mbps of download bandwidth').replace('{m}', mbps), true],
             // The note stays one line: this card is a price comparison, and what a boost IS
             // belongs in the questions below, which is a disclosure and is read by somebody
             // who wants the answer rather than by everybody comparing four prices.
@@ -545,7 +544,7 @@ export function Hosting() {
                 gap at the top of three of them read as three cards missing something. The
                 other three keep an invisible copy so the bodies stay on the same line. */}
             <div className="mb-3">
-              <span className={`inline-block text-[10px] font-bold uppercase tracking-[0.1em] rounded-full px-2 py-1 leading-none ${recommended && !planDisabled ? 'bg-[var(--primary)] text-white' : 'invisible'}`} aria-hidden={!recommended || planDisabled}>
+              <span className={`inline-block text-[10px] font-bold uppercase tracking-[0.1em] rounded-full px-2 py-1 leading-none ${recommended && !planDisabled ? 'bg-[var(--primary)] text-[var(--on-primary)]' : 'invisible'}`} aria-hidden={!recommended || planDisabled}>
                 {t('hosting.popular2', 'RECOMMENDED')}
               </span>
             </div>
@@ -599,7 +598,7 @@ export function Hosting() {
 
       {/* Boost an existing repo — added to the same cart (one-time, priced per day). */}
       {user && (myRepos.data?.repos || []).some((r) => r.hosted || r.listed) && (<>
-        <SubLead icon={Rocket}
+        <SubLead icon={ChevronsUp}
           title={t('hosting.boost.t', 'Already hosting something?')}
           sub={t('hosting.boost.s2', 'Put one of them in front of more people for a few days. Priced per day, in the same cart — it re-bills only if you leave auto-renew ticked on that line.')} />
         <BoostAddCard repos={(myRepos.data?.repos || []).filter((r) => r.hosted || r.listed)} onAdd={addBoost} />
@@ -629,7 +628,7 @@ export function Hosting() {
             // Worded as a question on purpose. Running somebody's site or bot is not
             // something the platform does yet, and a card that reads like an order form
             // would collect people expecting one.
-            ['host-project', Rocket, t('hosting.talk.project', 'Host a project of mine'),
+            ['host-project', AppWindow, t('hosting.talk.project', 'Host a project of mine'),
               t('hosting.talk.project.d', 'A site, a Discord bot, an app. Not something we sell yet, tell us what it is and we will say honestly where we are.')],
             ['', MessageSquare, t('hosting.talk.other', 'Something else'),
               t('hosting.talk.other.d', 'Anything that is neither of those.')],
@@ -667,7 +666,7 @@ function BoostAddCard({ repos, onAdd }) {
   const repo = repos.find((r) => r.id === repoId);
   return (
     <Card className="p-6 mt-4 flex flex-col sm:flex-row items-center gap-4 bg-gradient-to-r from-[var(--primary-2)] to-transparent">
-      <Rocket size={26} className="text-warning shrink-0" />
+      <ChevronsUp size={26} className="text-warning shrink-0" />
       <div className="flex-1 w-full">
         <div className="font-semibold text-lg">{t('cart.boost.title', 'Boost a repo to the top')}</div>
         <div className="text-sm text-[var(--muted)] mb-2">{t('cart.boost.sub', 'Feature one of your repos at the top of the public listing for a set number of days.')}</div>
@@ -736,7 +735,7 @@ function CartPanel({ open, setOpen, cart, count, removeItem, setItemAutoRenew, s
   // wrappers, reveal transforms) can turn `fixed` into a clipped absolute — that
   // was making the cart + its button hide under the footer and go un-clickable.
   if (!open) return createPortal((
-    <button onClick={() => setOpen(true)} className="fixed bottom-20 md:bottom-4 right-3 md:right-4 z-[90] flex items-center gap-2 ps-3.5 pe-4 py-3 rounded-2xl text-white font-semibold shadow-xl bg-gradient-to-r from-brand to-brand-2 hover:brightness-105 transition">
+    <button onClick={() => setOpen(true)} className="fixed bottom-20 md:bottom-4 right-3 md:right-4 z-[90] flex items-center gap-2 ps-3.5 pe-4 py-3 rounded-2xl text-[var(--on-primary)] font-semibold shadow-xl bg-gradient-to-r from-brand to-brand-2 hover:brightness-105 transition">
       <span className="relative"><ShoppingCart size={18} /><span className="absolute -top-2 -right-2 grid place-items-center w-4 h-4 rounded-full bg-white text-orange-600 text-[10px] font-bold">{count}</span></span>
       {t('cart.title', 'Cart')}
     </button>
@@ -752,7 +751,7 @@ function CartPanel({ open, setOpen, cart, count, removeItem, setItemAutoRenew, s
         {cart.map((it) => (
           <div key={it.uid} className="rounded-lg bg-[var(--surface-2)] px-3 py-2">
             <div className="flex items-center gap-2 text-sm">
-              {it.kind === 'boost' ? <Rocket size={14} className="text-warning shrink-0" /> : <HardDrive size={14} className="text-[var(--accent-ink)] shrink-0" />}
+              {it.kind === 'boost' ? <ChevronsUp size={14} className="text-warning shrink-0" /> : <HardDrive size={14} className="text-[var(--accent-ink)] shrink-0" />}
               <div className="flex-1 min-w-0">
                 <div className="font-medium truncate">{it.kind === 'boost' ? t('cart.boostof', 'Boost "{n}"').replace('{n}', it.repoName || '') : (it.label || it.repoName)}</div>
                 <div className="text-[11px] text-[var(--faint)]">{it.kind === 'boost' ? `${it.days} ${t('cart.days', 'days')} · ${it.autoRenew ? t('cart.recurring', 'recurring') : t('cart.onetime', 'one-time')}` : `${t('hosting.pool', 'Storage pool')} · ${it.months} ${t('hosting.mo', 'mo')}`}</div>
@@ -856,7 +855,7 @@ function PoolConfigurator({ months, tiers, soldOut, capacity, onAdd }) {
   const tooBig = !!capacity && spec.storageGB > capacity.freeGB;
   const sliders = [
     { key: 'storageGB', label: t('hosting.s.storage', 'Storage'), min: 1, max: 200, step: 1, fmt: (v) => `${v} GB`, icon: HardDrive },
-    { key: 'uploadMbps', label: t('hosting.s.upload', 'Upload speed'), min: 1, max: upMax, step: 1, fmt: (v) => `${v} Mbps`, icon: Zap },
+    { key: 'uploadMbps', label: t('hosting.s.upload', 'Upload speed'), min: 1, max: upMax, step: 1, fmt: (v) => `${v} Mbps`, icon: Gauge },
   ];
 
   return (
@@ -932,7 +931,7 @@ function PoolConfigurator({ months, tiers, soldOut, capacity, onAdd }) {
  *  into a brochure. The heading is the label. */
 function SectionLead({ title, sub }) {
   return (
-    <div className="mt-14 sm:mt-20 mb-6 sm:mb-7">
+    <div className="plate w-fit max-w-full mt-14 sm:mt-20 mb-6 sm:mb-7">
       <h2 className="text-2xl sm:text-[1.75rem] font-extrabold tracking-tight text-balance">{title}</h2>
       {sub && <p className="text-[var(--muted)] mt-2 text-[15px] leading-relaxed max-w-2xl">{sub}</p>}
     </div>
@@ -943,7 +942,7 @@ function SectionLead({ title, sub }) {
  *  the two levels are told apart at a glance rather than by font size alone. */
 function SubLead({ icon: Icon, title, sub }) {
   return (
-    <div className="mt-9 sm:mt-12 mb-4 flex items-start gap-2.5">
+    <div className="plate w-fit max-w-full mt-9 sm:mt-12 mb-4 flex items-start gap-2.5">
       {Icon && <Icon size={17} className="text-[var(--accent-ink)] shrink-0 mt-[3px]" />}
       <div className="min-w-0">
         <h3 className="font-bold text-[17px] leading-tight">{title}</h3>
@@ -1001,7 +1000,7 @@ function HostingHero({ freePlan, freeOffered }) {
   // past before reaching the button they exist to justify.
   const facts = [
     [Layers, t('hosting.hero.p1', 'One space, split how you like')],
-    [Zap, t('hosting.hero.p2', 'An address that stops moving')],
+    [Anchor, t('hosting.hero.p2', 'An address that stops moving')],
     [Receipt, t('hosting.hero.p4', 'Prepaid, or renewing, your call')],
   ];
   return (
@@ -1012,7 +1011,8 @@ function HostingHero({ freePlan, freeOffered }) {
     <div className="relative min-h-[calc(100svh-7rem)] flex flex-col justify-center pb-10">
       <div aria-hidden className="absolute left-1/2 -translate-x-1/2 top-4 w-[720px] max-w-[140%] h-72 rounded-full tint-primary blur-3xl -z-10" />
       <div className="grid lg:grid-cols-[1.05fr_.95fr] gap-7 sm:gap-10 lg:gap-12 items-center">
-        <div>
+        {/* `plate`: the hero copy sits on the 3D backdrop otherwise (measured down to 1.65:1). */}
+        <div className="plate">
           {/* No badge over the title. It said HOSTING, on the hosting page, above a heading
               about hosting — a third naming of the same thing before a word of substance. */}
           <h1 className="text-3xl sm:text-[2.75rem] font-extrabold tracking-tight leading-[1.06] text-balance">
@@ -1135,7 +1135,7 @@ function HostingCompare({ freePlan }) {
   // comparison that praises an offer the page does not make is the page lying to itself.
   const cols = [
     {
-      k: 'none', tone: 'border-[var(--line)]',
+      k: 'none', tone: 'border-[var(--line)] panel-quiet',
       title: t('hosting.cmp.none', 'Hosting it yourself'),
       sub: t('hosting.cmp.none.s', 'A file host, a drive, your own box.'),
       rows: [
@@ -1149,7 +1149,7 @@ function HostingCompare({ freePlan }) {
       ],
     },
     {
-      k: 'free', tone: 'border-success-border bg-success/[0.04]',
+      k: 'free', tone: 'border-success-border panel',
       title: t('hosting.cmp.free', 'The free plan'),
       sub: gb != null ? t('hosting.cmp.free.s', '{gb} GB, one per account, no card.').replace('{gb}', gb)
         : t('hosting.cmp.free.s2', 'One per account, no card.'),
@@ -1162,7 +1162,7 @@ function HostingCompare({ freePlan }) {
       ],
     },
     {
-      k: 'paid', tone: 'border-[var(--ring)] tint-primary-soft',
+      k: 'paid', tone: 'border-[var(--ring)] panel',
       title: t('hosting.cmp.paid', 'A paid pool'),
       sub: t('hosting.cmp.paid.s', 'The size you pick, split how you like.'),
       rows: [

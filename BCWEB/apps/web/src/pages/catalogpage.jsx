@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
-import { Boxes, Download, Link2, Copy, ArrowUpRight, Package, Music2, Palette, ShieldAlert, Fingerprint, Users } from 'lucide-react';
+import { Boxes, Download, Copy, ArrowUpRight, Package, Music2, Palette, ShieldAlert, Fingerprint, Users, LayoutGrid } from 'lucide-react';
 import { PageHeader, Card, Button, Badge, Spinner, EmptyState, StarButton } from '../ui/ui.jsx';
 import { useI18n } from '../i18n.jsx';
 import { useToast } from '../ui/ui.jsx';
@@ -136,7 +136,7 @@ export default function CommunityCatalogPage() {
         </div>
       )}
 
-      <div className="mt-6"><Link to="/catalog" className="text-sm text-[var(--muted)] hover:text-[var(--text)] flex items-center gap-1.5"><Link2 size={14} /> {t('ccp.browse', 'Browse all catalogs')}</Link></div>
+      <div className="mt-6"><Link to="/catalog" className="text-sm text-[var(--muted)] hover:text-[var(--text)] flex items-center gap-1.5"><LayoutGrid size={14} /> {t('ccp.browse', 'Browse all catalogs')}</Link></div>
     </div>
   );
 }

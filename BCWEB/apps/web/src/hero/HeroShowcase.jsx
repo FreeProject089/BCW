@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useI18n } from '../i18n.jsx';
-import { Boxes, Music2, Server, Rocket, TrendingUp, Star, Newspaper } from 'lucide-react';
+import { Boxes, Music2, Server, TrendingUp, Star, Newspaper, Cloud } from 'lucide-react';
 
 // Linear-style product showcase: a stylized app screenshot tilted in 3D that
 // straightens as you scroll. Pure CSS 3D + a scroll listener (reliable everywhere).
@@ -47,7 +47,7 @@ export default function HeroShowcase() {
           <div className="grid grid-cols-[150px_1fr] min-h-[300px] text-start">
             <aside className="border-e border-[var(--line)] p-3 bg-[var(--surface)] hidden sm:block">
               <div className="flex items-center gap-2 font-bold text-sm mb-4"><img src="/logo.png" alt="" className="logo-plate w-5 h-5 rounded" /><span className="gradient-text">BC</span></div>
-              {[[Boxes, 'BMM'], [Music2, 'BSM'], [Server, 'Repos'], [Rocket, 'Hosting'], [Newspaper, 'Blog']].map(([I, l], i) => (
+              {[[Boxes, 'BMM'], [Music2, 'BSM'], [Server, 'Repos'], [Cloud, 'Hosting'], [Newspaper, 'Blog']].map(([I, l], i) => (
                 <div key={l} className={`flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs mb-0.5 ${i === 2 ? 'bg-[var(--surface-2)] text-[var(--text)]' : 'text-[var(--muted)]'}`}><I size={13} />{l}</div>
               ))}
             </aside>

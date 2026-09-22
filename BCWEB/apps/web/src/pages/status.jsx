@@ -141,7 +141,9 @@ export default function StatusPage() {
         })}
       </Card>
 
-      <h2 className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-2">{t('st.incidents', 'Past incidents')}</h2>
+      {/* `plate`: a section kicker between two cards has no card of its own, so it sat on the
+          3D backdrop and measured 4.31:1 against it. See index.css. */}
+      <h2 className="plate w-fit text-[11px] uppercase tracking-wider text-[var(--faint)] mb-2 px-1">{t('st.incidents', 'Past incidents')}</h2>
       <Card className="p-4 mb-6">
         {!(d.incidents || []).length ? (
           <div className="text-[13px] text-[var(--muted)]">{t('st.noincidents', 'Nothing has broken in this window.')}</div>
@@ -180,7 +182,9 @@ export default function StatusPage() {
         </div>
       </Card>
 
-      {d.generatedAt && <div className="text-[11px] text-[var(--faint)] text-center mt-4">{t('st.updated', 'Updated {d}').replace('{d}', fdate(d.generatedAt))}</div>}
+      {/* `plate`: the last line on the page, under the final card, so it sits on the 3D
+          backdrop (measured 3.56:1 against it). See index.css. */}
+      {d.generatedAt && <div className="plate w-fit mx-auto px-2 text-[11px] text-[var(--faint)] text-center mt-4">{t('st.updated', 'Updated {d}').replace('{d}', fdate(d.generatedAt))}</div>}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
-  Server, GitBranch, Pencil, XCircle, Clock, ShieldCheck, Users, HardDrive, Rocket, Files, Search, X, Wifi, Zap, Copy, RefreshCw, LayoutDashboard, ChevronDown, Fingerprint, Sliders, Check,
+  Server, GitBranch, Pencil, XCircle, Clock, ShieldCheck, Users, HardDrive, Files, Search, X, Wifi, Zap, Copy, RefreshCw, LayoutDashboard, ChevronDown, Fingerprint, Sliders, Check, ChevronsUp
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useToast, useDialog, Button, Card, Badge, Input, Select, Field, EmptyState, Spinner, Modal, ActionBar, ColorInput } from '../ui/ui.jsx';
@@ -361,7 +361,7 @@ export function AdminRepos() {
                   // frozen by suspension and every action is logged with "(admin)".
                   { key: 'manage', label: t('arp.dashboard', 'Manage (admin)'), icon: LayoutDashboard, variant: 'primary', href: `/repo/${r.id}`, onClick: () => navigate(`/repo/${r.id}`) },
                   { key: 'verify', label: 'Verify', icon: ShieldCheck, variant: 'primary', hidden: !r.pendingReview, onClick: () => verify(r) },
-                  { key: 'boost', label: r.featuredUntil && new Date(r.featuredUntil) > new Date() ? t('arp.boosted', 'Boosted') : t('arp.boost', 'Boost'), icon: Rocket, onClick: () => boostPick(r) },
+                  { key: 'boost', label: r.featuredUntil && new Date(r.featuredUntil) > new Date() ? t('arp.boosted', 'Boosted') : t('arp.boost', 'Boost'), icon: ChevronsUp, onClick: () => boostPick(r) },
                   { key: 'sha', label: t('arp.revalidate', 'Revalidate SHA'), icon: ShieldCheck, onClick: () => revalidate(r) },
                   { key: 'review', label: t('arp.review', 'Review & download'), icon: Files, hidden: !r.hosted, onClick: () => setReview(r) },
                   { key: 'reject', label: t('arp.reject', 'Reject / unlist'), icon: XCircle, danger: true, onClick: () => reject(r) },

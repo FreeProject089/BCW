@@ -1,10 +1,10 @@
 import { useEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import {
+import { Gauge,
   Server, GitBranch, Star, Plus, Pencil, Trash2, UploadCloud, Eye, EyeOff, CheckCircle2,
-  XCircle, Clock, ShieldCheck, ExternalLink, Tag, Users, HardDrive, Settings2, Receipt, Printer, Rocket,
+  XCircle, Clock, ShieldCheck, ExternalLink, Tag, Users, HardDrive, Settings2, Receipt, Printer, 
   Files, FileText, FileJson, FolderUp, CreditCard, Search, X, Wifi, WifiOff, Zap, Lock, Download, Copy, RefreshCw, AlertTriangle, LayoutDashboard, MoreHorizontal, Ticket,
-  Ban, Globe, Shield, ChevronDown, Fingerprint, Info, Sliders, Cpu, Check, BadgeCheck, Handshake, Boxes, GitMerge, Link2, ArrowRight, Activity,
+  Ban, Globe, Shield, ChevronDown, Fingerprint, Info, Sliders, Cpu, Check, BadgeCheck, Handshake, Boxes, GitMerge, Link2, ArrowRight, Activity, ChevronsUp, Cloud, RotateCcw
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ReportButton } from '../ui/report.jsx';
@@ -115,7 +115,7 @@ export function ReposPage() {
           {q && <button onClick={() => setQ('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)] hover:text-[var(--text)]"><X size={15} /></button>}
         </div>
         <div className="flex gap-2 flex-wrap">
-          <button onClick={() => setHostedOnly((v) => !v)} className={`btn ${hostedOnly ? 'btn-primary' : ''}`}><Rocket size={14} /> {t('repos.hostedonly', 'Hosted only')}</button>
+          <button onClick={() => setHostedOnly((v) => !v)} className={`btn ${hostedOnly ? 'btn-primary' : ''}`}><Cloud size={14} /> {t('repos.hostedonly', 'Hosted only')}</button>
           <button onClick={() => setOnlineOnly((v) => !v)} className={`btn ${onlineOnly ? 'btn-primary' : ''}`}><Wifi size={14} /> {t('repos.onlineonly', 'Online only')}</button>
           {user && <button onClick={() => setFavOnly((v) => !v)} className={`btn ${favOnly ? 'btn-primary' : ''}`}><Star size={14} /> {t('repos.favonly', 'Favorited')}</button>}
         </div>
@@ -126,16 +126,16 @@ export function ReposPage() {
           ['official', t('repos.cat.official', 'Official'), BadgeCheck],
           ['partner', t('repos.cat.partner', 'Partner'), Handshake],
           ['community', t('repos.cat.community', 'Community'), Users]].map(([key, label, Ico]) => (
-          <button key={key} onClick={() => setCat(key)} className={`text-xs px-2.5 py-1 rounded-lg border flex items-center gap-1 transition ${cat === key ? 'border-[var(--primary)] text-[var(--text)] bg-orange-500/10' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}>
+          <button key={key} onClick={() => setCat(key)} className={`text-xs px-2.5 py-1 rounded-lg border flex items-center gap-1 transition ${cat === key ? 'border-[var(--primary)] text-[var(--text)] panel' : 'border-[var(--line)] panel text-[var(--muted)] hover:text-[var(--text)]'}`}>
             {Ico && <Ico size={11} />} {label}
           </button>
         ))}
       </div>
       {allTags.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mb-5">
-          <button onClick={() => setTag('')} className={`text-xs px-2.5 py-1 rounded-lg border ${!tag ? 'border-[var(--primary)] text-[var(--text)] bg-orange-500/10' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}>{t('repos.alltags', 'All')}</button>
+          <button onClick={() => setTag('')} className={`text-xs px-2.5 py-1 rounded-lg border ${!tag ? 'border-[var(--primary)] text-[var(--text)] panel' : 'border-[var(--line)] panel text-[var(--muted)] hover:text-[var(--text)]'}`}>{t('repos.alltags', 'All')}</button>
           {allTags.map((tg) => (
-            <button key={tg} onClick={() => setTag(tg === tag ? '' : tg)} className={`text-xs px-2.5 py-1 rounded-lg border flex items-center gap-1 ${tag === tg ? 'border-[var(--primary)] text-[var(--text)] bg-orange-500/10' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}><Tag size={10} /> {tg}</button>
+            <button key={tg} onClick={() => setTag(tg === tag ? '' : tg)} className={`text-xs px-2.5 py-1 rounded-lg border flex items-center gap-1 ${tag === tg ? 'border-[var(--primary)] text-[var(--text)] panel' : 'border-[var(--line)] panel text-[var(--muted)] hover:text-[var(--text)]'}`}><Tag size={10} /> {tg}</button>
           ))}
         </div>
       )}
@@ -143,7 +143,7 @@ export function ReposPage() {
       {loading ? <SkeletonGrid count={4} className="grid md:grid-cols-2 gap-4" />
         : !repos.length ? <EmptyState icon={Server} title={t('repos.empty.t', 'No repos listed yet')}
           sub={t('repos.empty.s2', 'This is the public list of verified Server-Repos, and nobody has listed one yet.')}
-          action={{ label: t('dash.hostrepo', 'Host a repo'), to: '/hosting#plans', icon: Rocket }} />
+          action={{ label: t('dash.hostrepo', 'Host a repo'), to: '/hosting#plans', icon: Cloud }} />
         : !filtered.length ? <EmptyState icon={Search} title={t('repos.nomatch.t', 'No matches')}
           sub={t('repos.nomatch.s2', 'No listed repo matches the search and the filters you have on.')}
           action={{ label: t('repos.nomatch.a', 'Clear the filters'), icon: X, onClick: () => { setQ(''); setTag(''); setHostedOnly(false); setOnlineOnly(false); setFavOnly(false); setCat('all'); } }} />
@@ -159,7 +159,7 @@ export function ReposPage() {
                       <div className="font-semibold flex items-center gap-2 min-w-0"><GitBranch size={16} className="text-[var(--accent-ink)] shrink-0" /> <span className="truncate" title={r.name}>{r.name}</span></div>
                       <div className="flex items-center gap-1.5 shrink-0">
                         {(() => { const cat = repoCategoryMeta(r.category, t); return cat && <Badge tone={cat.tone}><cat.Icon size={11} /> {cat.label}</Badge>; })()}
-                        {r.featured && <Badge tone="amber"><Star size={11} /> {t('repos.featured', 'Featured')}</Badge>}
+                        {r.featured && <Badge tone="amber"><ChevronsUp size={11} /> {t('repos.featured', 'Featured')}</Badge>}
                         <Badge tone="green"><ShieldCheck size={11} /> {t('repos.verified', 'Verified')}</Badge>
                         <button onClick={() => toggleFavorite(r)} title={r.favorited ? t('repos.unfavorite', 'Unfavorite') : t('repos.favorite', 'Favorite')}
                           className={`flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full border ${r.favorited ? 'border-warning-border text-warning bg-warning-bg' : 'border-[var(--line)] text-[var(--faint)] hover:text-warning'}`}>
@@ -830,7 +830,7 @@ export function MyRepos() {
                 <div className="mb-3 flex items-center gap-2 rounded-lg border border-error-border bg-error-bg px-3 py-2 text-xs">
                   <AlertTriangle size={14} className="text-error shrink-0" />
                   <span className="flex-1 text-error">{t('repos.del.pending', 'Scheduled for deletion, permanently removed with its content on {when}.').replace('{when}', new Date(r.deleteAt).toLocaleString())}</span>
-                  <Button size="sm" variant="primary" onClick={() => undoDelete(r)}><RefreshCw size={12} /> {t('repos.del.undo', 'Undo')}</Button>
+                  <Button size="sm" variant="primary" onClick={() => undoDelete(r)}><RotateCcw size={12} /> {t('repos.del.undo', 'Undo')}</Button>
                 </div>
               )}
               {!repoLocked(r) && r.listed && r.pendingReview && !r.deleteAt && (
@@ -864,7 +864,7 @@ export function MyRepos() {
                         state a second time. Every other status still badges normally. */}
                     {!(r.status === 'PROVISIONING' && !repoLocked(r) && !r.deleteAt) &&
                       (() => { const st = repoStatusMeta(r, t); return <Badge tone={st.tone}>● {st.label}</Badge>; })()}
-                    <StatusBadges r={r} />{isFeatured(r) && <Badge tone="amber"><Star size={10} /> {t('repos.featureduntil', 'Featured until')} {new Date(r.featuredUntil).toLocaleDateString()}</Badge>}</div>
+                    <StatusBadges r={r} />{isFeatured(r) && <Badge tone="amber"><ChevronsUp size={10} /> {t('repos.featureduntil', 'Featured until')} {new Date(r.featuredUntil).toLocaleDateString()}</Badge>}</div>
                   <div className="text-xs text-[var(--faint)] mt-1.5 flex items-center gap-3 flex-wrap font-mono">
                     {r.sha && <span>sha {r.sha.slice(0, 12)}…</span>}
                     {r.fingerprint && (
@@ -876,7 +876,7 @@ export function MyRepos() {
                   {r.hosted && (
                     <div className="text-xs text-[var(--faint)] mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
                       <span className="flex items-center gap-1"><HardDrive size={11} /> {gb(r.storageUsedBytes)} / {gb(r.storageQuotaBytes)} GB</span>
-                      <span className="flex items-center gap-1"><Zap size={11} /> {(r.effectiveUploadKbps / 1024).toFixed(1)} Mbps {t('repos.cap', 'cap')}</span>
+                      <span className="flex items-center gap-1"><Gauge size={11} /> {(r.effectiveUploadKbps / 1024).toFixed(1)} Mbps {t('repos.cap', 'cap')}</span>
                       {r.group && <Badge tone="primary"><HardDrive size={9} /> {t('repos.pool', 'Pool')}: {r.group.name}</Badge>}
                     </div>
                   )}
@@ -896,7 +896,7 @@ export function MyRepos() {
                     { key: 'dash', label: t('repos.opendash', 'Dashboard'), icon: LayoutDashboard, variant: 'primary', href: `/repo/${r.id}`, onClick: () => navigate(`/repo/${r.id}`) },
                     ...(r.hosted ? [{ key: 'pub', label: r.published ? t('repos.takeoffline', 'Take offline') : t('repos.goonline', 'Go online'), icon: r.published ? WifiOff : Wifi, disabled: locked, onClick: () => togglePublish(r) }] : []),
                     { key: 'list', label: r.listed ? t('repos.unlist', 'Unlist') : t('repos.listpublicly', 'List publicly'), icon: r.listed ? EyeOff : Eye, disabled: locked, onClick: () => toggleList(r) },
-                    { key: 'boost', label: isFeatured(r) ? t('repos.extendboost', 'Extend boost') : t('repos.boost', 'Boost'), icon: Rocket, disabled: locked, onClick: () => setFeaturing(r) },
+                    { key: 'boost', label: isFeatured(r) ? t('repos.extendboost', 'Extend boost') : t('repos.boost', 'Boost'), icon: ChevronsUp, disabled: locked, onClick: () => setFeaturing(r) },
                   ]}
                   extra={[
                     repoJsonUrl(r) && { key: 'copy', label: t('repos.copylink', 'Copy repo.json link'), icon: Copy, onClick: () => { navigator.clipboard?.writeText(repoJsonUrl(r)); toast.success(t('repos.copy.ok', 'repo.json link copied.')); } },
@@ -929,7 +929,7 @@ export function MyRepos() {
           action={{ label: t('repos.nomatch.a2', 'Clear the search'), icon: X, onClick: () => setQ('') }} />)
         : <EmptyState icon={Server} title={t('repos.mine.empty.t', 'No repos yet')}
           sub={t('repos.mine.empty.s2', 'A Server-Repo is where BMM users download your files from, and you do not have one yet.')}
-          action={{ label: t('dash.hostrepo', 'Host a repo'), to: '/hosting#plans', icon: Rocket }}
+          action={{ label: t('dash.hostrepo', 'Host a repo'), to: '/hosting#plans', icon: Cloud }}
           hint={t('repos.mine.empty.h', 'Already running one on your own server? Add it with the button above the list.')} />}
 
       <MyAccessPolicyCard />
@@ -1067,7 +1067,7 @@ function RepoManageModal({ repo, onClose, onChanged, initialTab }) {
       {tab === 'limits' && (
         <div className="space-y-4">
           <div>
-            <div className="flex items-center justify-between mb-1.5 text-sm"><span className="flex items-center gap-1.5 text-[var(--muted)]"><Zap size={14} /> {t('repos.uploadlimit', 'Upload limit')}</span><span className="font-semibold">{reqMbps >= (capKbps / 1024) ? t('repos.max', 'Max') : `${reqMbps.toFixed(1)} Mbps`}</span></div>
+            <div className="flex items-center justify-between mb-1.5 text-sm"><span className="flex items-center gap-1.5 text-[var(--muted)]"><Gauge size={14} /> {t('repos.uploadlimit', 'Upload limit')}</span><span className="font-semibold">{reqMbps >= (capKbps / 1024) ? t('repos.max', 'Max') : `${reqMbps.toFixed(1)} Mbps`}</span></div>
             <input type="range" min={0.5} max={Math.max(1, capKbps / 1024)} step={0.5} value={Math.min(reqMbps, capKbps / 1024)} className="bcw-range w-full" onChange={(e) => setReqMbps(Number(e.target.value))} />
             <div className="text-xs mt-2 flex items-center gap-1.5">
               <Lock size={12} className="text-[var(--faint)]" />
@@ -1127,7 +1127,7 @@ function RepoUpgrade({ repo }) {
       <button type="button" onClick={() => setCustom((c) => !c)} className="text-xs text-[var(--accent-ink)] hover:underline flex items-center gap-1"><Settings2 size={12} /> {t('repos.upcustom2', 'Also raise upload speed')} <ChevronDown size={11} className={`transition-transform ${custom ? 'rotate-180' : ''}`} /></button>
       {custom && (
         <div className="pt-1">
-          <div><div className="flex justify-between text-xs mb-1"><span className="text-[var(--muted)] flex items-center gap-1"><Zap size={12} /> {t('repos.s.upload', 'Upload speed')}</span><b className="tabular-nums">{upVal} Mbps</b></div><input type="range" min={Math.max(1, Math.ceil(curUp))} max={1000} step={1} value={upVal} className="bcw-range w-full" onChange={(e) => setUpVal(Number(e.target.value))} /></div>
+          <div><div className="flex justify-between text-xs mb-1"><span className="text-[var(--muted)] flex items-center gap-1"><Gauge size={12} /> {t('repos.s.upload', 'Upload speed')}</span><b className="tabular-nums">{upVal} Mbps</b></div><input type="range" min={Math.max(1, Math.ceil(curUp))} max={1000} step={1} value={upVal} className="bcw-range w-full" onChange={(e) => setUpVal(Number(e.target.value))} /></div>
         </div>
       )}
       <div className="flex items-center justify-between mt-2 flex-wrap gap-2">
@@ -1230,7 +1230,7 @@ function AddRepoChoice({ pools, onClose, onPool, onExternal }) {
           </div>
           <Link to="/hosting#plans" className="mt-4">
             <Button variant={withRoom.length ? 'default' : 'primary'} className="w-full">
-              <HardDrive size={15} /> {withRoom.length ? t('repos.addwhat.more', 'Get more space') : t('repos.addwhat.get', 'See the plans')}
+              <Cloud size={15} /> {withRoom.length ? t('repos.addwhat.more', 'Get more space') : t('repos.addwhat.get', 'See the plans')}
             </Button>
           </Link>
         </div>
@@ -1303,7 +1303,7 @@ function FeatureModal({ repo, onClose }) {
     catch (x) { toast.error(x.data?.error === 'stripe_not_configured' ? t('hosting.err.stripe', 'Payments not configured yet.') : t('hosting.err.checkout', 'Checkout failed.')); }
   };
   return (
-    <Modal open onClose={onClose} title={t('repos.boosttitle', 'Boost "{name}"').replace('{name}', repo.name)} icon={Rocket} width="max-w-md"
+    <Modal open onClose={onClose} title={t('repos.boosttitle', 'Boost "{name}"').replace('{name}', repo.name)} icon={ChevronsUp} width="max-w-md"
       footer={<><Button variant="ghost" onClick={onClose}>{t('common.cancel', 'Cancel')}</Button><Button variant="primary" onClick={buy}>{t('hosting.continue', 'Continue to payment')}</Button></>}>
       <p className="text-sm text-[var(--muted)] mb-3">{t('repos.boost.desc', 'Featured repos float to the top of the public list. Pick a duration, at the end, your repo returns to its normal position.')}</p>
       <div className="mb-4 rounded-lg border border-[var(--line)] bg-orange-500/[0.06] p-2.5 text-xs text-[var(--muted)] flex items-start gap-2">
@@ -1492,7 +1492,7 @@ export function Billing() {
       {hostedRepos.length > 0 && (
         <div className="mb-8">
           <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
-            <h2 className="font-semibold flex items-center gap-2"><Rocket size={16} className="text-[var(--accent-ink)]" /> {t('bill.subs', 'Active hosting')}</h2>
+            <h2 className="font-semibold flex items-center gap-2"><Cloud size={16} className="text-[var(--accent-ink)]" /> {t('bill.subs', 'Active hosting')}</h2>
             {hostedRepos.length > 3 && (
               <div className="flex gap-2">
                 <div className="relative w-40 sm:w-52"><Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" />
@@ -1532,7 +1532,7 @@ export function Billing() {
                   <div className="flex items-center gap-3 px-4 py-3 text-sm">
                     <button onClick={() => setExpandedSub(isOpen ? null : s.id)} className="flex items-center gap-3 flex-1 min-w-0 text-start">
                       <ChevronDown size={15} className={`shrink-0 text-[var(--faint)] transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-                      {isBoost ? <Rocket size={15} className="text-warning shrink-0" /> : <Server size={15} className="text-[var(--accent-ink)] shrink-0" />}
+                      {isBoost ? <ChevronsUp size={15} className="text-warning shrink-0" /> : <Server size={15} className="text-[var(--accent-ink)] shrink-0" />}
                       <div className="flex-1 min-w-0">
                         <div className="font-medium truncate">{label}{s.repoName ? <> · <span className="text-[var(--accent-ink)]">{s.repoName}</span></> : ''}</div>
                         <div className="text-xs text-[var(--faint)]">{when}</div>
@@ -1615,7 +1615,7 @@ export function Billing() {
           ))}
         </Card> : <EmptyState icon={Receipt} title={t('bill.empty.t', 'No payments yet')}
           sub={t('bill.empty.s2', 'Every purchase you make here leaves an invoice in this list, and you have not bought anything yet.')}
-          action={{ label: t('bill.empty.a', 'See the plans'), to: '/hosting#plans', icon: Rocket }} />}
+          action={{ label: t('bill.empty.a', 'See the plans'), to: '/hosting#plans', icon: Cloud }} />}
       {invoice && <InvoiceModal id={invoice} onClose={() => setInvoice(null)} />}
     </div>
   );
@@ -1647,7 +1647,7 @@ function InvoiceModal({ id, onClose }) {
           {/* Header band */}
           <div className="flex items-start justify-between gap-4 pb-4 mb-4 border-b border-[var(--line)]">
             <div className="flex items-center gap-2.5">
-              <span className="grid place-items-center w-10 h-10 rounded-xl bg-gradient-to-br from-brand to-brand-2 text-white font-black text-lg shrink-0">B</span>
+              <span className="grid place-items-center w-10 h-10 rounded-xl bg-gradient-to-br from-brand to-brand-2 text-[var(--on-primary)] font-black text-lg shrink-0">B</span>
               <div><div className="font-extrabold text-base leading-tight">BetterCommunity</div><div className="text-[11px] text-[var(--faint)]">bettercommunity.ch</div></div>
             </div>
             <div className="text-end">
@@ -1833,7 +1833,7 @@ export function HostFilesModal({ repo, admin, onClose, onChanged }) {
 
       {/* Online status panel — owner self-serve publish. The public URL is auto-managed. */}
       {!admin && d.hosted && (
-        <div className={`rounded-xl border p-3 mb-3 ${d.published ? 'border-success-border bg-success/[0.06]' : 'border-[var(--line)] bg-[var(--surface-2)]'}`}>
+        <div className={`rounded-xl border p-3 mb-3 ${d.published ? 'border-success-border tint-success-soft' : 'border-[var(--line)] bg-[var(--surface-2)]'}`}>
           <div className="flex items-center gap-2.5">
             {d.published ? <Wifi size={16} className="text-success shrink-0" /> : <WifiOff size={16} className="text-[var(--faint)] shrink-0" />}
             <div className="flex-1 min-w-0">
@@ -1842,7 +1842,7 @@ export function HostFilesModal({ repo, admin, onClose, onChanged }) {
             </div>
             {d.published
               ? <Button size="sm" disabled={busy} onClick={takeOffline}>{busy ? <Spinner /> : <><WifiOff size={13} /> {t('repos.takeoffline', 'Take offline')}</>}</Button>
-              : <Button size="sm" variant="primary" disabled={busy || !hasRepoJson} onClick={goOnline}>{busy ? <Spinner /> : <><Rocket size={13} /> {t('repos.goonline', 'Go online')}</>}</Button>}
+              : <Button size="sm" variant="primary" disabled={busy || !hasRepoJson} onClick={goOnline}>{busy ? <Spinner /> : <><Wifi size={13} /> {t('repos.goonline', 'Go online')}</>}</Button>}
           </div>
           {d.published && publicUrl && (
             <div className="mt-2.5 flex items-center gap-2 rounded-lg bg-[var(--bg-solid)] border border-[var(--line)] px-2.5 py-1.5">
@@ -1872,7 +1872,7 @@ export function HostFilesModal({ repo, admin, onClose, onChanged }) {
             </div>
             <div className="text-[11px] text-[var(--faint)] mt-2">{t('repos.includejson', 'Include a')} <code>repo.json</code> {t('repos.tomanifest', 'manifest. SHA / checksum is computed automatically.')}</div>
           </div>
-          <p className="text-[11px] text-[var(--faint)] flex items-center gap-1.5 mt-1.5"><Zap size={11} className="text-[var(--accent-ink)]" /> {t('repos.upbg', "Uploads continue in the background if you close this window, you'll get a notification when they finish.")}</p>
+          <p className="text-[11px] text-[var(--faint)] flex items-center gap-1.5 mt-1.5"><Info size={11} className="text-[var(--accent-ink)]" /> {t('repos.upbg', "Uploads continue in the background if you close this window, you'll get a notification when they finish.")}</p>
         </div>
       )}
 

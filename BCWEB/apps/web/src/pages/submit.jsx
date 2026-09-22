@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { PubkeyList } from '../ui/access-lists.jsx';
 import { Link, useNavigate } from 'react-router-dom';
-import { Upload, Boxes, Server, ArrowLeft, ArrowRight, Check, Lock, Wand2, FileJson, Layers, Rocket, ChevronDown, CheckCircle2, Package } from 'lucide-react';
+import { Upload, Boxes, Server, ArrowLeft, ArrowRight, Check, Lock, Wand2, FileJson, Layers, ChevronDown, CheckCircle2, Package, Cloud } from 'lucide-react';
 import { PageHeader, Card, Button, Field, Input, Select, Textarea, Spinner, Badge, EmptyState } from '../ui/ui.jsx';
 import { useI18n } from '../i18n.jsx';
 import { useToast } from '../ui/ui.jsx';
@@ -205,7 +205,7 @@ function OfficialSubmit({ onBack }) {
             <Input type="file" onChange={(e) => onFile(e.target.files?.[0] || null)} /></Field>
           {file && <div className="text-xs text-[var(--faint)] flex items-center gap-1.5"><Package size={12} /> {file.name} ({(file.size / 1e6).toFixed(1)} MB)</div>}
           {file && file.size > MAX_UPLOAD && (
-            <div className="rounded-lg border border-warning-border bg-warning/[0.06] p-2.5 text-xs text-warning">
+            <div className="rounded-lg border border-warning-border tint-warning-soft p-2.5 text-xs text-warning">
               {t('sub2.toobig.b', 'This file is over 100MB, direct uploads are capped there. To host a larger file, reach out via the contact page and we’ll arrange it.')} <Link to="/contact" className="underline font-medium">{t('sub2.contact', 'Contact us')}</Link>
             </div>
           )}
@@ -379,11 +379,11 @@ function HostCatalog({ onBack }) {
         </>)}
 
         {step === 1 && (<>
-          <div className="text-sm font-semibold flex items-center gap-2"><Rocket size={15} className="text-[var(--accent-ink)]" /> {t('sub2.step.hosting.t', 'Where do the files live?')}</div>
+          <div className="text-sm font-semibold flex items-center gap-2"><Cloud size={15} className="text-[var(--accent-ink)]" /> {t('sub2.step.hosting.t', 'Where do the files live?')}</div>
           <Field label={t('sub2.mode', 'Hosting mode')}>
             <div className="grid sm:grid-cols-2 gap-2">
               {[['raw', FileJson, t('sub2.mode.raw', 'Just my catalog.json'), t('sub2.mode.raw.d', 'Downloads stay on your own links. Free.')],
-                ...(isDocumentKind(form.kind) ? [] : [['managed', Rocket, t('sub2.mode.managed', 'Host files with us'), t('sub2.mode.managed.d', 'Upload items + files into a storage pool. Paid by size.')]]),
+                ...(isDocumentKind(form.kind) ? [] : [['managed', Cloud, t('sub2.mode.managed', 'Host files with us'), t('sub2.mode.managed.d', 'Upload items + files into a storage pool. Paid by size.')]]),
               ].map(([m, Icon, label, desc]) => (
                 <button key={m} type="button" onClick={() => setForm({ ...form, mode: m })} className={`text-start p-3 rounded-xl border transition ${form.mode === m ? 'border-[var(--primary)] tint-primary' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
                   <div className="flex items-center gap-2 font-medium text-sm"><Icon size={15} className="text-[var(--accent-ink)]" /> {label}</div>
@@ -492,7 +492,7 @@ export function Submit() {
                 actual case never. A LINK, not a third inline form: the hosting page already
                 carries pools, quotas and payment, and a duplicate here would drift. */}
             <Link to="/hosting#plans" className="text-start p-5 rounded-2xl border border-[var(--line)] hover:border-[var(--primary)] transition sm:col-span-2 block">
-              <div className="w-11 h-11 rounded-xl tint-primary grid place-items-center mb-3"><Rocket size={20} className="text-[var(--accent-ink)]" /></div>
+              <div className="w-11 h-11 rounded-xl tint-primary grid place-items-center mb-3"><Cloud size={20} className="text-[var(--accent-ink)]" /></div>
               <div className="font-semibold">{t('sub2.repo', 'Host a Server-Repo')}</div>
               <div className="text-sm text-[var(--muted)] mt-1">{t('sub2.repo.d', 'The mods themselves, served for BMM to sync from — with a stable URL, access control (password, keys, allow lists) and storage pools. Opens the hosting page.')}</div>
             </Link>

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import {
-  Boxes, Download, Search, XCircle, Package, Inbox, Tag, FileJson, Eye, Lock, Users, Copy, BadgeCheck,
+  Boxes, Download, Search, XCircle, Package, Inbox, Tag, FileJson, Eye, Lock, Users, Copy, BadgeCheck, LayoutGrid
 } from 'lucide-react';
 import { Button, Card, Badge, Input, Select, PageHeader, EmptyState, Modal, useToast, SkeletonGrid } from '../ui/ui.jsx';
 import { api } from '../lib/api.js';
@@ -38,7 +38,7 @@ export function Catalog() {
   const feedPath = `/api/catalog.json?${new URLSearchParams({ project: project || 'bmm', kind: (kind || 'APP').toUpperCase() })}`;
   return (
     <div>
-      <PageHeader icon={Package} title={`${t('cat.title', 'Catalog')}${project ? ` · ${project.toUpperCase()}` : ''}`} subtitle={t('cat.sub', 'Community apps, plugins, themes and presets.')}
+      <PageHeader icon={LayoutGrid} title={`${t('cat.title', 'Catalog')}${project ? ` · ${project.toUpperCase()}` : ''}`} subtitle={t('cat.sub', 'Community apps, plugins, themes and presets.')}
         actions={<div className="flex items-center gap-2 flex-wrap">
           <FeedLink path={feedPath} label={t('cat.feed', 'This list as JSON')}
             hint={t('cat.feed.h', 'The exact list you are looking at, as the feed BMM reads. Copy it into BMM → add a source.')} />
@@ -51,7 +51,7 @@ export function Catalog() {
       <div className="rounded-2xl border border-[var(--line)] panel p-3 mb-5 space-y-3">
         <div className="flex items-center gap-2 flex-wrap">
           {[['', t('cat.allprojects', 'All')], ['bmm', 'BMM'], ['bsm', 'BSM']].map(([pk, l]) => (
-            <button key={pk} onClick={() => { set('project', pk); if (kind) set('kind', ''); }} className={`px-4 py-1.5 rounded-lg text-sm font-medium transition ${project === pk ? 'bg-gradient-to-br from-brand to-brand-2 text-white shadow-sm' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{l}</button>
+            <button key={pk} onClick={() => { set('project', pk); if (kind) set('kind', ''); }} className={`px-4 py-1.5 rounded-lg text-sm font-medium transition ${project === pk ? 'bg-gradient-to-br from-brand to-brand-2 text-[var(--on-primary)] shadow-sm' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{l}</button>
           ))}
           <div className="flex-1" />
           <Select className="!w-auto" value={sort} onChange={(e) => set('sort', e.target.value)}>{SORTS.map(([v, l]) => <option key={v} value={v}>{t(`cat.sort.${v}`, l)}</option>)}</Select>
@@ -68,7 +68,7 @@ export function Catalog() {
           <div className="flex gap-1.5 flex-wrap">
             {(project === 'bsm' ? ['', 'PRESET'] : ['', ...ALL_KINDS]).map((k) => {
               const I = k ? (KIND_ICON[k] || Package) : Package;
-              return <button key={k} onClick={() => set('kind', k)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm border transition ${kind === k ? 'border-[var(--primary)] tint-primary text-[var(--accent-ink)] font-medium' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--line-strong)]'}`}><I size={14} /> {k ? kindLabel(k, project) : t('cat.all', 'All')}</button>;
+              return <button key={k} onClick={() => set('kind', k)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm border transition ${kind === k ? 'border-[var(--primary)] panel text-[var(--accent-ink)] font-medium' : 'border-[var(--line)] panel text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--line-strong)]'}`}><I size={14} /> {k ? kindLabel(k, project) : t('cat.all', 'All')}</button>;
             })}
           </div>
         </div>
@@ -224,7 +224,7 @@ export function ItemDetail() {
       })()}
       <p className="text-[var(--muted)] leading-relaxed mt-6 whitespace-pre-wrap">{it.description || t('cat.nodesc', 'No description.')}</p>
       {it.tags?.length > 0 && <div className="flex flex-wrap gap-2 mt-4">{it.tags.map((tg) => <Badge key={tg}><Tag size={11} /> {tg}</Badge>)}</div>}
-      <Card className="mt-6 p-5"><div className="text-xs font-semibold text-[var(--faint)] uppercase tracking-wider mb-2 flex items-center gap-1.5"><FileJson size={13} /> {t('item.metadata', 'Metadata')}</div>
+      <Card className="mt-6 p-5"><div className="text-xs font-semibold text-[var(--faint)] uppercase tracking-wider mb-2 ">{t('item.metadata', 'Metadata')}</div>
         <pre className="text-xs text-[var(--muted)] overflow-auto max-h-80">{JSON.stringify(it.meta, null, 2)}</pre></Card>
 
       {warn && (

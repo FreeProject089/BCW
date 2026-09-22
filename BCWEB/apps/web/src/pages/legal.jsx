@@ -529,7 +529,7 @@ export function Legal({ page: fixed }) {
       <PageHeader icon={d.icon} title={d.title} subtitle={`${lang === 'fr' ? 'Mis à jour le' : 'Last updated'} ${new Date(`${updated}T00:00:00`).toLocaleDateString()}`} />
       {/* One control that names the document you are reading and opens the rest. */}
       <div className="mb-5 flex items-center gap-2 flex-wrap">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)]">{lang === 'fr' ? 'Document' : 'Document'}</span>
+        <span className="plate px-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)]">{lang === 'fr' ? 'Document' : 'Document'}</span>
         <DocSwitcher options={tabs} current={page} label={d.title} className="min-w-0 w-full sm:w-auto" />
       </div>
       {/* The plain-language summary.

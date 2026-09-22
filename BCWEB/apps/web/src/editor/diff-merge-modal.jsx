@@ -30,7 +30,7 @@ export default function DiffMergeModal({ open, onClose, base, mine, theirs, labe
 
   // A block of code lines with a colored gutter, GitHub-diff style.
   const Lines = ({ lines, tone }) => (
-    <div className={`font-mono text-[12.5px] leading-[1.6] ${tone === 'add' ? 'bg-success/[0.07]' : tone === 'del' ? 'bg-error/[0.07]' : ''}`}>
+    <div className={`font-mono text-[12.5px] leading-[1.6] ${tone === 'add' ? 'tint-success-soft' : tone === 'del' ? 'tint-error-soft' : ''}`}>
       {(lines.length ? lines : ['']).map((ln, k) => (
         <div key={k} className="flex">
           <span className={`select-none w-6 shrink-0 text-center ${tone === 'add' ? 'text-success' : tone === 'del' ? 'text-error' : 'text-transparent'}`}>{tone === 'add' ? '+' : tone === 'del' ? '−' : ''}</span>

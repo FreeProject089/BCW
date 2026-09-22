@@ -102,13 +102,13 @@ export function buildDownbar(navCfg, opts = {}) {
     add(signedIn
       ? [{ kind: 'link', to: '/notifications', k: 'nav.notifications', icon: 'Bell', badge: 'notifs' }]
       : [{ kind: 'link', to: '/docs', k: 'nav.docs', icon: 'BookOpen' },
-        { kind: 'link', to: '/faq', k: 'nav.faq', icon: 'Info' },
+        { kind: 'link', to: '/faq', k: 'nav.faq', icon: 'HelpCircle' },
         { kind: 'link', to: '/blog', k: 'nav.blog', icon: 'Newspaper' }]);
     // `/auth`, not `/login`: the sign-in route in App.jsx is /auth and /login is a 404. The
     // whole bar is hardcoded paths, so this is the kind of mistake nothing else catches.
     add(signedIn
-      ? [{ kind: 'link', to: '/dashboard', k: 'downbar.me', icon: 'LayoutGrid' }]
-      : [{ kind: 'link', to: '/auth', k: 'nav.signin', icon: 'Shield' }]);
+      ? [{ kind: 'link', to: '/dashboard', k: 'downbar.me', icon: 'LayoutDashboard' }]
+      : [{ kind: 'link', to: '/auth', k: 'nav.signin', icon: 'LogIn' }]);
   }
   return { display, items: items.slice(0, 5) };
 }

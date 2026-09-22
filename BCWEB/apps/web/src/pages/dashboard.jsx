@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import {
-  Boxes, Server, Rocket, Download, ArrowRight, Search, Upload, Bell, CheckCircle2, XCircle, Clock, Package, ShieldCheck, Inbox, TrendingUp, Lock, LayoutDashboard, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, Receipt, Copy, Globe, BadgeCheck, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, AlertTriangle, Ticket, Gift, Info, Save, Users, Sliders, BarChart3, HardDriveDownload, FileJson, Sparkles, Mic, ShoppingBag, Backpack, Coins, HardDrive, Zap, Users as UsersIcon } from 'lucide-react';
+  Boxes, Server, Download, ArrowRight, Search, Upload, Bell, CheckCircle2, XCircle, Clock, Package, ShieldCheck, Inbox, TrendingUp, Lock, LayoutDashboard, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, Receipt, Copy, Globe, BadgeCheck, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, AlertTriangle, Ticket, Gift, Info, Save, Users, BarChart3, HardDriveDownload, FileJson, Sparkles, Mic, ShoppingBag, Backpack, Coins, HardDrive, Zap, Users as UsersIcon, BellRing, Bot, Cloud, LayoutGrid, UserCog } from 'lucide-react';
 import { Button, Card, Badge, Input, Textarea, Select, Field, EmptyState, Explain, Spinner, Modal, useDialog, useToast, copyText, SkeletonCard } from '../ui/ui.jsx';
 import { api, uploadPayload } from '../lib/api.js';
 import { onNotifsChanged, applyNotifChange, markNotifRead, markAllNotifsRead, deleteNotif, deleteAllNotifs } from '../lib/notifs.js';
@@ -422,8 +422,8 @@ function NotificationsPanel() {
           {list.length > 0 && <button className="text-xs flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[var(--line-strong)] text-error hover:border-error transition shadow-sm" style={{ background: 'var(--bg-solid)' }} onClick={clearAll}><Trash2 size={13} /> {t('dsh.clearall', "Clear all")}</button>}
           {/* The way out to the centre, which is the only place the per-category switches
               live. This card can mark and delete; it cannot say "stop sending me this". */}
-          <Link to="/notifications" className="text-xs flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[var(--primary)] text-white hover:opacity-90 transition shadow-sm" style={{ background: 'var(--primary)' }}>
-            <Sliders size={13} /> {t('dash.notif.centre', 'Notification centre')}
+          <Link to="/notifications" className="text-xs flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[var(--primary)] text-[var(--on-primary)] hover:opacity-90 transition shadow-sm" style={{ background: 'var(--primary)' }}>
+            <BellRing size={13} /> {t('dash.notif.centre', 'Notification centre')}
           </Link>
         </div>
       </div>
@@ -445,7 +445,7 @@ function NotificationsPanel() {
           </Card>); })}
       </div> : <EmptyState icon={Bell} title={t('dash.notif.caughtUp', 'All caught up')}
         sub={t('dash.notif.caughtUpSub2', 'Anything that needs you, a repo going online or a report answered, lands here first.')}
-        action={{ label: t('dash.notif.centre', 'Notification centre'), to: '/notifications', icon: Sliders }} />)}
+        action={{ label: t('dash.notif.centre', 'Notification centre'), to: '/notifications', icon: BellRing }} />)}
     </div>
   );
 }
@@ -929,9 +929,9 @@ export function Dashboard() {
   // Quick actions — no "Write a post" here (that lives in the Blog for staff).
   const actions = [
     { icon: Upload, label: t('sub.title', 'Submit content'), to: '/submit' },
-    { icon: Rocket, label: t('dash.hostrepo', 'Host a repo'), to: '/hosting#plans' },
-    { icon: Package, label: t('dash.browse', 'Browse catalog'), to: '/catalog?project=bmm' },
-    { icon: LayoutDashboard, label: t('dash.editprofile', 'Edit profile'), to: '/profile' },
+    { icon: Cloud, label: t('dash.hostrepo', 'Host a repo'), to: '/hosting#plans' },
+    { icon: LayoutGrid, label: t('dash.browse', 'Browse catalog'), to: '/catalog?project=bmm' },
+    { icon: UserCog, label: t('dash.editprofile', 'Edit profile'), to: '/profile' },
   ];
   const tabs = [
     { id: 'overview', label: t('dash.overview', 'Overview'), icon: LayoutDashboard },
@@ -943,7 +943,7 @@ export function Dashboard() {
     // Always shown, not only when the user already has servers: the tab is also how someone
     // with zero servers reaches the "Invite the bot" screen in the first place. The badge is
     // the guild count when there is one.
-    { id: 'discord', label: t('dash.discord', 'Discord servers'), icon: MessageSquare, badge: discordGuilds || undefined, badgeKind: 'count', badgeTitle: t('dash.badge.discord', '{n} server(s) you manage').replace('{n}', discordGuilds) },
+    { id: 'discord', label: t('dash.discord', 'Discord servers'), icon: Bot, badge: discordGuilds || undefined, badgeKind: 'count', badgeTitle: t('dash.badge.discord', '{n} server(s) you manage').replace('{n}', discordGuilds) },
     ...(ecoMe?.enabled ? [{ id: 'economy', label: t('dash.economy', 'Shop & inventory'), icon: ShoppingBag, badge: ecoMe.pendingDeliveries || undefined, badgeTitle: t('dash.badge.eco', '{n} purchase(s) waiting to be handed out').replace('{n}', ecoMe.pendingDeliveries || 0) }] : []),
     { id: 'starred', label: t('dash.starred', 'Starred'), icon: Star },
     // The badge counts what is still WAITING, not what has been answered — a number that

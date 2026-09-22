@@ -95,7 +95,7 @@ export default function DevTryIt() {
 
       <div className="flex items-center gap-2 px-4 py-2.5 border-t border-[var(--line)] flex-wrap">
         <button type="button" onClick={run} disabled={state === 'running'}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold bg-[var(--primary)] text-white disabled:opacity-60">
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold bg-[var(--primary)] text-[var(--on-primary)] disabled:opacity-60">
           {state === 'running' ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
           {t('dtry.run', 'Run it')}
         </button>

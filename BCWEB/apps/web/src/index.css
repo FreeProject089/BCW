@@ -111,15 +111,20 @@
   --r-sm: 8px; --r-md: 12px; --r-lg: 16px; --r-xl: 20px;
   /* Semantic colours — used for MEANING, not decoration: blue=info, green=success,
      amber=warning, red=error. Each: a solid tone, a tint background, a border.
-     The TONE is used as text, so it carries the 4.5:1 burden (WCAG 1.4.3) on a white card.
-     The cheerful mid-scale green/amber sat at 3.30:1 and 3.19:1 — they now hold 4.5:1.
+     The TONE is used as text, so it carries the 4.5:1 burden (WCAG 1.4.3).
+     A previous pass sized them against a WHITE card — but most of this text is not on a
+     white card. `--bg` is #f4efe8, relative luminance 0.868, and the same four tones on IT
+     were info 4.52, success 3.97, warning 3.71, error 4.22: three of the four failing, and
+     the grain on the footer band took the measured green down to 3.80. Sized against --bg
+     with a margin instead, they now hold info 5.85, success 5.33, warning 5.03, error 5.48
+     there, and more on a white card. Each is still the same hue, a step darker.
      Dark overrides these below with brighter tones, which already passed. */
-  --info: #2563eb;    --info-bg: rgba(37,99,235,.12);   --info-border: rgba(37,99,235,.30);
-  --success: #008930; --success-bg: rgba(22,163,74,.12); --success-border: rgba(22,163,74,.30);
-  --warning: #bd5b00; --warning-bg: rgba(217,119,6,.13); --warning-border: rgba(217,119,6,.30);
-  --error: #dc2626;   --error-bg: rgba(220,38,38,.12);   --error-border: rgba(220,38,38,.30);
+  --info: #1d4ed8;    --info-bg: rgba(37,99,235,.12);   --info-border: rgba(37,99,235,.30);
+  --success: #00722a; --success-bg: rgba(22,163,74,.12); --success-border: rgba(22,163,74,.30);
+  --warning: #a34e00; --warning-bg: rgba(217,119,6,.13); --warning-border: rgba(217,119,6,.30);
+  --error: #c01717;   --error-bg: rgba(220,38,38,.12);   --error-border: rgba(220,38,38,.30);
   /* Ink for text sitting ON the solid --error fill, same idea as --on-primary. It has to
-     flip with the scheme: white on the light-mode #dc2626 is 4.85:1 (passes), but on the
+     flip with the scheme: white on the light-mode #c01717 is 6.26:1 (passes), but on the
      dark-mode #f87171 it is only 2.77:1 — there the near-black ink is 6.64:1. Measured,
      not eyeballed. */
   --on-error: #ffffff;
@@ -284,7 +289,31 @@ code, .break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
   .btn:active { transform: translateY(1px) scale(.985); }
   .btn-primary:active { transform: translateY(1px) scale(.985); }
   .btn:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(249,115,22,0.35); }
-  .btn:disabled, .btn[aria-disabled="true"] { opacity: .5; cursor: not-allowed; }
+  /* Disabled: a button that is OFF, not a ghost of a button.
+     It was `opacity: .5`, and fading a whole button fades its label into its own fill: the
+     near-black `--on-primary` at half opacity over the orange gradient measured 3.06:1 —
+     "Next" on /myo and "Subscribe" on /status, 18 boxes in the audit. And it is unfixable by
+     choosing a different alpha, because every partial opacity pulls the ink TOWARDS the fill:
+     at .65 it is 3.14:1, at .8 it is 4.0:1, and by then it no longer reads as disabled.
+     So the fill goes instead of the ink. `--muted` on `--surface-2` is 5.9:1 in both themes
+     (`--faint`, the weaker of the pair, is documented at 4.56:1 there), the button keeps its
+     shape and its size, and nothing else on the page has to move. */
+  /* `:not([aria-busy])` — a LOADING button is also `disabled`, and it still has to carry its
+     spinner, which is drawn in the fill's own ink (white on the orange gradient). Greying the
+     fill under a white spinner would hide it. A button that is working keeps its colours. */
+  .btn:disabled:not([aria-busy="true"]), .btn[aria-disabled="true"]:not([aria-busy="true"]) {
+    cursor: not-allowed;
+    opacity: 1;
+    background: var(--surface-2);
+    background-image: none;
+    color: var(--muted);
+    border-color: var(--line);
+    box-shadow: none;
+    filter: none;
+  }
+  .btn:disabled:not([aria-busy="true"]):hover,
+  .btn[aria-disabled="true"]:not([aria-busy="true"]):hover { border-color: var(--line); box-shadow: none; filter: none; }
+  .btn[aria-busy="true"] { opacity: .75; cursor: progress; }
   /* Loading: aria-busy="true" swaps the label for a spinner and blocks clicks. */
   .btn[aria-busy="true"] { color: transparent !important; pointer-events: none; position: relative; }
   .btn[aria-busy="true"]::after {
@@ -392,6 +421,14 @@ code, .break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
   .tint-success { background: color-mix(in srgb, var(--success) 12%, transparent); }
   .tint-warning { background: color-mix(in srgb, var(--warning) 12%, transparent); }
   .tint-error { background: color-mix(in srgb, var(--error) 12%, transparent); }
+  /* The soft washes for the other three tones, and info. `bg-warning/5` and friends compile to
+     nothing (Tailwind cannot put an alpha on these variables either): 50 of them sat in the
+     tree painting nothing. check-var-opacity now catches that spelling too. */
+  .tint-warning-soft { background: color-mix(in srgb, var(--warning) 6%, transparent); }
+  .tint-error-soft { background: color-mix(in srgb, var(--error) 6%, transparent); }
+  .tint-info { background: color-mix(in srgb, var(--info) 12%, transparent); }
+  .tint-info-soft { background: color-mix(in srgb, var(--info) 6%, transparent); }
+  .b-info { border-color: color-mix(in srgb, var(--info) 40%, transparent); }
   .b-primary { border-color: color-mix(in srgb, var(--primary) 40%, transparent); }
   .b-success { border-color: color-mix(in srgb, var(--success) 40%, transparent); }
   .b-warning { border-color: color-mix(in srgb, var(--warning) 40%, transparent); }
@@ -1567,21 +1604,28 @@ html[data-studio-open="1"], html[data-studio-open="1"] body { overflow: hidden; 
    the same specificity each of them uses, and carries only a light primary wash with a blur
    behind it. It stands forward by its pill, its lift and its scale, not by a border. The blur
    is what keeps its text readable over whatever the page draws behind it. */
-.card.plan-reco,
-[data-theme="dark"] .card.plan-reco,
-[data-surface-glass] .card.plan-reco,
-[data-theme="dark"][data-surface-glass] .card.plan-reco {
-  background: color-mix(in srgb, var(--primary) 9%, transparent) !important;
+/* …and then measured: see-through meant its price and its feature list sat on the 3D
+   backdrop, down to 1.13:1 where the orb is bright. It keeps the warm wash and loses the frame,
+   but the wash is now mixed into the card surface, so it is SOLID by default and frosted only
+   under Translucent surfaces, like every other card. */
+.card.plan-reco {
+  background: color-mix(in srgb, var(--primary) 9%, var(--surface-base)) !important;
   border-color: transparent !important;
   box-shadow: none;
+}
+[data-theme="dark"] .card.plan-reco {
+  background: color-mix(in srgb, var(--primary) 9%, #15120d) !important;
+}
+[data-surface-glass] .card.plan-reco {
+  background: color-mix(in srgb, color-mix(in srgb, var(--primary) 9%, var(--surface-base)) calc(var(--glass-alpha, 0.85) * 100%), transparent) !important;
   backdrop-filter: blur(14px) saturate(1.3) !important;
+}
+[data-theme="dark"][data-surface-glass] .card.plan-reco {
+  background: color-mix(in srgb, color-mix(in srgb, var(--primary) 9%, #15120d) calc(var(--glass-alpha, 0.85) * 100%), transparent) !important;
 }
 @media (hover: hover) {
   /* The shared hover warms the border; on a card with no frame that would draw one. */
-  .plan-hover.plan-reco:not(.plan-dead):hover {
-    border-color: transparent !important;
-    background: color-mix(in srgb, var(--primary) 13%, transparent) !important;
-  }
+  .plan-hover.plan-reco:not(.plan-dead):hover { border-color: transparent !important; }
 }
 
 /* ── Home: the build / have-it-built tabs (home.jsx BuildTabs) ──
@@ -1802,3 +1846,150 @@ html[data-studio-open="1"], html[data-studio-open="1"] body { overflow: hidden; 
   .msheet-tile, .msheet-ic, .msheet-ic::before, .msheet-chev { transition: none !important; }
 }
 /* ════ END: phone menu ════════════════════════════════════════════════════════════════════ */
+
+/* ════ BEGIN: text on the backdrop + page grain ════════════════════════════════════════════
+   Both measured with scripts/audit-text-contrast.mjs (see its header).
+
+   1. `.plate`: something behind text that has no card to sit on. Page titles, the home hero,
+      a section kicker: they sat directly on the page, and the page is the 3D orb, which is
+      bright in places and moves, so the reader got whatever frame the orb happened to be on
+      (measured down to 1.16:1 on the footer links, 1.37:1 in the dark hero).
+      It is NOT a slab. A flat rectangle of page colour behind a headline reads as a panel
+      nobody asked for, which is exactly what came back from the first pass. So: the page
+      colour under the words, fading out at the edge of the text's own box (no padding, no
+      margin, nothing that could move the layout), plus a halo of the same colour on the
+      glyphs themselves for what the fade gives up. The result reads as a clearing in the
+      backdrop rather than as another box.
+      Solid under the words by default; under Translucent surfaces it takes the same alpha as
+      every other surface, so the setting governs it too.
+
+   2. Grain: two pre-rendered noise tiles. SVG turbulence rasterised once and repeated as a
+      background-image — no filter on a scrolling layer, nothing animated, no request.
+      It is deliberately NOT on every surface. It carries on:
+        • the page backdrop (the fixed layer above the 3D scene and below the content), the
+          large empty area the texture is actually for,
+        • `.plate-band` — the footer band, which is a big flat expanse of page colour,
+        • `.tex-surface`, an opt-in for any other large empty decorative surface.
+      Not on cards, panels, inputs, dropdowns, tables, chips or buttons: those are text-dense
+      or small, the grain only muddies them, and on a dark card it was reported as plainly
+      ugly. Not on `.plate` either: a plate fades out, and a tile painted over the fade would
+      put loose specks outside the clearing.
+      The tiles, why they are two, and the measured intensities are all documented at the
+      `--grain-a` / `--tex-page` declarations below. Settings → Appearance switches the grain
+      off; forced colours and reduced transparency switch it off whatever the setting says. */
+
+.plate {
+  /* Background and text-shadow only — no padding, no margin, no size of its own: a plate is
+     put on an element that is already laid out (a heading, a hero paragraph, a footer), and
+     anything that changed its box would move the page around it. The first version padded
+     itself and took the padding back with a negative margin; on `mx-auto` blocks that broke
+     the centring, which is exactly the kind of thing a plate must never do. */
+  /* `farthest-corner`, solid to 85%. The geometry matters here and two passes got it wrong.
+     Write the box in units where the inscribed ellipse is radius 1: the corners are at
+     sqrt(2) = 1.41, and the ends of a line of text are at about 1.26. `closest-side` sets the
+     gradient radius to 1, so even a stop at 88% leaves everything past 0.88 — the whole outer
+     band, including the first and last glyphs of every line — on the orb; that is the 1.8:1
+     the audit kept reporting for plates. `farthest-corner` sets the radius to 1.41, so a stop
+     at 85% is solid out to 1.20 and the text is covered end to end, while the four corners
+     still fade out. Which is the point: a clearing in the backdrop, not a rectangle behind
+     the words. */
+  background: radial-gradient(farthest-corner, var(--bg) 0 85%, transparent 100%);
+  /* What the fade gives up at the very edge, the glyphs carry themselves. Three rings, so the
+     halo survives a bright frame of the orb — this is the text's own treatment, and it is the
+     part a pixel audit cannot see, because measuring the background under a glyph means
+     turning text-shadow off. */
+  text-shadow: 0 0 6px var(--bg), 0 0 12px var(--bg), 0 0 22px var(--bg);
+  border-radius: var(--plate-r, var(--r-xl));
+}
+[data-surface-glass] .plate {
+  background: radial-gradient(farthest-corner,
+    color-mix(in srgb, var(--bg) calc(var(--glass-alpha, 0.85) * 100%), transparent) 0 85%, transparent 100%);
+  -webkit-backdrop-filter: blur(10px) saturate(1.15);
+  backdrop-filter: blur(10px) saturate(1.15);
+}
+/* A full-width band (the footer): a real surface rather than a clearing — square, no halo,
+   and the one plate that carries the grain, because at that width it is a flat expanse of
+   page colour rather than a few words. The grain itself comes from `.tex-surface` below. */
+.plate.plate-band {
+  border-radius: 0; text-shadow: none;
+  background: var(--bg);
+}
+[data-surface-glass] .plate.plate-band {
+  background: color-mix(in srgb, var(--bg) calc(var(--glass-alpha, 0.85) * 100%), transparent);
+}
+@media (forced-colors: active) {
+  .plate { text-shadow: none; background: none; }
+}
+
+/* ── The grain ─────────────────────────────────────────────────────────────────────────────
+   TWO tiles, at sizes with no common factor, offset from each other.
+   The first pass was one 320px tile, and a single tile is a pattern: the eye finds the seam
+   and then sees the same constellation of specks every 320px across a 1280px page, four
+   times per row. Here the tile is 512px, a second one at 331px is laid over it with an
+   offset, and the pair only lines up again after lcm(512, 331) = 169 472px — i.e. never, on
+   any screen. Each tile is `stitchTiles='stitch'` so it is seamless in itself, and both are
+   high-frequency: the coarse octaves are what the eye reads as "a pattern", the fine ones
+   read as material.
+   One is black specks, the other white, so the result is a tooth in both directions rather
+   than a film of dirt in one.
+
+   INTENSITY is one token, `--tex-page`, and every carrier honours it — the page layer by its
+   own opacity, the others through a `::before` of their own. (In the first pass the footer
+   painted the tile straight into its background, at FULL strength while the page ran at 34%:
+   that is the band that was reported as looking bad, and it cost real contrast — the footer's
+   "All services are operational" measured 3.80:1 with it.)
+
+   WHO CARRIES IT, and why only these:
+     • the page backdrop (`body::before`) — the large empty surface the texture is for;
+     • `.plate-band`, the footer — the one place the page colour covers the backdrop edge to
+       edge, so without it the footer would be the single smooth rectangle on the page;
+     • `.tex-surface`, an opt-in for any other large empty decorative surface.
+   NOT on cards, panels, inputs, dropdowns, tables, chips, badges or buttons: those are
+   text-dense or small, where grain only muddies the glyph edges and costs contrast. */
+:root {
+  --grain-a: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='512' height='512'%3E%3Cfilter id='a' x='0' y='0'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' seed='17' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2.4 0 0 0 -1.25'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23a)'/%3E%3C/svg%3E");
+  --grain-b: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='331' height='331'%3E%3Cfilter id='b' x='0' y='0'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.67' numOctaves='2' seed='53' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 -2.4 0 0 0 1.1'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23b)'/%3E%3C/svg%3E");
+  --tex: var(--grain-a), var(--grain-b);
+  --tex-size: 512px 512px, 331px 331px;
+  --tex-pos: 0 0, 83px 47px;
+  /* Light: a fine tooth on the warm off-white page (#f4efe8).
+     Measured by compositing the two tiles onto the page colour and reading the pixels back:
+     sRGB standard deviation 3.86/255 (1.5%), mean relative luminance 0.868 -> 0.851 (-2.0%),
+     darkest speck 1.28:1 against the flat page. The first pass ran at .30, which measured
+     10.9/255 and put single specks at 2.12:1 — that is the "dirt" reading, and it is what
+     took the footer's green text down to 3.80:1. */
+  --tex-page: .10;
+}
+/* Dark: less than half again, in sRGB terms, and a twentieth in luminance terms. On a
+   near-black page every speck is a highlight rather than a shadow, so the same alpha that
+   reads as paper grain reads as noise here. Measured the same way: sRGB sd 1.71/255 (0.67%),
+   mean relative luminance 0.00275 -> 0.00292 (+6%), worst speck 1.006:1 against the page. */
+[data-theme="dark"] { --tex-page: .05; }
+:root[data-texture="off"] { --tex: none, none; }
+@media (forced-colors: active), (prefers-reduced-transparency: reduce) {
+  :root, :root[data-texture] { --tex: none, none !important; }
+}
+
+/* The page: a fixed layer above the 3D scene (-z-10) and below every element. Fixed and
+   unfiltered, so scrolling moves the content over it and repaints nothing. */
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background-image: var(--tex);
+  background-size: var(--tex-size);
+  background-position: var(--tex-pos);
+  opacity: var(--tex-page);
+}
+/* The opt-in, for a large empty decorative surface that wants the same material — and what
+   the footer band uses. A layer of its own rather than a background on the surface: that is
+   what lets `--tex-page` govern it, and `z-index: -1` inside the element's own stacking
+   context keeps it above the surface colour and below every word on it. */
+.tex-surface, .plate.plate-band { position: relative; isolation: isolate; }
+.tex-surface::before, .plate.plate-band::before {
+  content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  border-radius: inherit;
+  background-image: var(--tex);
+  background-size: var(--tex-size);
+  background-position: var(--tex-pos);
+  opacity: var(--tex-page);
+}
+/* ════ END: text on the backdrop + page grain ══════════════════════════════════════════════ */

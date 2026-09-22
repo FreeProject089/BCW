@@ -68,7 +68,7 @@ export default function DevEditor() {
   return (
     <div className="max-w-6xl mx-auto py-8 sm:py-12 space-y-6">
       <header className="max-w-2xl">
-        <span className="inline-grid place-items-center w-12 h-12 rounded-2xl bg-gradient-to-br from-brand to-brand-2 text-white shadow-lg shadow-orange-500/25 mb-4"><PenLine size={22} /></span>
+        <span className="inline-grid place-items-center w-12 h-12 rounded-2xl bg-gradient-to-br from-brand to-brand-2 text-[var(--on-primary)] shadow-lg shadow-orange-500/25 mb-4"><PenLine size={22} /></span>
         <h1 className="text-3xl sm:text-4xl font-extrabold leading-tight">{t('dve.title', 'The B.MD editor')}</h1>
         <p className="mt-3 text-[15px] leading-relaxed text-[var(--muted)]">
           {t('dve.lede', 'The editor that ships as @bettercommunity/bmd-editor: a block menu that knows every directive, a live preview through the real renderer, a link checker, an outline, the syntax tree, and an HTML export. Your draft stays in this browser.')}

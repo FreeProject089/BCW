@@ -131,7 +131,7 @@ export default function DevBmd() {
   return (
     <div className="max-w-5xl mx-auto py-8 sm:py-12 space-y-10">
       <header className="max-w-2xl">
-        <span className="inline-grid place-items-center w-12 h-12 rounded-2xl bg-gradient-to-br from-brand to-brand-2 text-white shadow-lg shadow-orange-500/25 mb-4"><Package size={22} /></span>
+        <span className="inline-grid place-items-center w-12 h-12 rounded-2xl bg-gradient-to-br from-brand to-brand-2 text-[var(--on-primary)] shadow-lg shadow-orange-500/25 mb-4"><Package size={22} /></span>
         <h1 className="text-3xl sm:text-4xl font-extrabold leading-tight">{t('dvb.title', 'Install B.MD')}</h1>
         <p className="mt-3 text-[15px] leading-relaxed text-[var(--muted)]">
           {t('dvb.lede', 'One component, one stylesheet, one configuration call. What changes between frameworks is where the call goes and whether the document renders on the server — pick yours below and copy.')}
@@ -158,7 +158,7 @@ export default function DevBmd() {
         <div className="flex flex-wrap gap-1.5">
           {FRAMEWORKS.map((f) => (
             <button key={f.id} type="button" onClick={() => setFw(f.id)} aria-pressed={fw === f.id}
-              className={`px-3 py-1.5 rounded-lg text-sm border ${fw === f.id ? 'bg-[var(--primary)] text-white border-transparent' : 'border-[var(--line)] hover:bg-[var(--surface-2)]'}`}>{f.label}</button>
+              className={`px-3 py-1.5 rounded-lg text-sm border ${fw === f.id ? 'bg-[var(--primary)] text-[var(--on-primary)] border-transparent' : 'border-[var(--line)] hover:bg-[var(--surface-2)]'}`}>{f.label}</button>
           ))}
         </div>
         <Snippet code={cur.code} lang="js" />

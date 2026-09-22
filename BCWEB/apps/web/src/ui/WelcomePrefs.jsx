@@ -12,7 +12,7 @@
 // Deliberately not blocking anything: there is a "skip" that keeps every default. A first
 // visit interrupted by a settings form is a first visit somebody leaves.
 import { useState, useEffect } from 'react';
-import { Cookie, Orbit, Sparkles, Palette, Globe, Layers, Undo2, Rocket, Check } from 'lucide-react';
+import { Cookie, Orbit, Sparkles, Palette, Globe, Layers, Undo2, Check } from 'lucide-react';
 import { Button, Card } from './ui.jsx';
 import { useI18n } from '../i18n.jsx';
 import { useTheme } from './theme.jsx';
@@ -113,7 +113,7 @@ export default function WelcomePrefs() {
             role="dialog" aria-modal="true" aria-label={t('wp.title', 'Make it yours')}>
             <Card className="w-full max-w-lg p-5 max-h-[90vh] overflow-y-auto" style={{ background: 'var(--bg-solid)' }}>
                 <div className="flex items-center gap-2 mb-1">
-                    <Rocket size={18} className="text-[var(--accent-ink)]" />
+                    <Palette size={18} className="text-[var(--accent-ink)]" />
                     <h2 className="font-semibold">{t('wp.title', 'Make it yours')}</h2>
                 </div>
                 <p className="text-xs text-[var(--muted)] mb-4">

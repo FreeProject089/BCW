@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { BadgeCheck, Lock, Cookie, Palette, Shield, CheckCircle2, XCircle, Eye, Globe, Mail, Orbit, Package, Server, ShieldCheck, Sliders, Sparkles, Users, Undo2, LogOut, AlertTriangle } from 'lucide-react';
+import { BadgeCheck, Lock, Cookie, Palette, Shield, CheckCircle2, XCircle, Eye, Globe, Mail, Orbit, Package, Server, ShieldCheck, Users, Activity, Box, Clapperboard, Moon, Sun, Play, PartyPopper, SprayCan, MousePointerClick, Settings as SettingsIcon, Undo2, LogOut, AlertTriangle } from 'lucide-react';
 import { Button, Card, Explain, PageHeader, Select, Spinner, useToast, useDialog } from '../ui/ui.jsx';
 import { fxPref, setFxPref, prefersReducedMotion } from '../lib/fx-pref.js';
 import { useI18n } from '../i18n.jsx';
 import { useTheme } from '../ui/theme.jsx';
 import { useAuth } from './auth.jsx';
 import { api } from '../lib/api.js';
-import { getGlassPrefs, setGlassPrefs, getOrbTransitionPref, setOrbTransitionPref, getUndoDisabled, setUndoDisabled, getLogoutConfirm, setLogoutConfirm, getForceConfirm, setForceConfirm, getHero3dDisabled, setHero3dDisabled } from '../lib/prefs.js';
+import { getGlassPrefs, setGlassPrefs, getOrbTransitionPref, setOrbTransitionPref, getUndoDisabled, setUndoDisabled, getLogoutConfirm, setLogoutConfirm, getForceConfirm, setForceConfirm, getHero3dDisabled, setHero3dDisabled, getTexturePref, setTexturePref } from '../lib/prefs.js';
 import { getConsent, setConsent } from '../lib/consent.js';
 import { SKIP_KEY } from '../ui/IntroContext.jsx';
 
@@ -53,7 +53,7 @@ function TelemetryRequests({ Row }) {
     } finally { setBusy(''); }
   };
   return (
-    <Row icon={Package} title={t('set.tele', 'BMM telemetry, my data')} stack
+    <Row icon={Activity} title={t('set.tele', 'BMM telemetry, my data')} stack
       more={t('set.tele.d', 'Opt-in usage telemetry sent by Better Mods Manager, keyed by the creator id of each install you linked. Get a copy of everything held under it, or have it erased.')}>
       {/* One line per linked install, each one a name and two buttons. It is the widest
           control on the page, which is why it gets its own line: beside the title it left
@@ -83,6 +83,7 @@ export function Settings() {
   const [skipIntro, setSkipIntro] = useState(() => { try { return localStorage.getItem(SKIP_KEY) === '1'; } catch { return false; } });
   const [consent, setConsentState] = useState(() => getConsent() || 'essential');
   const [glass, setGlass] = useState(() => getGlassPrefs());
+  const [texture, setTextureState] = useState(() => getTexturePref());
   const [orbTransition, setOrbTransition] = useState(() => getOrbTransitionPref());
   const [orbOff, setOrbOff] = useState(() => getHero3dDisabled());
   const [fx, setFxState] = useState(() => fxPref());
@@ -151,13 +152,13 @@ export function Settings() {
 
   return (
     <div className="max-w-4xl mx-auto">
-      <PageHeader icon={Sliders} title={t('set.title', 'Settings')} subtitle={t('set.sub', 'Your device preferences, saved on this browser only.')} />
+      <PageHeader icon={SettingsIcon} title={t('set.title', 'Settings')} subtitle={t('set.sub', 'Your device preferences, saved on this browser only.')} />
 
       {/* Two columns on desktop so the page uses the width instead of a long narrow strip;
           stacks on mobile. items-start keeps each card its own height (no stretched gaps). */}
       <div className="grid gap-4 lg:grid-cols-2 items-start">
         <Group icon={Palette} title={t('set.appearance', 'Appearance')}>
-          <Row icon={theme === 'dark' ? Sparkles : Palette} title={t('set.theme', 'Theme')} desc={t('set.theme.d', 'Light or dark, applies instantly.')}>
+          <Row icon={theme === 'dark' ? Moon : Sun} title={t('set.theme', 'Theme')} desc={t('set.theme.d', 'Light or dark, applies instantly.')}>
             <Select value={theme} onChange={(e) => { if (e.target.value !== theme) toggleTheme(); }} className="!w-auto"><option value="light">{t('set.light', 'Light')}</option><option value="dark">{t('set.dark', 'Dark')}</option></Select>
           </Row>
           <Row icon={Globe} title={t('set.lang', 'Language')} desc={t('set.lang.d', 'Interface language.')}>
@@ -173,13 +174,16 @@ export function Settings() {
               <span className="text-xs font-medium tabular-nums w-10 text-end">{glass.pct}%</span>
             </div>
           )}
+          <Row icon={SprayCan} title={t('set.texture', 'Page grain')} desc={t('set.texture.d2', 'A fine grain on the page behind the content, so the backdrop is not perfectly smooth.')}>
+            <Switch on={texture !== 'off'} onChange={(v) => { const next = v ? 'on' : 'off'; setTextureState(next); setTexturePref(next); }} />
+          </Row>
         </Group>
 
-        <Group icon={Orbit} title={t('set.motion', 'Motion & effects')}>
-          <Row icon={Sparkles} title={t('set.intro', 'Intro animation')} desc={t('set.intro.d', 'Play the orb intro on each page load.')}>
+        <Group icon={Clapperboard} title={t('set.motion', 'Motion & effects')}>
+          <Row icon={Play} title={t('set.intro', 'Intro animation')} desc={t('set.intro.d', 'Play the orb intro on each page load.')}>
             <Switch on={!skipIntro} onChange={(v) => setIntro(!v)} />
           </Row>
-          <Row icon={Orbit} title={t('set.orb3d', '3D scene')} more={t('set.orb3d.d', 'The WebGL shape behind the pages. Turning it off skips loading it entirely, lighter on an older machine, and on battery.')}>
+          <Row icon={Box} title={t('set.orb3d', '3D scene')} more={t('set.orb3d.d', 'The WebGL shape behind the pages. Turning it off skips loading it entirely, lighter on an older machine, and on battery.')}>
             <Switch on={!orbOff} onChange={(v) => setOrb(!v)} />
           </Row>
           <Row icon={Orbit} title={t('set.orbtr', 'Orb page transitions')} more={t('set.orbtr.d', 'On each navigation, the hero orb shatters and dives into a random shard, then rebuilds. Off by default.')}>
@@ -191,7 +195,7 @@ export function Settings() {
           {/* The reduced-motion case stays ON the page rather than folding: it is the reason
               the control looks switched off, and an answer you have to open is an answer
               nobody reads. The ordinary description folds like its neighbours. */}
-          <Row icon={Sparkles} title={t('set.fx', 'Event fireworks')}
+          <Row icon={PartyPopper} title={t('set.fx', 'Event fireworks')}
             desc={fx === 'auto' && prefersReducedMotion()
               ? t('set.fx.reduced', 'Your system asks for reduced motion, so Automatic keeps these off. Choose On if you want them anyway.')
               : null}
@@ -206,7 +210,7 @@ export function Settings() {
           </Row>
         </Group>
 
-        <Group icon={Undo2} title={t('set.behaviour', 'Actions')}>
+        <Group icon={MousePointerClick} title={t('set.behaviour', 'Actions')}>
           <Row icon={Undo2} title={t('set.undo', 'Undo window')} more={t('set.undo.d', 'Saving, publishing and deleting wait a few seconds behind an “Undo” toast, so a mistake costs nothing. Turn this off to apply every action immediately.')}>
             <Switch on={!undoOff} onChange={(v) => setUndo(!v)} />
           </Row>
@@ -219,7 +223,7 @@ export function Settings() {
           </Row>
         </Group>
 
-        <Group icon={Cookie} title={t('set.privacy', 'Cookies & privacy')}>
+        <Group icon={Lock} title={t('set.privacy', 'Cookies & privacy')}>
           <Row icon={Cookie} title={t('set.cookies', 'Analytics cookies')} desc={t('set.cookies.d', 'Essential keeps you signed in; All also enables privacy-friendly, first-party page analytics.')}>
             <Select value={consent} onChange={(e) => setCookie(e.target.value)} className="!w-auto"><option value="essential">{t('set.essential', 'Essential only')}</option><option value="all">{t('set.all', 'Accept all')}</option></Select>
           </Row>
@@ -312,7 +316,7 @@ export function Authorize() {
     <div className="max-w-md mx-auto py-12">
       <Card className="p-7">
         <div className="flex items-center gap-3.5 mb-6">
-          <span className="grid place-items-center w-12 h-12 rounded-2xl bg-gradient-to-br from-brand to-brand-2 text-white text-xl font-bold shrink-0 shadow-lg shadow-orange-500/25">{(info.clientName || '?').charAt(0).toUpperCase()}</span>
+          <span className="grid place-items-center w-12 h-12 rounded-2xl bg-gradient-to-br from-brand to-brand-2 text-[var(--on-primary)] text-xl font-bold shrink-0 shadow-lg shadow-orange-500/25">{(info.clientName || '?').charAt(0).toUpperCase()}</span>
           <div className="min-w-0">
             <div className="font-bold text-[17px] leading-tight truncate flex items-center gap-1.5">
               {info.clientName}
@@ -326,7 +330,7 @@ export function Authorize() {
             screen says where this one came from rather than letting the name speak for
             itself — that is the single question a consent screen exists to answer. */}
         {!info.firstParty && (
-          <div className={`rounded-lg border p-3 mb-5 text-[12px] ${info.verified ? 'border-[var(--line)] panel' : 'border-warning/50 bg-warning/10'}`}>
+          <div className={`rounded-lg border p-3 mb-5 text-[12px] ${info.verified ? 'border-[var(--line)] panel' : 'b-warning tint-warning'}`}>
             {info.verified
               ? t('oauth.thirdparty.ok', 'A third-party app, reviewed by us. {who} registered it.').replace('{who}', info.ownerName || t('oauth.someone', 'A member'))
               : t('oauth.thirdparty.new', 'A third-party app registered by {who}, and NOT reviewed by us. Anyone can register an app under any name — only continue if you know what this is.').replace('{who}', info.ownerName || t('oauth.someone', 'A member'))}
