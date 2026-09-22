@@ -44,7 +44,7 @@ If you have just arrived and want the shortest useful path:
 Every deeplink shows a notice when it lands in BMM, and the ones that could surprise you — connecting a repo, subscribing to a catalog — ask first. There is also a single switch in BMM that refuses all of them.
 :::
 
-## The five things this site does
+## The four things this site does
 
 :::cards
 :::card{title="Catalogs" href=/catalog icon=boxes}
@@ -100,7 +100,7 @@ Nothing forces you to host with us. Point BMM at your own URL and it works the s
 
 **[The authenticator](/2fa).** A TOTP app that runs in this page — the same six-digit codes as any other authenticator, for any site, not just this one. It never sends anything: the seeds stay in your browser, and you can lock them behind a password. Useful even if you never publish anything here.
 
-**[Member profiles](/users).** Every account can have a public page showing what they have published. Yours is private until you decide otherwise.
+**[Member profiles](/users).** Every account has a public page showing what they have published. Yours is public by default; you can hide it from your profile, or when you first sign up.
 
 ## Light, dark, and language
 
@@ -142,7 +142,7 @@ Si tu viens d'arriver et que tu veux le chemin le plus court :
 Chaque deeplink affiche un avis quand il arrive dans BMM, et ceux qui pourraient te surprendre — connecter un dépôt, s'abonner à un catalogue — demandent d'abord. Un interrupteur unique, dans BMM, les refuse tous.
 :::
 
-## Les cinq choses que fait ce site
+## Les quatre choses que fait ce site
 
 :::cards
 :::card{title="Catalogues" href=/catalog icon=boxes}
@@ -198,7 +198,7 @@ Rien ne t'oblige à héberger chez nous. Pointe BMM sur ta propre URL et ça mar
 
 **[L'authentificateur](/2fa).** Une application TOTP qui tourne dans cette page — les mêmes codes à six chiffres que n'importe quel authentificateur, pour n'importe quel site, pas seulement celui-ci. Il n'envoie jamais rien : les secrets restent dans ton navigateur, et tu peux les verrouiller derrière un mot de passe. Utile même si tu ne publies jamais rien ici.
 
-**[Les profils de membres](/users).** Chaque compte peut avoir une page publique montrant ce qu'il a publié. Le tien reste privé tant que tu n'en décides pas autrement.
+**[Les profils de membres](/users).** Chaque compte a une page publique montrant ce qu'il a publié. La tienne est publique par défaut ; tu peux la masquer depuis ton profil, ou dès ton inscription.
 
 ## Clair, sombre, et langue
 
@@ -323,6 +323,10 @@ C'est la règle d'accès de la source, pas une règle du site. Une source publiq
 
 Either an email and a password, or **Sign in with GitHub, Discord or Google**. The OAuth route creates the account for you and needs no password at all.
 
+With an email and a password, **confirm your address** from the link we send: until you do, the account can read everything but cannot publish, host, post or create API keys, and an address never confirmed is released after 14 days. A provider sign-up is confirmed already.
+
+A new account then gets a short welcome tour (profile, linked accounts, what you came for, privacy, 2FA). Every step can be skipped, you can finish it later from the dashboard, and it is only shown once.
+
 If you sign up with a provider, its profile picture becomes your avatar. You can change or remove it at any time from your profile — and once you have, linking another provider will not overwrite your choice.
 
 ## Two-factor authentication
@@ -333,7 +337,7 @@ Turn it on from your profile. You will be asked for a code from an authenticator
 The site has its own at **[/2fa](/2fa)** — it runs entirely in your browser, stores nothing on the server, and can scan a QR code with your camera. Useful if you do not already have an authenticator app.
 :::
 
-Some staff actions require 2FA regardless of your preference.
+The admin area always requires 2FA, and so does creating a Server Repo (staff excepted).
 
 ## Your profile
 
@@ -363,6 +367,10 @@ The bell in the top bar. Anything that concerns you lands there: a submission ap
 
 Soit un e-mail et un mot de passe, soit **se connecter avec GitHub, Discord ou Google**. La voie OAuth crée le compte pour toi et ne demande aucun mot de passe.
 
+Avec un e-mail et un mot de passe, **confirme ton adresse** grâce au lien envoyé : tant que ce n'est pas fait, le compte peut tout lire mais ne peut ni publier, ni héberger, ni poster, ni créer de clé d'API, et une adresse jamais confirmée est libérée au bout de 14 jours. Une inscription par fournisseur est déjà confirmée.
+
+Un nouveau compte a ensuite droit à une courte visite d'accueil (profil, comptes liés, ce qui t'amène, confidentialité, 2FA). Chaque étape peut être passée, tu peux la finir plus tard depuis le tableau de bord, et elle n'est montrée qu'une fois.
+
 Si tu t'inscris avec un fournisseur, sa photo de profil devient ton avatar. Tu peux la changer ou la retirer quand tu veux depuis ton profil — et une fois que tu l'as fait, lier un autre fournisseur n'écrasera pas ton choix.
 
 ## L'authentification à deux facteurs
@@ -373,7 +381,7 @@ Active-la depuis ton profil. Un code d'application d'authentification te sera de
 Le site a le sien à **[/2fa](/2fa)** — il tourne entièrement dans ton navigateur, ne stocke rien sur le serveur, et peut scanner un QR code avec ta caméra. Pratique si tu n'as pas déjà une application dédiée.
 :::
 
-Certaines actions d'équipe exigent la 2FA quel que soit ton réglage.
+L'espace d'administration exige toujours la 2FA, tout comme la création d'un Server Repo (sauf pour l'équipe).
 
 ## Ton profil
 
@@ -408,7 +416,7 @@ La cloche dans la barre du haut. Tout ce qui te concerne y arrive : une soumissi
 
 **[Submit](/submit)** takes a plugin, theme, app or preset and puts it in front of a moderator. Published items are public; a pending one is not listed but is reachable through its own share link, so you can show it to someone before it is approved.
 
-You need a linked **creator id** to publish — it is what identifies the author beyond an email address.
+Submitting an item needs a confirmed e-mail. Hosting a catalog, a repo or a pool also needs a linked **creator id**: it is what identifies the author beyond an email address.
 
 ## Hosting your own catalog
 
@@ -448,7 +456,7 @@ If you were given one, redeem it from the hosting page. A code can be a discount
 
 **[Soumettre](/submit)** présente un plugin, un thème, une app ou un preset à un modérateur. Les éléments publiés sont publics ; un élément en attente n'est pas listé mais reste accessible par son propre lien de partage — tu peux donc le montrer à quelqu'un avant approbation.
 
-Il te faut un **creator id** lié pour publier : c'est ce qui identifie l'auteur au-delà d'une adresse e-mail.
+Proposer un élément demande un e-mail confirmé. Héberger un catalogue, un dépôt ou un pool demande aussi un **creator id** lié : c'est ce qui identifie l'auteur au-delà d'une adresse e-mail.
 
 ## Héberger ton propre catalogue
 
@@ -513,7 +521,7 @@ Say what you expected and what happened instead. "The Add to BMM button does not
 ## Account trouble
 
 - **Lost password** — the reset link on the sign-in page.
-- **Lost 2FA device** — contact the staff; a reset is a manual, verified action on purpose.
+- **Lost 2FA device**: sign in with one of your one-time recovery codes. Contact the staff only if you have none left; a reset is a manual, verified action on purpose.
 - **Suspended or banned account** — the sign-in page tells you which, and gives the reason recorded by the moderator.`,
     bodyFr: `::toc[Sur cette page]
 
@@ -543,7 +551,7 @@ Dis ce que tu attendais et ce qui s'est passé à la place. « Le bouton Ajouter
 ## Problèmes de compte
 
 - **Mot de passe perdu** — le lien de réinitialisation sur la page de connexion.
-- **Appareil 2FA perdu** — contacte l'équipe ; la réinitialisation est une action manuelle et vérifiée, volontairement.
+- **Appareil 2FA perdu** : connecte-toi avec l'un de tes codes de récupération à usage unique. Contacte l'équipe seulement s'il ne t'en reste aucun ; la réinitialisation est une action manuelle et vérifiée, volontairement.
 - **Compte suspendu ou banni** — la page de connexion indique lequel, avec le motif enregistré par le modérateur.`,
   },
 ];

@@ -96,7 +96,7 @@ client, et il n’y a aucun SDK maison à installer.
 
 ## Enregistrer ton application
 
-Profil → **Se connecter avec BetterCommunity** → *Enregistrer une application*. Tu obtiens
+[/dev/config](/dev/config) → **Se connecter avec BetterCommunity** → *Enregistrer une application*. Tu obtiens
 un \`client_id\` et un \`client_secret\` **montré une seule fois** — il n’est stocké que sous
 forme de hachage, donc un secret perdu se renouvelle, il ne se retrouve pas.
 
@@ -532,8 +532,9 @@ fichier a-t-il bien l'empreinte que la liste annonce. C'est cette deuxième moit
 ne signer que le manifeste dirait « ce plugin est intact » alors que chaque script à côté du
 manifeste aurait pu être échangé.
 
-N'importe qui peut en vérifier un sans l'installer, via **Inspecter un fichier BMM** — la
-vérification tourne dans le navigateur et le fichier n'est jamais envoyé.
+N'importe qui de connecté peut en vérifier un sans installer BMM, via **Inspecter un fichier
+BMM** sur [/dev/tools](/dev/tools#inspect). Une archive ZIP est lue dans le navigateur et seules
+les empreintes de ses entrées sont envoyées ; un document JSON est vérifié sur le serveur.
 
 :::warning[Non signé ne veut pas dire invalide]
 Un paquet sans \`bmm_signature.json\` se lit comme **non signé**, pas comme cassé. Tout ce qui a
@@ -694,12 +695,12 @@ Héberge un dépôt chez nous pour que les utilisateurs de BMM installent et met
 ## Comment ça marche
 
 - Nous faisons tourner le dépôt ; **toi**, tu gères son contenu et ses accès.
-- L'hébergement est **prépayé par période** — choisis la taille qu'il te faut. Supprimer un dépôt arrête les renouvellements à venir ; il n'y a aucun abonnement à résilier.
+- L'hébergement est **prépayé par période** : choisis la taille qu'il te faut. Dans le panier, tu choisis s'il se renouvelle automatiquement (activé par défaut) ; un terme qui se renouvelle est un vrai abonnement, résiliable à tout moment depuis la facturation, et le terme déjà payé va jusqu'à son terme.
 - Tu obtiens une URL gérée automatiquement (\`propriétaire/dépôt\`), ou tu pointes BMM vers ton propre dépôt auto-hébergé.
 
 ## Limites & tarifs
 
-Stockage, débit d'envoi et CPU sont fixés par dépôt. La première tranche de stockage est gratuite ; tu ne paies que ce qui dépasse.
+Stockage, débit d'envoi et CPU sont fixés par pool de stockage, et les dépôts d'un pool les partagent. La première tranche de stockage est gratuite ; tu ne paies que ce qui dépasse.
 
 :::warning[La suppression a un délai de grâce]
 Un dépôt supprimé est conservé **72 heures** avant l'effacement de ses fichiers — tu peux revenir en arrière depuis ton tableau de bord pendant ce délai.
@@ -737,96 +738,6 @@ Une requête sans preuve face à un dépôt verrouillé répond **401**, pas 403
   },
 
   // ── Rédaction ───────────────────────────────────────────────────────────────
-  'landing-pages': {
-    category: 'Rédaction',
-    title: 'Construire une page d\u2019accueil',
-    body: `::toc[Sur cette page]
-
-# Construire une page d'accueil
-
-\`/\` et \`/dev\` peuvent être arrangées bloc par bloc au lieu d'être choisies parmi trois mises
-en page intégrées. **Admin → Navigation & pied de page → Constructeur de pages.**
-
-Une page construite remplace entièrement la page intégrée. Tant que tu ne l'actives pas, rien
-ne change — et l'activation est refusée si la page ne contient aucun bloc : une mise en page à
-moitié faite ne peut pas devenir la page d'accueil par accident.
-
-## De quoi une page est faite
-
-:::columns
-:::column
-**Mise en page** — \`section\`, \`row\`, \`col\`. Une ligne est une flex-box qui passe à la ligne ;
-donne-lui un nombre de colonnes et elle devient une vraie grille.
-:::
-:::column
-**Contenu** — titres, textes, boutons, images, séparateurs, espaces et chiffres en direct.
-:::
-:::column
-**Sections dynamiques** — les blocs que les pages d'accueil dessinent déjà : la vitrine, les
-produits, les news, le sondage ouvert, les avis, les commandes et les tuiles développeur.
-:::
-:::
-
-:::tip[Un seul bloc fait l'essentiel du travail]
-Un bloc **texte** contient du markdown BetterCommunity ordinaire : encadrés, cartes, onglets,
-colonnes, boutons, code et mathématiques y sont donc disponibles sans que le constructeur
-sache ce qu'ils sont. Si tu cherches un bloc et ne le trouves pas, écris-le dans un bloc texte.
-:::
-
-## Des chiffres réels
-
-Écris \`{{members}}\` dans n'importe quel bloc titre ou texte et le compte réel s'affiche. Le
-panneau de droite liste chaque nom avec sa valeur actuelle à côté : tu vois ce que tu
-t'apprêtes à publier.
-
-\`members\` · \`items\` · \`downloads\` · \`repos\` · \`catalogs\` · \`posts\` · \`projects\` · \`apps\` ·
-\`plugins\` · \`themes\` · \`presets\`
-
-Un bloc **stat** est le même chiffre dessiné en tuile avec un libellé et une icône. Un nom
-absent de cette liste ne rend rien plutôt que \`{{typo}}\` — un visiteur ne voit jamais le
-gabarit qui a échoué.
-
-## Ordinateur et téléphone
-
-Deux mises en page, et celle du téléphone **hérite** par défaut : elle dessine l'arbre
-ordinateur, reflué. Ce n'est pas la même chose qu'être vide, et c'est pourquoi l'onglet
-téléphone le dit au lieu de recopier tes blocs en silence.
-
-:::warning[Ne lui donne sa propre mise en page que si tu le veux vraiment]
-Dès que tu appuies sur **Lui donner sa propre mise en page**, les deux cessent de se suivre.
-Une modification de la page ordinateur n'atteindra plus le téléphone, et rien ne te dira
-laquelle.
-
-La plupart des pages veulent l'héritage plus deux ou trois blocs masqués. Sélectionne un bloc
-et utilise **Affiché sur** — un bloc masqué sur une mise en page est grisé et hachuré dans
-l'éditeur plutôt que retiré : il reste sélectionnable.
-:::
-
-## L'orbe
-
-Chaque page décide si l'orbe de fond y est dessinée : **selon la préférence du visiteur**, ou
-**masquée sur cette page**. Il n'existe volontairement aucune option qui la rallume pour
-quelqu'un qui l'a coupée — il l'a fait pour une raison, et une page d'accueil n'en est pas une
-assez bonne pour passer outre.
-
-## Composants, export et import
-
-Sélectionne un bloc puis **Enregistrer la sélection** pour le garder en composant nommé. Il
-apparaît dans la palette et se dépose dans n'importe quelle page, avec de nouveaux
-identifiants à chaque fois : deux copies d'un en-tête sont deux en-têtes, pas un seul qui
-bouge deux fois.
-
-**Exporter la page** écrit la page courante en JSON ; **Importer une page** la relit. Les
-identifiants sont régénérés à l'entrée : importer une page exportée depuis ce même site ne
-peut pas entrer en collision avec ce qui s'y trouve déjà.
-
-:::note[Rien n'est en ligne avant d'enregistrer]
-Le canevas est le vrai moteur de rendu avec les vraies données : ce que tu regardes est ce que
-les visiteurs auront. Cela reste néanmoins dans ton navigateur jusqu'à **Enregistrer**.
-:::
-`,
-  },
-
   'documentation-blocks': {
     category: 'Rédaction',
     title: 'Blocs de documentation',
@@ -1783,7 +1694,7 @@ Ce n'est **pas** la même chose que [l'API des plugins](/docs/api-reference), qu
 
 ## Obtenir une clé
 
-Les clés se créent depuis votre **page de profil**, section *Clés API*. Chaque clé a un nom, un ensemble de portées, et une expiration facultative.
+Les clés se créent sur [/dev/config](/dev/config), section *Clés API*. Chaque clé a un nom, un ensemble de portées, et une expiration facultative.
 
 :::warning[La clé n'est affichée qu'une fois]
 Le serveur ne conserve qu'une empreinte de votre clé : il ne peut donc réellement pas vous la remontrer. Copiez-la à la création. Si vous la perdez, révoquez-la et créez-en une autre — c'est le seul chemin.
@@ -1811,9 +1722,23 @@ Une clé a exactement les droits que ses portées décrivent, et une clé sans p
 | \`account:write\` | Votre nom affiché et votre bio. |
 | \`repos:read\` | Vos dépôts, la liste de leurs fichiers, leur historique de changements. |
 | \`catalog:read\` | Les éléments publiés du catalogue et leur historique. |
-| \`users:read\` | Les profils publics — exactement ce que voit un visiteur non connecté. |
+| \`users:read\` | Les profils publics, exactement ce que voit un visiteur non connecté. |
+| \`notifications:read\` | Vos notifications (ce qui permet à BMM de les afficher). |
+| \`notifications:write\` | Marquer vos notifications comme lues. |
+| \`pools:read\` | Vos pools de stockage : taille, contenu et coût. |
+| \`catalogs:read\` | Les catalogues que vous possédez et leurs éléments, y compris non publiés. |
+| \`payments:read\` | Votre historique de paiements et vos factures (montants et dates, jamais de numéro de carte). |
+| \`polls:read\` | Les sondages ouverts pour vous et vos réponses. |
+| \`polls:write\` | Répondre aux sondages en votre nom. |
+| \`transfers:read\` | Les transferts de propriété proposés à vous ou par vous. |
+| \`favorites:read\` | Les dépôts et catalogues que vous avez mis en favoris. |
+| \`economy:read\` | Votre niveau Discord, XP, points et achats de la boutique. |
+| \`badges:read\` | Les badges de votre profil. |
+| \`charity:read\` | La cagnotte solidaire : association, totaux, vote du mois. |
 
-Rien de ce qui dépense de l'argent, modifie un contrôle d'accès ou supprime quoi que ce soit n'est accessible par clé. C'est délibéré : une clé vit dans un script, sur une machine que nous ne maîtrisons pas ; en perdre une doit vous coûter un accès en lecture, et rien de plus.
+\`GET /api/v1/scopes\` renvoie cette liste depuis le serveur : c'est toujours la liste actuelle.
+
+Rien de ce qui dépense de l'argent, modifie un contrôle d'accès ou supprime quoi que ce soit n'est accessible par clé ; les seules écritures sont marquer des notifications comme lues, votre nom et votre bio, et répondre à un sondage. C'est délibéré : une clé vit dans un script, sur une machine que nous ne maîtrisons pas ; en perdre une doit vous coûter peu.
 
 ## Points d'accès
 

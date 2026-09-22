@@ -91,6 +91,13 @@ function safePath(rel) {
 // tools (perf dashboard mutations, Docker, terminal, power) live in their own
 // route files and require [requireRole('ADMIN'), requireCanControlServer(),
 // requireElevated()] as their preHandler chain.
+// The body PUT /admin/telemetry/config validates. Module-level and exported so the config import (lib/config-transfer.mjs) checks a seed with this schema rather than a copy of it.
+export const TELEMETRY_CONFIG_BODY = z.object({
+  storageLimitMb: z.number().min(128).max(10 ** 7).optional(),
+  retentionDays: z.number().int().min(1).max(3650).optional(),
+  deleteDelayH: z.number().int().min(0).max(720).optional(),
+});
+
 export default async function serverControlRoutes(app) {
   app.post('/server/elevate', { preHandler: [requireRole('ADMIN'), requireCanControlServer()] }, async (req, reply) => {
     const b = z.object({ code: z.string().min(6).max(6) }).safeParse(req.body);
@@ -731,11 +738,7 @@ export default async function serverControlRoutes(app) {
   });
   app.put('/admin/telemetry/config', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
     if (!teleBase() || !teleKey()) return reply.code(503).send({ error: 'telemetry_not_configured' });
-    const b = z.object({
-      storageLimitMb: z.number().min(128).max(10 ** 7).optional(),
-      retentionDays: z.number().int().min(1).max(3650).optional(),
-      deleteDelayH: z.number().int().min(0).max(720).optional(),
-    }).safeParse(req.body || {});
+    const b = TELEMETRY_CONFIG_BODY.safeParse(req.body || {});
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     try {
       const r = await fetch(`${teleBase()}/api/admin/config`, {

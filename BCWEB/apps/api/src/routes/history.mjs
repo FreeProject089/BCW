@@ -34,6 +34,14 @@ const SOURCES = {
 
 const money = (c, cur) => `${((c || 0) / 100).toFixed(2)} ${String(cur || 'usd').toUpperCase()}`;
 
+// The body PUT /admin/history/retention validates. Module-level and exported so the config import (lib/config-transfer.mjs) checks a seed with this schema rather than a copy of it.
+export const HISTORY_RETENTION_BODY = z.object({
+  source: z.enum(['staff', 'auth', 'repo']),
+  // 0 = keep until something else removes it. Capped at ten years: a window nobody will
+  // live to see expire is a way of saying "for ever" without admitting it.
+  days: z.number().int().min(0).max(3650),
+});
+
 export default async function historyRoutes(app) {
   // ── Retention: what is TRUE, not what this tab wishes were true ───────────────
   //
@@ -69,12 +77,7 @@ export default async function historyRoutes(app) {
   // with the audit chain. A source with no owner (payments, project history) refuses rather
   // than pretending to save.
   app.put('/admin/history/retention', { preHandler: requireRole('SUPERADMIN') }, async (req, reply) => {
-    const b = z.object({
-      source: z.enum(['staff', 'auth', 'repo']),
-      // 0 = keep until something else removes it. Capped at ten years: a window nobody will
-      // live to see expire is a way of saying "for ever" without admitting it.
-      days: z.number().int().min(0).max(3650),
-    }).safeParse(req.body);
+    const b = HISTORY_RETENTION_BODY.safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
     const { source, days } = b.data;

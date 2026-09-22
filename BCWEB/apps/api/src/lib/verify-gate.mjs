@@ -82,6 +82,9 @@ export const UNVERIFIED_ALLOW = [
   ['POST', '/me/2fa/disable'],
   ['PUT', '/me/messaging'],
   ['POST', '/me/legal-accept'],
+  // The first-run flow's own progress (which step, which were skipped). It concerns nobody
+  // else, and its first step is the one that asks for the confirmation.
+  ['POST', '/me/onboarding'],
 
   // Signed-in devices: the screen that exists to evict an intruder must work before anything
   // else does.

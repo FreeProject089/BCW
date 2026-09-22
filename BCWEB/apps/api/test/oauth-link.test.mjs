@@ -72,6 +72,8 @@ after(async () => {
     await p.userBadge.deleteMany({ where: { userId: { in: uids } } }).catch(() => {});
     await p.userEconomy.deleteMany({ where: { userId: { in: uids } } }).catch(() => {});
     await p.loginAttempt?.deleteMany?.({ where: { userId: { in: uids } } }).catch(() => {});
+    // The first-run marker a new account gets (lib/onboarding.mjs) is a settings row, not a relation.
+    await p.adminSetting.deleteMany({ where: { key: { in: uids.map((id) => `onboarding:${id}`) } } });
     await p.user.deleteMany({ where: { id: { in: uids } } });
   }
   const left = await p.user.count({ where: { OR: [{ email: { endsWith: MAIL } }, { id: { in: ids } }] } });
@@ -181,11 +183,15 @@ describe('link a sign-in provider from the profile', { skip }, () => {
 
   test('a Link click that arrives signed out creates no account', async () => {
     const id = did();
-    const before = await p.user.count();
     who = { id, username: 'nobody', email: `n-${id}${MAIL}` };
+    // Counted by THIS provider identity's address, not across the whole table: the suite runs
+    // its files in parallel, and any other file creating a user between the two counts made
+    // a global count read as a ghost account.
+    const ghosts = () => p.user.count({ where: { email: { equals: who.email, mode: 'insensitive' } } });
+    const before = await ghosts();
     const { location, cookies } = await runFlow({ startQuery: '?intent=link' });
     assert.match(location, /link_error=signed_out/, location);
-    assert.equal(await p.user.count(), before, 'no ghost account');
+    assert.equal(await ghosts(), before, 'no ghost account');
     assert.ok(!cookies.some((c) => c.startsWith('bcw_session=')), 'no session issued');
     assert.equal(await p.oAuthAccount.count({ where: { provider: 'discord', providerAccountId: id } }), 0);
   });

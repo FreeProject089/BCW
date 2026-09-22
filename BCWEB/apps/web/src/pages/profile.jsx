@@ -72,9 +72,8 @@ function MessagingCard() {
       <Explain summary={t('prof.dm.lead', 'Turning this off freezes conversations, it never deletes them.')} className="text-[12px]">
         {t('prof.dm.body', 'People you are already talking to keep the conversation and can still read it; nobody can add to it while this is off, and turning it back on restores it exactly as it was. It does not stop you writing to other people, and it does not affect messages about a repo, a catalogue or a team you manage, which are about something you published rather than about you.')}
       </Explain>
-      {(st.site.maxOpen > 0 || st.site.autoArchiveDays > 0) && (
+      {st.site.autoArchiveDays > 0 && (
         <p className="text-[11px] text-[var(--faint)]">
-          {st.site.maxOpen > 0 && <>{t('prof.dm.cap', 'You have {n} of {max} conversations open.').replace('{n}', st.openCount).replace('{max}', st.site.maxOpen)} </>}
           {st.site.autoArchiveDays > 0 && t('prof.dm.arch', 'A conversation nobody has touched for {d} days is archived, and either side can reopen it.').replace('{d}', st.site.autoArchiveDays)}
         </p>
       )}

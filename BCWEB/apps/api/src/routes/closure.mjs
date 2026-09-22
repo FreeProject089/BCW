@@ -23,6 +23,7 @@
 //    state is written down when the closure is scheduled: a repo that was OFFLINE comes back
 //    OFFLINE, not ONLINE. A grace period that deleted first would not be a grace period.
 import { z } from 'zod';
+import { progressKey as onboardingKey } from '../lib/onboarding.mjs';
 import { issueSanction } from '../lib/sanctions.mjs';
 import crypto from 'node:crypto';
 import { db, requireRole, requireCap, logAudit, clientIp, clearSession, notify, ownedContent } from '../lib/lib.mjs';
@@ -527,6 +528,9 @@ export async function anonymiseAccount(p, user) {
     p.discordLink.deleteMany({ where: { userId: user.id } }).catch(() => {}),
     p.socialConnection.deleteMany({ where: { userId: user.id } }).catch(() => {}),
     p.oAuthAccount.deleteMany({ where: { userId: user.id } }).catch(() => {}),
+    // The first-run marker (lib/onboarding.mjs): a settings row keyed by the id, which no
+    // relation-driven erasure walks.
+    p.adminSetting.deleteMany({ where: { key: onboardingKey(user.id) } }).catch(() => {}),
   ]);
 }
 

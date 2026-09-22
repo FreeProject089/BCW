@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useMemo, lazy, Suspense } from 'react';
+import { useEffect, useLayoutEffect, useState, useRef, useMemo, useCallback, lazy, Suspense } from 'react';
 // The page builder pulls in the markdown renderer and the selection toolbar. An admin who
 // opened this screen to approve a submission must not download a page builder to do it.
 // The real landing page, for the home-page editor's preview. Lazy for the same reason the
@@ -28,20 +28,23 @@ import { defaultFooterConfig, DEFAULT_FOOTER_SOCIALS } from '../ui/footer-defaul
 // The bundled brand marks, from the component that RENDERS them — a copy here would say
 // "built-in" for icons the footer has no icon for, which is the one case the preview exists
 // to catch.
-import { SOCIAL_ICONS } from '../App.jsx';
+import { SOCIAL_ICONS, Nav, MobileTabBar, readMobileMenu } from '../App.jsx';
+import PreviewFrame from '../ui/preview-frame.jsx';
+import { UtilGlyph, UTIL_DEFAULT_SIZE, UTIL_SIZE_MIN, UTIL_SIZE_MAX } from '../ui/topbar-glyph.jsx';
 const SOCIAL_KEYS = Object.keys(SOCIAL_ICONS);
 import { TOKENS, TOKEN_GROUPS } from '../ui/theme-tokens.js';
 import { GRADIENTS, gradientCss } from '../ui/theme-gradients.js';
 import { BrandMarksCard, GradientsCard } from '../editor/site-theme-cards.jsx';
 import { themeCss, applySiteTheme, inkOn, contrastRatio } from '../ui/theme.jsx';
+import { registerAppIcons } from '@bettercommunity/bmd/config';
 import { I18nDraft } from '../i18n.jsx';
 import { CharityCard, CHARITY_WIDTHS, CHARITY_DESIGN_DEFAULTS, charityCanvasSizes, CHARITY_PART_KEYS, CHARITY_BLOCK_KINDS, CHARITY_LABEL_KEYS, CHARITY_CSS_SCOPE } from './charity.jsx';
 // The charity design editor shows what its stylesheet filter took out, the way the studio's
 // page panel does — a rule that vanished silently is a rule the author rewrites five times.
 import { scopeCss } from '../lib/css-scope.js';
 import { useAuth } from './auth.jsx';
-import { utilAllowed, effectiveCaps } from '../lib/roles.js';
-import { readLayout, navAlignClass } from '../lib/navLayout.js';
+import { effectiveCaps } from '../lib/roles.js';
+import { readLayout } from '../lib/navLayout.js';
 import { homeVariantList } from '../lib/home-variants-meta.js';
 import { SCENE_DEFAULTS, SCENE_BOUNDS, detailMaxFor, clampSetting } from '../hero/scene-config.js';
 import { featureNameFor } from '../lib/geo-names.js';
@@ -50,13 +53,16 @@ import { HOSTING_SETTINGS_GROUPS, HOSTING_GROUP_DESC } from '../lib/hosting-sett
 import { DELIVERY_KINDS, DELIVERY_BY_V, BILLING_MODES, mkdKey } from '../lib/marketplace-delivery.js';
 import BmmInspector from '../ui/bmm-inspector.jsx';
 import { useI18n, shippedText } from '../i18n.jsx';
-import { useTheme } from '../ui/theme.jsx';
+import { useTheme, ThemePreviewScope } from '../ui/theme.jsx';
 import { rawStatusLabel, DotDropdown } from './repos.jsx';
 import { analyseTrend, robustCeiling } from '../lib/trend.js';
 import { AdminRepos, AdminPools } from './repos-admin.jsx';
 import { AdminCatalogTraffic, LiveTraffic } from './traffic-live.jsx';
 import { AdminDemo, AdminFirstRun, DemoBanner } from './admin-demo.jsx';
 import { AdminMailLog } from './admin-maillog.jsx';
+import { AdminOnboarding } from './admin-onboarding.jsx';
+import { AdminEntityHosting } from './admin-entity-hosting.jsx';
+import { ConfigTransferCard } from './admin-config-transfer.jsx';
 import { BotGiveawaysCard as BotGiveawaysCardNew } from './discord-giveaways.jsx';
 import { BotEmojiSyncCard } from './discord-emojis.jsx';
 import { BotPresencePanel } from './discord-presence.jsx';
@@ -80,7 +86,6 @@ import { AdminPolls } from './admin-polls.jsx';
 import { RaceConfig } from './admin-race.jsx';
 import { GUIDE, guideEntryForTab } from './admin-guide.jsx';
 import { handoffKey, studioPath } from '../lib/studio-page.js';
-import { buildDownbar } from '../ui/mobilebar-items.js';
 // Two screens that outgrew this file. Both were lifted out whole rather than rewritten:
 // the feedback centre gained crash grouping, the messages screen gained an inbox.
 import { AdminFeedbackCentre } from './admin-feedback.jsx';
@@ -275,6 +280,7 @@ export function Admin() {
         { id: 'users', label: t('adm.tab.users2', 'All accounts'), icon: Users },
         // Same gate as its routes (manage_users): the log's one personal field is an address.
         { id: 'maillog', label: t('adm.tab.maillog', 'Sent e-mails'), icon: Send },
+        isAdmin && { id: 'onboarding', label: t('adm.tab.onboarding', 'Onboarding'), icon: Rocket },
         isAdmin && { id: 'access', label: t('adm.tab.access', 'Roles & permissions'), icon: Shield },
         // The two "who did what" screens, together: the audit chain and the whole-site
         // history read the same way and were two sections apart.
@@ -315,6 +321,7 @@ export function Admin() {
       sub: [
         { id: 'repos', label: t('adm.tab.repos2', 'Server repos'), icon: Server },
         { id: 'pools', label: t('adm.tab.pools', 'Storage pools'), icon: HardDrive },
+        can('manage_hosting') && { id: 'entityhosting', label: t('adm.tab.entityhosting', 'Storage per blog & inbox'), icon: HardDrive },
         { id: 'transfers', label: t('adm.tab.transfers', 'Ownership'), icon: ArrowRightLeft },
         can('manage_hosting') && { id: 'hosting', label: t('adm.tab.hosting', 'Free hosting'), icon: Rocket },
       ].filter(Boolean) },
@@ -487,6 +494,7 @@ export function Admin() {
         {s === 'legal' && <AdminLegal />}
         {s === 'users' && <AdminUsers />}
         {s === 'maillog' && <AdminMailLog />}
+        {s === 'onboarding' && <AdminOnboarding />}
         {s === 'planusers' && <AdminPlanUsers />}
         {s === 'access' && <AdminAccess isSuperAdmin={isSuperAdmin} />}
         {s === 'security' && <AdminSecurity />}
@@ -499,6 +507,7 @@ export function Admin() {
         {s === 'faq' && <AdminFaq />}
         {s === 'repos' && <AdminRepos />}
         {s === 'pools' && <AdminPools />}
+        {s === 'entityhosting' && <AdminEntityHosting />}
         {s === 'transfers' && <AdminTransfers />}
         {/* Plugin/theme verification used to live here; the moderation queue now owns that
             review step, so the standalone panels were a second, diverging place to do it. */}
@@ -5193,7 +5202,7 @@ function RoleManager({ roles }) {
           <Card key={r.id} className="p-3 flex items-center gap-3">
             <RoleBadge color={r.color}>{r.name}</RoleBadge>
             <div className="flex-1 min-w-0 text-xs text-[var(--faint)] truncate">
-              {r.scope && <Badge tone="amber" className="me-1.5"><Lock size={10} /> {(r.scope.rights || ['pages']).map((x) => x === 'blog' ? t('rm.scope.r.blog.s', 'blog') : x === 'market' ? t('rm.scope.r.market.s', 'shop') : t('rm.scope.r.pages.s', 'page')).join(' + ')} · {r.scope.allShowcase ? t('rm.scope.allsc', 'every other project') : [...(r.scope.projectKeys || []), ...(r.scope.showcases || []).map((x) => x.name)].join(', ') || t('rm.scope.some', 'some elements')}</Badge>}
+              {r.scope && <Badge tone="amber" className="me-1.5"><Lock size={10} /> {(r.scope.rights || ['pages']).map((x) => x === 'blog' ? t('rm.scope.r.blog.s', 'blog') : x === 'market' ? t('rm.scope.r.market.s', 'shop') : x === 'inbox' ? t('rm.scope.r.inbox.s', 'inbox') : t('rm.scope.r.pages.s', 'page')).join(' + ')} · {r.scope.allShowcase ? t('rm.scope.allsc', 'every other project') : [...(r.scope.projectKeys || []), ...(r.scope.showcases || []).map((x) => x.name)].join(', ') || t('rm.scope.some', 'some elements')}</Badge>}
               {(r.capabilities || []).length ? r.capabilities.map((id) => (ADMIN_CAPS.find((c) => c.id === id) ? capLabel(ADMIN_CAPS.find((c) => c.id === id)) : id)).join(' · ') : t('rm.nocaps', 'No capabilities yet')}
             </div>
             <span className="text-xs text-[var(--faint)] shrink-0">{t('rm.members', '{n} members').replace('{n}', r.memberCount || 0)}</span>
@@ -5238,7 +5247,7 @@ function RoleManager({ roles }) {
                   <div>
                     <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1">{t('rm.scope.rights', 'Rights on these elements')}</div>
                     <div className="flex flex-wrap gap-1.5">
-                      {[['pages', t('rm.scope.r.pages', 'Edit the page content'), t('rm.scope.r.pages.h', 'Like a per-project grant: overview, presentation, timeline, config, not publishing or visibility.')], ['blog', t('rm.scope.r.blog', 'Write in its blog'), t('rm.scope.r.blog.h', 'Post and edit articles in the blog of these projects, the same as a blog permission, granted by role.')], ['market', t('rm.scope.r.market', 'Run its marketplace'), t('rm.scope.r.market.h', 'Create, price and delete the products of these projects, upload their files and mint their keys. NOT the platform margin, and not where the money is paid — both stay with a super-admin.')]].map(([id, label, h]) => {
+                      {[['pages', t('rm.scope.r.pages', 'Edit the page content'), t('rm.scope.r.pages.h', 'Like a per-project grant: overview, presentation, timeline, config, not publishing or visibility.')], ['blog', t('rm.scope.r.blog', 'Write in its blog'), t('rm.scope.r.blog.h', 'Post and edit articles in the blog of these projects, the same as a blog permission, granted by role.')], ['market', t('rm.scope.r.market', 'Run its marketplace'), t('rm.scope.r.market.h', 'Create, price and delete the products of these projects, upload their files and mint their keys. NOT the platform margin, and not where the money is paid — both stay with a super-admin.')], ['inbox', t('rm.scope.r.inbox', 'Read its contact inbox'), t('rm.scope.r.inbox.h', 'Read and answer the messages visitors send to these projects. No edit right.')]].map(([id, label, h]) => {
                         const on = scopeRights.includes(id);
                         return <button key={id} type="button" title={h} onClick={() => setScopeRights((r) => on ? (r.length > 1 ? r.filter((x) => x !== id) : r) : [...r, id])} className={`px-2.5 py-1 rounded-lg border text-xs ${on ? 'border-[var(--primary)] tint-primary text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)]'}`}>{label}</button>;
                       })}
@@ -9757,6 +9766,8 @@ function AdminProjects() {
           )}
         </Card>
       )}
+      {/* The project's own mark, with its one-click way back to the default. */}
+      {!isShowcase && active !== 'developers' && <ProjectAppIconCard pkey={active} name={projMeta(active).name} />}
       {/* Progress tracker source: pull the project's progress.json from a URL. */}
       <Card className="p-4 mb-4">
         <div className="flex items-center gap-2 mb-2"><TrendingUp size={15} className="text-[var(--accent-ink)]" /><span className="font-medium text-sm">{t('ap.progsrc', 'Progress tracker source')}</span></div>
@@ -17479,8 +17490,182 @@ const GOAL_KINDS = [
 ];
 // Kinds that match a pageview attribute (referrer / geo / tech) rather than an interaction.
 const GOAL_DIM = { referrer: ['goal.t.ref', 'Referrer contains', 'google, reddit, t.co…'], country: ['goal.t.country', 'Country code (2 letters)', 'US, FR, DE…'], region: ['goal.t.region', 'Region contains', 'California, Île-de-France…'], city: ['goal.t.city', 'City contains', 'Paris, Berlin…'], device: ['goal.t.device', 'Device', 'desktop / mobile / tablet'], os: ['goal.t.os', 'OS contains', 'Windows, macOS, Android…'], browser: ['goal.t.browser', 'Browser contains', 'Chrome, Firefox, Safari…'] };
+// ── Goal conditions: pickers with real values, validation, and the goal in a sentence ──
+//
+// Every condition used to be a free-text box with a placeholder ("US, FR, DE…"). Nothing said
+// that a country goal matches the code EXACTLY while a region goal matches "contains", so
+// "France" in the country box was a goal that could never complete, and it said nothing. The
+// values now come from where the site already has them: countries from the browser's own
+// region names (with the flags the Geo panel uses), pages from the sitemap and the traffic
+// report, OS / browser / referrer / region / city from what the analytics recorded, and
+// button or field labels from the interactions feed.
+//
+// Matching rules mirror apps/api/src/lib/goal-stats.mjs: country and device are exact
+// (case-insensitive), everything else is "contains". The sentence below says which.
+
+// Codes Intl names that are not places a visitor comes from.
+// The second row are exceptionally reserved codes (Metropolitan France, Canary Islands…):
+// Intl names them, but no geolocation lookup ever answers with one.
+const NOT_COUNTRIES = new Set(['EU', 'EZ', 'UN', 'QO', 'XA', 'XB', 'ZZ', 'AA',
+  'FX', 'CP', 'DG', 'EA', 'IC', 'TA', 'AC', 'CQ', 'QM','QN', 'QP', 'QQ', 'QR', 'QS', 'QT', 'QU', 'QV', 'QW', 'QX', 'QY', 'QZ', 'XC', 'XD']);
+let _countries = {};
+/** Every ISO 3166 alpha-2 region the browser can name, in `lang`, sorted by name. */
+function allCountries(lang) {
+  if (_countries[lang]) return _countries[lang];
+  let dn = null;
+  try { dn = new Intl.DisplayNames([lang === 'fr' ? 'fr' : 'en'], { type: 'region' }); } catch { /* old browser */ }
+  const out = [];
+  const A = 'A'.charCodeAt(0);
+  for (let i = 0; i < 26; i++) for (let j = 0; j < 26; j++) {
+    const cc = String.fromCharCode(A + i) + String.fromCharCode(A + j);
+    if (NOT_COUNTRIES.has(cc)) continue;
+    let name = '';
+    try { name = dn ? dn.of(cc) : ''; } catch { name = ''; }
+    if (name && name !== cc) out.push({ value: cc, label: name });
+  }
+  out.sort((a, b) => a.label.localeCompare(b.label));
+  _countries[lang] = out;
+  return out;
+}
+const countryLabel = (cc, lang) => allCountries(lang).find((c) => c.value === String(cc || '').toUpperCase())?.label || '';
+
+// Values seen on this site, for the pickers. One request per source, only while the goal
+// form is open; each failure just leaves that picker with fewer suggestions.
+function useGoalSuggestions(open) {
+  const [s, setS] = useState(null);
+  useEffect(() => {
+    if (!open || s) return undefined;
+    let alive = true;
+    Promise.all([
+      api.get('/admin/analytics?days=90').catch(() => null),
+      api.get('/admin/analytics/events?days=30&kinds=click,submit,input,copy&limit=500').catch(() => null),
+      fetch('/api/sitemap.xml').then((r) => (r.ok ? r.text() : '')).catch(() => ''),
+    ]).then(([a, ev, xml]) => {
+      if (!alive) return;
+      const count = (rows, key) => (rows || []).filter((r) => r[key]).map((r) => ({ value: String(r[key]), count: r.count }));
+      const labels = {};
+      for (const e of ev?.events || []) {
+        if (!e.label) continue;
+        const m = (labels[e.kind] = labels[e.kind] || new Map());
+        m.set(e.label, (m.get(e.label) || 0) + 1);
+      }
+      const byCount = (m) => [...(m || new Map()).entries()].sort((x, y) => y[1] - x[1]).slice(0, 60).map(([value, count]) => ({ value, count }));
+      // Paths from the sitemap (every public page, including posts) and from real traffic.
+      const sitePaths = [...String(xml).matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => { try { return new URL(m[1]).pathname; } catch { return ''; } }).filter(Boolean);
+      const traffic = count(a?.top, 'path');
+      const seen = new Set(traffic.map((x) => x.value));
+      setS({
+        pages: [...traffic, ...sitePaths.filter((p) => !seen.has(p) && seen.add(p)).map((value) => ({ value }))],
+        referrer: count(a?.refs, 'ref'),
+        country: (a?.countries || []).filter((c) => c.label).map((c) => ({ value: String(c.label).toUpperCase(), count: c.count })),
+        region: (a?.regions || []).filter((r) => r.label).map((r) => ({ value: r.label, count: r.count, cc: r.country })),
+        city: (a?.cities || []).filter((r) => r.label).map((r) => ({ value: r.label, count: r.count, cc: r.country })),
+        os: count(a?.oses, 'label'),
+        browser: count(a?.browsers, 'label'),
+        device: count(a?.devices, 'label'),
+        labels: { click: byCount(labels.click), submit: byCount(labels.submit), input: byCount(labels.input), copy: byCount(labels.copy) },
+      });
+    });
+    return () => { alive = false; };
+  }, [open, s]);
+  return s;
+}
+
+// A text box with a list of real values under it. Typing filters the list; picking fills the
+// box. Free text stays allowed (a page that has had no visits yet is still a valid goal).
+// The list is a popup, so it is opaque (--bg-solid), never the translucent surface.
+function GoalCombo({ value, onChange, options, placeholder, render, invalid, mono = false, emptyHint }) {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  const [hi, setHi] = useState(0);
+  const boxRef = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDoc = (e) => { if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+  const q = String(value || '').trim().toLowerCase();
+  const list = (options || []).filter((o) => !q || String(o.value).toLowerCase().includes(q) || String(o.label || '').toLowerCase().includes(q)).slice(0, 40);
+  const pick = (o) => { onChange(o.value); setOpen(false); };
+  return (
+    <div ref={boxRef} className="relative">
+      <Input value={value} placeholder={placeholder} aria-invalid={invalid || undefined} aria-autocomplete="list" aria-expanded={open}
+        className={`${mono ? 'font-mono' : ''} ${invalid ? '!border-[var(--error)]' : ''}`}
+        onFocus={() => setOpen(true)}
+        // Options keep the focus (their mousedown is prevented), so a blur means the admin
+        // moved on: tabbing to the next field must not leave this list open over it.
+        onBlur={() => setOpen(false)}
+        onChange={(e) => { onChange(e.target.value); setOpen(true); setHi(0); }}
+        onKeyDown={(e) => {
+          if (!open || !list.length) return;
+          if (e.key === 'ArrowDown') { e.preventDefault(); setHi((h) => Math.min(list.length - 1, h + 1)); }
+          else if (e.key === 'ArrowUp') { e.preventDefault(); setHi((h) => Math.max(0, h - 1)); }
+          else if (e.key === 'Enter') { e.preventDefault(); pick(list[hi] || list[0]); }
+          else if (e.key === 'Escape') setOpen(false);
+        }} />
+      {open && (
+        <div role="listbox" className="absolute z-30 left-0 right-0 mt-1 max-h-64 overflow-auto rounded-xl border border-[var(--line-strong)] p-1 shadow-xl" style={{ background: 'var(--bg-solid)' }}>
+          {list.length === 0
+            ? <div className="px-2.5 py-2 text-xs text-[var(--faint)]">{emptyHint || t('goal.c.nosugg', 'Nothing recorded yet that matches. You can still type a value.')}</div>
+            : list.map((o, i) => (
+              <button key={o.value + i} type="button" role="option" aria-selected={i === hi} onMouseDown={(e) => e.preventDefault()} onClick={() => pick(o)} onMouseEnter={() => setHi(i)}
+                className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-sm text-start ${i === hi ? 'bg-[var(--surface-2)]' : ''}`}>
+                {render ? render(o) : <span className={`flex-1 min-w-0 break-words ${mono ? 'font-mono text-xs' : ''}`}>{o.label || o.value}</span>}
+                {o.count != null && <span className="text-[10px] tabular-nums text-[var(--faint)] shrink-0" title={t('goal.c.seen', 'Seen in your analytics')}>{o.count}</span>}
+              </button>
+            ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// What is wrong with the draft, per field. An empty object means it can be saved. Mirrors the
+// server's goalSchema limits so a save is never refused for a reason the form did not show.
+function goalErrors(f, t, lang) {
+  const e = {};
+  const path = f.path.trim(); const label = f.label.trim();
+  if (path && !path.startsWith('/')) e.path = t('goal.v.path', 'A page address starts with /, for example /catalog.');
+  if (path.length > 200) e.path = t('goal.v.long', 'Too long, {n} characters at most.').replace('{n}', '200');
+  if (f.kind === 'country' && label && !(/^[A-Za-z]{2}$/.test(label) && countryLabel(label, lang))) e.label = t('goal.v.country', 'Not a country code. Pick a country from the list (it fills in the two-letter code).');
+  if (f.kind === 'device' && label && !['desktop', 'mobile', 'tablet'].includes(label.toLowerCase())) e.label = t('goal.v.device', 'A device is desktop, mobile or tablet.');
+  if (label.length > 120) e.label = t('goal.v.long', 'Too long, {n} characters at most.').replace('{n}', '120');
+  if (f.name.trim().length > 80) e.name = t('goal.v.long', 'Too long, {n} characters at most.').replace('{n}', '80');
+  if (f.target !== '' && !(Number.isInteger(Number(f.target)) && Number(f.target) >= 0 && Number(f.target) <= 100000000)) e.target = t('goal.v.target', 'A whole number, 0 or more.');
+  return e;
+}
+
+// The goal, said in one plain sentence as it is being built. Quotes mark the "contains"
+// matches; an exact match (country, device) is named rather than quoted, which is the
+// difference the old free-text boxes never showed.
+function goalSentence(f, t, lang) {
+  const path = f.path.trim(); const label = f.label.trim();
+  const q = (x) => `“${x}”`;
+  const onPage = path ? t('goal.s.onpage', 'on a page whose address contains {p}').replace('{p}', q(path)) : t('goal.s.anypage', 'on any page');
+  const who = {
+    referrer: label ? t('goal.s.ref', 'A visitor who arrived from a site whose address contains {v}').replace('{v}', q(label)) : t('goal.s.refany', 'A visitor who arrived from any other site'),
+    country: label ? t('goal.s.country', 'A visitor from {v}').replace('{v}', `${countryLabel(label, lang) || label.toUpperCase()} (${label.toUpperCase()})`) : t('goal.s.countryany', 'A visitor from any known country'),
+    region: label ? t('goal.s.region', 'A visitor from a region whose name contains {v}').replace('{v}', q(label)) : t('goal.s.regionany', 'A visitor from any known region'),
+    city: label ? t('goal.s.city', 'A visitor from a city whose name contains {v}').replace('{v}', q(label)) : t('goal.s.cityany', 'A visitor from any known city'),
+    device: label ? t('goal.s.device', 'A visitor on a {v}').replace('{v}', ({ desktop: t('goal.dev.desktop', 'desktop'), mobile: t('goal.dev.mobile', 'phone'), tablet: t('goal.dev.tablet', 'tablet') })[label.toLowerCase()] || label) : t('goal.s.deviceany', 'A visitor on any device'),
+    os: label ? t('goal.s.os', 'A visitor whose system contains {v}').replace('{v}', q(label)) : t('goal.s.osany', 'A visitor on any known system'),
+    browser: label ? t('goal.s.browser', 'A visitor whose browser contains {v}').replace('{v}', q(label)) : t('goal.s.browserany', 'A visitor with any known browser'),
+  }[f.kind];
+  if (who) return `${who} ${path ? t('goal.s.viewsp', 'views a page whose address contains {p}').replace('{p}', q(path)) : t('goal.s.views', 'views any page')}.`;
+  if (f.kind === 'pageview') return path ? t('goal.s.pv', 'A visitor views a page whose address contains {p}.').replace('{p}', q(path)) : t('goal.s.pvany', 'A visitor views any page.');
+  const target = label ? q(label) : null;
+  const act = {
+    click: target ? t('goal.s.click', 'A visitor clicks a button or link whose text contains {v}') : t('goal.s.clickany', 'A visitor clicks any button or link'),
+    submit: target ? t('goal.s.submit', 'A visitor submits a form whose button contains {v}') : t('goal.s.submitany', 'A visitor submits any form'),
+    input: target ? t('goal.s.input', 'A visitor changes a field whose name contains {v}') : t('goal.s.inputany', 'A visitor changes any field'),
+    copy: target ? t('goal.s.copy', 'A visitor copies text from an element containing {v}') : t('goal.s.copyany', 'A visitor copies any text'),
+  }[f.kind] || '';
+  return `${act.replace('{v}', target || '')} ${onPage}.`;
+}
+
 function AdminGoals() {
-  const { t } = useI18n(); const toast = useToast();
+  const { t, lang } = useI18n(); const toast = useToast();
   const [range, setRange] = useState('30d');
   const rq = Object.fromEntries(WV_RANGES)[range] || { days: 30 };
   const qs = rq.hours ? `hours=${rq.hours}` : `days=${rq.days}`;
@@ -17506,10 +17691,16 @@ function AdminGoals() {
     return { click: t('goal.auto.click', 'Click “{x}”'), submit: t('goal.auto.submit', 'Submit “{x}”'), input: t('goal.auto.input', 'Edit “{x}”'), copy: t('goal.auto.copy', 'Copy “{x}”') }[f.kind]?.replace('{x}', tgt) || tgt;
   };
   const undoSave = useUndoableSave(reload);
+  const sugg = useGoalSuggestions(formOpen);
+  const errs = goalErrors(f, t, lang);
+  const invalid = Object.keys(errs).length > 0;
   const save = async () => {
+    if (invalid) return;
     // Auto-name if the admin left it blank — one less field to think about.
     const name = f.name.trim() || autoName();
-    const payload = { name, kind: f.kind, path: f.path.trim() || null, label: f.kind === 'pageview' ? null : (f.label.trim() || null), target: f.target === '' ? null : Math.max(0, Number(f.target) || 0) };
+    // A country is stored as its code, upper-case: the server matches it exactly.
+    const lbl = f.kind === 'country' ? f.label.trim().toUpperCase() : f.label.trim();
+    const payload = { name, kind: f.kind, path: f.path.trim() || null, label: f.kind === 'pageview' ? null : (lbl || null), target: f.target === '' ? null : Math.max(0, Number(f.target) || 0) };
     // Editing used to be immediate on the grounds that it is not an add/remove. It is still a
     // save, though, and the site-wide rule is now that a save can be taken back — so it goes
     // through the same window. id captured, reset() deferred, as everywhere else.
@@ -17560,25 +17751,104 @@ function AdminGoals() {
         {/* Step 1 — pick what counts as a conversion (icon buttons, not a dropdown). */}
         <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">{t('goal.step1', 'What counts as a conversion?')}</div>
         <div className="flex flex-wrap gap-2 mb-4">
-          {GOAL_KINDS.map(([v, key, fb, Icon]) => <button key={v} type="button" onClick={() => setF((s) => ({ ...s, kind: v }))} className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm border transition ${f.kind === v ? 'border-[var(--primary)] tint-primary text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}><Icon size={14} /> {t(key, fb)}</button>)}
+          {GOAL_KINDS.map(([v, key, fb, Icon]) => <button key={v} type="button" onClick={() => setF((s) => (s.kind === v ? s : { ...s, kind: v, label: '' }))} className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm border transition ${f.kind === v ? 'border-[var(--primary)] tint-primary text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}><Icon size={14} /> {t(key, fb)}</button>)}
         </div>
-        {/* Step 2 — a single contextual target field (+ optional page for interactions). */}
-        <div className="grid sm:grid-cols-2 gap-3">
-          {f.kind === 'pageview'
-            ? <Field label={t('goal.t.page', 'Which page? (path contains)')}><Input value={f.path} onChange={(e) => setF({ ...f, path: e.target.value })} placeholder="/auth, /catalog…" /></Field>
-            : GOAL_DIM[f.kind]
-              ? <Field label={t(GOAL_DIM[f.kind][0], GOAL_DIM[f.kind][1])}><Input value={f.label} onChange={(e) => setF({ ...f, label: e.target.value })} placeholder={`${GOAL_DIM[f.kind][2]} ${t('goal.t.blankany', '(blank = any)')}`} /></Field>
-              : <>
-                  <Field label={t('goal.t.text', 'Which button / field? (text contains)')}><Input value={f.label} onChange={(e) => setF({ ...f, label: e.target.value })} placeholder={t('goal.t.textph', 'Sign up, Install… (blank = any)')} /></Field>
-                  <Field label={t('goal.t.onpage', 'On page (optional)')}><Input value={f.path} onChange={(e) => setF({ ...f, path: e.target.value })} placeholder="/catalog…" /></Field>
-                </>}
-          <Field label={<span className="flex items-center gap-1.5">{t('goal.name', 'Goal name')} <span className="text-[10px] text-[var(--faint)] normal-case font-normal">{t('goal.name.auto', '(auto if blank)')}</span></span>}><Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder={autoName()} /></Field>
-          <Field label={<span className="flex items-center gap-1.5">{t('goal.target', 'Target')} <span className="text-[10px] text-[var(--faint)] normal-case font-normal">{t('goal.target.hint', '(optional, e.g. 1000 completions)')}</span></span>}><Input type="number" min="0" value={f.target} onChange={(e) => setF({ ...f, target: e.target.value })} placeholder="1000" /></Field>
+        {/* Step 2 — the conditions, each picked from values this site has actually seen.
+            Every kind can also be limited to a page: the server has always honoured `path`
+            for them, the form just never offered it. */}
+        {(() => {
+          const err = (k) => errs[k] && <div className="text-[11px] text-error mt-1" role="alert">{errs[k]}</div>;
+          const setPath = (v) => setF((s) => ({ ...s, path: v }));
+          const setLabel = (v) => setF((s) => ({ ...s, label: v }));
+          const pageField = (label) => (
+            <Field label={label}>
+              <GoalCombo value={f.path} onChange={setPath} options={sugg?.pages || []} placeholder="/catalog" mono invalid={!!errs.path} />
+              {err('path')}
+            </Field>
+          );
+          const any = t('goal.t.blankany', '(blank = any)');
+          const flagRow = (o) => <><Flag cc={o.cc || o.value} /><span className="flex-1 min-w-0 break-words">{o.label || o.value}</span>{!o.cc && <code className="text-[10px] text-[var(--faint)]">{o.value}</code>}</>;
+          let cond = null;
+          if (f.kind === 'pageview') cond = null;
+          else if (f.kind === 'country') {
+            // Visitors' countries first (with counts), then every other country by name.
+            const seen = new Map((sugg?.country || []).map((c) => [c.value, c.count]));
+            const opts = [...(sugg?.country || []).map((c) => ({ value: c.value, label: countryLabel(c.value, lang) || c.value, count: c.count })),
+              ...allCountries(lang).filter((c) => !seen.has(c.value))];
+            const code = f.label.trim().toUpperCase();
+            cond = (
+              <Field label={<span>{t('goal.c.country', 'Country')} <span className="text-[10px] text-[var(--faint)] normal-case font-normal">{any}</span></span>}>
+                <div className="flex items-center gap-2">
+                  {code && countryLabel(code, lang) && <Flag cc={code} className="w-5 h-[15px]" />}
+                  <div className="flex-1 min-w-0"><GoalCombo value={f.label} onChange={setLabel} options={opts} render={flagRow} placeholder={t('goal.c.countryph', 'France, FR, Japan…')} invalid={!!errs.label} /></div>
+                </div>
+                {code && countryLabel(code, lang) && !errs.label && <div className="text-[11px] text-[var(--muted)] mt-1">{countryLabel(code, lang)} · {code}</div>}
+                {err('label')}
+              </Field>
+            );
+          } else if (f.kind === 'device') {
+            cond = (
+              <Field label={t('goal.c.device', 'Device')}>
+                <div className="flex flex-wrap gap-1.5">
+                  {[['', t('goal.dev.any', 'Any')], ['desktop', t('goal.dev.desktop', 'desktop')], ['mobile', t('goal.dev.mobile', 'phone')], ['tablet', t('goal.dev.tablet', 'tablet')]].map(([v, l]) => (
+                    <button key={v || 'any'} type="button" onClick={() => setLabel(v)} aria-pressed={f.label.toLowerCase() === v}
+                      className={`px-3 py-1.5 rounded-lg text-sm border ${f.label.toLowerCase() === v ? 'border-[var(--primary)] tint-primary text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}>
+                      {l}{v && (sugg?.device || []).find((d) => d.value === v) ? <span className="ms-1.5 text-[10px] text-[var(--faint)] tabular-nums">{sugg.device.find((d) => d.value === v).count}</span> : null}
+                    </button>
+                  ))}
+                </div>
+                {err('label')}
+              </Field>
+            );
+          } else if (['region', 'city'].includes(f.kind)) {
+            cond = (
+              <Field label={<span>{f.kind === 'region' ? t('goal.c.region', 'Region (name contains)') : t('goal.c.city', 'City (name contains)')} <span className="text-[10px] text-[var(--faint)] normal-case font-normal">{any}</span></span>}>
+                <GoalCombo value={f.label} onChange={setLabel} options={sugg?.[f.kind] || []} render={flagRow} placeholder={f.kind === 'region' ? 'Île-de-France…' : 'Paris…'} invalid={!!errs.label} />
+                {err('label')}
+              </Field>
+            );
+          } else if (['referrer', 'os', 'browser'].includes(f.kind)) {
+            const lbl = { referrer: t('goal.c.ref', 'Referring site (address contains)'), os: t('goal.c.os', 'System (name contains)'), browser: t('goal.c.browser', 'Browser (name contains)') }[f.kind];
+            cond = (
+              <Field label={<span>{lbl} <span className="text-[10px] text-[var(--faint)] normal-case font-normal">{any}</span></span>}>
+                <GoalCombo value={f.label} onChange={setLabel} options={sugg?.[f.kind] || []} placeholder={{ referrer: 'reddit.com', os: 'Windows', browser: 'Firefox' }[f.kind]} invalid={!!errs.label} mono={f.kind === 'referrer'} />
+                {err('label')}
+              </Field>
+            );
+          } else {
+            // Interactions: the text of the button / field / element, as the tracker recorded it.
+            const lbl = { click: t('goal.c.click', 'Button or link text (contains)'), submit: t('goal.c.submit', 'Form button text (contains)'), input: t('goal.c.input', 'Field name (contains)'), copy: t('goal.c.copy', 'Copied element (contains)') }[f.kind];
+            cond = (
+              <Field label={<span>{lbl} <span className="text-[10px] text-[var(--faint)] normal-case font-normal">{any}</span></span>}>
+                <GoalCombo value={f.label} onChange={setLabel} options={sugg?.labels?.[f.kind] || []} placeholder={t('goal.t.textph', 'Sign up, Install… (blank = any)')} invalid={!!errs.label}
+                  emptyHint={t('goal.c.nolabels', 'No recorded interactions match yet. Labels appear here once visitors who accepted analytics have used the site.')} />
+                {err('label')}
+              </Field>
+            );
+          }
+          return (
+            <div className="grid sm:grid-cols-2 gap-3">
+              {cond}
+              {pageField(f.kind === 'pageview' ? t('goal.t.page', 'Which page? (path contains)') : t('goal.t.onpage', 'On page (optional)'))}
+              <Field label={<span className="flex items-center gap-1.5">{t('goal.name', 'Goal name')} <span className="text-[10px] text-[var(--faint)] normal-case font-normal">{t('goal.name.auto', '(auto if blank)')}</span></span>}><Input value={f.name} maxLength={80} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder={autoName()} />{err('name')}</Field>
+              <Field label={<span className="flex items-center gap-1.5">{t('goal.target', 'Target')} <span className="text-[10px] text-[var(--faint)] normal-case font-normal">{t('goal.target.hint', '(optional, e.g. 1000 completions)')}</span></span>}><Input type="number" min="0" step="1" value={f.target} onChange={(e) => setF({ ...f, target: e.target.value })} placeholder="1000" />{err('target')}</Field>
+            </div>
+          );
+        })()}
+        {/* The goal in one sentence, rebuilt on every keystroke. */}
+        <div className="mt-3 rounded-xl border border-[var(--line)] panel p-3 text-sm flex items-start gap-2" aria-live="polite">
+          <Target size={15} className="text-[var(--accent-ink)] mt-0.5 shrink-0" />
+          <div className="min-w-0">
+            <div className="text-[var(--text)]">{t('goal.s.lead', 'Counts a conversion when:')} <b>{goalSentence(f, t, lang)}</b></div>
+            <div className="text-[11px] text-[var(--faint)] mt-1">
+              {t('goal.s.rate', 'Every match is a completion; the rate counts each visitor once.')}
+              {f.target !== '' && !errs.target && ' ' + t('goal.s.target', 'Target: {n} completions.').replace('{n}', Number(f.target).toLocaleString(lang === 'fr' ? 'fr-FR' : 'en-US'))}
+            </div>
+          </div>
         </div>
-        <div className="text-xs text-[var(--muted)] mt-3 flex items-start gap-1.5"><Target size={13} className="text-[var(--accent-ink)] mt-0.5 shrink-0" /> <span>{t('goal.preview', 'Counts a conversion when a visitor:')} <b>{autoName().toLowerCase()}</b>.</span></div>
         <div className="flex justify-end gap-2 mt-3">
           <Button variant="ghost" onClick={reset}>{t('common.cancel', 'Cancel')}</Button>
-          <Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : (editId ? t('goal.savebtn', 'Save') : <><Plus size={15} /> {t('goal.addbtn', 'Add goal')}</>)}</Button>
+          <Button variant="primary" disabled={busy || invalid} title={invalid ? t('goal.v.fix', 'Fix the highlighted field first.') : undefined} onClick={save}>{busy ? <Spinner /> : (editId ? t('goal.savebtn', 'Save') : <><Plus size={15} /> {t('goal.addbtn', 'Add goal')}</>)}</Button>
         </div>
       </Card>}
 
@@ -17588,7 +17858,7 @@ function AdminGoals() {
             <div className="flex items-center gap-3 flex-wrap">
               <div className="flex-1 min-w-[160px]">
                 <div className="font-medium flex items-center gap-2">{g.name} <Badge tone="">{kindLabel(g.kind)}</Badge></div>
-                <div className="text-xs text-[var(--faint)] mt-0.5">{g.path ? <span className="font-mono">{g.path}</span> : t('goal.anypage', 'any page')}{g.label ? <> · “{g.label}”</> : ''}</div>
+                <div className="text-xs text-[var(--faint)] mt-0.5 break-words">{goalSentence({ kind: g.kind, path: g.path || '', label: g.label || '', name: '', target: '' }, t, lang)}</div>
               </div>
               {/* Completions, and what they are up against. A goal reporting "412" answers
                   nothing on its own: 412 versus what? The same window immediately before is
@@ -19738,291 +20008,102 @@ const moveTo = (arr, from, to) => { if (from === to || from < 0 || to < 0 || fro
 // Icons brand, via IconGlyph). PascalCase/old names are kebab-ized first.
 const navPvName = (icon) => { const s = String(icon || 'boxes'); return (s.startsWith('simple:') || s.startsWith('app:')) ? s : s.replace(/([a-z0-9])([A-Z])/g, '$1-$2').replace(/\s+/g, '-').toLowerCase(); };
 const NavPvIcon = ({ name, size = 15 }) => <IconGlyph name={navPvName(name)} size={size} />;
-const pvLabel = (it, lang) => (lang === 'fr' && it.labelFr ? it.labelFr : (it.label || '')) || (lang === 'fr' ? 'Sans titre' : 'Untitled');
 
-// Faithful, non-interactive replica of the real ThemeToggle switch (ui/theme.jsx) so the
-// preview shows the actual sliding switch — not a flat icon — and mirrors the current theme.
-function PvTheme() {
-  const { theme } = useTheme();
-  const dark = theme === 'dark';
-  return (
-    <span className="relative inline-block h-6 w-11 rounded-full border align-middle shrink-0"
-      style={{ background: dark ? 'var(--primary)' : 'color-mix(in srgb, var(--text) 12%, transparent)', borderColor: 'var(--line-strong)' }}>
-      <span className="absolute top-1/2 grid place-items-center w-[18px] h-[18px] rounded-full"
-        style={{ left: 2, marginTop: -9, transform: dark ? 'translateX(20px)' : 'translateX(0)', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }}>
-        {dark ? <Moon size={11} className="text-[var(--accent-ink)] fill-[var(--primary)]" /> : <Sun size={11} className="text-warning" />}
-      </span>
-    </span>
-  );
-}
-// One utility button rendered exactly as the live topbar draws it (App.jsx): theme = the
-// switch, lang = globe + language code, profile = avatar disc, everything else its lucide
-// icon. Callers wrap it for spacing; this owns the per-key shape so desktop & mobile agree.
-function PvUtil({ k, lang, size = 16 }) {
-  if (k === 'theme') return <PvTheme />;
-  if (k === 'profile') return <span className="inline-block align-middle w-6 h-6 rounded-full bg-[var(--surface-2)] border border-[var(--line)]" />;
-  if (k === 'lang') return <span className="inline-flex items-center gap-1 text-[var(--muted)]"><Languages size={size} /><span className="text-xs font-semibold uppercase">{lang}</span></span>;
-  const Icon = { notifications: Bell, projects: Boxes, settings: SettingsIcon, dashboard: LayoutDashboard, admin: Shield, logout: LogOut, login: LogIn }[k] || Boxes;
-  return <Icon size={size} className="text-[var(--muted)]" />;
-}
-// Mobile hamburger-sheet row, matching the real sheet() style in App.jsx.
-const pvSheet = 'flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-[var(--muted)]';
-
-// Live preview of the public topbar built from the editor's items — faithful to the real
-// component's styling (App.jsx). Desktop = the pill bar with a hover/click dropdown; mobile
-// = the hamburger sheet (tap a group to expand, tap the phone to reveal the sheet).
-function NavPreview({ items, lang, device, onEdit, utility = {}, projectsMode = 'inline', downbar = true, downbarDisplay = 'both', downbarItems = [], downbarQuick = true, projects = [], layout: layoutProp }) {
-  const layout = readLayout(layoutProp);
-  const iconsOnly = layout.labels === 'icons';
-  // Same flag, same name, same meaning as App.jsx. This preview has already drifted from the
-  // real topbar once badly enough to show "Log out" and "Sign in" together; every rule it
-  // draws comes from the shared reader, and the two flags derived from it are spelled the
-  // same on both sides so a diff between the files stays readable.
-  const textOnly = layout.labels === 'labels';
-  const { t } = useI18n();
-  const { user } = useAuth();
-  const [openIdx, setOpenIdx] = useState(null);
-  const [projOpen, setProjOpen] = useState(false);
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const [openGroups, setOpenGroups] = useState({}); // per-group accordion state in the mobile sheet
-  // Pinned projects for the preview, and whether they collapse into one "Projects" dropdown.
-  const pvProjects = (projects || []).map((p) => ({ slug: p.slug, name: (p.isAnnouncing && p.announceTitle) || p.name, icon: p.icon }));
-  const projDropdown = projectsMode === 'dropdown' && pvProjects.length > 0;
-  // Mobile bottom bar the preview shows under the phone: home + the leading valid links,
-  // mirroring deriveDownbar() in App.jsx. Rendered only when the admin left it enabled.
-  const validLeaves = items.filter((it) => it.type !== 'group' && it.label.trim() && it.to.trim().startsWith('/')).slice(0, 4);
-  // The desktop preview must LOOK like a desktop: it renders at a real desktop width and is
-  // scaled to whatever room it has. Letting it reflow into the admin column (or worse, a
-  // phone) is what made it "buggy" — it wrapped into a stack of pills, i.e. a preview of a
-  // layout the desktop topbar never actually produces.
-  //
-  // Fit-to-width alone isn't enough though: on a phone that's ~0.26, a 15px-tall sliver you
-  // can't read. So fit is only the BASELINE — `zoom` multiplies it, and once the result is
-  // wider than the container the wrapper pans horizontally. Zoom 1 always means "the whole
-  // bar, exactly fitted", whatever the screen.
-  const DESKTOP_W = 1120;
-  const ZOOM_MIN = 1, ZOOM_MAX = 6;
-  const fitRef = useRef(null);
-  const barRef = useRef(null);
-  const [fit, setFit] = useState({ base: 1, h: 0 });
+// The Live preview: the REAL topbar, phone menu and bottom bar (App.jsx <Nav> and
+// <MobileTabBar>), rendered from the editor's draft inside a frame of the device's width.
+//
+// It replaced a hand-drawn copy of the topbar that lived here. That copy re-drew every pill,
+// switch and menu row by hand, and it drifted twice: once showing "Log out" beside "Sign in",
+// once showing a phone menu the phone never had. There is nothing left to drift now: the only
+// thing this component owns is the frame, the device, the theme and the stand-in viewer.
+//
+// Why a frame (ui/preview-frame.jsx): the topbar is responsive by media query, and a media
+// query reads the viewport. A 375px iframe IS a 375px viewport, so the phone layout here is
+// the phone layout, including the bottom bar docked to the bottom of the screen.
+const PV_DESKTOP = { w: 1280, h: 380 };
+const PV_PHONE = { w: 375, h: 700 };
+// Stand-in viewers. Only the fields the topbar reads: role for the staff rule (lib/roles.js
+// canAdmin), a name for the avatar's title, an id for its seed.
+const pvViewer = (who, t) => (who === 'out' ? null : {
+  id: 'preview-' + who, displayName: who === 'admin' ? t('nav.pv.v.admin', 'Admin') : t('nav.pv.v.member', 'Member'),
+  role: who === 'admin' ? 'ADMIN' : 'USER', permissions: [], effectivePermissions: [],
+});
+function LiveNavPreview({ cfg, device, theme, onTheme, viewer, onEdit }) {
+  const { t, lang } = useI18n();
+  // Measured on mount as well as on resize: a ResizeObserver alone starts from a guess, and
+  // in a tab that is not painting it never corrects it, which left a 900px preview in a
+  // 375px column.
+  const wrapRef = useRef(null);
+  const [wrapW, setWrapW] = useState(0);
+  useLayoutEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return undefined;
+    const read = () => setWrapW(el.clientWidth);
+    read();
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    window.addEventListener('resize', read);
+    return () => { ro.disconnect(); window.removeEventListener('resize', read); };
+  }, []);
   const [zoom, setZoom] = useState(1);
-  const scale = fit.base * zoom;
-  useEffect(() => {
-    if (device === 'mobile') return undefined;
-    const wrap = fitRef.current, bar = barRef.current;
-    if (!wrap || !bar) return undefined;
-    const compute = () => {
-      const w = wrap.getBoundingClientRect().width;
-      if (!w) return;
-      const base = Math.min(1, w / DESKTOP_W);
-      // Reserve the SCALED height: a transform doesn't change layout size, so without this
-      // the wrapper keeps the full unscaled height and leaves a gap under the bar.
-      setFit({ base, h: bar.offsetHeight * base });
-    };
-    compute();
-    const ro = new ResizeObserver(compute);
-    ro.observe(wrap);
-    return () => ro.disconnect();
-  }, [device, items, utility]);
-  // Height follows the zoom too, else zooming in would overlap whatever sits below.
-  const boxH = fit.h ? fit.h * zoom : undefined;
-  // Keep each valid item's ORIGINAL index so clicking it in the preview can jump to the
-  // matching editor card (onEdit). Filter mirrors the server's accept rules.
-  const valid = items.map((it, idx) => ({ it, idx })).filter(({ it }) => it.type === 'group' ? (it.label.trim() && it.children.some((c) => c.label.trim() && c.to.trim().startsWith('/'))) : (it.label.trim() && it.to.trim().startsWith('/')));
-  const pillCls = (active) => `flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm whitespace-nowrap transition ${active ? 'bg-[var(--bg-solid)] text-[var(--accent-ink)] shadow-sm font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`;
-  // Which built-in utility buttons are shown, in configured order. The precondition comes
-  // from the SAME shared rule the real topbar uses (lib/roles.js) — re-deriving it here is
-  // what made the preview lie: it drew "Log out" and "Sign in" at once, and offered
-  // Dashboard/Admin/Profile to a signed-out viewer.
-  const uOn = (k) => utility[k]?.visible !== false && utilAllowed(k, user);
-  const ordU = (list) => [...list].filter(uOn).sort((a, b) => (utility[a]?.order ?? list.indexOf(a)) - (utility[b]?.order ?? list.indexOf(b)));
-  const clusterA = ordU(UTIL_A_KEYS), clusterB = ordU(UTIL_B_KEYS);
-
-  if (device === 'mobile') {
-    // Faithful to the real phone menu (App.jsx <Nav> sheet): logo + name + always-visible
-    // cluster-A icons + avatar + hamburger, then a 2-column grid — groups are full-width
-    // collapsible accordions (tap to expand, like NavSheetGroup) — followed by the
-    // projects/contact/settings row, a divider, and the account grid (dashboard/admin/
-    // profile/logout, or a single "Sign in" when signed out).
-    const topExtras = [uOn('projects') && 'projects', 'contact', uOn('settings') && 'settings'].filter(Boolean);
-    const account = UTIL_B_KEYS.filter(uOn);
-    const toggleGroup = (i) => setOpenGroups((g) => ({ ...g, [i]: !g[i] }));
-    // Use the SAME visible strings the real phone menu uses (App.jsx), not the util-editor
-    // labels — so e.g. it reads "Sign out"/"Sign in", not "Log out".
-    const mLabel = { projects: t('nav.projects', 'Projects'), settings: t('nav.settings', 'Settings'), dashboard: t('nav.dashboard'), admin: t('nav.admin'), profile: 'Profile', logout: t('nav.signout'), login: t('nav.signin') };
-    const extraRow = (k) => k === 'contact'
-      ? <div key="contact" className={pvSheet}><Mail size={16} /> Contact</div>
-      : <div key={k} className={pvSheet}><PvUtil k={k} lang={lang} /> {mLabel[k]}</div>;
-    return (
-      <div className="mx-auto w-[320px] rounded-[2rem] border-4 border-[var(--line-strong)] bg-[var(--bg)] p-2.5 shadow-lg">
-        <div className="rounded-2xl border border-[var(--line)] px-2 h-12 flex items-center gap-1 topbar bg-[var(--bg-solid)]">
-          <img src="/logo.png" alt="" className="w-7 h-7 rounded-lg shrink-0" />
-          <span className="font-bold text-[13px] flex-1 min-w-0 truncate">BetterCommunity</span>
-          {/* On a real phone the Projects icon is hidden in the bar (hidden sm:inline-flex)
-              and only lives in the menu — mirror that so the header doesn't crowd/overflow. */}
-          {clusterA.filter((k) => k !== 'projects').map((k) => <span key={k} className="shrink-0 px-0.5" title={t('nav.util.' + k, UTIL_LABEL[k])}><PvUtil k={k} lang={lang} size={15} /></span>)}
-          {uOn('profile') && <span className="shrink-0" title={t('nav.util.profile', 'Profile')}><PvUtil k="profile" lang={lang} /></span>}
-          <button onClick={() => setSheetOpen((v) => !v)} className="p-1.5 rounded-lg border border-[var(--line)] text-[var(--muted)] shrink-0" title={t('nav.pv.tap', 'Tap to preview the menu')}>{sheetOpen ? <X size={15} /> : <Navigation size={15} />}</button>
+  const user = useMemo(() => pvViewer(viewer, t), [viewer, t]);
+  const preview = useMemo(() => ({ cfg, user }), [cfg, user]);
+  // A click on a link must not navigate the ADMIN away from the editor. It jumps to the item's
+  // editor card instead, when the link is one of the configured items (data-nav-idx). Buttons
+  // (a dropdown trigger, the hamburger, a dropup) are left alone: they open things, and that
+  // is what the preview is for.
+  const onClickCapture = useCallback((e) => {
+    const a = e.target?.closest?.('a');
+    if (!a) return;
+    e.preventDefault();
+    const holder = e.target.closest('[data-nav-idx]');
+    const idx = holder ? Number(holder.getAttribute('data-nav-idx')) : NaN;
+    if (Number.isInteger(idx) && onEdit) onEdit(idx);
+  }, [onEdit]);
+  const phone = device === 'mobile';
+  const dim = phone ? PV_PHONE : PV_DESKTOP;
+  // Fitted to the column, then the zoom multiplies it. On a phone-width admin screen the fitted
+  // desktop bar is a sliver, which is what the zoom is for; past the fit the row pans.
+  const bezel = phone ? 20 : 0;
+  const fit = wrapW > bezel ? Math.min(1, (wrapW - bezel) / dim.w) : 1;
+  const scale = phone ? Math.min(1, fit) : fit * zoom;
+  const body = (
+    <ThemePreviewScope theme={theme} onToggle={() => onTheme(theme === 'dark' ? 'light' : 'dark')}>
+      <div className="min-h-screen" style={{ background: 'var(--bg)', color: 'var(--text)' }}>
+        <Nav preview={preview} />
+        {/* A page under the bar, so the bar is judged against content and the sheet's
+            floating edge reads the way it will. Shapes, not words: nothing here to translate
+            and nothing to mistake for real content. */}
+        <div className="max-w-6xl mx-auto px-4 pt-8 space-y-3" aria-hidden>
+          <div className="h-7 w-2/3 max-w-md rounded-lg bg-[var(--surface-2)]" />
+          <div className="h-3 w-full max-w-2xl rounded bg-[var(--surface-2)]" />
+          <div className="h-3 w-5/6 max-w-xl rounded bg-[var(--surface-2)]" />
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 pt-3">
+            {[0, 1, 2].map((i) => <div key={i} className="h-24 rounded-2xl border border-[var(--line)] bg-[var(--surface-1)]" />)}
+          </div>
         </div>
-        {sheetOpen && <div className="mt-2 rounded-2xl border border-[var(--line)] p-2 topbar bg-[var(--bg-solid)]">
-          <div className="grid grid-cols-2 gap-1">
-            {valid.length === 0 && <div className="col-span-2 text-xs text-[var(--faint)] p-2">{t('nav.pv.empty', 'No valid items yet.')}</div>}
-            {valid.map(({ it, idx }) => it.type === 'group' ? (
-              <div key={idx} className="col-span-2">
-                <button type="button" onClick={() => toggleGroup(idx)} className={pvSheet + ' w-full text-start'} aria-expanded={!!openGroups[idx]}>
-                  <NavPvIcon name={it.icon} size={16} /><span className="flex-1">{pvLabel(it, lang)}</span><ChevronDown size={15} className={`transition-transform ${openGroups[idx] ? 'rotate-180' : ''}`} />
-                </button>
-                {openGroups[idx] && <div className="ps-3 ms-3 border-s border-[var(--line)] space-y-0.5">
-                  {it.children.filter((c) => c.label.trim() && c.to.trim().startsWith('/')).map((c, j) => <div key={j} className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm text-[var(--muted)]"><NavPvIcon name={c.icon} size={16} /> {pvLabel(c, lang)}</div>)}
-                </div>}
-              </div>
-            ) : <div key={idx} className={pvSheet}><NavPvIcon name={it.icon} size={16} /> {pvLabel(it, lang)}</div>)}
-            {pvProjects.length > 0 && (projDropdown ? (
-              <div className="col-span-2">
-                <button type="button" onClick={() => setProjOpen((o) => !o)} className={pvSheet + ' w-full text-start'} aria-expanded={projOpen}><Sparkles size={16} /><span className="flex-1">{t('nav.projects', 'Projects')}</span><ChevronDown size={15} className={`transition-transform ${projOpen ? 'rotate-180' : ''}`} /></button>
-                {projOpen && <div className="ps-3 ms-3 border-s border-[var(--line)] space-y-0.5">
-                  {pvProjects.map((p) => <div key={p.slug} className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm text-[var(--muted)]"><ShowcaseIcon icon={p.icon} size={16} fallback={<Sparkles size={16} />} /> {p.name}</div>)}
-                </div>}
-              </div>
-            ) : pvProjects.map((p) => <div key={p.slug} className={pvSheet}><ShowcaseIcon icon={p.icon} size={16} fallback={<Sparkles size={16} />} /> {p.name}</div>))}
-            {topExtras.map(extraRow)}
-          </div>
-          {account.length > 0 && <>
-            <div className="h-px bg-[var(--line)] my-2" />
-            <div className="grid grid-cols-2 gap-1">
-              {account.map((k) => k === 'login'
-                ? <div key={k} className="col-span-2 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-sm font-semibold text-white bg-[var(--primary)]">{mLabel.login}</div>
-                : <div key={k} className={pvSheet}><PvUtil k={k} lang={lang} /> {mLabel[k]}</div>)}
-            </div>
-          </>}
-        </div>}
-        {!sheetOpen && <div className="text-[11px] text-[var(--faint)] text-center mt-2 flex items-center justify-center gap-1"><MousePointerClick size={11} /> {t('nav.pv.tap', 'Tap the menu to preview')}</div>}
-        {/* The real phone gets a bottom tab bar too — home + the leading links (derived), or
-            nothing when the admin turned it off. This is the part the old preview never showed. */}
-        {/* Drawn through buildDownbar, the same function the real bar calls.
-            This used to be a second copy of the derive rules living in a comment that said it
-            mirrored them, which is the failure this repo already has a scar from: the topbar
-            preview drifted until it showed "Log out" and "Sign in" together. A preview whose
-            rules are re-derived is a preview that will eventually lie, and the whole point of
-            this panel is that it does not. The preview shows the SIGNED-OUT bar, because that
-            is the one an admin can reason about without their own account's state in it. */}
-        {downbar
-          ? (() => {
-              const built = buildDownbar({ items, downbar: { enabled: true, display: downbarDisplay, quick: downbarQuick, items: downbarItems } }, { signedIn: false });
-              const barItems = built ? built.items : [];
-              const showI = downbarDisplay !== 'text';
-              const showT = downbarDisplay !== 'icon';
-              return (
-                <div className="mt-2 rounded-2xl border border-[var(--line)] topbar flex items-stretch px-1 py-1">
-                  {barItems.map((n, i) => {
-                    // A configured slot carries label/labelFr; a built-in one carries a key.
-                    const lbl = n.k ? t(n.k, n.k.split('.').pop()) : pvLabel(n, lang);
-                    if (n.kind === 'primary') return (
-                      <div key={i} className="flex-1 flex flex-col items-center justify-start">
-                        <span className="-mt-4 grid place-items-center w-9 h-9 rounded-full text-white shadow ring-4 ring-[var(--bg)]" style={{ background: 'var(--primary)' }}><NavPvIcon name={n.icon} size={16} /></span>
-                        {showT && <span className="text-[9px] leading-none mt-0.5 truncate max-w-[52px] text-[var(--muted)]" title={lbl}>{lbl}</span>}
-                      </div>
-                    );
-                    return (
-                      <div key={i} className="flex-1 flex flex-col items-center justify-center py-1 text-[var(--muted)]">
-                        {showI && <span className="grid place-items-center w-8 h-6 relative"><NavPvIcon name={n.icon} size={16} />{n.kind === 'dropup' && <ChevronUp size={9} className="absolute -top-1 right-0" />}</span>}
-                        {showT && <span className="text-[9px] leading-none mt-0.5 truncate max-w-[52px]" title={lbl}>{lbl}</span>}
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            })()
-          : <div className="mt-2 text-[10px] text-[var(--faint)] text-center italic">{t('nav.pv.nodownbar', 'Bottom bar off')}</div>}
+        <MobileTabBar preview={preview} />
       </div>
-    );
-  }
-  // Clicking an item jumps to (and flashes) its editor card — "edit from the live
-  // preview" on desktop. The chevron still toggles a group's dropdown independently.
-  const jump = (idx) => onEdit && onEdit(idx);
-  const zoomPct = Math.round(scale * 100);
+    </ThemePreviewScope>
+  );
   return (
-    <>
-    {/* Zoom controls. At zoom 1 the whole bar is fitted; above it, the row below pans. */}
-    <div className="flex items-center justify-end gap-1.5 mb-1.5">
-      <Button size="sm" variant="ghost" disabled={zoom <= ZOOM_MIN} title={t('nav.pv.zoomout', 'Zoom out')}
-        onClick={() => setZoom((z) => Math.max(ZOOM_MIN, +(z - 0.5).toFixed(2)))}><Minus size={13} /></Button>
-      <button type="button" onClick={() => setZoom(1)} title={t('nav.pv.zoomreset', 'Fit to width')}
-        className="text-[11px] tabular-nums text-[var(--muted)] hover:text-[var(--text)] min-w-[3.2rem] text-center">{zoomPct}%</button>
-      <Button size="sm" variant="ghost" disabled={zoom >= ZOOM_MAX} title={t('nav.pv.zoomin', 'Zoom in')}
-        onClick={() => setZoom((z) => Math.min(ZOOM_MAX, +(z + 0.5).toFixed(2)))}><Plus size={13} /></Button>
-    </div>
-    {/* The bar is laid out at DESKTOP_W and scaled; the wrapper reserves the scaled height.
-        Overflow is visible at zoom 1 so the group dropdown (which hangs BELOW the bar) isn't
-        clipped — an auto overflow-x would clip overflow-y too. Only once zoomed past the fit
-        does it become a pan container, where that trade is worth it. */}
-    <div ref={fitRef} className={zoom > 1 ? 'overflow-x-auto scroll-thin' : ''} style={{ height: boxH }}>
-    {/* Sized to the bar's VISUAL width. A transform is painted, not laid out: the scroll area
-        would otherwise follow the bar's 1120px layout box and let you pan into hundreds of
-        pixels of nothing at low zoom. */}
-    <div style={{ width: fit.base ? DESKTOP_W * scale : undefined, height: boxH }}>
-    <div ref={barRef} style={{ width: DESKTOP_W, transform: `scale(${scale})`, transformOrigin: 'top left' }}
-      className="rounded-2xl border border-[var(--line)] px-3 py-2 min-h-14 flex items-center gap-1 topbar bg-[var(--bg-solid)]">
-      <img src="/logo.png" alt="" className="w-8 h-8 rounded-lg shrink-0" />
-      <span className="font-bold text-sm me-2 shrink-0">BetterCommunity</span>
-      {/* flex-1 align track + inline pill bar, mirroring the real topbar (App.jsx): the track
-          positions the content-width pill bar left/center/right per layout.align. */}
-      <div className={`flex-1 min-w-0 flex ${navAlignClass(layout.align)}`}>
-      <div className={`inline-flex items-center ${layout.density === 'compact' ? 'gap-0' : 'gap-0.5'} bg-[var(--surface-2)] rounded-full p-1 border border-[var(--line)] shrink-0`}>
-        {valid.length === 0 ? <span className="text-xs text-[var(--faint)] px-3 py-1.5">{t('nav.pv.empty', 'No valid items yet.')}</span> : valid.map(({ it, idx }) => it.type === 'group' ? (
-          <div key={idx} className="relative">
-            <button title={onEdit ? t('nav.pv.edit', 'Click to edit · chevron opens the dropdown') : undefined} onClick={() => jump(idx)} className={pillCls(openIdx === idx)}>
-              <NavPvIcon name={it.icon} />{!iconsOnly && <span>{pvLabel(it, lang)}</span>}
-              <span role="button" tabIndex={-1} onClick={(e) => { e.stopPropagation(); setOpenIdx(openIdx === idx ? null : idx); }} className="-me-1 p-0.5 rounded hover:bg-[var(--surface-3,var(--line))]"><ChevronDown size={13} className={`transition-transform ${openIdx === idx ? 'rotate-180' : ''}`} /></span>
-            </button>
-            {openIdx === idx && <div className="absolute left-0 top-full mt-1.5 z-10 min-w-[240px] p-1.5 rounded-2xl border border-[var(--line)] topbar bg-[var(--bg-solid)] shadow-xl">
-              {it.children.filter((c) => c.label.trim() && c.to.trim().startsWith('/')).map((c, j) => (
-                <div key={j} className="flex items-start gap-2.5 p-2 rounded-xl hover:bg-[var(--surface-2)]">
-                  <span className="w-7 h-7 rounded-lg bg-[var(--surface-2)] grid place-items-center shrink-0 text-[var(--accent-ink)]"><NavPvIcon name={c.icon} /></span>
-                  <span className="min-w-0"><span className="block text-sm font-medium truncate">{pvLabel(c, lang)}</span>{(lang === 'fr' ? c.descFr : c.desc) && <span className="block text-xs text-[var(--faint)] truncate">{lang === 'fr' ? c.descFr : c.desc}</span>}</span>
-                </div>
-              ))}
-            </div>}
-          </div>
-        ) : <button key={idx} title={onEdit ? t('nav.pv.editlink', 'Click to edit this item') : undefined} onClick={() => jump(idx)} className={pillCls(false)}>{textOnly ? null : <NavPvIcon name={it.icon} />} {iconsOnly ? null : pvLabel(it, lang)}</button>)}
-        {/* Pinned projects — inline pills, or one "Projects" dropdown, per projectsMode. */}
-        {projDropdown ? (
-          <div className="relative">
-            <button onClick={() => setProjOpen((o) => !o)} className={pillCls(projOpen)}>
-              {!textOnly && <Sparkles size={15} />}{!iconsOnly && <span>{t('nav.projects', 'Projects')}</span>}<ChevronDown size={13} className={`transition-transform ${projOpen ? 'rotate-180' : ''}`} />
-            </button>
-            {projOpen && <div className="absolute left-0 top-full mt-1.5 z-10 min-w-[220px] p-1.5 rounded-2xl border border-[var(--line)] topbar bg-[var(--bg-solid)] shadow-xl">
-              {pvProjects.slice(0, layout.projectsMax).map((p) => <div key={p.slug} className="flex items-center gap-2.5 p-2 rounded-xl hover:bg-[var(--surface-2)]"><span className="w-7 h-7 rounded-lg bg-[var(--surface-2)] grid place-items-center shrink-0 text-[var(--accent-ink)]"><ShowcaseIcon icon={p.icon} size={15} fallback={<Sparkles size={15} />} /></span><span className="text-sm font-medium truncate" title={p.name}>{p.name}</span></div>)}
-              {/* The same tail the real topbar appends, so the cap is visible while it is
-                  being chosen rather than after saving. */}
-              <div className="flex items-center gap-2.5 p-2 rounded-xl border-t border-[var(--line)] mt-1 pt-2">
-                <span className="w-7 h-7 rounded-lg bg-[var(--surface-2)] grid place-items-center shrink-0 text-[var(--accent-ink)]"><Boxes size={15} /></span>
-                <span className="min-w-0">
-                  <span className="block text-sm font-medium truncate">{t('nav.allProjects', 'All projects')}</span>
-                  {pvProjects.length > layout.projectsMax && (
-                    <span className="block text-[11px] text-[var(--faint)]">
-                      {t('nav.allProjectsMore', '{n} more, and everything not pinned here').replace('{n}', String(pvProjects.length - layout.projectsMax))}
-                    </span>
-                  )}
-                </span>
-              </div>
-            </div>}
-          </div>
-        ) : pvProjects.map((p) => <span key={p.slug} className={pillCls(false)}>{textOnly ? null : <ShowcaseIcon icon={p.icon} size={15} fallback={<Sparkles size={15} />} />} {iconsOnly ? null : p.name}</span>)}
-      </div>
-      </div>
-      {/* Right-side utility cluster — mirrors the real topbar (App.jsx): cluster A always
-          on, then a border divider, then the account cluster B. Theme = the real switch,
-          lang = globe + code, profile = avatar disc — drawn by PvUtil so it matches 1:1. */}
-      <div className="ms-auto flex items-center gap-0.5 shrink-0">
-        {clusterA.map((k) => <span key={k} className="inline-flex items-center px-1.5 py-1" title={t('nav.util.' + k, UTIL_LABEL[k])}><PvUtil k={k} lang={lang} /></span>)}
-        {clusterB.length > 0 && <span className="w-px h-5 bg-[var(--line)] mx-1.5" />}
-        {clusterB.map((k) => <span key={k} className="inline-flex items-center px-1.5 py-1" title={t('nav.util.' + k, UTIL_LABEL[k])}><PvUtil k={k} lang={lang} /></span>)}
+    <div ref={wrapRef}>
+      {!phone && (
+        <div className="flex items-center justify-end gap-1.5 mb-1.5">
+          <Button size="sm" variant="ghost" disabled={zoom <= 1} title={t('nav.pv.zoomout', 'Zoom out')} onClick={() => setZoom((z) => Math.max(1, +(z - 0.5).toFixed(2)))}><Minus size={13} /></Button>
+          <button type="button" onClick={() => setZoom(1)} title={t('nav.pv.zoomreset', 'Fit to width')} className="text-[11px] tabular-nums text-[var(--muted)] hover:text-[var(--text)] min-w-[3.2rem] text-center">{Math.round(scale * 100)}%</button>
+          <Button size="sm" variant="ghost" disabled={zoom >= 6} title={t('nav.pv.zoomin', 'Zoom in')} onClick={() => setZoom((z) => Math.min(6, +(z + 0.5).toFixed(2)))}><Plus size={13} /></Button>
+        </div>
+      )}
+      <div className={phone ? 'flex justify-center' : (zoom > 1 ? 'overflow-x-auto scroll-thin' : '')}>
+        <div className={phone ? 'rounded-[2.2rem] border-[10px] border-[var(--line-strong)] overflow-hidden shadow-lg' : 'rounded-xl border border-[var(--line)] overflow-hidden'} style={{ background: 'var(--bg-solid)' }}>
+          <PreviewFrame key={device} width={dim.w} height={dim.h} scale={scale} theme={theme} htmlAttrs={{ lang }}
+            title={t('nav.pv.title', 'Live preview')} onClickCapture={onClickCapture}>
+            {body}
+          </PreviewFrame>
+        </div>
       </div>
     </div>
-    </div>
-    </div>
-    </>
   );
 }
 
@@ -20047,8 +20128,15 @@ function AdminNav() {
   // still wins outright and nothing is injected into it.
   const [downbarQuick, setDownbarQuick] = useState(true);
   const [layout, setLayout] = useState({ align: 'start', density: 'comfortable', labels: 'both', projectsMax: 6 }); // desktop topbar layout
+  // The phone menu (App.jsx MobileMenu), read through the same reader the menu uses.
+  const [mobileMenu, setMobileMenu] = useState(readMobileMenu(null));
   const [busy, setBusy] = useState(false);
   const [device, setDevice] = useState('desktop'); // preview device
+  // The preview's scheme and viewer. Its own, not the admin's: per-theme icons and the
+  // signed-out bar are exactly the two things an admin cannot see from their own session.
+  const { theme: pageTheme } = useTheme() || {};
+  const [pvTheme, setPvTheme] = useState(pageTheme === 'light' ? 'light' : 'dark');
+  const [pvViewer, setPvViewer] = useState('out'); // out | member | admin
   // Which panel. The screen was six cards deep and every one of them was open: the items you
   // came to edit sat below a preview, a preset row, a projects panel, a layout panel and a
   // button list, so "add a link" meant scrolling past five things that were not it.
@@ -20081,6 +20169,7 @@ function AdminNav() {
     setDownbarQuick(n.downbar?.quick !== false);
     setDownbarItems(Array.isArray(n.downbar?.items) ? n.downbar.items.map((it) => ({ kind: it.kind === 'primary' || it.kind === 'dropup' ? it.kind : 'link', label: it.label || '', labelFr: it.labelFr || '', to: it.to || '/', icon: it.icon || 'Boxes', children: (it.children || []).map((c) => ({ label: c.label || '', labelFr: c.labelFr || '', to: c.to || '/', icon: c.icon || 'Boxes' })) })) : []);
     setLayout(readLayout(n.layout));
+    setMobileMenu(readMobileMenu(n.mobileMenu));
   }, [loaded.data]);
 
   const patchItem = (i, patch) => setItems((s) => s.map((it, k) => k === i ? { ...it, ...patch } : it));
@@ -20114,18 +20203,70 @@ function AdminNav() {
     [ord[i], ord[j]] = [ord[j], ord[i]];
     setUtility((u) => { const n = { ...u }; ord.forEach((key, idx) => { n[key] = { ...n[key], order: idx }; }); return n; });
   };
-  const resetUtil = () => setUtility({});
+  // Show all + original order, but KEEP the chosen icons and sizes: they are a separate
+  // decision, and one reset wiping both is how an afternoon of icon picking gets lost.
+  const resetUtil = () => setUtility((u) => {
+    const n = {};
+    for (const [k, v] of Object.entries(u)) {
+      const keep = {};
+      for (const f of ['icon', 'iconDark', 'size', 'type']) if (v?.[f] !== undefined && v[f] !== '') keep[f] = v[f];
+      if (Object.keys(keep).length) n[k] = keep;
+    }
+    return n;
+  });
+  // Per-button icon (per theme) and size. '' / undefined = the built-in glyph and size.
+  const setUField = (k, f, v) => setUtility((u) => {
+    const cur = { ...(u[k] || {}) };
+    if (v === '' || v == null) delete cur[f]; else cur[f] = v;
+    return { ...u, [k]: cur };
+  });
+  // The built-in glyph each button falls back to, for the editor's own swatches.
+  const UTIL_FALLBACK = { notifications: Bell, projects: Boxes, lang: Languages, theme: Sun, settings: SettingsIcon, dashboard: LayoutDashboard, admin: Shield, profile: UserIcon, logout: LogOut, login: LogIn, brand: ImageIcon };
+  const iconSlot = (k, th) => {
+    const entry = utility[k];
+    const own = th === 'dark' ? entry?.iconDark : entry?.icon;
+    const field = th === 'dark' ? 'iconDark' : 'icon';
+    const label = th === 'dark' ? t('nav.util.icon.dark', 'Dark') : t('nav.util.icon.light', 'Light');
+    return (
+      <span className="inline-flex items-center rounded-lg border border-[var(--line)] overflow-hidden">
+        <button type="button" onClick={() => setIconPick({ onChange: (v) => setUField(k, field, v) })}
+          title={t('nav.util.icon.pick', 'Pick the {theme} theme icon').replace('{theme}', label.toLowerCase())}
+          className="inline-flex items-center gap-1.5 px-2 py-1 text-xs hover:bg-[var(--surface-2)]">
+          {th === 'dark' ? <Moon size={11} className="text-[var(--faint)]" /> : <Sun size={11} className="text-[var(--faint)]" />}
+          <span className={`grid place-items-center w-6 h-6 rounded-md ${th === 'dark' ? 'bg-[#15161b] text-white' : 'bg-white text-[#15161b]'} border border-[var(--line)]`}>
+            <UtilGlyph k={k} entry={entry} theme={th} size={14} fallback={UTIL_FALLBACK[k]} />
+          </span>
+          <span className="text-[var(--muted)]">{own ? label : (th === 'dark' && entry?.icon ? t('nav.util.icon.same', 'as light') : t('nav.util.icon.builtin', 'built-in'))}</span>
+        </button>
+        {own && <button type="button" onClick={() => setUField(k, field, '')} className="px-1.5 py-1 text-[var(--faint)] hover:text-error border-s border-[var(--line)]" title={t('nav.util.icon.clear', 'Back to the built-in icon')}><X size={12} /></button>}
+      </span>
+    );
+  };
+  const sizeSlot = (k) => (
+    <label className="inline-flex items-center gap-1.5 text-xs text-[var(--muted)]" title={t('nav.util.size.h', 'Size in pixels, {min} to {max}. Empty keeps the built-in size.').replace('{min}', UTIL_SIZE_MIN).replace('{max}', UTIL_SIZE_MAX)}>
+      {t('nav.util.size', 'Size')}
+      <Input type="number" min={UTIL_SIZE_MIN} max={UTIL_SIZE_MAX} className="!w-16 !py-1 !text-xs" value={utility[k]?.size ?? ''} placeholder={String(UTIL_DEFAULT_SIZE[k] || 16)}
+        onChange={(e) => { const n = e.target.value === '' ? '' : Math.round(Number(e.target.value)); setUField(k, 'size', n === '' || !Number.isFinite(n) ? '' : Math.min(UTIL_SIZE_MAX, Math.max(UTIL_SIZE_MIN, n))); }} />
+      px
+    </label>
+  );
+  // Which buttons can take an icon at all: the avatar is a picture of the person, so it only
+  // takes a size.
+  const takesIcon = (k) => k !== 'profile';
 
   // Trim + drop incomplete rows the same way the server would reject them, so what an
   // admin previews as valid is exactly what gets saved.
-  const buildClean = () => {
+  // `withIdx` tags each kept item with its position in the editor, for the preview's
+  // click-to-edit; the saved payload never carries it.
+  const buildClean = (withIdx = false) => {
     const out = [];
-    for (const it of items) {
+    for (const [idx, it] of items.entries()) {
+      const tag = withIdx ? { _idx: idx } : {};
       if (it.type === 'group') {
         const children = it.children.map((c) => ({ label: c.label.trim(), labelFr: (c.labelFr || '').trim(), to: c.to.trim(), desc: (c.desc || '').trim(), descFr: (c.descFr || '').trim(), icon: c.icon || '' })).filter((c) => c.label && c.to.startsWith('/'));
-        if (it.label.trim() && children.length) out.push({ type: 'group', label: it.label.trim(), labelFr: (it.labelFr || '').trim(), icon: it.icon || '', children });
+        if (it.label.trim() && children.length) out.push({ ...tag, type: 'group', label: it.label.trim(), labelFr: (it.labelFr || '').trim(), icon: it.icon || '', children });
       } else if (it.label.trim() && it.to.trim().startsWith('/')) {
-        out.push({ type: 'link', label: it.label.trim(), labelFr: (it.labelFr || '').trim(), to: it.to.trim(), icon: it.icon || '', children: [] });
+        out.push({ ...tag, type: 'link', label: it.label.trim(), labelFr: (it.labelFr || '').trim(), to: it.to.trim(), icon: it.icon || '', children: [] });
       }
     }
     // Custom bottom-bar buttons. A link/primary needs an internal path; a dropup needs at
@@ -20141,7 +20282,12 @@ function AdminNav() {
       })
       .filter((it) => (it.kind === 'dropup' ? it.children.length > 0 : it.to.startsWith('/')))
       .slice(0, 5);
-    return { enabled, items: out, utility, projectsMode, downbar: { enabled: downbarEnabled, display: downbarDisplay, quick: downbarQuick, items: dbItems }, layout };
+    // Phone-menu extras: same rule as a bottom-bar dropup link (a label and an internal path).
+    const mmExtras = mobileMenu.extras
+      .map((x) => ({ label: (x.label || '').trim(), labelFr: (x.labelFr || '').trim(), to: (x.to || '').trim(), icon: x.icon || '' }))
+      .filter((x) => x.label && x.to.startsWith('/')).slice(0, 8);
+    return { enabled, items: out, utility, projectsMode, downbar: { enabled: downbarEnabled, display: downbarDisplay, quick: downbarQuick, items: dbItems }, layout,
+      mobileMenu: { layout: mobileMenu.layout, columns: mobileMenu.columns, contact: mobileMenu.contact, extras: mmExtras } };
   };
 
   // Deferred behind an undo window, like the blog/docs editors: the PUT is idempotent and we
@@ -20186,6 +20332,7 @@ function AdminNav() {
         if (Array.isArray(parsed.downbar.items)) setDownbarItems(parsed.downbar.items.map((it) => ({ label: it.label || '', labelFr: it.labelFr || '', to: it.to || '/', icon: it.icon || 'Boxes' })));
       }
       if (parsed.layout && typeof parsed.layout === 'object') setLayout(readLayout(parsed.layout));
+      if (parsed.mobileMenu && typeof parsed.mobileMenu === 'object') setMobileMenu(readMobileMenu(parsed.mobileMenu));
       toast.success(t('nav.imported', 'Preset imported, review and save.'));
     } catch { toast.error(t('nav.importbad', 'Not a valid topbar preset JSON.')); }
   };
@@ -20199,6 +20346,10 @@ function AdminNav() {
     </button>
   );
   const validCount = buildClean().items.length;
+  // What the preview renders: the draft, read through the same rule /nav applies (custom items
+  // only while the switch is on), so it shows what visitors WILL get once this is saved.
+  const pvDraft = buildClean(true);
+  const pvCfg = { ...pvDraft, items: pvDraft.enabled ? pvDraft.items : [] };
 
   if (loaded.loading) return <Loading />;
   return (
@@ -20242,13 +20393,29 @@ function AdminNav() {
       <Card className="p-4">
         <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
           <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Eye size={13} className="text-[var(--accent-ink)]" /> {t('nav.pv.title', 'Live preview')} <span className="normal-case font-normal text-[var(--faint)]">({lang.toUpperCase()})</span></div>
-          <div className="flex rounded-lg border border-[var(--line)] overflow-hidden">
-            <button onClick={() => setDevice('desktop')} className={`px-2.5 py-1 text-xs flex items-center gap-1.5 ${device === 'desktop' ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)]'}`}><MonitorIcon size={13} /> {t('nav.pv.desktop', 'Desktop')}</button>
-            <button onClick={() => setDevice('mobile')} className={`px-2.5 py-1 text-xs flex items-center gap-1.5 ${device === 'mobile' ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)]'}`}><Smartphone size={13} /> {t('nav.pv.mobile', 'Mobile')}</button>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {(() => {
+              const seg = (value, set, opts) => (
+                <div className="flex rounded-lg border border-[var(--line)] overflow-hidden">
+                  {opts.map(([v, I, label]) => (
+                    <button key={v} type="button" onClick={() => set(v)} aria-pressed={value === v}
+                      className={`px-2.5 py-1 text-xs flex items-center gap-1.5 ${value === v ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>
+                      <I size={13} /> {label}
+                    </button>
+                  ))}
+                </div>
+              );
+              return <>
+                {seg(pvViewer, setPvViewer, [['out', LogIn, t('nav.pv.v.out', 'Signed out')], ['member', UserIcon, t('nav.pv.v.member', 'Member')], ['admin', Shield, t('nav.pv.v.admin', 'Admin')]])}
+                {seg(pvTheme, setPvTheme, [['light', Sun, t('nav.pv.light', 'Light')], ['dark', Moon, t('nav.pv.dark', 'Dark')]])}
+                {seg(device, setDevice, [['desktop', MonitorIcon, t('nav.pv.desktop', 'Desktop')], ['mobile', Smartphone, t('nav.pv.mobile', 'Mobile')]])}
+              </>;
+            })()}
           </div>
         </div>
-        <div className="rounded-xl bg-[var(--bg)] p-4"><NavPreview items={items} lang={lang} device={device} utility={utility} projectsMode={projectsMode} downbar={downbarEnabled} downbarDisplay={downbarDisplay} downbarItems={downbarItems} downbarQuick={downbarQuick} layout={layout} projects={pinnedProjects} onEdit={device === 'desktop' ? editItem : undefined} /></div>
-        {device === 'desktop' && items.length > 0 && <div className="text-[11px] text-[var(--faint)] mt-2 flex items-center gap-1"><MousePointerClick size={11} /> {t('nav.pv.edithint', 'Click any item in the preview to jump to its settings below.')}</div>}
+        {!enabled && <div className="text-[11px] text-warning mb-2">{t('nav.pv.off', 'Custom navigation is off, so this is the built-in menu visitors get. Turn it on above to preview your items.')}</div>}
+        <LiveNavPreview cfg={pvCfg} device={device} theme={pvTheme} onTheme={setPvTheme} viewer={pvViewer} onEdit={editItem} />
+        <div className="text-[11px] text-[var(--faint)] mt-2 flex items-center gap-1"><MousePointerClick size={11} /> {device === 'desktop' ? t('nav.pv.edithint', 'Click any item in the preview to jump to its settings below.') : t('nav.pv.tapmenu', 'Tap the menu button to open the phone menu. Links jump to their settings instead of navigating.')}</div>
       </Card>
 
       {/* Pinned projects display + mobile bottom bar. */}
@@ -20347,6 +20514,56 @@ function AdminNav() {
           </div>
         </div>
         )}
+        {/* The phone menu. Built with the same pieces as the bottom bar above it (an icon, a
+            label in both languages, an internal path), because on a phone the two are one
+            piece of navigation and the menu is now drawn in the bar's style. */}
+        <div className="border-t border-[var(--line)] pt-3 space-y-3">
+          <div className="min-w-0">
+            <div className="font-medium text-sm flex items-center gap-1.5"><Smartphone size={14} /> {t('nav.mm.title', 'Phone menu')}</div>
+            <div className="text-xs text-[var(--faint)]">{t('nav.mm.d', 'What the menu button opens on a phone: your nav items, then shortcuts, then the account. Switch the preview to Mobile and tap the menu to see it.')}</div>
+          </div>
+          {(() => {
+            const segM = (label, field, opts) => (
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div className="font-medium text-sm">{label}</div>
+                <div className="flex rounded-lg border border-[var(--line)] overflow-hidden shrink-0">
+                  {opts.map(([v, lbl]) => <button key={String(v)} type="button" onClick={() => setMobileMenu((m) => ({ ...m, [field]: v }))} className={`px-3 py-1.5 text-xs ${mobileMenu[field] === v ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{lbl}</button>)}
+                </div>
+              </div>
+            );
+            return <>
+              {segM(t('nav.mm.layout', 'Style'), 'layout', [['tiles', t('nav.mm.tiles', 'Tiles, like the bottom bar')], ['list', t('nav.mm.list', 'List')]])}
+              {mobileMenu.layout === 'tiles' && segM(t('nav.mm.cols', 'Tiles per row'), 'columns', [[3, '3'], [4, '4']])}
+              {segM(t('nav.mm.contact', 'Contact shortcut'), 'contact', [[true, t('nav.util.show', 'Show')], [false, t('nav.util.hide', 'Hide')]])}
+            </>;
+          })()}
+          <div>
+            <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+              <div className="min-w-0">
+                <div className="font-medium text-sm">{t('nav.mm.extras', 'Extra shortcuts')}</div>
+                <div className="text-xs text-[var(--faint)]">{t('nav.mm.extras.d', 'Added to the Shortcuts section, after Projects, Contact and Settings. Up to 8.')}</div>
+              </div>
+              {mobileMenu.extras.length < 8 && <Button size="sm" variant="ghost" onClick={() => setMobileMenu((m) => ({ ...m, extras: [...m.extras, { label: '', labelFr: '', to: '/', icon: 'Boxes' }] }))}><Plus size={13} /> {t('nav.mm.add', 'Add shortcut')}</Button>}
+            </div>
+            <div className="space-y-1.5">
+              {mobileMenu.extras.map((x, j) => {
+                const patchX = (pt) => setMobileMenu((m) => ({ ...m, extras: m.extras.map((e, k) => (k === j ? { ...e, ...pt } : e)) }));
+                const bad = !String(x.to || '').trim().startsWith('/') || !String(x.label || '').trim();
+                return (
+                  <div key={j} className="flex items-center gap-1.5 flex-wrap">
+                    <IconSelect value={x.icon} onChange={(v) => patchX({ icon: v })} />
+                    <Input className="flex-1 min-w-[70px]" value={x.label} maxLength={24} placeholder={t('nav.downbar.lbl', 'Label')} onChange={(e) => patchX({ label: e.target.value })} />
+                    <Input className="flex-1 min-w-[70px]" value={x.labelFr} maxLength={24} placeholder={t('nav.downbar.lblfr', 'Label (FR)')} onChange={(e) => patchX({ labelFr: e.target.value })} />
+                    <Input className="flex-1 min-w-[70px] font-mono text-xs" value={x.to} placeholder="/path" onChange={(e) => patchX({ to: e.target.value })} />
+                    <button type="button" disabled={j === 0} onClick={() => setMobileMenu((m) => ({ ...m, extras: moveIn(m.extras, j, -1) }))} className="p-1.5 text-[var(--muted)] hover:text-[var(--text)] disabled:opacity-30" title={t('common.moveup', 'Move up')}><ChevronUp size={14} /></button>
+                    <button type="button" onClick={() => setMobileMenu((m) => ({ ...m, extras: m.extras.filter((_, k) => k !== j) }))} className="p-1.5 text-[var(--muted)] hover:text-error" title={t('common.remove', 'Remove')}><Trash2 size={13} /></button>
+                    {bad && <div className="basis-full text-[11px] text-warning">{t('nav.mm.bad', 'Needs a label and a path starting with /, or it is left out when saving.')}</div>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
         {/* Desktop layout — align · density · labels. Applied live by the preview above and
             by the real topbar via the shared lib/navLayout reader. */}
         {(() => {
@@ -20380,12 +20597,24 @@ function AdminNav() {
           <Button size="sm" variant="ghost" onClick={resetUtil}><RotateCcw size={13} /> {t('nav.util.reset', 'Show all, original order')}</Button>
         </div>
         <p className="text-xs text-[var(--muted)] mb-3">{t('nav.util.desc', 'Show/hide and reorder the built-in buttons. Each still respects its own rule (e.g. Admin only shows for staff, Sign in only when logged out). Order changes stay within a group.')}</p>
+        <p className="text-xs text-[var(--muted)] mb-3">{t('nav.util.icons.desc', 'Each button can have its own icon for the light theme and the dark theme, and its own size. Leave one empty to keep the built-in icon. Switch the preview between Light and Dark to check both.')}</p>
+        {/* The site mark at the far left. Not a button you can hide, so it has only the icon
+            and size controls. Empty = the logo from Site theme. */}
+        <div className="mb-3">
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">{t('nav.util.brand.g', 'App icon (left of the bar)')}</div>
+          <div className="rounded-lg border border-[var(--line)] px-2.5 py-2 panel flex items-center gap-2 flex-wrap">
+            <ImageIcon size={15} className="text-[var(--muted)] shrink-0" />
+            <span className="text-sm flex-1 min-w-[8rem]">{t('nav.util.brand', 'Site logo')} <span className="text-[11px] text-[var(--faint)]">{t('nav.util.brand.d', '(empty = the logo from Site theme)')}</span></span>
+            {iconSlot('brand', 'light')}{iconSlot('brand', 'dark')}{sizeSlot('brand')}
+          </div>
+        </div>
         {[['a', t('nav.util.always', 'Always visible'), UTIL_A_KEYS], ['b', t('nav.util.account', 'Account (desktop)'), UTIL_B_KEYS]].map(([grp, label, keys]) => (
           <div key={grp} className="mb-3 last:mb-0">
             <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">{label}</div>
             <div className="space-y-1">
               {orderedU(keys).map((k, idx, arr) => (
-                <div key={k} className="flex items-center gap-2 rounded-lg border border-[var(--line)] px-2.5 py-1.5 panel">
+                <div key={k} className="rounded-lg border border-[var(--line)] px-2.5 py-1.5 panel">
+                <div className="flex items-center gap-2">
                   <NavPvIcon name={UTIL_ICON[k]} size={15} />
                   <span className="flex-1 text-sm">{t('nav.util.' + k, UTIL_LABEL[k])}</span>
                   {k === 'lang' && (
@@ -20396,6 +20625,14 @@ function AdminNav() {
                   <button className="p-1 rounded text-[var(--muted)] disabled:opacity-30 hover:text-[var(--text)]" disabled={idx === 0} onClick={() => moveUtil(keys, k, -1)} title={t('nav.up', 'Move up')}><ChevronDown size={13} className="rotate-180" /></button>
                   <button className="p-1 rounded text-[var(--muted)] disabled:opacity-30 hover:text-[var(--text)]" disabled={idx === arr.length - 1} onClick={() => moveUtil(keys, k, 1)} title={t('nav.down', 'Move down')}><ChevronDown size={13} /></button>
                   <button type="button" onClick={() => setUVis(k, !uVis(k))} aria-pressed={uVis(k)} title={uVis(k) ? t('nav.util.hide', 'Hide') : t('nav.util.show', 'Show')} className={`w-9 h-5 rounded-full relative shrink-0 transition ${uVis(k) ? 'bg-[var(--primary)]' : 'bg-[var(--surface-3,var(--line))]'}`}><span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${uVis(k) ? 'left-[18px]' : 'left-0.5'}`} /></button>
+                </div>
+                {/* Icon per theme + size. Folded under the row so the list still scans as a
+                    list of buttons, with the look of each one a line below its name. */}
+                {uVis(k) && <div className="flex items-center gap-2 flex-wrap mt-1.5 ps-6">
+                  {takesIcon(k) && <>{iconSlot(k, 'light')}{iconSlot(k, 'dark')}</>}
+                  {sizeSlot(k)}
+                  {k === 'theme' && <span className="text-[11px] text-[var(--faint)]">{t('nav.util.theme.h', 'The icon on the switch knob in each theme.')}</span>}
+                </div>}
                 </div>
               ))}
             </div>
@@ -22205,14 +22442,90 @@ function liveToken(name) {
 // The Better* project marks the icon picker offers as `app:<key>` (blog, docs, showcase
 // pages, badges…). The four bundled ones are the fallback; anything added here — a new
 // project, a redesigned logo — reaches every visitor with the theme, without a deploy.
+// The bundled Better* marks, key -> [name, url]. ONE list, read by both places that can
+// replace a mark (Site theme > App icons, and Projects config > App icon), so "restore the
+// default" means the same image wherever it is clicked.
+const BUNDLED_APP_ICONS = [['bmm', 'BetterModsManager', '/icons/bmm.png'], ['bsm', 'BetterSoundMaker', '/icons/bsm.png'], ['bi', 'BetterInstaller', '/icons/bi.svg'], ['bc', 'BetterCommunity', '/logo.png']];
+// A project key -> the `app:` key its mark is stored under. Two built-ins were named before
+// the icon store existed and do not match their project key.
+const appIconKeyFor = (pkey) => (pkey === 'installer' ? 'bi' : pkey === 'community' ? 'bc' : pkey);
+const bundledAppIcon = (key) => BUNDLED_APP_ICONS.find((b) => b[0] === key)?.[2] || '';
+
+// Revert one mark to its default in ONE click: the saved list minus that key, written
+// straight away behind the usual undo window. It works from the SAVED list, not a card's
+// draft rows, so a restore never smuggles an unsaved edit of another row onto the server.
+function useRestoreAppIcon(reload) {
+  const { t } = useI18n();
+  const undoSave = useUndoableSave(reload);
+  return (saved, key, label) => {
+    const next = (saved || []).filter((r) => r.key !== key);
+    undoSave(async () => {
+      await api.put('/admin/site/app-icons', { icons: next });
+      // The registry is additive, so the stale override has to be written over by hand for
+      // this tab to show the default before its next page load.
+      const def = bundledAppIcon(key);
+      if (def) registerAppIcons([{ key, url: def }]);
+    }, t('ai.restored', '{name} is back to its default icon.').replace('{name}', label || key), { onCancel: reload });
+  };
+}
+
+// The same store, seen from ONE project: Projects config > App icon. Shows the mark the site
+// is using, replaces it with an upload, and puts the default back in one click. The icon
+// store is ADMIN-only on the server, so a project manager without that role sees nothing
+// rather than a card whose every button answers 403.
+function ProjectAppIconCard({ pkey, name }) {
+  const { t } = useI18n(); const toast = useToast();
+  const { user } = useAuth();
+  const isAdmin = ['ADMIN', 'SUPERADMIN'].includes(user?.role);
+  const { data, reload } = useAsync(() => (isAdmin ? api.get('/admin/site/app-icons') : Promise.resolve(null)), [isAdmin]);
+  const restore = useRestoreAppIcon(reload);
+  const undoSave = useUndoableSave(reload);
+  const fileRef = useRef(null);
+  if (!isAdmin || !data) return null;
+  const key = appIconKeyFor(pkey);
+  const saved = data.icons || [];
+  const over = saved.find((r) => r.key === key);
+  const def = bundledAppIcon(key);
+  const current = over?.url || def;
+  const upload = async (file) => {
+    if (!file) return;
+    let url;
+    try { url = await uploadImage(file); } catch { toast.error(t('common.failed', 'Failed.')); return; }
+    const next = [...saved.filter((r) => r.key !== key), { key, label: over?.label || name, url }];
+    undoSave(async () => { await api.put('/admin/site/app-icons', { icons: next }); registerAppIcons([{ key, url, label: name }]); },
+      t('ai.pc.saved', '{name} now uses the new icon.').replace('{name}', name));
+  };
+  return (
+    <Card className="p-4 mb-4 flex items-center gap-3 flex-wrap">
+      <span className="w-12 h-12 rounded-xl bg-white border border-[var(--line)] grid place-items-center overflow-hidden shrink-0">
+        {current ? <img src={current} alt="" className="max-w-full max-h-full p-1.5" /> : <ImageIcon size={18} className="text-[var(--faint)]" />}
+      </span>
+      <div className="flex-1 min-w-[12rem]">
+        <div className="font-medium text-sm flex items-center gap-2 flex-wrap">{t('ai.pc.title', 'App icon')} <code className="text-[10px] text-[var(--faint)]">app:{key}</code>{over ? <Badge tone="amber">{t('ai.custom', 'custom')}</Badge> : <Badge tone="">{def ? t('ai.pc.default', 'default') : t('ai.pc.noneset', 'none set')}</Badge>}</div>
+        <p className="text-xs text-[var(--muted)]">{t('ai.pc.d', 'The mark shown in the topbar, on the project page and in the icon picker. Same list as Site theme > App icons.')}</p>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        <input ref={fileRef} type="file" accept="image/png,image/svg+xml,image/webp" className="hidden" onChange={(e) => { upload(e.target.files?.[0]); e.target.value = ''; }} />
+        <Button size="sm" variant="ghost" onClick={() => fileRef.current?.click()}><UploadIcon size={13} /> {t('ai.pc.replace', 'Replace')}</Button>
+        <Button size="sm" variant="ghost" disabled={!over} onClick={() => restore(saved, key, name)}
+          title={over ? t('ai.restore.h', 'Put the bundled icon back, saved straight away') : t('ai.pc.isdefault', 'Already the default icon')}>
+          <RotateCcw size={13} /> {def ? t('ai.pc.restore', 'Restore default') : t('ai.pc.remove', 'Remove icon')}
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
 function AppIconsCard() {
   const { t } = useI18n(); const toast = useToast();
   const { data, loading, reload } = useAsync(() => api.get('/admin/site/app-icons'), []);
   const [rows, setRows] = useState(null);
   const [busy, setBusy] = useState(false);
+  const restore = useRestoreAppIcon(reload);
   useEffect(() => { if (data) setRows(data.icons || []); }, [data]);
   if (loading || !rows) return null;
-  const BUNDLED = [['bmm', 'BetterModsManager', '/icons/bmm.png'], ['bsm', 'BetterSoundMaker', '/icons/bsm.png'], ['bi', 'BetterInstaller', '/icons/bi.svg'], ['bc', 'BetterCommunity', '/logo.png']];
+  const BUNDLED = BUNDLED_APP_ICONS;
+  const savedKeys = new Set((data?.icons || []).map((r) => r.key));
   const upd = (i, patch) => setRows(rows.map((r, k) => (k === i ? { ...r, ...patch } : r)));
   const pick = async (i, file) => {
     if (!file) return;
@@ -22238,7 +22551,12 @@ function AppIconsCard() {
       <div className="flex flex-wrap gap-2 mb-3">
         {BUNDLED.map(([k, l, u]) => {
           const over = rows.find((r) => r.key === k);
-          return <span key={k} className="inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-lg border border-[var(--line)] panel" title={over ? t('ai.overridden', 'Replaced by the row below') : t('ai.bundled', 'Bundled, add a row with this key to replace it')}><span className="inline-grid place-items-center w-5 h-5 rounded bg-white p-0.5"><img src={over?.url || u} alt="" className="max-w-full max-h-full" /></span> {l} <code className="text-[10px] text-[var(--faint)]">app:{k}</code>{over && <Badge tone="amber">{t('ai.custom', 'custom')}</Badge>}</span>;
+          return <span key={k} className="inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-lg border border-[var(--line)] panel" title={over ? t('ai.overridden', 'Replaced by the row below') : t('ai.bundled', 'Bundled, add a row with this key to replace it')}><span className="inline-grid place-items-center w-5 h-5 rounded bg-white p-0.5"><img src={over?.url || u} alt="" className="max-w-full max-h-full" /></span> {l} <code className="text-[10px] text-[var(--faint)]">app:{k}</code>{over && <Badge tone="amber">{t('ai.custom', 'custom')}</Badge>}
+            {/* One click back to the bundled mark. Only for a SAVED override: an unsaved row
+                is undone by its own bin, and restoring something the server never had would
+                be a save that changes nothing. */}
+            {savedKeys.has(k) && <button type="button" onClick={() => restore(data?.icons, k, l)} className="inline-flex items-center gap-1 ms-0.5 px-1.5 py-0.5 rounded-md text-[var(--accent-ink)] hover:bg-[var(--surface-2)]" title={t('ai.restore.h', 'Put the bundled icon back, saved straight away')}><RotateCcw size={11} /> {t('ai.restore', 'Default')}</button>}
+          </span>;
         })}
       </div>
       {rows.length === 0 ? <div className="text-[12px] text-[var(--faint)]">{t('ai.none', 'No custom icons, the four bundled marks are offered.')}</div> : (
@@ -24684,6 +25002,7 @@ function AdminSettings() {
       {showCards('tools') && (
         <div className="mt-8 space-y-4">
           <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t('hs.tools.section', 'Maintenance & demo data')}</div>
+          <ConfigTransferCard />
           <SeedGeneratorCard />
         </div>
       )}

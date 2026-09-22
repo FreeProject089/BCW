@@ -2,11 +2,12 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from './auth.jsx';
 import { useI18n } from '../i18n.jsx';
-import { Button, Card, Field, Input, Textarea, PageHeader, Spinner, useToast } from '../ui/ui.jsx';
+import { Button, Card, Field, Input, Textarea, Select, PageHeader, Spinner, useToast } from '../ui/ui.jsx';
 import {
   Mail, MessageSquare, Send, ShieldCheck, BadgeCheck, ArrowLeft, ChevronRight, Flag, Scale,
-  CreditCard, User, ShieldAlert, Bug, Server, Receipt, Download, Trash2, Info,
+  CreditCard, User, ShieldAlert, Bug, Server, Receipt, Download, Trash2, Info, Languages, Boxes,
 } from 'lucide-react';
+import { ContactModal } from '../ui/contact.jsx';
 import { GithubIcon, DiscordIcon, KofiIcon, RedditIcon } from '../ui/brand.jsx';
 import { api } from '../lib/api.js';
 import { ReportModal } from '../ui/report.jsx';
@@ -31,7 +32,54 @@ import { DESTINATIONS, Q1, Q2, TOPICS, fieldsComplete } from './contact-triage.j
 const ICONS = {
   flag: Flag, scale: Scale, card: CreditCard, user: User, shield: ShieldAlert, bug: Bug,
   message: MessageSquare, server: Server, receipt: Receipt, download: Download, trash: Trash2,
+  languages: Languages, boxes: Boxes,
 };
+
+/**
+ * "Write to a project": pick it, then the project's own contact form (its topics, its
+ * inbox). A project that closed its inbox says so here rather than at Send.
+ */
+function ProjectRoute({ fr }) {
+  const [ref, setRef] = useState('');
+  const [info, setInfo] = useState(null);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    setInfo(null);
+    if (!ref) return undefined;
+    let on = true;
+    api.get(`/projects-contact/${encodeURIComponent(ref)}`).then((r) => { if (on) setInfo(r); }).catch(() => { if (on) setInfo({ enabled: false }); });
+    return () => { on = false; };
+  }, [ref]);
+  return (
+    <div className="space-y-3">
+      <ProjectPicker value={ref} onChange={setRef} fr={fr} />
+      {info && (info.enabled && info.topics?.length
+        ? <div className="flex justify-end"><Button variant="primary" onClick={() => setOpen(true)}><MessageSquare size={15} /> {fr ? `Écrire à ${info.name}` : `Write to ${info.name}`}</Button></div>
+        : <p className="text-xs text-[var(--muted)]">{fr ? 'Ce projet ne reçoit pas de messages ici pour le moment. Tu peux écrire à l’équipe du site avec « Autre chose ».' : 'This project does not take messages here at the moment. You can write to the site team with “Something else”.'}</p>)}
+      {open && info && <ContactModal kind="project" targetId={info.ref} targetLabel={info.name} topics={info.topics} onClose={() => setOpen(false)} />}
+    </div>
+  );
+}
+
+/**
+ * The projects a sender may pick (GET /contact/projects), loaded the first time a form asks
+ * for one. Official projects first, then the others, in two groups, because "which project"
+ * is a question about names people know and the two lists do not overlap.
+ */
+function ProjectPicker({ value, onChange, fr }) {
+  const [list, setList] = useState(null);
+  useEffect(() => { let on = true; api.get('/contact/projects').then((r) => { if (on) setList(r.projects || []); }).catch(() => { if (on) setList([]); }); return () => { on = false; }; }, []);
+  if (!list) return <Spinner />;
+  const official = list.filter((x) => x.official);
+  const others = list.filter((x) => !x.official);
+  return (
+    <Select value={value || ''} onChange={(e) => onChange(e.target.value)}>
+      <option value="">{fr ? 'Choisir un projet' : 'Pick a project'}</option>
+      {official.length > 0 && <optgroup label={fr ? 'Projets officiels' : 'Official projects'}>{official.map((x) => <option key={x.ref} value={x.ref}>{x.name}</option>)}</optgroup>}
+      {others.length > 0 && <optgroup label={fr ? 'Autres projets' : 'Other projects'}>{others.map((x) => <option key={x.ref} value={x.ref}>{x.name}</option>)}</optgroup>}
+    </Select>
+  );
+}
 const Glyph = ({ name, size = 16, className = '' }) => {
   const I = ICONS[name] || MessageSquare;
   return <I size={size} className={className} />;
@@ -150,12 +198,29 @@ export function Contact() {
 
   const emailOk = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(msg.email);
   const valid = !!dest && msg.name.trim().length >= 1 && emailOk && msg.body.trim().length >= 5 && fieldsComplete(dest, dv);
+  // A translation problem IN A PROJECT goes to that project's inbox, where the people who can
+  // fix the text read it, as long as the project takes translation messages. Anything else,
+  // or a project that does not, goes to the site team exactly as before.
+  const sendToProject = async (pow) => {
+    const payload = {
+      kind: 'project', targetId: dv.project, topic: 'translation',
+      subject: `${fr ? 'Traduction' : 'Translation'}: ${dv.page}`.slice(0, 140),
+      body: [`${fr ? 'Page ou texte' : 'Page or text'}: ${dv.page}`, dv.lang ? `${fr ? 'Langue' : 'Language'}: ${dv.lang}` : '', '', msg.body.trim()].filter((x, i) => x || i === 2).join('\n'),
+      ...(user ? {} : { email: msg.email.trim(), name: msg.name.trim(), pow }),
+    };
+    try { return await api.post('/threads', payload); }
+    catch (x) { if (['project_contact_off', 'invalid_topic', 'not_found'].includes(x.data?.error)) return null; throw x; }
+  };
   const send = async () => {
     if (!valid) return;
     setBusy(true);
     try {
       const { solvePow } = await import('../lib/pow.js');
       const pow = await solvePow(() => api.get('/auth/pow')); // anti-spam proof-of-work
+      if (dest === 'translation' && dv.scope === 'project' && dv.project) {
+        const r = await sendToProject(pow);
+        if (r) { setSent({ project: true, link: r.accessToken ? `${window.location.origin}/messages/t/${r.accessToken}` : '' }); return; }
+      }
       await api.post('/contact', {
         name: msg.name.trim(), email: msg.email.trim(), body: msg.body.trim(),
         // The destination, not a kind: the server derives the queue from it so a browser
@@ -168,6 +233,7 @@ export function Contact() {
       toast.error(err === 'daily_limit' ? (fr ? (user ? 'Limite quotidienne atteinte (5/jour).' : 'Limite quotidienne atteinte (3/jour). Connecte-toi pour 5/jour.') : (user ? 'Daily limit reached (5/day).' : 'Daily limit reached (3/day). Log in for 5/day.'))
         : err === 'field_required' ? (fr ? 'Il manque une réponse au-dessus.' : 'An answer above is missing.')
           : err === 'field_too_long' ? (fr ? 'Une réponse est trop longue.' : 'One answer is too long.')
+          : err === 'unknown_project' ? (fr ? 'Ce projet n’existe plus, choisis-en un autre.' : 'That project no longer exists, pick another one.')
             : err === 'invalid_input' ? (fr ? 'Vérifie les champs.' : 'Check the fields.') : (fr ? 'Échec de l’envoi.' : 'Failed to send.'));
     } finally { setBusy(false); }
   };
@@ -199,7 +265,16 @@ export function Contact() {
           <div className="p-10 text-center">
             <span className="inline-grid place-items-center w-14 h-14 rounded-2xl bg-success-bg mb-4"><BadgeCheck size={28} className="text-success" /></span>
             <div className="text-lg font-semibold">{fr ? 'Message envoyé !' : 'Message sent!'}</div>
-            <p className="text-sm text-[var(--muted)] mt-1.5 max-w-sm mx-auto">{fr ? 'Merci, on te répond dès que possible. Pour du temps réel, rejoins le Discord ci-dessus.' : 'Thanks, we will get back to you soon. Prefer real-time? Join the Discord above.'}</p>
+            {sent?.project ? (
+              <p className="text-sm text-[var(--muted)] mt-1.5 max-w-sm mx-auto">
+                {fr ? 'Il est parti aux mainteneurs du projet.' : 'It went to the project’s maintainers.'}{' '}
+                {sent.link
+                  ? <>{fr ? 'Garde ce lien pour suivre la conversation :' : 'Keep this link to follow the conversation:'} <a className="text-[var(--accent-ink)] break-all" href={sent.link}>{sent.link}</a></>
+                  : (fr ? 'La conversation est dans ton tableau de bord, Messages.' : 'The conversation is in your dashboard, Messages.')}
+              </p>
+            ) : (
+              <p className="text-sm text-[var(--muted)] mt-1.5 max-w-sm mx-auto">{fr ? 'Merci, on te répond dès que possible. Pour du temps réel, rejoins le Discord ci-dessus.' : 'Thanks, we will get back to you soon. Prefer real-time? Join the Discord above.'}</p>
+            )}
             <Button className="mt-5" onClick={() => { setSent(false); setMsg({ name: user?.displayName || '', email: user?.email || '', body: '' }); setVals({}); restart(); }}>{fr ? 'Envoyer un autre' : 'Send another'}</Button>
           </div>
         ) : step === 'q1' ? (
@@ -214,7 +289,12 @@ export function Contact() {
           <div className="p-6 space-y-3">
             <button type="button" onClick={() => setStep('q1')} className="text-xs text-[var(--muted)] hover:text-[var(--text)] flex items-center gap-1"><ArrowLeft size={13} /> {fr ? 'Retour' : 'Back'}</button>
             <div className="text-sm font-semibold">{say(Q2[branch].title)}</div>
-            {Q2[branch].kind === 'locate' ? (
+            {Q2[branch].kind === 'project' ? (
+              <>
+                <p className="text-xs text-[var(--muted)]">{say(Q2[branch].hint)}</p>
+                <ProjectRoute fr={fr} />
+              </>
+            ) : Q2[branch].kind === 'locate' ? (
               <>
                 <p className="text-xs text-[var(--muted)]">{say(Q2[branch].hint)}</p>
                 <Input value={locate} onChange={(e) => setLocate(e.target.value)} maxLength={400}
@@ -242,9 +322,20 @@ export function Contact() {
 
             {spec.fields.length > 0 && (
               <div className="mt-4 grid sm:grid-cols-2 gap-4">
-                {spec.fields.map((f) => (
+                {spec.fields.filter((f) => !f.requiredIf || dv[f.requiredIf.field] === f.requiredIf.equals).map((f) => (
                   <div key={f.name} className={f.type === 'textarea' || f.type === 'check' ? 'sm:col-span-2' : ''}>
-                    {f.type === 'check' ? (
+                    {f.type === 'choice' ? (
+                      <Field label={say(f.label)}>
+                        <div className="flex gap-2 flex-wrap" role="radiogroup" aria-label={say(f.label)}>
+                          {f.options.map((o) => (
+                            <button key={o.value} type="button" role="radio" aria-checked={dv[f.name] === o.value} onClick={() => setField(f.name, o.value)}
+                              className={`px-3 py-1.5 rounded-lg border text-sm ${dv[f.name] === o.value ? 'border-[var(--ring)] tint-primary' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}>{say(o.label)}</button>
+                          ))}
+                        </div>
+                      </Field>
+                    ) : f.type === 'project' ? (
+                      <Field label={say(f.label)}><ProjectPicker value={dv[f.name]} onChange={(v) => setField(f.name, v)} fr={fr} /></Field>
+                    ) : f.type === 'check' ? (
                       <label className="flex items-start gap-2 text-sm cursor-pointer rounded-xl border border-[var(--line)] bg-[var(--surface-2)] px-3 py-2.5">
                         <input type="checkbox" className="mt-1" checked={dv[f.name] === true} onChange={(e) => setField(f.name, e.target.checked)} />
                         <span>{say(f.label)}</span>

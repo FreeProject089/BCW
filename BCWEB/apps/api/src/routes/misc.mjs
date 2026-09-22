@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { db, requireRole, requireCap, hasCap, optionalAuth, slugify, logAudit, notify, notifyAll, clearAccountLockCache, clearUserCache, CAPABILITIES, NOTIF_CATEGORIES, currentUser, httpUrl } from '../lib/lib.mjs';
 import { isDemoKey } from '../lib/demo.mjs';
+import { SECRET_SETTING_KEYS } from '../lib/secret-guard.mjs';
 import { suspendOwned, restoreOwned, cancelSubscriptions, anonymiseAccount } from './closure.mjs';
 import { addStaffNote, notifyAccountAction, notesFor, NOTE_KINDS } from '../lib/staff-notes.mjs';
 import { shredUser } from '../lib/shred.mjs';
@@ -532,6 +533,343 @@ const sceneConfig = (row) => {
   };
 };
 
+// The body PUT /admin/site/scene validates. Module-level and exported so the config import (lib/config-transfer.mjs) checks a seed with this schema rather than a copy of it.
+export const SCENE_BODY = z.object({
+  enabled: z.boolean().optional(),
+  shape: z.enum(SCENE_SHAPES).optional(),
+  detail: z.number().int().min(0).max(5).optional(),
+  noise: z.number().min(0).max(1.5).optional(),
+  speed: z.number().min(0).max(3).optional(),
+  opacity: z.number().min(0.1).max(1).optional(),
+  scale: z.number().min(0.5).max(1.8).optional(),
+  surface: z.enum(SCENE_SURFACES).optional(),
+  hover: z.enum(SCENE_HOVERS).optional(),
+  reveal: z.enum(SCENE_REVEALS).optional(),
+  glow: z.number().min(0).max(1).optional(),
+  twinkles: z.number().int().min(0).max(240).optional(),
+  fps: z.number().int().min(15).max(60).optional(),
+  // A map of event id → partial scene override. Sanitised (scenePartial) on store, so a
+  // client that posts junk cannot poison the config every visitor reads.
+  events: z.record(z.any()).optional(),
+});
+
+// The body PUT /admin/site/showcase validates. Module-level and exported so the config import (lib/config-transfer.mjs) checks a seed with this schema rather than a copy of it.
+export const SHOWCASE_BODY = z.object({
+  enabled: z.boolean().optional(),
+  intervalMs: z.number().int().min(2000).max(30000).optional(),
+  items: z.array(showcaseItem).max(SHOWCASE_MAX).optional(),
+});
+
+// The body PUT /admin/site/home validates. Module-level and exported so the config import (lib/config-transfer.mjs) checks a seed with this schema rather than a copy of it.
+export const HOME_BODY = z.object({
+  // Keys are restricted to the home page's own namespace. Without that, this endpoint
+  // would be a way to rewrite ANY string on the site — including the wording of a
+  // consent notice or a payment confirmation — from a screen labelled "home page".
+  text: z.record(
+    z.string().regex(/^home\.[A-Za-z0-9._-]{1,60}$/),
+    z.object({ en: z.string().max(600).optional(), fr: z.string().max(600).optional() }),
+  ).optional(),
+  sections: z.record(z.enum(HOME_SECTIONS), z.boolean()).optional(),
+  variant: z.enum(HOME_VARIANT_KEYS).optional(),
+  suite: z.object({
+    style: z.enum(SUITE_STYLES).optional(),
+    extra: z.array(z.object({
+      id: z.string().min(1).max(40),
+      name: z.string().min(1).max(60),
+      desc: z.string().max(160).default(''),
+      // Same-origin paths and http(s) only. This ends up in an `href` on the front page,
+      // so `javascript:` and `data:` are refused here rather than in the component that
+      // renders it — the component is not the thing an attacker would be talking to.
+      to: z.string().max(300).refine((u) => /^\/(?![/\\])/.test(u) || /^https?:\/\//i.test(u),
+        { message: 'must be a site path (/x) or an http(s) URL' }),
+      icon: z.string().max(60).default(''),
+      // Held to the same rule as `to`, and for the same reason: it becomes an attribute
+      // on the front page. An uploaded logo comes back as `/api/media/blog/…`, which is
+      // a site path; a logo hosted elsewhere is an https URL. Nothing else is a picture.
+      img: z.string().max(400).refine((u) => !u || /^\/(?![/\\])/.test(u) || /^https?:\/\//i.test(u),
+        { message: 'must be a site path (/x) or an http(s) URL' }).default(''),
+    })).max(SUITE_MAX).optional(),
+  }).optional(),
+  // Admin-authored blocks. Bounded like the suite: a hand-built list whose bad input
+  // would otherwise land on the public front page.
+  //
+  // A section is WRITTEN or DRAWN. `mode: 'canvas'` means the studio's layout is what the
+  // page renders, and `body` is kept either way, so switching back does not throw away
+  // the words. The canvas itself is opaque here, exactly as a project's canvases are on
+  // PUT /projects/:key (`config: z.record(z.any())`): it is the studio's own document
+  // shape, the renderer is the same component that draws it on a project page, and
+  // re-describing it here would give the two a second chance to disagree. What IS
+  // enforced is a size ceiling, because this one lives in a settings row rather than in a
+  // table of its own and an unbounded blob there is a page nobody can load.
+  customSections: z.array(z.object({
+    id: z.string().min(1).max(60),
+    enabled: z.boolean().optional().default(true),
+    position: z.enum(['top', 'bottom']).optional().default('top'),
+    mode: z.enum(['md', 'canvas']).optional().default('md'),
+    title: z.object({ en: z.string().max(200).optional().default(''), fr: z.string().max(200).optional().default('') }).optional().default({}),
+    body: z.object({ en: z.string().max(8000).optional().default(''), fr: z.string().max(8000).optional().default('') }).optional().default({}),
+    canvas: z.record(z.any()).refine((c) => JSON.stringify(c).length <= 300_000, { message: 'canvas too large' }).optional(),
+  })).max(40).optional(),
+});
+
+// The body PUT /admin/site/app-icons validates. Module-level and exported so the config import (lib/config-transfer.mjs) checks a seed with this schema rather than a copy of it.
+export const APP_ICONS_BODY = z.object({ icons: z.array(z.object({
+  key: z.string().regex(/^[a-z0-9][a-z0-9-]{0,23}$/),
+  label: z.string().trim().min(1).max(40),
+  // A site-served media path or an https image — never a data URI (it would be shipped
+  // to every visitor with the theme), never a bare http.
+  url: z.string().max(600).refine((u) => u.startsWith('/') || /^https:\/\//.test(u), 'url'),
+})).max(40) });
+
+// The body PUT /admin/theme validates. Module-level and exported so the config import (lib/config-transfer.mjs) checks a seed with this schema rather than a copy of it.
+export const THEME_BODY = z.object({
+  accent: z.string().regex(HEX).optional(),
+  accent2: z.string().regex(HEX).optional(),
+  mode: z.enum(['light', 'dark']).optional(),
+  preset: z.string().max(60).optional(),
+  light: pageColours,
+  dark: pageColours,
+  shared: pageColours,
+  gradients,
+  logoLight: logoUrl,
+  logoDark: logoUrl,
+});
+
+// The body PUT /admin/mail/templates/:id validates. Module-level and exported so the config import (lib/config-transfer.mjs) checks a seed with this schema rather than a copy of it.
+export const MAIL_TEMPLATE_BODY = z.object({
+  subject: z.string().max(300).optional(),
+  body: z.string().max(20000).optional(),
+});
+
+// The body PUT /admin/mail/custom-templates validates. Module-level and exported so the config import (lib/config-transfer.mjs) checks a seed with this schema rather than a copy of it.
+export const MAIL_CUSTOM_TEMPLATES_BODY = z.object({ templates: z.array(z.object({
+  id: z.string().min(1).max(40), label: z.string().min(1).max(60), subject: z.string().max(200).default(''), body: z.string().max(20000).default(''),
+  audience: z.string().max(20).default('all'), cta: z.object({ label: z.string().max(60), url: z.string().max(500) }).nullable().optional(),
+})).max(30) });
+
+// ── The generic settings write, as a function ─────────────────────────────────────────
+//
+// PUT /admin/settings/:key is the door most hosting / pricing / SEO / guide keys go through,
+// and its rules used to live inline in the handler. They are here so the config import
+// (lib/config-transfer.mjs) applies EXACTLY the same checks to a key arriving in a seed file
+// as to one typed in the admin screen — a second copy of these rules would be the one that
+// drifts. Returns { ok, value, audit?, reply? } or { ok: false, status, body }.
+//
+// Settings an ADMIN may READ and only a SUPERADMIN may WRITE.
+//
+// The margin decides how much of somebody else's sale the platform keeps, so it is not a
+// number every staff account should be able to move — and hiding the control in the UI is
+// not a gate, it is a suggestion. The list is here, on the route, and short on purpose:
+// every entry has to earn the extra step.
+export const SUPERADMIN_ONLY_SETTINGS = new Set(['marketplace.feePercentBp', 'marketplace.feeByProject']);
+
+// Per-page unfurl overrides. Validated because this one is a LIST an admin builds by
+// hand, and a bad row would only show up as a shared link that unfurls wrong — seen by
+// everyone except the person who typed it.
+export const SEO_PAGES_SCHEMA = z.array(z.object({
+  // Exact internal paths only. An absolute URL here would let one site set another
+  // site's card, and a wildcard would silently cover pages nobody listed.
+  path: z.string().trim().min(1).max(200).refine((v) => v.startsWith('/'), 'internal paths only'),
+  title: z.string().trim().max(160).optional().default(''),
+  titleFr: z.string().trim().max(160).optional().default(''),
+  description: z.string().trim().max(320).optional().default(''),
+  descriptionFr: z.string().trim().max(320).optional().default(''),
+  image: z.string().trim().max(400).optional().default(''),
+})).max(200);
+
+const guideLoc = z.object({ en: z.string().max(8000).optional().default(''), fr: z.string().max(8000).optional().default('') });
+// Overrides on the BUILT-IN guide entries: a retitled entry, a rewritten body, an extra
+// B.MD section under it, or an entry hidden. Keyed by the entry id; every field optional,
+// so an admin who only adds a paragraph does not have to restate the rest. Bounded like
+// guide.custom — the guide is read by every admin and rendered through Markdown.
+export const GUIDE_OVERRIDES_SCHEMA = z.record(z.string().regex(/^[a-z0-9-]{1,60}$/), z.object({
+  title: guideLoc.optional(), body: guideLoc.optional(), extra: guideLoc.optional(), hidden: z.boolean().optional(),
+})).refine((o) => Object.keys(o).length <= 200, 'too many');
+// Custom admin-guide sections — extra bilingual, Markdown-bodied documentation an admin
+// writes on top of the built-in guide. A LIST built by hand, so it is validated: bounded
+// counts and lengths keep a runaway paste from bloating the settings blob, and every field
+// is a plain string the guide renders through the same Markdown component as the blog.
+export const GUIDE_CUSTOM_SCHEMA = z.array(z.object({
+  id: z.string().trim().min(1).max(60),
+  icon: z.string().trim().max(40).optional().default(''),
+  heading: guideLoc,
+  title: guideLoc,
+  body: guideLoc,
+})).max(80);
+
+export async function checkAdminSetting(p, key, value, { role } = {}) {
+  const refuse = (status, body) => ({ ok: false, status, body });
+  // A credential never goes through a generic door. Each has its own route with its own rule
+  // (the bot token only while the bot is off, the signing key never from outside at all), and
+  // this one would have let any ADMIN overwrite all four with no such rule.
+  if (SECRET_SETTING_KEYS.has(key)) return refuse(409, { error: 'use_dedicated_route', key });
+  // `demo.*` has exactly one writer, lib/demo.mjs, which clamps the duration and size and
+  // records who started it. Writing the row here would skip all three (a demo that never
+  // expires, a billion generated items) — so this door is shut and routes/demo.mjs is the
+  // way in. See isDemoKey.
+  if (isDemoKey(key)) return refuse(409, { error: 'use_demo_routes', key });
+  if (SUPERADMIN_ONLY_SETTINGS.has(key) && role !== 'SUPERADMIN') {
+    return refuse(403, { error: 'superadmin_required', key });
+  }
+  // The configured Total capacity can never promise more than the machine can
+  // physically hold — checked against a REAL statfs() read of the disk, never
+  // an assumed/faked number. (Prevents e.g. setting 10 TB on a 200 GB box.)
+  if (key === 'hosting.totalCapacityGB') {
+    const diskGB = realDiskStats().totalBytes;
+    const requestedGB = Number(value);
+    if (diskGB != null && Number.isFinite(requestedGB) && requestedGB * (1024 ** 3) > diskGB) {
+      return refuse(400, { error: 'exceeds_disk', diskGB: +(diskGB / (1024 ** 3)).toFixed(1) });
+    }
+  }
+  // The prepaid-term bounds (min / max / step months) are read by every checkout; a value
+  // that is not a whole number of months, or a minimum above the maximum, would make every
+  // term invalid and refuse every sale — with no error anywhere but a customer's screen.
+  if (/^hosting\.term(Min|Max|Step)Months$/.test(key)) {
+    const n = Number(value);
+    if (!Number.isInteger(n) || n < 1 || n > 120) return refuse(400, { error: 'invalid_term_bound', min: 1, max: 120 });
+    const other = key === 'hosting.termMinMonths' ? 'hosting.termMaxMonths' : key === 'hosting.termMaxMonths' ? 'hosting.termMinMonths' : null;
+    if (other) {
+      const row = await p.adminSetting.findUnique({ where: { key: other } }).catch(() => null);
+      const o = Number(row?.value);
+      if (Number.isFinite(o) && o > 0 && (other === 'hosting.termMaxMonths' ? n > o : n < o)) {
+        return refuse(400, { error: 'term_min_above_max', min: other === 'hosting.termMaxMonths' ? n : o, max: other === 'hosting.termMaxMonths' ? o : n });
+      }
+    }
+  }
+  if (key === 'seo.pages') {
+    const parsed = SEO_PAGES_SCHEMA.safeParse(value);
+    if (!parsed.success) return refuse(400, { error: 'invalid_input', details: parsed.error.flatten() });
+    return { ok: true, value: parsed.data };
+  }
+  if (key === 'guide.overrides') {
+    const parsed = GUIDE_OVERRIDES_SCHEMA.safeParse(value && typeof value === 'object' ? value : {});
+    if (!parsed.success) return refuse(400, { error: 'invalid_input', details: parsed.error.flatten() });
+    // Drop empty overrides so the blob only carries what an admin actually changed.
+    const clean = Object.fromEntries(Object.entries(parsed.data).filter(([, o]) => o.hidden || ['title', 'body', 'extra'].some((k) => (o[k]?.en || o[k]?.fr || '').trim())));
+    return { ok: true, value: clean, audit: `entries=${Object.keys(clean).length}` };
+  }
+  if (key === 'guide.custom') {
+    const parsed = GUIDE_CUSTOM_SCHEMA.safeParse(value);
+    if (!parsed.success) return refuse(400, { error: 'invalid_input', details: parsed.error.flatten() });
+    return { ok: true, value: parsed.data, audit: `sections=${parsed.data.length}` };
+  }
+  // A mistyped Google tag id is the worst kind of wrong: the script loads, nothing reports,
+  // and there is no error anywhere to notice. Refused here rather than stored.
+  if (key === 'seo.gtmId' && value) {
+    if (!/^(GTM-[A-Z0-9]{4,12}|G-[A-Z0-9]{6,14})$/i.test(String(value).trim())) {
+      return refuse(400, { error: 'bad_gtm_id' });
+    }
+  }
+  // Ownership tokens: a pasted whole <meta> tag is reduced to its content (seoToken), and
+  // anything that is not a token after that is refused rather than stored and served.
+  if ((key === 'seo.googleVerify' || key === 'seo.bingVerify') && String(value ?? '').trim()) {
+    const tok = seoToken(value);
+    if (!tok) return refuse(400, { error: 'bad_verify_token' });
+    return { ok: true, value: tok, reply: { ok: true, value: tok } };
+  }
+  return { ok: true, value };
+}
+
+// The topbar config PUT /admin/nav validates. Module-level and exported so the config import
+// (lib/config-transfer.mjs) checks a seed's `nav.config` with it rather than a copy.
+const navChild = z.object({
+  label: z.string().trim().min(1).max(40),
+  labelFr: z.string().trim().max(40).optional().default(''),
+  to: z.string().trim().min(1).max(200).refine((v) => v.startsWith('/'), 'must be an internal path'),
+  desc: z.string().trim().max(120).optional().default(''),
+  descFr: z.string().trim().max(120).optional().default(''),
+  icon: z.string().trim().max(60).optional().default(''),
+});
+const navItem = z.object({
+  type: z.enum(['link', 'group']),
+  label: z.string().trim().min(1).max(40),
+  labelFr: z.string().trim().max(40).optional().default(''),
+  to: z.string().trim().max(200).optional().default(''),
+  icon: z.string().trim().max(60).optional().default(''),
+  children: z.array(navChild).max(12).optional().default([]),
+}).refine((it) => it.type === 'group' || (it.to && it.to.startsWith('/')), { message: 'a link needs an internal "to"' })
+  .refine((it) => it.type === 'link' || it.children.length > 0, { message: 'a group needs at least one link' });
+// Built-in topbar utility elements the admin can show/hide + reorder (App.jsx UTIL_KEYS).
+// 'brand' is the site mark at the far left: it has no show/hide, only an icon and a size.
+const UTIL_KEYS = ['notifications', 'projects', 'lang', 'theme', 'settings', 'dashboard', 'admin', 'profile', 'logout', 'login', 'brand'];
+// An icon is a picker name (lucide kebab / ph:… / simple:… / app:…) or a site image path.
+// Never a data: URI or http:, the same rule as every other stored icon.
+const utilIcon = z.string().trim().max(200).refine((v) => v === '' || /^[a-z0-9:_-]+$/i.test(v) || v.startsWith('/') || /^https:\/\//.test(v), 'icon').optional();
+const utilEntry = z.object({
+  visible: z.boolean().optional(),
+  order: z.number().int().min(0).max(50).optional(),
+  // The language button's presentation. It was written by the editor and read by the topbar
+  // but missing here, so zod stripped it and every save reset it to 'auto'.
+  type: z.enum(['auto', 'toggle', 'inline', 'dropdown']).optional(),
+  icon: utilIcon,      // light theme (and dark, when iconDark is empty)
+  iconDark: utilIcon,  // dark theme only
+  size: z.number().int().min(12).max(48).optional(),
+});
+const utilitySchema = z.record(z.enum(UTIL_KEYS), utilEntry).optional().default({});
+export const navSchema = z.object({
+  enabled: z.boolean(),
+  items: z.array(navItem).max(16),
+  utility: utilitySchema,
+  // How admin-pinned showcase projects appear in the topbar: as their own inline
+  // pills, or grouped under a single "Projects" hover-dropdown. Icons stay each
+  // project's own either way.
+  projectsMode: z.enum(['inline', 'dropdown']).optional().default('inline'),
+  // Mobile bottom tab bar. `enabled` is the on/off toggle. `display` decides whether each
+  // button shows its icon, its text, or both. `items` are OPTIONAL custom buttons that
+  // replace the auto-derived set (home + the first few nav links) — each an internal path,
+  // an icon, and a name in both languages. Empty `items` keeps the auto behaviour.
+  downbar: z.object({
+    enabled: z.boolean().optional().default(true),
+    display: z.enum(['icon', 'text', 'both']).optional().default('both'),
+    // A button is a plain 'link', a raised centre 'primary', or a 'dropup' that opens an
+    // upward sheet of `children`. label + to are optional (an icon-only bar needs no label;
+    // a dropup has children instead of its own path). Children are always internal links.
+    items: z.array(z.object({
+      kind: z.enum(['link', 'primary', 'dropup']).optional().default('link'),
+      label: z.string().max(24).optional().default(''),
+      labelFr: z.string().max(24).optional().default(''),
+      to: z.string().max(200).optional().default(''),
+      icon: z.string().max(60).optional().default(''),
+      children: z.array(z.object({
+        label: z.string().max(24),
+        labelFr: z.string().max(24).optional().default(''),
+        to: z.string().max(200).startsWith('/'),
+        icon: z.string().max(60).optional().default(''),
+      })).max(6).optional().default([]),
+    })).max(5).optional().default([]),
+    // Search / notifications / "my space" on the DERIVED bar (ui/mobilebar-items.js reads it,
+    // opt-out). The editor has written it since it existed and this schema stripped it, so
+    // switching it off never survived a save.
+    quick: z.boolean().optional(),
+  }).optional().default({ enabled: true }),
+  // The phone menu the hamburger opens (App.jsx MobileMenu). Extras use the bottom bar's
+  // dropup-link shape, so both are built with the same fields.
+  mobileMenu: z.object({
+    layout: z.enum(['tiles', 'list']).optional(),
+    columns: z.union([z.literal(3), z.literal(4)]).optional(),
+    contact: z.boolean().optional(),
+    extras: z.array(z.object({
+      label: z.string().max(24),
+      labelFr: z.string().max(24).optional().default(''),
+      to: z.string().max(200).startsWith('/'),
+      icon: z.string().max(60).optional().default(''),
+    })).max(8).optional(),
+  }).optional(),
+  // Desktop topbar layout. align = where the nav sits; density = spacing; labels = whether
+  // link/group text shows next to icons ('icons' hides it, saving room). Applied identically
+  // by the real topbar (App.jsx) and the admin Live preview from one shared reader.
+  layout: z.object({
+    align: z.enum(['start', 'center', 'end']).optional().default('start'),
+    density: z.enum(['comfortable', 'compact']).optional().default('comfortable'),
+    // 'labels' is text-only, the mirror of 'icons'. A site whose sections are words rather
+    // than pictures reads better without a row of near-identical glyphs.
+    labels: z.enum(['both', 'icons', 'labels']).optional().default('both'),
+    // How many pinned projects the Projects dropdown lists before it stops and offers the
+    // page instead. Past about six a dropdown is a menu you have to read.
+    projectsMax: z.number().int().min(1).max(12).optional().default(6),
+  }).optional().default({}),
+});
+
 export default async function miscRoutes(app) {
   // Public: read on every page load, so it is cached and it is SMALL — only the keys an
   // admin actually overrode travel, not the whole dictionary.
@@ -570,24 +908,7 @@ export default async function miscRoutes(app) {
   });
 
   app.put('/admin/site/scene', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
-    const b = z.object({
-      enabled: z.boolean().optional(),
-      shape: z.enum(SCENE_SHAPES).optional(),
-      detail: z.number().int().min(0).max(5).optional(),
-      noise: z.number().min(0).max(1.5).optional(),
-      speed: z.number().min(0).max(3).optional(),
-      opacity: z.number().min(0.1).max(1).optional(),
-      scale: z.number().min(0.5).max(1.8).optional(),
-      surface: z.enum(SCENE_SURFACES).optional(),
-      hover: z.enum(SCENE_HOVERS).optional(),
-      reveal: z.enum(SCENE_REVEALS).optional(),
-      glow: z.number().min(0).max(1).optional(),
-      twinkles: z.number().int().min(0).max(240).optional(),
-      fps: z.number().int().min(15).max(60).optional(),
-      // A map of event id → partial scene override. Sanitised (scenePartial) on store, so a
-      // client that posts junk cannot poison the config every visitor reads.
-      events: z.record(z.any()).optional(),
-    }).safeParse(req.body);
+    const b = SCENE_BODY.safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
     const cur = sceneConfig(await p.adminSetting.findUnique({ where: { key: SCENE_KEY } }));
@@ -655,11 +976,7 @@ export default async function miscRoutes(app) {
   });
 
   app.put('/admin/site/showcase', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
-    const b = z.object({
-      enabled: z.boolean().optional(),
-      intervalMs: z.number().int().min(2000).max(30000).optional(),
-      items: z.array(showcaseItem).max(SHOWCASE_MAX).optional(),
-    }).safeParse(req.body);
+    const b = SHOWCASE_BODY.safeParse(req.body);
     // The reason is named. "invalid_input" on a form with twelve rows and four fields each
     // is a puzzle, and the commonest failure here is a URL with a scheme we refuse.
     if (!b.success) {
@@ -700,56 +1017,7 @@ export default async function miscRoutes(app) {
   });
 
   app.put('/admin/site/home', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
-    const b = z.object({
-      // Keys are restricted to the home page's own namespace. Without that, this endpoint
-      // would be a way to rewrite ANY string on the site — including the wording of a
-      // consent notice or a payment confirmation — from a screen labelled "home page".
-      text: z.record(
-        z.string().regex(/^home\.[A-Za-z0-9._-]{1,60}$/),
-        z.object({ en: z.string().max(600).optional(), fr: z.string().max(600).optional() }),
-      ).optional(),
-      sections: z.record(z.enum(HOME_SECTIONS), z.boolean()).optional(),
-      variant: z.enum(HOME_VARIANT_KEYS).optional(),
-      suite: z.object({
-        style: z.enum(SUITE_STYLES).optional(),
-        extra: z.array(z.object({
-          id: z.string().min(1).max(40),
-          name: z.string().min(1).max(60),
-          desc: z.string().max(160).default(''),
-          // Same-origin paths and http(s) only. This ends up in an `href` on the front page,
-          // so `javascript:` and `data:` are refused here rather than in the component that
-          // renders it — the component is not the thing an attacker would be talking to.
-          to: z.string().max(300).refine((u) => /^\/(?![/\\])/.test(u) || /^https?:\/\//i.test(u),
-            { message: 'must be a site path (/x) or an http(s) URL' }),
-          icon: z.string().max(60).default(''),
-          // Held to the same rule as `to`, and for the same reason: it becomes an attribute
-          // on the front page. An uploaded logo comes back as `/api/media/blog/…`, which is
-          // a site path; a logo hosted elsewhere is an https URL. Nothing else is a picture.
-          img: z.string().max(400).refine((u) => !u || /^\/(?![/\\])/.test(u) || /^https?:\/\//i.test(u),
-            { message: 'must be a site path (/x) or an http(s) URL' }).default(''),
-        })).max(SUITE_MAX).optional(),
-      }).optional(),
-      // Admin-authored blocks. Bounded like the suite: a hand-built list whose bad input
-      // would otherwise land on the public front page.
-      //
-      // A section is WRITTEN or DRAWN. `mode: 'canvas'` means the studio's layout is what the
-      // page renders, and `body` is kept either way, so switching back does not throw away
-      // the words. The canvas itself is opaque here, exactly as a project's canvases are on
-      // PUT /projects/:key (`config: z.record(z.any())`): it is the studio's own document
-      // shape, the renderer is the same component that draws it on a project page, and
-      // re-describing it here would give the two a second chance to disagree. What IS
-      // enforced is a size ceiling, because this one lives in a settings row rather than in a
-      // table of its own and an unbounded blob there is a page nobody can load.
-      customSections: z.array(z.object({
-        id: z.string().min(1).max(60),
-        enabled: z.boolean().optional().default(true),
-        position: z.enum(['top', 'bottom']).optional().default('top'),
-        mode: z.enum(['md', 'canvas']).optional().default('md'),
-        title: z.object({ en: z.string().max(200).optional().default(''), fr: z.string().max(200).optional().default('') }).optional().default({}),
-        body: z.object({ en: z.string().max(8000).optional().default(''), fr: z.string().max(8000).optional().default('') }).optional().default({}),
-        canvas: z.record(z.any()).refine((c) => JSON.stringify(c).length <= 300_000, { message: 'canvas too large' }).optional(),
-      })).max(40).optional(),
-    }).safeParse(req.body);
+    const b = HOME_BODY.safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
     const row = await p.adminSetting.findUnique({ where: { key: HOME_KEY } });
@@ -800,13 +1068,7 @@ export default async function miscRoutes(app) {
     return { icons: Array.isArray(row?.value) ? row.value : [] };
   });
   app.put('/admin/site/app-icons', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
-    const b = z.object({ icons: z.array(z.object({
-      key: z.string().regex(/^[a-z0-9][a-z0-9-]{0,23}$/),
-      label: z.string().trim().min(1).max(40),
-      // A site-served media path or an https image — never a data URI (it would be shipped
-      // to every visitor with the theme), never a bare http.
-      url: z.string().max(600).refine((u) => u.startsWith('/') || /^https:\/\//.test(u), 'url'),
-    })).max(40) }).safeParse(req.body);
+    const b = APP_ICONS_BODY.safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     // One entry per key: the last one typed wins, silently merging is how two projects end
     // up with the same logo.
@@ -821,18 +1083,7 @@ export default async function miscRoutes(app) {
   // SUPERADMIN only. This changes what every visitor sees, which is a different class of
   // action from the per-project settings an ADMIN manages — hence the higher bar.
   app.put('/admin/theme', { preHandler: requireRole('SUPERADMIN') }, async (req, reply) => {
-    const b = z.object({
-      accent: z.string().regex(HEX).optional(),
-      accent2: z.string().regex(HEX).optional(),
-      mode: z.enum(['light', 'dark']).optional(),
-      preset: z.string().max(60).optional(),
-      light: pageColours,
-      dark: pageColours,
-      shared: pageColours,
-      gradients,
-      logoLight: logoUrl,
-      logoDark: logoUrl,
-    }).safeParse(req.body);
+    const b = THEME_BODY.safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
     const row = await p.adminSetting.findUnique({ where: { key: THEME_KEY } });
@@ -1579,6 +1830,14 @@ export default async function miscRoutes(app) {
       const v = validateContactFields(b.data.dest, b.data.fields);
       if (!v.ok) return reply.code(400).send({ error: v.error, field: v.field });
       kind = v.kind;
+      // A project picked in the form must be a project, and the inbox reads its NAME, not
+      // the ref the picker sent (lib/project-ref.mjs).
+      if (v.fields.project) {
+        const { resolveProjectRef } = await import('../lib/project-ref.mjs');
+        const proj = await resolveProjectRef(await db(), v.fields.project);
+        if (!proj) return reply.code(400).send({ error: 'unknown_project', field: 'project' });
+        v.fields.project = `${proj.name} (${proj.ref})`;
+      }
       // The answers go above the message, in the body the admin inbox already renders — a
       // second place to look is a place nobody looks.
       body = composeContactBody(b.data.dest, v.fields, body);
@@ -2773,10 +3032,7 @@ export default async function miscRoutes(app) {
     const sample = MAIL_SAMPLES.find((x) => x.id === req.params.id);
     if (!sample) return reply.code(404).send({ error: 'unknown_mail' });
     if (!sample.editable) return reply.code(409).send({ error: 'not_editable' });
-    const b = z.object({
-      subject: z.string().max(300).optional(),
-      body: z.string().max(20000).optional(),
-    }).safeParse(req.body || {});
+    const b = MAIL_TEMPLATE_BODY.safeParse(req.body || {});
     if (!b.success) return reply.code(400).send({ error: 'bad_request' });
 
     const p = await db();
@@ -2804,10 +3060,7 @@ export default async function miscRoutes(app) {
     return { templates: Array.isArray(row?.value) ? row.value : [] };
   });
   app.put('/admin/mail/custom-templates', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
-    const b = z.object({ templates: z.array(z.object({
-      id: z.string().min(1).max(40), label: z.string().min(1).max(60), subject: z.string().max(200).default(''), body: z.string().max(20000).default(''),
-      audience: z.string().max(20).default('all'), cta: z.object({ label: z.string().max(60), url: z.string().max(500) }).nullable().optional(),
-    })).max(30) }).safeParse(req.body);
+    const b = MAIL_CUSTOM_TEMPLATES_BODY.safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
     await p.adminSetting.upsert({ where: { key: 'mail.customTemplates' }, create: { key: 'mail.customTemplates', value: b.data.templates }, update: { value: b.data.templates } });
@@ -3737,127 +3990,24 @@ export default async function miscRoutes(app) {
   });
 
   // ── Admin settings (global hosting cap, pricing knobs…) ──
+  // The credential rows (SECRET_SETTING_KEYS: bot token, Ko-fi token, the backup signing key,
+  // the attestation private key) are left out. Nothing on the web reads them from here — each
+  // has its own route that says whether one is SET, never what it is — and this response is
+  // readable by every ADMIN, which is a wider audience than any of those routes allows.
   app.get('/admin/settings', { preHandler: requireRole('ADMIN') }, async () => {
     const p = await db();
     const rows = await p.adminSetting.findMany();
-    return { settings: Object.fromEntries(rows.map((r) => [r.key, r.value])) };
+    return { settings: Object.fromEntries(rows.filter((r) => !SECRET_SETTING_KEYS.has(r.key)).map((r) => [r.key, r.value])) };
   });
-  // Settings an ADMIN may READ and only a SUPERADMIN may WRITE.
-  //
-  // The margin decides how much of somebody else's sale the platform keeps, so it is not a
-  // number every staff account should be able to move — and hiding the control in the UI is
-  // not a gate, it is a suggestion. The list is here, on the route, and short on purpose:
-  // every entry has to earn the extra step.
-  const SUPERADMIN_ONLY_SETTINGS = new Set(['marketplace.feePercentBp', 'marketplace.feeByProject']);
 
   app.put('/admin/settings/:key', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
     const p = await db();
     const value = req.body?.value ?? req.body;
-    // `demo.*` has exactly one writer, lib/demo.mjs, which clamps the duration and size and
-    // records who started it. Writing the row here would skip all three (a demo that never
-    // expires, a billion generated items) — so this door is shut and routes/demo.mjs is the
-    // way in. See isDemoKey.
-    if (isDemoKey(req.params.key)) return reply.code(409).send({ error: 'use_demo_routes', key: req.params.key });
-    if (SUPERADMIN_ONLY_SETTINGS.has(req.params.key) && req.user?.role !== 'SUPERADMIN') {
-      return reply.code(403).send({ error: 'superadmin_required', key: req.params.key });
-    }
-    // The configured Total capacity can never promise more than the machine can
-    // physically hold — checked against a REAL statfs() read of the disk, never
-    // an assumed/faked number. (Prevents e.g. setting 10 TB on a 200 GB box.)
-    if (req.params.key === 'hosting.totalCapacityGB') {
-      const diskGB = realDiskStats().totalBytes;
-      const requestedGB = Number(value);
-      if (diskGB != null && Number.isFinite(requestedGB) && requestedGB * (1024 ** 3) > diskGB) {
-        return reply.code(400).send({ error: 'exceeds_disk', diskGB: +(diskGB / (1024 ** 3)).toFixed(1) });
-      }
-    }
-    // The prepaid-term bounds (min / max / step months) are read by every checkout; a value
-    // that is not a whole number of months, or a minimum above the maximum, would make every
-    // term invalid and refuse every sale — with no error anywhere but a customer's screen.
-    if (/^hosting\.term(Min|Max|Step)Months$/.test(req.params.key)) {
-      const n = Number(value);
-      if (!Number.isInteger(n) || n < 1 || n > 120) return reply.code(400).send({ error: 'invalid_term_bound', min: 1, max: 120 });
-      const other = req.params.key === 'hosting.termMinMonths' ? 'hosting.termMaxMonths' : req.params.key === 'hosting.termMaxMonths' ? 'hosting.termMinMonths' : null;
-      if (other) {
-        const row = await p.adminSetting.findUnique({ where: { key: other } }).catch(() => null);
-        const o = Number(row?.value);
-        if (Number.isFinite(o) && o > 0 && (other === 'hosting.termMaxMonths' ? n > o : n < o)) {
-          return reply.code(400).send({ error: 'term_min_above_max', min: other === 'hosting.termMaxMonths' ? n : o, max: other === 'hosting.termMaxMonths' ? o : n });
-        }
-      }
-    }
-    // A mistyped Google tag id is the worst kind of wrong: the script loads, nothing reports,
-    // and there is no error anywhere to notice. Refused here rather than stored.
-    // Per-page unfurl overrides. Validated because this one is a LIST an admin builds by
-    // hand, and a bad row would only show up as a shared link that unfurls wrong — seen by
-    // everyone except the person who typed it.
-    if (req.params.key === 'seo.pages') {
-      const pageSchema = z.array(z.object({
-        // Exact internal paths only. An absolute URL here would let one site set another
-        // site's card, and a wildcard would silently cover pages nobody listed.
-        path: z.string().trim().min(1).max(200).refine((v) => v.startsWith('/'), 'internal paths only'),
-        title: z.string().trim().max(160).optional().default(''),
-        titleFr: z.string().trim().max(160).optional().default(''),
-        description: z.string().trim().max(320).optional().default(''),
-        descriptionFr: z.string().trim().max(320).optional().default(''),
-        image: z.string().trim().max(400).optional().default(''),
-      })).max(200);
-      const parsed = pageSchema.safeParse(value);
-      if (!parsed.success) return reply.code(400).send({ error: 'invalid_input', details: parsed.error.flatten() });
-      await p.adminSetting.upsert({ where: { key: 'seo.pages' }, create: { key: 'seo.pages', value: parsed.data }, update: { value: parsed.data } });
-      return { ok: true };
-    }
-    // Custom admin-guide sections — extra bilingual, Markdown-bodied documentation an admin
-    // writes on top of the built-in guide. A LIST built by hand, so it is validated: bounded
-    // counts and lengths keep a runaway paste from bloating the settings blob, and every field
-    // is a plain string the guide renders through the same Markdown component as the blog.
-    // Overrides on the BUILT-IN guide entries: a retitled entry, a rewritten body, an extra
-    // B.MD section under it, or an entry hidden. Keyed by the entry id; every field optional,
-    // so an admin who only adds a paragraph does not have to restate the rest. Bounded like
-    // guide.custom — the guide is read by every admin and rendered through Markdown.
-    if (req.params.key === 'guide.overrides') {
-      const loc = z.object({ en: z.string().max(8000).optional().default(''), fr: z.string().max(8000).optional().default('') });
-      const ovSchema = z.record(z.string().regex(/^[a-z0-9-]{1,60}$/), z.object({
-        title: loc.optional(), body: loc.optional(), extra: loc.optional(), hidden: z.boolean().optional(),
-      })).refine((o) => Object.keys(o).length <= 200, 'too many');
-      const parsed = ovSchema.safeParse(value && typeof value === 'object' ? value : {});
-      if (!parsed.success) return reply.code(400).send({ error: 'invalid_input', details: parsed.error.flatten() });
-      // Drop empty overrides so the blob only carries what an admin actually changed.
-      const clean = Object.fromEntries(Object.entries(parsed.data).filter(([, o]) => o.hidden || ['title', 'body', 'extra'].some((k) => (o[k]?.en || o[k]?.fr || '').trim())));
-      await p.adminSetting.upsert({ where: { key: 'guide.overrides' }, create: { key: 'guide.overrides', value: clean }, update: { value: clean } });
-      await logAudit(p, req.user.uid, 'guide.overrides', `entries=${Object.keys(clean).length}`);
-      return { ok: true };
-    }
-    if (req.params.key === 'guide.custom') {
-      const loc = z.object({ en: z.string().max(8000).optional().default(''), fr: z.string().max(8000).optional().default('') });
-      const secSchema = z.array(z.object({
-        id: z.string().trim().min(1).max(60),
-        icon: z.string().trim().max(40).optional().default(''),
-        heading: loc,
-        title: loc,
-        body: loc,
-      })).max(80);
-      const parsed = secSchema.safeParse(value);
-      if (!parsed.success) return reply.code(400).send({ error: 'invalid_input', details: parsed.error.flatten() });
-      await p.adminSetting.upsert({ where: { key: 'guide.custom' }, create: { key: 'guide.custom', value: parsed.data }, update: { value: parsed.data } });
-      await logAudit(p, req.user.uid, 'guide.custom', `sections=${parsed.data.length}`);
-      return { ok: true };
-    }
-    if (req.params.key === 'seo.gtmId' && value) {
-      if (!/^(GTM-[A-Z0-9]{4,12}|G-[A-Z0-9]{6,14})$/i.test(String(value).trim())) {
-        return reply.code(400).send({ error: 'bad_gtm_id' });
-      }
-    }
-    // Ownership tokens: a pasted whole <meta> tag is reduced to its content (seoToken), and
-    // anything that is not a token after that is refused rather than stored and served.
-    if ((req.params.key === 'seo.googleVerify' || req.params.key === 'seo.bingVerify') && String(value ?? '').trim()) {
-      const tok = seoToken(value);
-      if (!tok) return reply.code(400).send({ error: 'bad_verify_token' });
-      await p.adminSetting.upsert({ where: { key: req.params.key }, create: { key: req.params.key, value: tok }, update: { value: tok } });
-      return { ok: true, value: tok };
-    }
-    await p.adminSetting.upsert({ where: { key: req.params.key }, create: { key: req.params.key, value }, update: { value } });
-    return { ok: true };
+    const r = await checkAdminSetting(p, req.params.key, value, { role: req.user?.role });
+    if (!r.ok) return reply.code(r.status).send(r.body);
+    await p.adminSetting.upsert({ where: { key: req.params.key }, create: { key: req.params.key, value: r.value }, update: { value: r.value } });
+    if (r.audit) await logAudit(p, req.user.uid, req.params.key, r.audit);
+    return r.reply || { ok: true };
   });
 
   // ── Admin-configurable topbar navigation ──────────────────────────────────────
@@ -3866,74 +4016,6 @@ export default async function miscRoutes(app) {
   // this is purely additive. `to` is constrained to an internal path (leading "/") so
   // a configured link can never become an open-redirect or a javascript: URL. Labels
   // render as React text (no XSS) but are length-capped anyway.
-  const navChild = z.object({
-    label: z.string().trim().min(1).max(40),
-    labelFr: z.string().trim().max(40).optional().default(''),
-    to: z.string().trim().min(1).max(200).refine((v) => v.startsWith('/'), 'must be an internal path'),
-    desc: z.string().trim().max(120).optional().default(''),
-    descFr: z.string().trim().max(120).optional().default(''),
-    icon: z.string().trim().max(60).optional().default(''),
-  });
-  const navItem = z.object({
-    type: z.enum(['link', 'group']),
-    label: z.string().trim().min(1).max(40),
-    labelFr: z.string().trim().max(40).optional().default(''),
-    to: z.string().trim().max(200).optional().default(''),
-    icon: z.string().trim().max(60).optional().default(''),
-    children: z.array(navChild).max(12).optional().default([]),
-  }).refine((it) => it.type === 'group' || (it.to && it.to.startsWith('/')), { message: 'a link needs an internal "to"' })
-    .refine((it) => it.type === 'link' || it.children.length > 0, { message: 'a group needs at least one link' });
-  // Built-in topbar utility elements the admin can show/hide + reorder (App.jsx UTIL_KEYS).
-  const UTIL_KEYS = ['notifications', 'projects', 'lang', 'theme', 'settings', 'dashboard', 'admin', 'profile', 'logout', 'login'];
-  const utilEntry = z.object({ visible: z.boolean().optional(), order: z.number().int().min(0).max(50).optional() });
-  const utilitySchema = z.record(z.enum(UTIL_KEYS), utilEntry).optional().default({});
-  const navSchema = z.object({
-    enabled: z.boolean(),
-    items: z.array(navItem).max(16),
-    utility: utilitySchema,
-    // How admin-pinned showcase projects appear in the topbar: as their own inline
-    // pills, or grouped under a single "Projects" hover-dropdown. Icons stay each
-    // project's own either way.
-    projectsMode: z.enum(['inline', 'dropdown']).optional().default('inline'),
-    // Mobile bottom tab bar. `enabled` is the on/off toggle. `display` decides whether each
-    // button shows its icon, its text, or both. `items` are OPTIONAL custom buttons that
-    // replace the auto-derived set (home + the first few nav links) — each an internal path,
-    // an icon, and a name in both languages. Empty `items` keeps the auto behaviour.
-    downbar: z.object({
-      enabled: z.boolean().optional().default(true),
-      display: z.enum(['icon', 'text', 'both']).optional().default('both'),
-      // A button is a plain 'link', a raised centre 'primary', or a 'dropup' that opens an
-      // upward sheet of `children`. label + to are optional (an icon-only bar needs no label;
-      // a dropup has children instead of its own path). Children are always internal links.
-      items: z.array(z.object({
-        kind: z.enum(['link', 'primary', 'dropup']).optional().default('link'),
-        label: z.string().max(24).optional().default(''),
-        labelFr: z.string().max(24).optional().default(''),
-        to: z.string().max(200).optional().default(''),
-        icon: z.string().max(60).optional().default(''),
-        children: z.array(z.object({
-          label: z.string().max(24),
-          labelFr: z.string().max(24).optional().default(''),
-          to: z.string().max(200).startsWith('/'),
-          icon: z.string().max(60).optional().default(''),
-        })).max(6).optional().default([]),
-      })).max(5).optional().default([]),
-    }).optional().default({ enabled: true }),
-    // Desktop topbar layout. align = where the nav sits; density = spacing; labels = whether
-    // link/group text shows next to icons ('icons' hides it, saving room). Applied identically
-    // by the real topbar (App.jsx) and the admin Live preview from one shared reader.
-    layout: z.object({
-      align: z.enum(['start', 'center', 'end']).optional().default('start'),
-      density: z.enum(['comfortable', 'compact']).optional().default('comfortable'),
-      // 'labels' is text-only, the mirror of 'icons'. A site whose sections are words rather
-      // than pictures reads better without a row of near-identical glyphs.
-      labels: z.enum(['both', 'icons', 'labels']).optional().default('both'),
-      // How many pinned projects the Projects dropdown lists before it stops and offers the
-      // page instead. Past about six a dropdown is a menu you have to read.
-      projectsMax: z.number().int().min(1).max(12).optional().default(6),
-    }).optional().default({}),
-  });
-
   // ── Admin-configurable FOOTER ─────────────────────────────────────────────────
   // Same shape of idea as the topbar above: an optional JSON blob in
   // AdminSetting['footer.config'], so there is no schema change and no migration, and when
@@ -3992,14 +4074,19 @@ export default async function miscRoutes(app) {
     // non-'both' display, or custom buttons. A plain { enabled:true, display:'both', items:[] }
     // is the built-in behaviour and is omitted so an untouched install still gets nav:null.
     const _db = cfg?.downbar;
-    const downbar = _db && (_db.enabled === false || (_db.display && _db.display !== 'both') || (Array.isArray(_db.items) && _db.items.length > 0)) ? _db : null;
+    const downbar = _db && (_db.enabled === false || _db.quick === false || (_db.display && _db.display !== 'both') || (Array.isArray(_db.items) && _db.items.length > 0)) ? _db : null;
+    // The phone menu: forwarded only when it differs from the built-in (tiles, 4 columns,
+    // Contact on, no extras).
+    const _mm = cfg?.mobileMenu;
+    const mobileMenu = _mm && (_mm.layout === 'list' || _mm.columns === 3 || _mm.contact === false || (Array.isArray(_mm.extras) && _mm.extras.length > 0)) ? _mm : null;
     // layout: only forward it when it differs from the defaults (start/comfortable/both), so an
     // untouched install still gets nav:null and the built-in look.
     const L = cfg?.layout;
     const layout = L && ((L.align && L.align !== 'start') || (L.density && L.density !== 'comfortable') || (L.labels && L.labels !== 'both')) ? L : null;
-    if (!usable && !utility && !projectsMode && !downbar && !layout) return { nav: null };
+    if (!usable && !utility && !projectsMode && !downbar && !layout && !mobileMenu) return { nav: null };
     return { nav: {
       ...(usable ? { items: cfg.items } : {}),
+      ...(mobileMenu ? { mobileMenu } : {}),
       ...(utility ? { utility } : {}),
       ...(projectsMode ? { projectsMode } : {}),
       ...(downbar ? { downbar } : {}),

@@ -4420,6 +4420,11 @@ model ContactThread {
   createdAt      DateTime               @default(now())
   updatedAt      DateTime               @updatedAt
   messages       ContactThreadMessage[]
+  /// What the conversation is about, when the target offers topics (a project's contact:
+  /// a basic topic id, or one of its custom topics). "" for the kinds that have none.
+  topic          String                 @default("")
+  /// Files sent in it (project and team inboxes, when their hosting settings allow).
+  attachments    ContactThreadAttachment[]
 
   @@index([ownerUserId, lastActivityAt])
   @@index([ownerTeamId, lastActivityAt])
@@ -4778,4 +4783,141 @@ model LoginAlert {
 
   @@index([userId, createdAt])
   @@index([userId, reason, fingerprint, createdAt])
+}
+
+/// Read receipts, "like WhatsApp", for every kind of conversation on the site.
+///
+/// One row per (conversation, SIDE), not per message and not per person. A message's state
+/// is derived from the recipient side's two timestamps: read when `readAt >= createdAt`,
+/// delivered when `deliveredAt >= createdAt`, otherwise sent. That is two writes per visit
+/// rather than one per message, and it is exactly the WhatsApp rule (ticks are monotonic:
+/// reading the latest message reads everything before it).
+///
+/// A SIDE, because the far end is often a group: a team's inbox, the staff queue. "Read" then
+/// means somebody on that side opened it, which is what the sender needs to know.
+///
+///   kind   thread (ContactThread) | report (Report) | myo (MyoRequest)
+///   side   thread: sender | owner · report: reporter | staff · myo: user | staff
+///
+/// `mailDueAt` / `mailedAt` are the debounce for the "you have N unread messages" mail an
+/// anonymous sender receives: a burst of replies sets `mailDueAt` once, and one mail leaves
+/// when it falls due, counting what is still unread then. Reading the conversation first
+/// makes the count zero and the mail is never sent.
+///
+/// No relation fields: the three conversation tables are unrelated models, and this file is
+/// appended to by several people at once.
+model ConversationCursor {
+  id             String    @id @default(cuid())
+  kind           String
+  conversationId String
+  side           String
+  deliveredAt    DateTime?
+  readAt         DateTime?
+  mailDueAt      DateTime?
+  mailedAt       DateTime?
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([kind, conversationId, side])
+  @@index([mailDueAt])
+}
+
+/// A project's contact inbox: whether it takes messages, what about, and who reads them.
+///
+/// Keyed by the project REF (lib/project-ref.mjs: `bmm` for an official project,
+/// `sc:<slug>` for another one), so one table serves both kinds. No row = the defaults:
+/// open, the five basic topics, readable by the project's managers and its editors.
+///
+/// Who reads the inbox is the per-project permission system, reused rather than copied
+/// (lib/project-contact.mjs `inboxAccess`):
+///   · the managers of that kind of project (manage_projects / manage_showcase);
+///   · its editors (ProjectPermission, and scoped roles with the `pages` right), unless
+///     `editorsSeeInbox` is off for this project;
+///   · anybody holding a scoped CustomRole with the `inbox` right on it;
+///   · and the accounts listed in `inboxUserIds`, for the one-off "this person answers
+///     the Discord bot's mail" case a role is too heavy for.
+model ProjectContactSettings {
+  ref             String   @id
+  enabled         Boolean  @default(true)
+  /// The basic topics this project offers, by id (see BASIC_TOPICS). Unknown ids are ignored.
+  basicTopics     String[] @default(["question", "bug", "translation", "suggestion", "other"])
+  /// Its own topics: [{ id, label, labelFr }], at most twelve.
+  customTopics    Json     @default("[]")
+  editorsSeeInbox Boolean  @default(true)
+  inboxUserIds    String[] @default([])
+  updatedAt       DateTime @updatedAt
+  updatedBy       String?
+}
+
+/// Hosting settings for ONE thing instead of for the whole site: a blog, a project's contact
+/// inbox, a team's contact inbox. One mechanism for all three (lib/entity-hosting.mjs), so a
+/// fourth is a new `kind`, not a new table.
+///
+///   kind   blog | project-contact | team-contact
+///   ref    blog, project-contact: the project ref (lib/project-ref.mjs) · team-contact: Team.id
+///
+///   mode   inherit    the site-wide setting, exactly as before this existed (no row = this)
+///          custom     its own caps: maxItems (count) and maxKB (size), 0 = no cap on that axis
+///          unlimited  no cap at all
+///          pool       no allowance of its own ("0 limit"): its storage is `quotaBytes`
+///                     RESERVED from the HostingGroup `poolId`, counted against that pool like
+///                     a repo's quota, so the same bytes cannot be handed out twice
+///
+///   attachments (contact kinds only): inherit | off | always | pool_only — whether a message
+///   may carry files: never, always (on the site's storage), or only once a pool pays for it.
+///
+/// No relation fields, on purpose: `ref` names rows in three different tables, and this file
+/// is appended to by several people at once.
+model EntityHostingSettings {
+  id              String   @id @default(cuid())
+  kind            String
+  ref             String
+  mode            String   @default("inherit")
+  maxItems        Int      @default(0)
+  maxKB           Int      @default(0)
+  poolId          String?
+  quotaBytes      BigInt   @default(0)
+  attachments     String   @default("inherit")
+  maxAttachmentMB Int      @default(0)
+  updatedBy       String?
+  updatedAt       DateTime @updatedAt
+
+  @@unique([kind, ref])
+  @@index([poolId])
+}
+
+/// A file sent in a contact conversation. Stored under `contact/<threadId>/`, which the
+/// public media proxy never serves: it is read only through the participant routes in
+/// threads.mjs, like a proof-of-rights document. Whether a message may carry files at all,
+/// and how big, is the target's hosting settings (lib/entity-hosting.mjs attachmentPolicy);
+/// the bytes are counted against the target's own cap or its pool reservation.
+model ContactThreadAttachment {
+  id        String        @id @default(cuid())
+  thread    ContactThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  threadId  String
+  messageId String?
+  key       String
+  name      String
+  mime      String
+  size      Int
+  createdAt DateTime      @default(now())
+
+  @@index([threadId])
+  @@index([messageId])
+}
+
+/// A team's contact inbox: who in the team answers it, and how many conversations it keeps
+/// open. No row = the defaults: every active member answers, no cap.
+///
+///   answerRoles     the team roles that read AND answer the team's conversations (those
+///                   addressed to the team, and those about its repos and catalogues)
+///   maxOpenMembers  open conversations started by signed-in members, 0 = no cap
+///   maxOpenAnon     open conversations started by anonymous senders, 0 = no cap
+///
+/// Storage and files are EntityHostingSettings kind 'team-contact', ref = the team id.
+model TeamContactSettings {
+  teamId         String   @id
+  answerRoles    String[] @default(["owner", "admin", "member"])
+  maxOpenMembers Int      @default(0)
+  maxOpenAnon    Int      @default(0)
+  updatedAt      DateTime @updatedAt
 }

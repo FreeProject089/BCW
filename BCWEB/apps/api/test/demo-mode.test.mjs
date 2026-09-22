@@ -105,7 +105,11 @@ describe('no path from demo mode to Stripe, mail, the bot or the network', () =>
     assert.equal(demo.isDemoKey('demo.session'), true);
     assert.equal(demo.isDemoKey('demo.anything'), true);
     assert.equal(demo.isDemoKey('seo.title'), false);
-    assert.match(read('routes/misc.mjs'), /if \(isDemoKey\(req\.params\.key\)\) return reply\.code\(409\)/);
+    // The generic door's rules live in checkAdminSetting (so the config import applies the same
+    // ones); the route must go through it, and it must refuse demo.* with a 409.
+    const misc = read('routes/misc.mjs');
+    assert.match(misc, /if \(isDemoKey\(key\)\) return refuse\(409, \{ error: 'use_demo_routes'/);
+    assert.match(misc, /app\.put\('\/admin\/settings\/:key'[\s\S]{0,300}await checkAdminSetting\(p, req\.params\.key, value/);
   });
 });
 

@@ -79,12 +79,16 @@ import economyAdminRoutes from './routes/economy-admin.mjs';
 import teamRoutes from './routes/teams.mjs';
 import taskRoutes from './routes/tasks.mjs';
 import threadRoutes from './routes/threads.mjs';
+import projectContactRoutes from './routes/project-contact.mjs';
+import entityHostingRoutes from './routes/entity-hosting.mjs';
 import botEmojiRoutes from './routes/bot-emoji.mjs';
 import mediaFlagRoutes from './routes/media-flags.mjs';
 import adminSearchRoutes from './routes/admin-search.mjs';
 import demoRoutes from './routes/demo.mjs';
 import mailLogRoutes from './routes/mail-log.mjs';
 import fileLinkRoutes from './routes/files.mjs';
+import onboardingRoutes from './routes/onboarding.mjs';
+import configTransferRoutes from './routes/config-transfer.mjs';
 import jwt from 'jsonwebtoken';
 import connectionRoutes from './routes/connections.mjs';
 import { recordRequest } from './lib/monitor.mjs';
@@ -432,12 +436,16 @@ await app.register(economyAdminRoutes); // economy statistics + seasons (manage_
 await app.register(teamRoutes); // teams that manage repos / catalogues / pools together
 await app.register(taskRoutes); // the staff task board: staff teams, a chief each, dispatch
 await app.register(threadRoutes); // contact threads: reaching the user or team behind a repo, a catalogue, a profile
+await app.register(projectContactRoutes); // a project's own contact inbox, its topics, and the contact form's project picker
+await app.register(entityHostingRoutes); // hosting settings per blog and per contact inbox: own caps, none, or a pool
 await app.register(botEmojiRoutes); // the bot fetches its icon set and uploads it as application emojis
 await app.register(mediaFlagRoutes); // perceptual-hash flags: pictures that look like another account's
 await app.register(adminSearchRoutes); // the dashboard's one search box over every table it holds
 await app.register(demoRoutes); // admin-only demo mode: an overlay served to admins, never rows in real tables (lib/demo.mjs)
 await app.register(mailLogRoutes); // the sent-mail log: recipient masked in lists, never a body (lib/mail-log.mjs)
 await app.register(fileLinkRoutes); // /f/<token>: files behind links that stop working (MYO deliverables, mail attachments)
+await app.register(onboardingRoutes); // /me/onboarding + /admin/onboarding: the first-run flow (lib/onboarding.mjs)
+await app.register(configTransferRoutes); // /admin/config-transfer: the custom seed v2 (lib/config-transfer.mjs)
 await app.register(rightsRoutes); // rights notices (copyright & co.), the queue, the protected-works registry
 await app.register(connectionRoutes); // social profile connections (youtube/twitch/github/steam)
 await app.register(statusRoutes); // public status page: service uptime, incidents, alert sign-up

@@ -444,7 +444,10 @@ export function isScopedRole(r) {
  *  change in three places — here, the grants function that reads it, and the editor that
  *  offers it — and why 'market' did not exist until it was added to all three.
  */
-const SCOPE_RIGHTS = ['pages', 'blog', 'market'];
+// 'inbox': read and answer the contact inbox of these projects (lib/project-contact.mjs).
+// Its own right, not implied by 'pages': the person who edits a page's wording is not
+// automatically the person who should read what visitors write to the project.
+const SCOPE_RIGHTS = ['pages', 'blog', 'market', 'inbox'];
 export function scopeRights(r) {
   const rights = Array.isArray(r?.scope?.rights) ? r.scope.rights.filter((x) => SCOPE_RIGHTS.includes(x)) : [];
   return rights.length ? rights : ['pages'];
@@ -484,6 +487,25 @@ export async function marketRoleGrants(uid) {
     const roles = await p.customRole.findMany({ where: { id: { in: u.customRoleIds } }, select: { scope: true } });
     for (const r of roles) {
       if (!isScopedRole(r) || !scopeRights(r).includes('market')) continue;
+      if (r.scope.allShowcase) out.allShowcase = true;
+      for (const id of r.scope.showcaseIds || []) out.showcaseIds.add(id);
+      for (const k of r.scope.projectKeys || []) out.projectKeys.add(k);
+    }
+  } catch { /* no grants on error */ }
+  return out;
+}
+// The contact-inbox side of scoped roles: whose project INBOX a user may read because a role
+// says so. Same shape as the two above, kept apart for the same reason.
+export async function inboxRoleGrants(uid) {
+  const out = { allShowcase: false, showcaseIds: new Set(), projectKeys: new Set() };
+  if (!uid) return out;
+  try {
+    const p = await db();
+    const u = await p.user.findUnique({ where: { id: uid }, select: { customRoleIds: true } });
+    if (!u?.customRoleIds?.length) return out;
+    const roles = await p.customRole.findMany({ where: { id: { in: u.customRoleIds } }, select: { scope: true } });
+    for (const r of roles) {
+      if (!isScopedRole(r) || !scopeRights(r).includes('inbox')) continue;
       if (r.scope.allShowcase) out.allShowcase = true;
       for (const id of r.scope.showcaseIds || []) out.showcaseIds.add(id);
       for (const k of r.scope.projectKeys || []) out.projectKeys.add(k);
@@ -1076,9 +1098,19 @@ export async function notifyAll(p, kind, body, bodyFr) {
   const users = await p.user.findMany({ select: { id: true, notifPrefs: true } });
   const targets = locked ? users : users.filter((u) => !(u.notifPrefs && u.notifPrefs[cat] === false));
   if (!targets.length) return 0;
-  await p.notification.createMany({
-    data: targets.map((u) => ({ userId: u.id, kind, body, ...(bodyFr ? { bodyFr } : {}) })),
-  });
+  const write = (list) => p.notification.createMany({ data: list.map((u) => ({ userId: u.id, kind, body, ...(bodyFr ? { bodyFr } : {}) })) });
+  try {
+    await write(targets);
+  } catch (e) {
+    // An account erased between the read above and this insert fails the WHOLE createMany on
+    // its foreign key (P2003), and nobody gets the broadcast. Re-read who still exists and
+    // send once more; anything else is a real error.
+    if (e?.code !== 'P2003') throw e;
+    const alive = new Set((await p.user.findMany({ where: { id: { in: targets.map((u) => u.id) } }, select: { id: true } })).map((u) => u.id));
+    const left = targets.filter((u) => alive.has(u.id));
+    if (left.length) await write(left);
+    return left.length;
+  }
   return targets.length;
 }
 
@@ -1305,11 +1337,16 @@ export async function ownedContent(p, userId) {
  * answer waiting to disagree with the first.
  */
 export async function poolFreeBytes(p, group) {
-  const [repoAgg, catAgg] = await Promise.all([
+  // A blog or a contact inbox can reserve bytes from a pool too (lib/entity-hosting.mjs);
+  // those are given away exactly like a repo's quota. Imported lazily: entity-hosting is a
+  // leaf, but this file is imported by nearly everything and a static cycle is not worth it.
+  const { entityPoolQuotaBytes } = await import('./entity-hosting.mjs');
+  const [repoAgg, catAgg, reserved] = await Promise.all([
     p.serverRepo.aggregate({ where: { groupId: group.id }, _sum: { storageQuotaBytes: true } }),
     p.communityCatalog.aggregate({ where: { groupId: group.id }, _sum: { storageQuotaBytes: true } }),
+    entityPoolQuotaBytes(p, group.id),
   ]);
-  return group.poolBytes - (repoAgg._sum.storageQuotaBytes || 0n) - (catAgg._sum.storageQuotaBytes || 0n);
+  return group.poolBytes - (repoAgg._sum.storageQuotaBytes || 0n) - (catAgg._sum.storageQuotaBytes || 0n) - reserved;
 }
 
 /**

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { publishToThread, streamThread } from '../lib/threadbus.mjs';
+import { markRead, markDelivered, cursorsOf, withReceipts } from '../lib/receipts.mjs';
 import { db, requireRole, requireCap, hasCap, currentUser, logAudit, clientIp, requireVerifiedEmail } from '../lib/lib.mjs';
 import { recordPendingCheckout } from '../lib/pending-checkout.mjs';
 import { createExpiringFile, keyFromMediaUrl, linkFor, describe as describeLink, revokeFor, DEFAULTS as LINK_DEFAULTS } from '../lib/expiring-files.mjs';
@@ -93,6 +94,18 @@ const ser = {
     ...(withUser && r.user ? { user: { id: r.user.id, displayName: r.user.displayName, email: r.user.email, avatar: r.user.avatar } } : {}),
   }),
 };
+
+// The body PUT /admin/myo/settings validates. Module-level and exported so the config import (lib/config-transfer.mjs) checks a seed with this schema rather than a copy of it.
+export const MYO_SETTINGS_BODY = z.object({
+  enabled: z.boolean().optional(),
+  consultationCents: z.number().int().min(0).max(100000).optional(),
+  urgentConsultationCents: z.number().int().min(0).max(100000).optional(),
+  currency: z.string().max(8).optional(),
+  maxOpenUrgent: z.number().int().min(0).max(10000).optional(),
+  maxOpen: z.number().int().min(0).max(10000).optional(),
+  maxOpenPerUser: z.number().int().min(0).max(10000).optional(),
+  autoArchive: z.object({ enabled: z.boolean(), days: z.number().int().min(1).max(365) }).optional(),
+});
 
 export default async function myoRoutes(app) {
   // ── Public catalog + fee display ────────────────────────────────────────────
@@ -190,6 +203,7 @@ export default async function myoRoutes(app) {
   app.get('/myo/requests', { preHandler: requireRole() }, async (req) => {
     const p = await db();
     const rows = await p.myoRequest.findMany({ where: { userId: req.user.uid }, orderBy: { lastActivityAt: 'desc' } });
+    await markDelivered(p, 'myo', rows.map((r) => r.id), 'user');
     return { requests: rows.map((r) => ser.request(r)) };
   });
 
@@ -208,9 +222,14 @@ export default async function myoRoutes(app) {
     // Clear the unread flag for whichever side is reading.
     if (staff && r.staffUnread) await p.myoRequest.update({ where: { id: r.id }, data: { staffUnread: false } }).catch(() => {});
     if (!staff && r.userUnread) await p.myoRequest.update({ where: { id: r.id }, data: { userUnread: false } }).catch(() => {});
+    // Read receipts (lib/receipts.mjs): a staff member reading their OWN request reads it as
+    // the requester, like everywhere else on the site.
+    const side = staff && r.userId !== req.user.uid ? 'staff' : 'user';
+    await markRead(p, 'myo', r.id, side);
+    const cursors = await cursorsOf(p, 'myo', r.id);
     return {
       request: ser.request(r, { withUser: staff }),
-      messages: messages.map(ser.message),
+      messages: withReceipts('myo', messages.map(ser.message), cursors, { sideOf: (m) => (m.staff ? 'staff' : 'user'), isMine: (m) => !!m.authorId && (m.staff ? 'staff' : 'user') === side }),
       quotes: quotes.map(ser.quote),
       deliverables: await (async () => { const links = deliverables.length ? await p.expiringFile.findMany({ where: { kind: 'myo', refId: r.id } }).catch(() => []) : []; return deliverables.map((d) => ser.deliverable(d, links.find((l) => l.fileName === (d.fileName || '') && d.fileUrl && l.key === (keyFromMediaUrl(d.fileUrl) || d.fileUrl)) || null)); })(),
       viewerIsStaff: staff,
@@ -392,6 +411,7 @@ async function actorName(p, uid, fallback) {
     else if (assigned === 'unassigned') where.assignedToId = null;
     if (q) where.OR = [{ name: { contains: q, mode: 'insensitive' } }, { user: { displayName: { contains: q, mode: 'insensitive' } } }, { user: { email: { contains: q, mode: 'insensitive' } } }];
     const rows = await p.myoRequest.findMany({ where, orderBy: { lastActivityAt: 'desc' }, take: 100, include: { user: true, assignedTo: true } });
+    await markDelivered(p, 'myo', rows.filter((r) => r.userId !== req.user.uid).map((r) => r.id), 'staff');
     // The counts the tabs need, computed here so the queue does not have to be fetched
     // three more times to label its own filters.
     const [activeCount, archivedCount, mineCount, unassignedCount] = await Promise.all([
@@ -574,16 +594,7 @@ async function actorName(p, uid, fallback) {
     return { ...await myoConfig(p), load: await myoLoad(p) };
   });
   app.put('/admin/myo/settings', { preHandler: requireCap('manage_myo') }, async (req, reply) => {
-    const b = z.object({
-      enabled: z.boolean().optional(),
-      consultationCents: z.number().int().min(0).max(100000).optional(),
-      urgentConsultationCents: z.number().int().min(0).max(100000).optional(),
-      currency: z.string().max(8).optional(),
-      maxOpenUrgent: z.number().int().min(0).max(10000).optional(),
-      maxOpen: z.number().int().min(0).max(10000).optional(),
-      maxOpenPerUser: z.number().int().min(0).max(10000).optional(),
-      autoArchive: z.object({ enabled: z.boolean(), days: z.number().int().min(1).max(365) }).optional(),
-    }).safeParse(req.body);
+    const b = MYO_SETTINGS_BODY.safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
     const set = async (key, value) => { if (value !== undefined) await p.adminSetting.upsert({ where: { key }, create: { key, value }, update: { value } }); };

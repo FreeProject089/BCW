@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { entityPoolQuotaBytes } from '../lib/entity-hosting.mjs';
 import { normaliseGiftTarget } from '../lib/gift.mjs';
 import { flagEnabled } from '../lib/flags.mjs';
 import { statfsSync } from 'node:fs';
@@ -367,32 +368,35 @@ async function announcePriceCancelled(p, plan) {
   return sent;
 }
 
+// Module-level and exported so the config import (lib/config-transfer.mjs) validates a seed
+// with the schema this route uses rather than a copy of it.
+export const planShape = {
+  name: z.string().min(1).max(60),
+  // Float, min 0 — a plan can now be set below 1 GB (the editor enters MB/GB/TB and sends
+  // the GB value). max 100000 GB ≈ 100 TB, well within a JS-safe number.
+  storageGB: z.number().min(0).max(100000),
+  uploadLimitKbps: z.number().int().min(0).max(10_000_000),
+  // Optional now that the editor no longer shows it. Defaulted rather than dropped so the
+  // price formula, which still multiplies by it, keeps computing the same number for a plan
+  // saved without one as for the plans that already exist.
+  cpuShare: z.number().min(0).max(64).optional().default(0.5),
+  // NULLABLE on purpose: leaving the price empty means "whatever Hosting settings say
+  // this costs", so a plan tracks the per-GB/per-Mbps rates instead of freezing a number
+  // that silently stops matching them the next time those rates move.
+  priceMonthlyCents: z.number().int().min(0).max(10_000_000).nullable(),
+  active: z.boolean(),
+  // Boosts included with the plan. Defaulted rather than optional so a save that omits them
+  // writes the no-op instead of leaving whatever was there -- the same trap mergeSettings
+  // was extracted for, one table over.
+  boostsPerPeriod: z.number().int().min(0).max(50).default(0),
+  boostPeriodMonths: z.number().int().min(1).max(24).default(1),
+  boostDays: z.number().int().min(1).max(365).default(7),
+};
+
 export default async function hostingRoutes(app) {
   // ── Admin: the hosting plans themselves ──
   // The catalogue visitors see was seeded once and only reachable through SQL after that.
   // A price nobody can change without a database client is a price that never changes.
-  const planShape = {
-    name: z.string().min(1).max(60),
-    // Float, min 0 — a plan can now be set below 1 GB (the editor enters MB/GB/TB and sends
-    // the GB value). max 100000 GB ≈ 100 TB, well within a JS-safe number.
-    storageGB: z.number().min(0).max(100000),
-    uploadLimitKbps: z.number().int().min(0).max(10_000_000),
-    // Optional now that the editor no longer shows it. Defaulted rather than dropped so the
-    // price formula, which still multiplies by it, keeps computing the same number for a plan
-    // saved without one as for the plans that already exist.
-    cpuShare: z.number().min(0).max(64).optional().default(0.5),
-    // NULLABLE on purpose: leaving the price empty means "whatever Hosting settings say
-    // this costs", so a plan tracks the per-GB/per-Mbps rates instead of freezing a number
-    // that silently stops matching them the next time those rates move.
-    priceMonthlyCents: z.number().int().min(0).max(10_000_000).nullable(),
-    active: z.boolean(),
-    // Boosts included with the plan. Defaulted rather than optional so a save that omits them
-    // writes the no-op instead of leaving whatever was there -- the same trap mergeSettings
-    // was extracted for, one table over.
-    boostsPerPeriod: z.number().int().min(0).max(50).default(0),
-    boostPeriodMonths: z.number().int().min(1).max(24).default(1),
-    boostDays: z.number().int().min(1).max(365).default(7),
-  };
 
   // The price Hosting settings computes for a plan's own specs. Same function the public
   // /hosting/price endpoint and checkout use, so a derived plan cannot drift from what a
@@ -751,8 +755,11 @@ export default async function hostingRoutes(app) {
       },
     });
     const planRow = await p.hostingPlan.findFirst({ where: { name: GRANT_PLAN_NAME }, select: { id: true } });
+    // What blogs and contact inboxes reserved from each pool (lib/entity-hosting.mjs), in one query.
+    const reservedRows = groups.length ? await p.entityHostingSettings.groupBy({ by: ['poolId'], where: { mode: 'pool', poolId: { in: groups.map((g) => g.id) } }, _sum: { quotaBytes: true } }).catch(() => []) : [];
+    const reservedOf = Object.fromEntries(reservedRows.map((r) => [r.poolId, r._sum.quotaBytes || 0n]));
     return { pools: groups.map((g) => {
-      const allocated = [...g.repos, ...g.catalogs].reduce((a, x) => a + (x.storageQuotaBytes || 0n), 0n);
+      const allocated = [...g.repos, ...g.catalogs].reduce((a, x) => a + (x.storageQuotaBytes || 0n), 0n) + (reservedOf[g.id] || 0n);
       const grant = g.subscriptions.find((s) => s.status === 'active' && s.planId === planRow?.id);
       return {
         id: g.id, name: g.name, freePlan: g.freePlan, createdAt: g.createdAt,
@@ -820,7 +827,7 @@ export default async function hostingRoutes(app) {
         p.serverRepo.aggregate({ where: { groupId: group.id }, _sum: { storageQuotaBytes: true } }),
         p.communityCatalog.aggregate({ where: { groupId: group.id }, _sum: { storageQuotaBytes: true } }),
       ]);
-      const allocated = (repos._sum.storageQuotaBytes || 0n) + (catalogs._sum.storageQuotaBytes || 0n);
+      const allocated = (repos._sum.storageQuotaBytes || 0n) + (catalogs._sum.storageQuotaBytes || 0n) + await entityPoolQuotaBytes(p, group.id);
       if (target < allocated) return reply.code(409).send({ error: 'below_allocated', allocatedGB: Number(allocated) / GiB });
       const r = await setPoolStorage(p, group, target);
       if (r.error) return reply.code(409).send(r);

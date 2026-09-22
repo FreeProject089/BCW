@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { hostingFor, limitsFor } from '../lib/entity-hosting.mjs';
 import { db, requireRole, requireCap, optionalAuth, slugify, pruneRevisions, blogRoleGrants } from '../lib/lib.mjs';
 import { emailEnabled } from '../lib/mail.mjs';
 import { sendNewsletter } from './newsletter.mjs';
@@ -130,8 +131,27 @@ async function blogUsage(p, scope, excludeId) {
 // `addBytes` = the (new) size of the post being written. On an EDIT pass `excludeId`
 // (the post's id) so its OLD size doesn't double-count and the count cap isn't tripped
 // just for editing an existing post at the limit — only the size cap applies to edits.
+// PER BLOG FIRST (lib/entity-hosting.mjs). A blog with its own hosting settings (its own caps,
+// no cap, or a reservation from a pool) is measured against THOSE and nothing else: the
+// site-wide numbers and the old per-showcase config are what `inherit` means, and a blog
+// that left `inherit` has opted out of them. No row = inherit = exactly the old behaviour.
+async function blogRefOf(p, { projectId, showcaseProjectId }) {
+  if (showcaseProjectId) { const s = await p.showcaseProject.findUnique({ where: { id: showcaseProjectId }, select: { slug: true } }); return s ? `sc:${s.slug}` : null; }
+  if (projectId) { const r = await p.project.findUnique({ where: { id: projectId }, select: { key: true } }); return r?.key || null; }
+  return null;
+}
 async function checkBlogLimits(p, { projectId, showcaseProjectId, showcaseConfig }, addBytes, excludeId) {
   const isEdit = !!excludeId;
+  const ref = await blogRefOf(p, { projectId, showcaseProjectId });
+  const own = ref ? await hostingFor(p, 'blog', ref) : null;
+  if (own && own.mode !== 'inherit') {
+    const lim = limitsFor(own);
+    if (!lim.maxItems && lim.maxBytes === null) return null;
+    const u = await blogUsage(p, showcaseProjectId ? { showcaseProjectId } : { projectId }, excludeId);
+    if (!isEdit && lim.maxItems > 0 && u.count >= lim.maxItems) return { error: 'blog_limit', scope: 'blog', kind: 'count', limit: lim.maxItems, current: u.count };
+    if (lim.maxBytes !== null && u.bytes + addBytes > lim.maxBytes) return { error: 'blog_limit', scope: lim.source === 'pool' ? 'pool' : 'blog', kind: 'size', limitKB: Math.floor(lim.maxBytes / 1024), currentKB: Math.round((u.bytes + addBytes) / 1024) };
+    return null;
+  }
   const s = Object.fromEntries((await p.adminSetting.findMany()).map((r) => [r.key, r.value]));
   const gMaxPosts = Number(s['blog.maxTotalPosts'] ?? 0);
   const gMaxKB = Number(s['blog.maxTotalKB'] ?? 0);
@@ -654,3 +674,6 @@ export default async function blogRoutes(app) {
   });
 
 }
+
+// For the tests: the per-blog limit rule, without a whole post-creation request around it.
+export { checkBlogLimits as checkBlogLimitsForTest };

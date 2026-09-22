@@ -13,7 +13,7 @@ const SAMPLE = {
     { key: 'site.scene', value: { enabled: true, shape: 'orb' } },
   ],
   hostingPlans: [{ name: 'Repo 5GB', storageGB: 5, uploadLimitKbps: 2048, cpuShare: 0.25, priceMonthlyCents: 300, active: true }],
-  legalPages: [{ slug: 'tos', title: 'Terms', bodyEn: '…', bodyFr: '…' }],
+  legalPages: [{ key: 'tos', label: 'Terms', labelFr: 'Conditions', summary: '', summaryFr: '', icon: '', order: 0, builtIn: true, published: true }],
 };
 
 test('jsLiteral round-trips to the original value and is XSS-safe', () => {

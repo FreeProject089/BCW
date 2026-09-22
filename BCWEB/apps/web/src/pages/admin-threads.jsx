@@ -2,7 +2,7 @@
 // to MODERATE — hide a message, block a sender, close — and the anti-spam limits. Staff do
 // not answer for the owners; the flagged ones are what they read first.
 import { useState } from 'react';
-import { MessageSquare, Flag, Lock, Ban, EyeOff, Eye, RefreshCw, Sliders } from 'lucide-react';
+import { MessageSquare, Flag, Lock, Ban, EyeOff, Eye, RefreshCw, Sliders, Archive, RotateCcw, Trash2 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { useAsync } from './pages.jsx';
@@ -10,7 +10,7 @@ import { Button, Card, Badge, Input, Field, Select, EmptyState, Spinner, useToas
 
 const when = (d) => new Date(d).toLocaleString();
 
-function AdminThreadDetail({ id, onBack, onChanged }) {
+function AdminThreadDetail({ id, onBack, onChanged, onDelete }) {
   const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
   const { data, loading, reload } = useAsync(() => api.get(`/admin/threads/${id}`), [id]);
   if (loading && !data) return <div className="py-6 text-center"><Spinner /></div>;
@@ -43,6 +43,9 @@ function AdminThreadDetail({ id, onBack, onChanged }) {
         </div>
         <div className="flex gap-2 flex-wrap pt-2 border-t border-[var(--line)]">
           {th.status !== 'closed' && <Button size="sm" variant="ghost" onClick={() => act(`/admin/threads/${th.id}/close`)}><Lock size={13} /> {t('adm.th.close', 'Close')}</Button>}
+          {th.status === 'open' && <Button size="sm" variant="ghost" onClick={() => act(`/admin/threads/${th.id}/archive`)}><Archive size={13} /> {t('th.archive', 'Archive')}</Button>}
+          {(th.status === 'closed' || th.status === 'archived') && <Button size="sm" variant="ghost" onClick={() => act(`/admin/threads/${th.id}/reopen`)}><RotateCcw size={13} /> {t('th.reopen', 'Reopen')}</Button>}
+          <Button size="sm" variant="ghost" className="!text-error ms-auto" onClick={() => onDelete(th)}><Trash2 size={13} /> {t('common.delete', 'Delete')}</Button>
           {th.status !== 'blocked' && <Button size="sm" variant="ghost" className="!text-error" onClick={() => act(`/admin/threads/${th.id}/block`, { title: t('adm.th.block.q', 'Block this sender?'), message: t('adm.th.block.m', 'Their account / e-mail can no longer open or answer conversations; every thread they opened is blocked.') })}><Ban size={13} /> {t('adm.th.block', 'Block the sender')}</Button>}
         </div>
       </Card>
@@ -60,11 +63,18 @@ function ThreadsConfig() {
   return (
     <Card className="p-4 space-y-3">
       <div className="font-semibold flex items-center gap-2"><Sliders size={15} /> {t('adm.th.cfg', 'Limits & blocked senders')}</div>
-      <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={cfg.enabled !== false} onChange={(e) => setF({ ...cfg, enabled: e.target.checked })} /> {t('adm.th.enabled', 'Members can message each other')}</label>
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+      {/* This is the switch for EVERY contact conversation (repo, catalogue, team, project and
+          member). It used to be labelled "Members can message each other", which is what the
+          member switch above says, so an admin turning off member messages here also cut off
+          every repo's and team's contact channel. The member-only switch is the one above. */}
+      <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={cfg.enabled !== false} onChange={(e) => setF({ ...cfg, enabled: e.target.checked })} /> {t('adm.th.enabled.all', 'Contact conversations are open (every kind)')}</label>
+      <p className="text-[11px] text-[var(--faint)]">{t('adm.th.enabled.hint', 'Off, nobody can write to a repo, a catalogue, a team, a project or a member. To stop only conversations between members, use the switch above.')}</p>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2">
         {num('userPerHour', t('adm.th.uph', 'Account / hour'))}{num('userPerDay', t('adm.th.upd', 'Account / day'))}
         {num('anonPerHour', t('adm.th.aph', 'Anonymous / hour'))}{num('anonPerDay', t('adm.th.apd', 'Anonymous / day'))}
         {num('messagesPerHour', t('adm.th.mph', 'Replies / hour'))}{num('maxBody', t('adm.th.max', 'Max length'))}
+        {/* One mail per burst of replies to an anonymous sender, this many minutes after the first. */}
+        {num('anonMailDebounceMin', t('adm.th.mailwait', 'Mail to anonymous senders after (min)'))}
       </div>
       <Field label={t('adm.th.blockedmails', 'Blocked e-mails (one per line)')}><textarea className="input" rows={3} value={cfg.blockedEmailsText ?? (cfg.blockedEmails || []).join('\n')} onChange={(e) => setF({ ...cfg, blockedEmailsText: e.target.value })} /></Field>
       <div className="text-[12px] text-[var(--muted)]">{t('adm.th.blockedusers', 'Blocked accounts')}: {(cfg.blockedUserIds || []).length} {(cfg.blockedUserIds || []).length > 0 && <button type="button" className="text-[var(--accent-ink)] hover:underline" onClick={() => setF({ ...cfg, blockedUserIds: [] })}>{t('adm.th.unblockall', 'unblock all')}</button>}</div>
@@ -74,11 +84,24 @@ function ThreadsConfig() {
 }
 
 export function AdminThreads() {
-  const { t } = useI18n();
+  const { t } = useI18n(); const toast = useToast();
   const [status, setStatus] = useState('flagged'); const [q, setQ] = useState(''); const [open, setOpen] = useState(null);
+  const [pending, setPending] = useState(() => new Set());
   const { data, loading, reload } = useAsync(() => api.get(`/admin/threads?status=${encodeURIComponent(status)}&q=${encodeURIComponent(q)}`), [status, q]);
-  if (open) return <AdminThreadDetail id={open} onBack={() => setOpen(null)} onChanged={reload} />;
-  const rows = data?.threads || [];
+  // Delete behind the house undo window: the row goes at once, the request leaves when the
+  // toast expires, and Undo means the server was never asked.
+  const del = (th) => {
+    const unhide = () => setPending((s) => { const n = new Set(s); n.delete(th.id); return n; });
+    setPending((s) => new Set(s).add(th.id)); setOpen(null);
+    toast.action({
+      tone: 'info', cancelLabel: t('common.undo', 'Undo'),
+      msg: t('adm.th.deleted', 'Conversation deleted, with its messages.'),
+      onCommit: async () => { try { await api.del(`/admin/threads/${th.id}`); } catch (x) { if (x?.status !== 404) toast.error(t('common.failed', 'Failed.')); } unhide(); reload(); },
+      onCancel: () => { unhide(); setOpen(th.id); },
+    });
+  };
+  if (open) return <AdminThreadDetail id={open} onBack={() => setOpen(null)} onChanged={reload} onDelete={del} />;
+  const rows = (data?.threads || []).filter((r) => !pending.has(r.id));
   return (
     <div className="space-y-4 mt-6">
       <Card className="p-4">
@@ -88,7 +111,7 @@ export function AdminThreads() {
           {data?.flagged > 0 && <Badge tone="warning"><Flag size={10} /> {data.flagged}</Badge>}
           <div className="ms-auto flex items-center gap-2">
             <Select value={status} className="!w-auto" onChange={(e) => setStatus(e.target.value)}>
-              <option value="flagged">{t('adm.th.f.flagged', 'Flagged')}</option><option value="">{t('adm.th.f.all', 'All')}</option><option value="open">{t('th.st.open', 'open')}</option><option value="closed">{t('th.st.closed', 'closed')}</option><option value="blocked">{t('th.st.blocked', 'blocked')}</option>
+              <option value="flagged">{t('adm.th.f.flagged', 'Flagged')}</option><option value="">{t('adm.th.f.all', 'All')}</option><option value="open">{t('th.st.open', 'open')}</option><option value="archived">{t('th.st.archived', 'archived')}</option><option value="closed">{t('th.st.closed', 'closed')}</option><option value="blocked">{t('th.st.blocked', 'blocked')}</option>
             </Select>
             <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('common.search', 'Search…')} className="w-44" />
             <Button size="sm" variant="ghost" onClick={reload}><RefreshCw size={13} /></Button>

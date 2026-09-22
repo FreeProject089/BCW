@@ -8,6 +8,7 @@ import { generateSecret, verifyTotp, otpauthUri, generateRecoveryCodes } from '.
 import { userBcId } from '../lib/repofingerprint.mjs';
 import { grantAutoBadges } from './social.mjs';
 import { sendMail, mailShell, emailEnabled } from '../lib/mail.mjs';
+import { markNewAccount } from '../lib/onboarding.mjs';
 import { VERIFY_WINDOW_DAYS, RESEND_MIN_GAP_MS, RESEND_MAX_PER_DAY, RESEND_DAY_MS, clearVerifiedCache } from '../lib/verify-gate.mjs';
 import { priorLoginContext, maybeAlertLogin, FAIL_WINDOW_MS, FAIL_THRESHOLD } from '../lib/login-alert.mjs';
 
@@ -221,6 +222,9 @@ export default async function authRoutes(app) {
       await logAudit(p, user.id, 'account.returned', `linked to closed account ${prior.id}${carried.status ? ` (carried ${carried.status})` : ''}`, clientIp(req)).catch(() => {});
     }
     grantAutoBadges(p, { event: 'signup', user }).catch(() => {}); // e.g. the 100th-signup badge
+    // The first-run flow (lib/onboarding.mjs). Written here, at creation, and nowhere else:
+    // an account without this row is an older one and never sees the flow.
+    await markNewAccount(p, user.id);
     sendVerificationEmail(p, user).catch(() => {}); // fire-and-forget confirmation email
     return issueSession(reply, user, req);
   });

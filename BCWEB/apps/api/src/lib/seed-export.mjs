@@ -10,6 +10,8 @@
 // pages, nav, home, scene…) carry no cross-model foreign keys in their VALUE, and a HostingPlan
 // is a flat row — both re-seed cleanly anywhere. Blog/docs/FAQ reference an author + project id
 // and need those resolved first, so they are a later addition (noted in the UI).
+import { SECRET_SETTING_KEYS, stripSecrets } from './secret-guard.mjs';
+
 export const SEED_SECTIONS = {
   projects: { label: 'Projects', kind: 'adminSetting', prefix: 'project.' },
   hostingPlans: { label: 'Hosting plans', kind: 'hostingPlan' },
@@ -75,11 +77,11 @@ export function generateSeedScript(sections, data, meta = {}) {
 
   const legal = data.legalPages || [];
   if (legal.length) {
-    p('  // ── Legal pages (matched by slug) ──');
+    p('  // ── Legal pages (matched by key) ──');
     p(`  const legal = ${jsLiteral(legal)};`);
     p('  for (const l of legal) {');
-    p('    const before = await p.legalPage.findUnique({ where: { slug: l.slug } }).catch(() => null);');
-    p('    await p.legalPage.upsert({ where: { slug: l.slug }, create: l, update: l });');
+    p('    const before = await p.legalPage.findUnique({ where: { key: l.key } }).catch(() => null);');
+    p('    await p.legalPage.upsert({ where: { key: l.key }, create: l, update: l });');
     p('    before ? updated++ : created++;');
     p('  }');
   }
@@ -144,7 +146,9 @@ export async function listSeedItems(p) {
   out.docs = await map('docPage', { slug: true, title: true }, 'slug', 'title');
   out.faq = await map('faqItem', { question: true }, 'question', 'question');
   out.badges = await map('badge', { slug: true, name: true }, 'slug', 'name');
-  out.legal = await map('legalPage', { slug: true, title: true }, 'slug', 'title');
+  // LegalPage is keyed by `key` and titled by `label`; it has no slug/title. Asking for those
+  // made Prisma throw, the catch turned it into an empty list, and the section always said 0.
+  out.legal = await map('legalPage', { key: true, label: true }, 'key', 'label');
   out.hostingPlans = await map('hostingPlan', { name: true }, 'name', 'name');
   return out;
 }
@@ -173,7 +177,12 @@ export async function readSeedContent(p, selected, itemFilter = {}) {
 
   if (wantSettingKeys.size || wantSettingPrefixes.length) {
     const rows = await p.adminSetting.findMany({ select: { key: true, value: true } });
-    data.adminSettings = rows.filter((r) => wantSettingKeys.has(r.key) || wantSettingPrefixes.some((pre) => r.key.startsWith(pre)));
+    // Never a credential row, and never a credential inside a value (lib/secret-guard.mjs):
+    // the `projects` prefix also matched nothing secret by luck, not by rule.
+    data.adminSettings = rows
+      .filter((r) => !SECRET_SETTING_KEYS.has(r.key))
+      .filter((r) => wantSettingKeys.has(r.key) || wantSettingPrefixes.some((pre) => r.key.startsWith(pre)))
+      .map((r) => ({ key: r.key, value: stripSecrets(r.value).value }));
   }
   if (selected.includes('hostingPlans')) {
     const only = allow(itemFilter, 'hostingPlans');
@@ -183,8 +192,11 @@ export async function readSeedContent(p, selected, itemFilter = {}) {
   }
   if (selected.includes('legal') && p.legalPage) {
     const only = allow(itemFilter, 'legal');
-    data.legalPages = (await p.legalPage.findMany().catch(() => [])).map(({ id, createdAt, updatedAt, ...rest }) => rest)
-      .filter((r) => !only || only.has(String(r.slug)));
+    // The page shell only (its words live in LegalSection/LegalVersion, which the content
+    // backup carries). `categoryId` points at a row on THIS install, so it does not travel.
+    data.legalPages = (await p.legalPage.findMany().catch(() => []))
+      .map(({ key, label, labelFr, summary, summaryFr, icon, order, builtIn, published }) => ({ key, label, labelFr, summary, summaryFr, icon, order, builtIn, published }))
+      .filter((r) => !only || only.has(String(r.key)));
     summary.legal = data.legalPages.length;
   }
   if (selected.includes('docs') && p.docPage) {

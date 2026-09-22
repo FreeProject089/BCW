@@ -11,7 +11,8 @@ import { MessageSquare, Mail, Phone, Users, Copy } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { useAuth } from '../pages/auth.jsx';
-import { Button, Modal, Input, Textarea, Field, useToast, copyText } from './ui.jsx';
+import { Button, Modal, Input, Textarea, Field, Select, useToast, copyText } from './ui.jsx';
+import { topicLabel } from './topic-label.js';
 
 export function ContactButton({ kind, targetId, targetLabel, size = 'sm', variant = 'ghost', className = '', label }) {
   const { t } = useI18n();
@@ -24,8 +25,11 @@ export function ContactButton({ kind, targetId, targetLabel, size = 'sm', varian
   );
 }
 
-export function ContactModal({ kind, targetId, targetLabel, onClose }) {
-  const { t } = useI18n(); const toast = useToast(); const { user } = useAuth();
+// `topics`: when the target offers them (a project), the sender picks one. The API refuses a
+// topic the target does not offer, so this list is a convenience, not the rule.
+export function ContactModal({ kind, targetId, targetLabel, onClose, topics = null, initialTopic = '' }) {
+  const { t, lang } = useI18n(); const toast = useToast(); const { user } = useAuth();
+  const [topic, setTopic] = useState(initialTopic || (topics?.length === 1 ? topics[0].id : ''));
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const [email, setEmail] = useState('');
@@ -33,12 +37,13 @@ export function ContactModal({ kind, targetId, targetLabel, onClose }) {
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState(null);
   const send = async () => {
+    if (topics?.length && !topic) return toast.error(t('cm.needtopic', 'Pick what it is about.'));
     if (subject.trim().length < 2) return toast.error(t('cm.needsubject', 'Give the message a subject.'));
     if (body.trim().length < 10) return toast.error(t('cm.needbody', 'Write a few more words.'));
     if (!user && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return toast.error(t('cm.needemail', 'Leave an e-mail so they can answer you.'));
     setBusy(true);
     try {
-      const payload = { kind, targetId, subject: subject.trim(), body: body.trim() };
+      const payload = { kind, targetId, subject: subject.trim(), body: body.trim(), ...(topic ? { topic } : {}) };
       if (!user) {
         const { solvePow } = await import('../lib/pow.js');
         payload.pow = await solvePow(() => api.get('/auth/pow'));
@@ -49,16 +54,18 @@ export function ContactModal({ kind, targetId, targetLabel, onClose }) {
       if (user) { toast.success(t('cm.sent', 'Sent, follow the conversation in your dashboard → Messages.')); onClose(); }
     } catch (x) {
       const e = x.data?.error;
-      toast.error(e === 'rate_limited' ? t('cm.rate', 'Too many messages for now, try again later.')
+      toast.error(e === 'rate_limited' && x.data?.scope === 'member' ? t('cm.dm.rate', 'You started several conversations with members in a short time. Try again later.')
+        : e === 'rate_limited' ? t('cm.rate', 'Too many messages for now, try again later.')
         : e === 'yourself' ? t('cm.self', 'That is you.')
         : e === 'blocked' ? t('cm.blocked', 'Messaging is not available for this sender.')
         : e === 'not_found' ? t('cm.gone', 'This cannot be contacted any more.')
         : e === 'disabled' ? t('cm.disabled', 'Messaging is switched off for now.')
+        : e === 'project_contact_off' ? t('cm.projoff', 'This project does not take messages at the moment.')
+        : e === 'invalid_topic' ? t('cm.badtopic', 'This project no longer offers that topic. Pick another one.')
         // The three refusals that are member-to-member specific. Each one says WHOSE
         // decision it was, because "not available" sends people to support to ask why.
         : e === 'messaging_off_site' ? t('cm.dm.site', 'Conversations between members are switched off on this site.')
         : e === 'messaging_off_member' ? t('cm.dm.member', 'This member does not accept conversations.')
-        : e === 'too_many_open' ? t('cm.dm.cap', 'You already have as many open conversations as the site allows. Close or archive one first.')
         : t('common.failed', 'Failed.'));
     } finally { setBusy(false); }
   };
@@ -76,6 +83,14 @@ export function ContactModal({ kind, targetId, targetLabel, onClose }) {
         </div>
       ) : (
         <div className="space-y-3">
+          {topics?.length > 0 && (
+            <Field label={t('cm.topic', 'About')}>
+              <Select value={topic} onChange={(e) => setTopic(e.target.value)}>
+                <option value="">{t('cm.topic.pick', 'Pick a topic')}</option>
+                {topics.map((tp) => <option key={tp.id} value={tp.id}>{topicLabel(tp, t, lang)}</option>)}
+              </Select>
+            </Field>
+          )}
           <Field label={t('cm.subject', 'Subject')}><Input value={subject} maxLength={140} onChange={(e) => setSubject(e.target.value)} placeholder={t('cm.subject.ph', 'A broken download, a question, a request…')} /></Field>
           <Field label={t('cm.body', 'Message')}><Textarea rows={6} value={body} maxLength={4000} onChange={(e) => setBody(e.target.value)} /></Field>
           {!user && (

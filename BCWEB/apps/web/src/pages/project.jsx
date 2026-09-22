@@ -36,6 +36,7 @@ import RrwebPreview from '../hero/RrwebPreview.jsx';
 import { GithubIcon, KofiIcon, DiscordIcon, RedditIcon, AppLogo, APP_LOGO } from '../ui/brand.jsx';
 import { MessageSquare } from 'lucide-react';
 import { Button, Card, Badge, PageHeader, EmptyState, Spinner, Modal, Input, Textarea, Field, useToast } from '../ui/ui.jsx';
+import { ProjectContactBar } from '../ui/project-contact.jsx';
 
 // Which tab is actually shown. A `?tab=` naming one that is switched OFF must not render it:
 // hiding the link while still serving the content means an admin who turns a tab off has not
@@ -379,6 +380,8 @@ export default function ProjectPage({ preview = null }) {
         <div className="flex flex-wrap items-start gap-2">
           <DownloadMenu downloads={c.downloads} pkey={key} />
           {hasCatalog && <Link to={`/catalog?project=${key}`}><Button><Boxes size={16} /> {t('proj.browse')}</Button></Link>}
+          {/* The project's own contact: write to it, and for whoever answers, its inbox. */}
+          {!preview && <ProjectContactBar projectRef={key} />}
           {/* The way BACK to the editor, for somebody who may edit this page.
               The config has always been editable — in an admin section, reached from a menu,
               two pages from the thing it describes. So the person who spots that a diagram is
@@ -1438,6 +1441,7 @@ export function ShowcaseProjectPage({ preview = null }) {
         <div className="flex-1"><div className="flex items-center gap-3 flex-wrap"><h1 className="text-3xl font-extrabold">{proj.name}</h1>{cfg.version && <button onClick={() => setShowVersions(true)} title={t('ver.open', 'Version history')} className="press-sm"><Badge tone="primary"><Clock size={11} /> v{cfg.version}</Badge></button>}</div>{cfg.tagline && <p className="text-[var(--muted)] mt-1">{cfg.tagline}</p>}</div>
         <div className="flex flex-wrap items-start gap-2">
           <DownloadMenu downloads={cfg.downloads} />
+          {!preview && <ProjectContactBar projectRef={`sc:${slug}`} />}
         </div>
       </div>
 

@@ -597,7 +597,8 @@ function BlogEditor({ post, scopes, onClose, onSaved, draft, draftBase, conflict
         else toast.info(t('be.mergedreview', 'Merged with edits made by someone else, review the content, then Save again.'));
       } else if (x.status === 409 && x.data?.error === 'blog_limit') {
         const d = x.data;
-        const where = d.scope === 'project' ? t('be.thispage', 'this page') : t('be.thesite', 'the site');
+        // 'blog' and 'pool' come from this blog's own hosting settings (Admin, Storage per blog).
+        const where = d.scope === 'project' ? t('be.thispage', 'this page') : d.scope === 'blog' ? t('be.thisblog', 'this blog') : d.scope === 'pool' ? t('be.thispool', 'the storage pool of this blog') : t('be.thesite', 'the site');
         toast.error(d.kind === 'count'
           ? t('be.fullcount', 'Blog is full: {where} allows at most {limit} article(s) (currently {current}). Delete one or raise the limit.').replace('{where}', where).replace('{limit}', d.limit).replace('{current}', d.current)
           : t('be.fullsize', "Blog is full: {where}'s size limit ({kb} KB) would be exceeded. Trim this article, delete an old one, or raise the limit.").replace('{where}', where).replace('{kb}', d.limitKB));

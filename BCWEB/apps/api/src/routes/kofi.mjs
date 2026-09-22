@@ -84,6 +84,9 @@ async function grantKofiDiscount(p, email) {
   return { ok: true, promo, user };
 }
 
+// The body PUT /admin/kofi/goal validates. Module-level and exported so the config import (lib/config-transfer.mjs) checks a seed with this schema rather than a copy of it.
+export const KOFI_GOAL_BODY = z.object({ title: z.string().max(120).default(''), targetAmount: z.number().min(0).max(10_000_000), currency: z.string().trim().min(1).max(8).default('USD'), reset: z.boolean().optional() });
+
 export default async function kofiRoutes(app) {
   // Ko-fi posts `application/x-www-form-urlencoded` (a single `data` field
   // holding a JSON string) — nothing else in this API needs that content type,
@@ -172,7 +175,7 @@ export default async function kofiRoutes(app) {
   });
 
   app.put('/admin/kofi/goal', { preHandler: requireCap('manage_donations') }, async (req, reply) => {
-    const b = z.object({ title: z.string().max(120).default(''), targetAmount: z.number().min(0).max(10_000_000), currency: z.string().trim().min(1).max(8).default('USD'), reset: z.boolean().optional() }).safeParse(req.body);
+    const b = KOFI_GOAL_BODY.safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
     const prev = await p.adminSetting.findUnique({ where: { key: 'kofi.goal' } });

@@ -7,6 +7,7 @@ import { mergeShadowEconomy } from '../lib/economy-curve.mjs';
 import { verifyConnectState, exchangeConnect, connectBound, OAUTH as CONNECT_OAUTH } from './connections.mjs';
 import { grantAutoBadges } from './social.mjs';
 import { flagEnabled, disabledReply } from '../lib/flags.mjs';
+import { markNewAccount } from '../lib/onboarding.mjs';
 
 // GitHub/Discord "Continue with…" login + signup. No library — both providers'
 // authorization-code flow is a handful of fetches, and pulling in a whole OAuth
@@ -242,6 +243,17 @@ const readBlob = (v) => {
   } catch { return null; }
 };
 
+/** Which providers can be used to sign in (or be linked) right now. Exported so the
+ *  onboarding flow asks the same question the sign-in page does instead of a copy of it. */
+export function oauthProviders() {
+  if (!flagEnabled('features.oauthLoginEnabled')) return { github: false, discord: false, google: false, disabled: true };
+  return {
+    github: !!(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET),
+    discord: !!(process.env.DISCORD_CLIENT_ID && process.env.DISCORD_CLIENT_SECRET),
+    google: !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
+  };
+}
+
 export default async function oauthRoutes(app) {
   // Feature-detection — the frontend only shows a "Continue with X" button once
   // that provider actually has credentials configured server-side.
@@ -249,14 +261,7 @@ export default async function oauthRoutes(app) {
   // already how the sign-in page renders "not available". A `disabled` flag rides along
   // so the page can say WHY rather than just dropping the buttons, but nothing has to
   // read it for the page to behave.
-  app.get('/auth/oauth/providers', async () => {
-    if (!flagEnabled('features.oauthLoginEnabled')) return { github: false, discord: false, google: false, disabled: true };
-    return {
-      github: !!(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET),
-      discord: !!(process.env.DISCORD_CLIENT_ID && process.env.DISCORD_CLIENT_SECRET),
-      google: !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
-    };
-  });
+  app.get('/auth/oauth/providers', async () => oauthProviders());
 
   app.get('/auth/oauth/:provider/start', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => {
     if (!flagEnabled('features.oauthLoginEnabled')) return disabledReply(reply, 'oauth_login');
@@ -387,6 +392,10 @@ export default async function oauthRoutes(app) {
         user = await p.user.create({ data: { email: profile.email, displayName: profile.displayName || slugName(profile.username), emailVerified: true, avatar: profile.avatar ? { image: profile.avatar } : undefined } });
         grantAutoBadges(p, { event: 'signup', user }).catch(() => {});
         await p.oAuthAccount.create({ data: { userId: user.id, provider: name, providerAccountId: profile.id, username: profile.username } });
+        // Same marker as a password sign-up, written only on this creation branch: signing in
+        // again with the provider later goes through the existing-account branches above and
+        // never reaches it, so the flow cannot come back.
+        await markNewAccount(p, user.id);
         sendPasswordSetup(p, user, LABEL[name] || name).catch(() => {});
       }
       await attachDiscord(p, name, profile, user);

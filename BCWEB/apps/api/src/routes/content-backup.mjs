@@ -23,6 +23,7 @@ import path from 'node:path';
 import { db, requireRole, requireCanControlServer, requireElevated, logAudit, clientIp } from '../lib/lib.mjs';
 import { zipReadAll } from '../lib/native.mjs';
 import { backupFile, fileHistory, fileAtCommit } from '../lib/gitbackup.mjs';
+import { SECRET_SETTING_KEYS } from '../lib/secret-guard.mjs';
 
 /**
  * Where the pre-import state is committed.
@@ -94,9 +95,14 @@ export const SECTIONS = {
     on: true,
     // The home page, the page builder, the topbar, the showcase, the thresholds — everything
     // an admin configured, which is otherwise invisible until it is missing.
-    restore: (p, rows) => rows.map((r) => p.adminSetting.upsert({ where: { key: r.key }, update: r, create: r })),
-    count: (p) => p.adminSetting.count(),
-    read: (p) => p.adminSetting.findMany({ orderBy: { key: 'asc' } }),
+    //
+    // Minus the credential rows (lib/secret-guard.mjs): this section used to carry the bot
+    // token, the Ko-fi token, the backup signing key and the attestation private key into a
+    // zip that ends up in a Downloads folder, under a header promising it held no tokens.
+    // Refused on the way back in too, so a zip made before this fix cannot put them back.
+    restore: (p, rows) => rows.filter((r) => !SECRET_SETTING_KEYS.has(r.key)).map((r) => p.adminSetting.upsert({ where: { key: r.key }, update: r, create: r })),
+    count: (p) => p.adminSetting.count({ where: { key: { notIn: [...SECRET_SETTING_KEYS] } } }),
+    read: (p) => p.adminSetting.findMany({ where: { key: { notIn: [...SECRET_SETTING_KEYS] } }, orderBy: { key: 'asc' } }),
   },
   reviews: {
     label: 'Reviews & polls',

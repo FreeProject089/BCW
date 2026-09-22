@@ -16,7 +16,7 @@ export const BADGE_RULE_TYPES = [
   'level_reached', 'messages_sent', 'purchases_made', 'polls_answered', 'items_published',
   'repo_hosted', 'discord_linked', 'twofa_enabled', 'account_age',
 ];
-const badgeInput = z.object({
+export const badgeInput = z.object({
   name: z.string().trim().min(1).max(40),
   slug: z.string().trim().max(40).optional(),
   description: z.string().max(200).optional().default(''),

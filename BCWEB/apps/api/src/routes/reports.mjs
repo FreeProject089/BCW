@@ -5,6 +5,16 @@ import { userBcId, findUserIdByBcId, looksLikeBcId } from '../lib/repofingerprin
 import { sendMail, mailShell, emailEnabled } from '../lib/mail.mjs';
 import { powVerify } from './auth.mjs';
 import { publishToThread, streamThread } from '../lib/threadbus.mjs';
+import { markRead, markDelivered, cursorsOf, withReceipts } from '../lib/receipts.mjs';
+
+// Which side of a report the viewer reads from: the same rule the message route uses to
+// decide whether a message is a staff one, so a receipt and a bubble never disagree.
+const reportSideOf = (r, user) => ((STAFF_ROLES.includes(user.role) || user.perms?.includes?.('manage_reports')) && r.reporterId !== user.uid ? 'staff' : 'reporter');
+const reportMsgsWithReceipts = async (p, r, side) => withReceipts('report', r.messages.map(msgPublic), await cursorsOf(p, 'report', r.id), {
+  sideOf: (m) => (m.staff ? 'staff' : 'reporter'),
+  // A system note (no author) carries no receipt.
+  isMine: (m) => !!m.authorId && (m.staff ? 'staff' : 'reporter') === side,
+});
 import { deleteSubmission, detachAndDeleteThreads, markThreadSeen, readNotifs, LEGACY_REPORT_KINDS } from '../lib/feedback-thread.mjs';
 
 const STAFF_ROLES = ['MOD', 'ADMIN', 'SUPERADMIN'];
@@ -90,6 +100,18 @@ async function noteStatusChange(p, report, status, actorName) {
   return m;
 }
 
+// The body PUT /admin/reports/config validates. Module-level and exported so the config import (lib/config-transfer.mjs) checks a seed with this schema rather than a copy of it.
+export const REPORTS_CONFIG_BODY = z.object({
+  imageMaxMB: z.number().min(1).max(50).optional(),
+  maxImagesPerMsg: z.number().int().min(1).max(20).optional(),
+  archiveDays: z.number().int().min(1).max(365).optional(),
+  deleteDays: z.number().int().min(1).max(3650).optional(),
+  archiveEnabled: z.boolean().optional(),
+  deleteEnabled: z.boolean().optional(),
+  maxOpenPerUser: z.number().int().min(0).max(1000).optional(),
+  maxPerDay: z.number().int().min(0).max(1000).optional(),
+});
+
 export default async function reportRoutes(app) {
   // Public: the config a client needs (max image size / count) to build the composer.
   app.get('/reports/config', async () => {
@@ -151,6 +173,7 @@ export default async function reportRoutes(app) {
     const p = await db();
     const partIds = (await p.reportParticipant.findMany({ where: { userId: req.user.uid }, select: { reportId: true } })).map((x) => x.reportId);
     const rows = await p.report.findMany({ where: { OR: [{ reporterId: req.user.uid }, { id: { in: partIds } }] }, orderBy: { lastActivityAt: 'desc' }, take: 100, include: { _count: { select: { messages: true } } } });
+    await markDelivered(p, 'report', rows.filter((r) => reportSideOf(r, req.user) === 'reporter').map((r) => r.id), 'reporter');
     return { reports: rows.map((r) => ({ ...reportPublic(r), participant: r.reporterId !== req.user.uid })) };
   });
 
@@ -182,6 +205,7 @@ export default async function reportRoutes(app) {
     const notifIds = r.reporterId === req.user.uid
       ? await markThreadSeen(p, r.id, req.user.uid, 'mine')
       : await readNotifs(p, req.user.uid, { href: `/dashboard?s=reports&r=${r.id}` });
+    await markRead(p, 'report', r.id, reportSideOf(r, req.user));
     return { ok: true, notifIds };
   });
 
@@ -191,7 +215,9 @@ export default async function reportRoutes(app) {
     if (!(await canAccessReport(p, r, req.user))) return reply.code(404).send({ error: 'not_found' });
     // Opening the thread is seeing it: the flag AND the notifications that led here.
     const seenNotifIds = r.reporterId === req.user.uid ? await markThreadSeen(p, r.id, req.user.uid, 'mine') : [];
-    return { seenNotifIds, report: { ...reportPublic(r), participants: r.participants.map((x) => ({ userId: x.userId, name: x.user?.displayName, role: x.role })), messages: r.messages.map(msgPublic) } };
+    const side = reportSideOf(r, req.user);
+    await markRead(p, 'report', r.id, side);
+    return { seenNotifIds, report: { ...reportPublic(r), participants: r.participants.map((x) => ({ userId: x.userId, name: x.user?.displayName, role: x.role })), messages: await reportMsgsWithReceipts(p, r, side) } };
   });
 
   app.post('/me/reports/:id/messages', { preHandler: requireRole(), config: { rateLimit: { max: 30, timeWindow: '1 hour' } } }, async (req, reply) => {
@@ -257,6 +283,7 @@ export default async function reportRoutes(app) {
       include: { reporter: { select: { id: true, displayName: true, email: true } }, _count: { select: { messages: true } } },
     });
     const counts = await p.report.groupBy({ by: ['status'], _count: { status: true } });
+    await markDelivered(p, 'report', rows.filter((r) => r.reporterId !== req.user.uid).map((r) => r.id), 'staff');
     return {
       reports: rows.map((r) => ({ ...reportPublic(r), reporterId: r.reporterId, reporter: r.reporter?.displayName, reporterEmail: r.reporter?.email, reporterBcId: r.reporter ? userBcId(r.reporter.id) : null })),
       counts: Object.fromEntries(counts.map((c) => [c.status, c._count.status])),
@@ -270,9 +297,10 @@ export default async function reportRoutes(app) {
     // Seen by staff, and by this staff member's bell. Not for their OWN report: that one they
     // read as the reporter, from the dashboard, and the flag belongs to the queue.
     const seenNotifIds = r.reporterId === req.user.uid ? [] : await markThreadSeen(p, r.id, req.user.uid, 'staff');
+    if (r.reporterId !== req.user.uid) await markRead(p, 'report', r.id, 'staff');
     return { seenNotifIds, report: {
       ...reportPublic(r), reporterId: r.reporterId, reporter: r.reporter?.displayName, reporterEmail: r.reporter?.email, reporterBcId: r.reporter ? userBcId(r.reporter.id) : null,
-      messages: r.messages.map(msgPublic),
+      messages: await reportMsgsWithReceipts(p, r, r.reporterId === req.user.uid ? 'reporter' : 'staff'),
       participants: r.participants.map((x) => ({ userId: x.userId, name: x.user?.displayName, email: x.user?.email, bcId: userBcId(x.userId), role: x.role })),
       invites: r.invites.map((iv) => ({ id: iv.id, token: iv.token, url: `${SITE_URL}/reports/join/${iv.token}`, maxUses: iv.maxUses, uses: iv.uses, targetType: iv.targetType, targetValue: iv.targetValue, expiresAt: iv.expiresAt })),
       // What came of it. Without this the next moderator opens a handled case and starts
@@ -295,6 +323,7 @@ export default async function reportRoutes(app) {
     const r = await p.report.findUnique({ where: { id: req.params.id }, select: { id: true, reporterId: true } });
     if (!r) return reply.code(404).send({ error: 'not_found' });
     if (r.reporterId === req.user.uid) return reply.code(403).send({ error: 'own_report' });
+    await markRead(p, 'report', r.id, 'staff');
     return { ok: true, notifIds: await markThreadSeen(p, r.id, req.user.uid, 'staff') };
   });
 
@@ -502,16 +531,7 @@ export default async function reportRoutes(app) {
   // Admin config (image size / count caps + archive/delete lifecycle).
   app.get('/admin/reports/config', { preHandler: requireCap('manage_reports', 'MOD') }, async () => ({ config: await reportConfig(await db()) }));
   app.put('/admin/reports/config', { preHandler: requireCap('manage_reports') }, async (req, reply) => {
-    const b = z.object({
-      imageMaxMB: z.number().min(1).max(50).optional(),
-      maxImagesPerMsg: z.number().int().min(1).max(20).optional(),
-      archiveDays: z.number().int().min(1).max(365).optional(),
-      deleteDays: z.number().int().min(1).max(3650).optional(),
-      archiveEnabled: z.boolean().optional(),
-      deleteEnabled: z.boolean().optional(),
-      maxOpenPerUser: z.number().int().min(0).max(1000).optional(),
-      maxPerDay: z.number().int().min(0).max(1000).optional(),
-    }).safeParse(req.body);
+    const b = REPORTS_CONFIG_BODY.safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
     const cur = await reportConfig(p);

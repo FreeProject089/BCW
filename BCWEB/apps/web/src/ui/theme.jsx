@@ -299,6 +299,21 @@ export function ThemeProvider({ children }) {
 }
 
 /**
+ * A theme scope for a PREVIEW: everything inside reads `theme` from here instead of the page.
+ *
+ * The admin's topbar Live preview renders the real topbar components, and they ask useTheme()
+ * which scheme is on screen (the theme switch, the logo, per-theme button icons). Without a
+ * scope they would all answer with the admin's own theme, so a preview could never show the
+ * other one. `toggle` flips only the preview; the page and localStorage are untouched.
+ */
+export function ThemePreviewScope({ theme, onToggle, children }) {
+  const ctx = useContext(ThemeCtx);
+  const logos = ctx?.logos || LOGOS;
+  const logo = (logos && (theme === 'dark' ? logos.dark || logos.light : logos.light || logos.dark)) || BUNDLED_LOGO;
+  return <ThemeCtx.Provider value={{ ...(ctx || {}), theme, toggle: onToggle || (() => {}), logos, logo }}>{children}</ThemeCtx.Provider>;
+}
+
+/**
  * The site mark for the scheme on screen.
  *
  * Used everywhere the BetterCommunity logo appears as the SITE's own identity — topbar,
@@ -319,7 +334,10 @@ export function SiteLogo({ className = '', size, alt = '', plain = false, ...res
 
 // Clean sliding switch: a single high-contrast knob carrying the current mode's icon
 // slides across a track that fills with the accent when dark. No overlapping icons.
-export function ThemeToggle() {
+// `lightIcon` / `darkIcon`: the knob's glyph in each state, when an admin picked one for the
+// theme button (nav.config.utility.theme.icon / .iconDark). Nodes, so the caller decides how
+// a picker name is drawn and this switch stays free of the icon kit.
+export function ThemeToggle({ lightIcon = null, darkIcon = null } = {}) {
   const { t } = useI18n();
   const { theme, toggle } = useTheme();
   const dark = theme === 'dark';
@@ -329,7 +347,7 @@ export function ThemeToggle() {
       style={{ background: dark ? 'var(--primary)' : 'color-mix(in srgb, var(--text) 12%, transparent)', borderColor: 'var(--line-strong)' }}>
       <span className="absolute top-1/2 grid place-items-center w-[18px] h-[18px] rounded-full transition-transform duration-200 ease-out"
         style={{ left: 2, marginTop: -9, transform: dark ? 'translateX(20px)' : 'translateX(0)', background: '#ffffff', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }}>
-        {dark ? <Moon size={11} className="text-[var(--accent-ink)] fill-[var(--primary)]" /> : <Sun size={11} className="text-warning" />}
+        {dark ? (darkIcon || <Moon size={11} className="text-[var(--accent-ink)] fill-[var(--primary)]" />) : (lightIcon || <Sun size={11} className="text-warning" />)}
       </span>
     </button>
   );

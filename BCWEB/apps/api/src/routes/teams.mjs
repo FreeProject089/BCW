@@ -24,6 +24,9 @@ import { findUserIdByBcId, looksLikeBcId } from '../lib/repofingerprint.mjs';
 import { slugifyTeam, teamRoleOf, isStaff, serTeam, teamLimitFor, teamSlotPrice, inviteUsable, invitePolicy, invitePlanFor, serInvite } from '../lib/teams.mjs';
 import { settings as hostingSettings, stripe } from './hosting.mjs';
 import { recordPendingCheckout } from '../lib/pending-checkout.mjs';
+import { teamContactSettings, canAnswerTeam, TEAM_ROLES } from '../lib/team-contact.mjs';
+import { hostingFor, saveHosting, serHosting, siteAttachmentDefault, attachmentPolicy, poolRoom } from '../lib/entity-hosting.mjs';
+import { deleteThreadFiles } from '../lib/thread-files.mjs';
 import crypto from 'node:crypto';
 
 const contact = {
@@ -363,4 +366,114 @@ export default async function teamRoutes(app) {
     return { ok: true, teamId: b.data.attach ? got.t.id : null };
   });
 
+
+  // ── The team's contact inbox ─────────────────────────────────────────────────────────────
+  //
+  //   GET  /me/teams/:id/contact                  who answers, the caps, storage and files (any member reads)
+  //   PUT  /me/teams/:id/contact                  change them (owner / admin)
+  //   GET  /me/teams/:id/threads?status=          the team's conversations (members who answer)
+  //   POST /me/teams/:id/threads/archive          { ids } put several away at once (members who answer)
+  //   DELETE /me/teams/:id/threads/:threadId      delete one, with its files (owner / admin)
+  //
+  // "The team's conversations" are every thread whose ownerTeamId is the team: addressed to it,
+  // or about one of its repos or catalogues. Reading and answering them is lib/team-contact.mjs;
+  // storage and files are the team's EntityHostingSettings ('team-contact'), where a team may
+  // only point at a pool it owns and may only switch files OFF or to "with a pool": files on
+  // the site's own storage are an admin decision (Admin, Storage per blog and inbox).
+  const teamPools = (p, team, uid) => p.hostingGroup.findMany({ where: { OR: [{ teamId: team.id }, { ownerId: uid }] }, select: { id: true, name: true, poolBytes: true } });
+
+  app.get('/me/teams/:id/contact', { preHandler: requireRole() }, async (req, reply) => {
+    const p = await db();
+    const got = await load(p, req, reply, null); if (!got) return;
+    const [s, h, site] = await Promise.all([teamContactSettings(p, got.t.id), hostingFor(p, 'team-contact', got.t.id), siteAttachmentDefault(p)]);
+    const canEdit = ['owner', 'admin', 'staff'].includes(got.role);
+    const pools = canEdit ? await Promise.all((await teamPools(p, got.t, req.user.uid)).map(async (g) => ({ id: g.id, name: g.name, sizeMB: Number(g.poolBytes) / 1048576, freeMB: Number((await poolRoom(p, g.id)) ?? 0n) / 1048576 }))) : [];
+    const files = attachmentPolicy(h, site);
+    return {
+      answerRoles: s.answerRoles, maxOpenMembers: s.maxOpenMembers, maxOpenAnon: s.maxOpenAnon, roles: TEAM_ROLES,
+      storage: serHosting(h), files: { allowed: files.allowed, why: files.why, maxBytes: files.maxBytes }, siteFiles: site.attachments,
+      canEdit, canAnswer: await canAnswerTeam(p, req.user.uid, got.t.id) || got.role === 'staff', pools,
+    };
+  });
+
+  app.put('/me/teams/:id/contact', { preHandler: requireRole(), config: { rateLimit: { max: 30, timeWindow: '10 minutes' } } }, async (req, reply) => {
+    const b = z.object({
+      answerRoles: z.array(z.enum(TEAM_ROLES)).max(3).optional(),
+      maxOpenMembers: z.number().int().min(0).max(100000).optional(),
+      maxOpenAnon: z.number().int().min(0).max(100000).optional(),
+      storage: z.object({ mode: z.enum(['inherit', 'pool']), poolId: z.string().max(64).nullable().optional(), quotaMB: z.number().min(0).max(10 * 1024 * 1024).optional() }).optional(),
+      attachments: z.enum(['inherit', 'off', 'pool_only']).optional(),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const got = await load(p, req, reply, ['owner', 'admin']); if (!got) return;
+    if (b.data.answerRoles || b.data.maxOpenMembers !== undefined || b.data.maxOpenAnon !== undefined) {
+      const cur = await teamContactSettings(p, got.t.id);
+      const data = {
+        answerRoles: b.data.answerRoles ? [...new Set(['owner', ...b.data.answerRoles])] : cur.answerRoles,
+        maxOpenMembers: b.data.maxOpenMembers ?? cur.maxOpenMembers,
+        maxOpenAnon: b.data.maxOpenAnon ?? cur.maxOpenAnon,
+      };
+      await p.teamContactSettings.upsert({ where: { teamId: got.t.id }, create: { teamId: got.t.id, ...data }, update: data });
+    }
+    if (b.data.storage || b.data.attachments) {
+      // A team settles storage only between the site's setting and a pool of its own. If an
+      // admin gave this inbox something else (own caps, no limit), the team does not undo it
+      // by saving its screen: those fields are simply not sent from here.
+      const input = { ...(b.data.attachments ? { attachments: b.data.attachments } : {}) };
+      if (b.data.storage) Object.assign(input, { mode: b.data.storage.mode, poolId: b.data.storage.poolId ?? null, quotaMB: b.data.storage.quotaMB ?? 0 });
+      const own = new Set((await teamPools(p, got.t, req.user.uid)).map((g) => g.id));
+      const r = await saveHosting(p, 'team-contact', got.t.id, input, { actorId: req.user.uid, canUsePool: async (id) => own.has(id) || isStaff(req.user) });
+      if (r.error) return reply.code(r.error === 'pool_forbidden' ? 403 : 409).send(r);
+    }
+    await logAudit(p, req.user.uid, 'team.contact.settings', `team=${got.t.id}`).catch(() => {});
+    return { ok: true };
+  });
+
+  const answering = async (p, req, reply) => {
+    const got = await load(p, req, reply, null); if (!got) return null;
+    if (got.role !== 'staff' && !(await canAnswerTeam(p, req.user.uid, got.t.id))) { reply.code(403).send({ error: 'not_an_answerer' }); return null; }
+    return got;
+  };
+
+  app.get('/me/teams/:id/threads', { preHandler: requireRole() }, async (req, reply) => {
+    const p = await db();
+    const got = await answering(p, req, reply); if (!got) return;
+    const status = String(req.query?.status || 'open');
+    const where = { ownerTeamId: got.t.id, ...(status === 'all' ? {} : { status: ['open', 'archived', 'closed', 'blocked'].includes(status) ? status : 'open' }) };
+    const [rows, counts] = await Promise.all([
+      p.contactThread.findMany({ where, orderBy: { lastActivityAt: 'desc' }, take: 200, include: { sender: { select: { id: true, displayName: true, avatar: true } }, _count: { select: { messages: true, attachments: true } } } }),
+      p.contactThread.groupBy({ by: ['status'], where: { ownerTeamId: got.t.id }, _count: { _all: true } }),
+    ]);
+    return {
+      counts: Object.fromEntries(counts.map((c) => [c.status, c._count._all])),
+      threads: rows.map((t) => ({
+        id: t.id, kind: t.kind, targetLabel: t.targetLabel, subject: t.subject, status: t.status, ownerUnread: t.ownerUnread,
+        sender: t.sender ? { id: t.sender.id, displayName: t.sender.displayName, avatar: t.sender.avatar || null } : null,
+        senderName: t.senderName, anonymous: !t.senderId, messages: t._count.messages, files: t._count.attachments, lastActivityAt: t.lastActivityAt,
+      })),
+    };
+  });
+
+  app.post('/me/teams/:id/threads/archive', { preHandler: requireRole() }, async (req, reply) => {
+    const b = z.object({ ids: z.array(z.string().min(1).max(64)).min(1).max(200), status: z.enum(['archived', 'open']).default('archived') }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const got = await answering(p, req, reply); if (!got) return;
+    // Scoped to THIS team's rows in the query itself: an id from another team's inbox is
+    // not refused, it simply matches nothing.
+    const { count } = await p.contactThread.updateMany({ where: { id: { in: b.data.ids }, ownerTeamId: got.t.id, status: { not: 'blocked' } }, data: { status: b.data.status } });
+    return { ok: true, count };
+  });
+
+  app.delete('/me/teams/:id/threads/:threadId', { preHandler: requireRole() }, async (req, reply) => {
+    const p = await db();
+    const got = await load(p, req, reply, ['owner', 'admin']); if (!got) return;
+    const t = await p.contactThread.findFirst({ where: { id: req.params.threadId, ownerTeamId: got.t.id }, select: { id: true, subject: true } });
+    if (!t) return reply.code(404).send({ error: 'not_found' });
+    await deleteThreadFiles(p, t.id);
+    await p.contactThread.delete({ where: { id: t.id } });
+    await logAudit(p, req.user.uid, 'team.thread.delete', `team=${got.t.id} thread=${t.id}`).catch(() => {});
+    return { ok: true };
+  });
 }

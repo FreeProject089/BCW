@@ -118,11 +118,17 @@ describe('member-to-member: one rule, one place', () => {
     assert.match(threads, /return \{ openNew: false, reply: md\.whenOff === 'keep', why: 'messaging_off_site' \}/);
   });
 
-  test('the cap and the archive clock are read from the config, with 0 meaning no limit', () => {
+  test('there is no open-conversation cap any more, and the archive clocks are read from the config', () => {
+    // The owner retired the cap (Sept 22): the rate limits stop floods, the archive clocks
+    // keep lists short. A stored `maxOpen` is dropped on read AND on save, so an old row
+    // cannot bring the cap back. The behaviour itself is proven over HTTP in
+    // member-messaging.test.mjs; this only pins the shape.
     const open = route(threads, 'post', '/threads');
-    assert.match(open, /const cap = Number\(cfg\.memberDirect\?\.maxOpen \|\| 0\);/);
-    assert.match(open, /if \(cap > 0 && uid\)/);
-    assert.match(threads, /const days = Number\(cfg\.memberDirect\?\.autoArchiveDays \|\| 0\);\n\s+if \(!days\) return;/);
+    assert.ok(!/maxOpen/.test(open), 'the open route must not read a conversation cap');
+    assert.ok(!/too_many_open/.test(threads));
+    assert.match(threads, /delete md\.maxOpen;/);
+    assert.match(threads, /const days = Number\(md\.autoArchiveDays \|\| 0\);/);
+    assert.match(threads, /const anonDays = Number\(md\.autoArchiveAnonDays \|\| 0\);/);
     // Archived, not deleted.
     assert.match(threads, /data: \{ status: 'archived' \}/);
   });
@@ -131,7 +137,7 @@ describe('member-to-member: one rule, one place', () => {
     // A shallow spread over a stored config written before memberDirect existed turns a cap
     // of 5 into undefined, and `Number(undefined || 0)` is 0, which is "no cap". That is a
     // limit silently removing itself on save.
-    assert.match(threads, /memberDirect: \{ \.\.\.MEMBER_DIRECT_DEFAULTS, \.\.\.\(stored\.memberDirect/);
+    assert.match(threads, /const md = \{ \.\.\.MEMBER_DIRECT_DEFAULTS, \.\.\.\(stored\.memberDirect/);
     assert.match(threads, /memberDirect: \{ \.\.\.prev\.memberDirect, \.\.\.\(b\.data\.memberDirect \|\| \{\}\) \}/);
     // zod strips what it does not name, so the block has to be declared on the way in.
     assert.match(threads, /memberDirect: z\.object\(\{/);

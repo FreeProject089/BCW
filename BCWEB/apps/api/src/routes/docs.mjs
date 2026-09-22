@@ -31,7 +31,7 @@ export const summarise = (body, max = 140) => {
 // Must match the heading-anchor slug produced by the renderer (md.jsx slugify).
 const headingSlug = (s) => String(s).toLowerCase().trim().replace(/[^\wÀ-ɏ]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'section';
 
-const pageSchema = z.object({
+export const pageSchema = z.object({
   title: z.string().min(1).max(160),
   titleFr: z.string().max(160).nullish(),
   category: z.string().min(1).max(60).optional(),

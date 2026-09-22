@@ -5,6 +5,7 @@ import { api, uploadReportImage } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { useAuth } from '../pages/auth.jsx';
 import { Button, Modal, Textarea, Select, useToast, Card, Spinner } from './ui.jsx';
+import { ReceiptTicks } from './receipt.jsx';
 
 const REASONS = [
   ['spam', 'rp.reason.spam', 'Spam or advertising'],
@@ -82,6 +83,7 @@ export function ReportThread({ messages }) {
               {m.staff && <Shield size={11} className="text-[var(--accent-ink)]" />}
               <span className="font-medium">{m.staff ? (m.author || t('rp.staff', 'Staff')) : (m.author || t('rp.you', 'You'))}</span>
               <span>· {new Date(m.createdAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+              <ReceiptTicks state={m.receipt} />
             </div>
             {m.body && <div className="text-sm whitespace-pre-wrap break-words">{m.body}</div>}
             {m.images?.length > 0 && <div className="flex flex-wrap gap-2 mt-2">

@@ -13,6 +13,17 @@ import { economyStats, normalizeSeason, nextSeasonReset, readSeasonState, writeS
 
 const CONFIG_KEY = 'bot.config';
 
+// The body PUT /admin/economy/season validates. Module-level and exported so the config import (lib/config-transfer.mjs) checks a seed with this schema rather than a copy of it.
+export const SEASON_BODY = z.object({
+  every: z.enum(SEASON_EVERY),
+  days: z.number().int().min(1).max(3650).optional(),
+  weekday: z.number().int().min(0).max(6).optional(),
+  dayOfMonth: z.number().int().min(1).max(28).optional(),
+  hour: z.number().int().min(0).max(23).optional(),
+  resetXp: z.boolean().optional(),
+  announce: z.boolean().optional(),
+});
+
 export default async function economyAdminRoutes(app) {
   app.get('/admin/economy/stats', { preHandler: requireCap('manage_economy') }, async (req) => {
     const days = Math.min(90, Math.max(7, parseInt(req.query?.days, 10) || 30));
@@ -38,15 +49,7 @@ export default async function economyAdminRoutes(app) {
   });
 
   app.put('/admin/economy/season', { preHandler: requireCap('manage_economy') }, async (req, reply) => {
-    const b = z.object({
-      every: z.enum(SEASON_EVERY),
-      days: z.number().int().min(1).max(3650).optional(),
-      weekday: z.number().int().min(0).max(6).optional(),
-      dayOfMonth: z.number().int().min(1).max(28).optional(),
-      hour: z.number().int().min(0).max(23).optional(),
-      resetXp: z.boolean().optional(),
-      announce: z.boolean().optional(),
-    }).safeParse(req.body);
+    const b = SEASON_BODY.safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
     const row = await p.adminSetting.findUnique({ where: { key: CONFIG_KEY } }).catch(() => null);

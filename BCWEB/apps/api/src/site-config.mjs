@@ -21,6 +21,7 @@
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { db } from './lib/lib.mjs';
+import { SECRET_SETTING_KEYS } from './lib/secret-guard.mjs';
 
 /** Exact keys that describe how the site LOOKS. */
 const KEYS = ['nav.config', 'footer.config', 'reports.config'];
@@ -33,7 +34,7 @@ const THEME_KEY = 'site.theme';
 const NEVER = [/token/i, /secret/i, /password/i, /\.status$/, /rollupAt$/, /Announced$/, /^bot\./, /^migr\./];
 
 const exportable = (key) => {
-  if (NEVER.some((re) => re.test(key))) return false;
+  if (SECRET_SETTING_KEYS.has(key) || NEVER.some((re) => re.test(key))) return false;
   return KEYS.includes(key) || key === THEME_KEY || PREFIXES.some((p) => key.startsWith(p));
 };
 
@@ -45,7 +46,9 @@ async function doExport(file) {
 
   // FAQ travels too: it is site copy, not configuration, but it is exactly the kind of thing
   // that was written once and would otherwise be retyped on the new install.
-  const faq = await p.faqItem.findMany({ orderBy: { sort: 'asc' } }).catch(() => []);
+  // `order`, the column FaqItem has. It said `sort`, which Prisma refuses, and the catch
+  // turned that into an empty list: the FAQ never travelled.
+  const faq = await p.faqItem.findMany({ orderBy: { order: 'asc' } }).catch(() => []);
 
   const dump = {
     kind: 'bcweb-site-config',

@@ -72,6 +72,7 @@ const KINDS = {
   billing: { tone: '', label: (t) => t('am.k.billing', 'Billing') },
   bug: { tone: '', label: (t) => t('am.k.bug', 'Bug') },
   account: { tone: '', label: (t) => t('am.k.account', 'Account') },
+  translation: { tone: '', label: (t) => t('am.k.translation', 'Translation') },
   other: { tone: '', label: (t) => t('ami.k.other', 'Other') },
 };
 const kindOf = (k) => KINDS[k] || KINDS.other;
@@ -247,7 +248,7 @@ function Thread({ id, staff, onChanged, onDeleted }) {
  *
  * The moderation queue below (AdminThreads) is where a flagged conversation is read. This
  * card is the part that has no other home: whether members may write to each other at all,
- * how many conversations one person may keep open, and what happens to the ones already open
+ * how fast one person may start conversations, and what happens to the ones already open
  * when the switch goes off.
  */
 function MemberPolicy() {
@@ -260,7 +261,7 @@ function MemberPolicy() {
   const setMd = (patch) => setF({ ...cfg, memberDirect: { ...md, ...patch } });
   const save = async () => {
     setBusy(true);
-    try { await api.put('/admin/threads/config', { memberDirect: { enabled: md.enabled !== false, maxOpen: Number(md.maxOpen) || 0, autoArchiveDays: Number(md.autoArchiveDays) || 0, whenOff: md.whenOff === 'keep' ? 'keep' : 'freeze' } }); setF(null); await reload(true); toast.success(t('common.saved', 'Saved.')); }
+    try { await api.put('/admin/threads/config', { memberDirect: { enabled: md.enabled !== false, autoArchiveDays: Number(md.autoArchiveDays) || 0, autoArchiveAnonDays: Number(md.autoArchiveAnonDays) || 0, openPerHour: Number(md.openPerHour) || 0, openPerDay: Number(md.openPerDay) || 0, whenOff: md.whenOff === 'keep' ? 'keep' : 'freeze' } }); setF(null); await reload(true); toast.success(t('common.saved', 'Saved.')); }
     catch { toast.error(t('common.failed', 'Failed.')); }
     finally { setBusy(false); }
   };
@@ -274,12 +275,20 @@ function MemberPolicy() {
         <input type="checkbox" checked={md.enabled !== false} onChange={(e) => setMd({ enabled: e.target.checked })} />
         {t('ami.mp.enabled', 'Members can write to each other')}
       </label>
-      <div className="grid sm:grid-cols-3 gap-2">
-        <Field label={t('ami.mp.maxopen', 'Open conversations per member')} hint={t('ami.mp.zero', '0 = no limit')}>
-          <Input type="number" min={0} value={md.maxOpen ?? 5} onChange={(e) => setMd({ maxOpen: Number(e.target.value) })} />
-        </Field>
+      {/* No cap on how many conversations a member has: the rate limits stop a flood, the
+          archive clocks keep the lists short. */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
         <Field label={t('ami.mp.archive', 'Archive after (days idle)')} hint={t('ami.mp.zero', '0 = no limit')}>
           <Input type="number" min={0} value={md.autoArchiveDays ?? 30} onChange={(e) => setMd({ autoArchiveDays: Number(e.target.value) })} />
+        </Field>
+        <Field label={t('ami.mp.archiveanon', 'Anonymous: archive after (days)')} hint={t('ami.mp.zero', '0 = no limit')}>
+          <Input type="number" min={0} value={md.autoArchiveAnonDays ?? 7} onChange={(e) => setMd({ autoArchiveAnonDays: Number(e.target.value) })} />
+        </Field>
+        <Field label={t('ami.mp.oph', 'New conversations / hour')} hint={t('ami.mp.zero', '0 = no limit')}>
+          <Input type="number" min={0} value={md.openPerHour ?? 4} onChange={(e) => setMd({ openPerHour: Number(e.target.value) })} />
+        </Field>
+        <Field label={t('ami.mp.opd', 'New conversations / day')} hint={t('ami.mp.zero', '0 = no limit')}>
+          <Input type="number" min={0} value={md.openPerDay ?? 12} onChange={(e) => setMd({ openPerDay: Number(e.target.value) })} />
         </Field>
         <Field label={t('ami.mp.whenoff', 'When switched off')}>
           <Select value={md.whenOff === 'keep' ? 'keep' : 'freeze'} onChange={(e) => setMd({ whenOff: e.target.value })}>
@@ -289,7 +298,7 @@ function MemberPolicy() {
         </Field>
       </div>
       <Explain summary={t('ami.mp.fate.lead', 'Nothing is ever deleted by either switch.')} className="text-[12px]">
-        {t('ami.mp.fate', 'A conversation that is already open stays readable by both sides. Frozen means nobody can add to it; the archive clock and the switches are read at the moment somebody tries to write, so turning a switch back on restores exactly what was there rather than repairing it. An archived conversation is not closed either: either side can reopen it, and archived ones do not count against the limit above.')}
+        {t('ami.mp.fate', 'A conversation that is already open stays readable by both sides. Frozen means nobody can add to it; the archive clock and the switches are read at the moment somebody tries to write, so turning a switch back on restores exactly what was there rather than repairing it. An archived conversation is not closed either: either side can reopen it. There is no limit on how many conversations a member keeps; the hourly and daily limits stop floods, and replies are limited by the Replies per hour setting below.')}
       </Explain>
       <div className="flex justify-end"><Button size="sm" variant="primary" loading={busy} disabled={!f} onClick={save}>{t('common.save', 'Save')}</Button></div>
     </Card>

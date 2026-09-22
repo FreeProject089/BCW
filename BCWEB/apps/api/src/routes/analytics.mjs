@@ -50,6 +50,37 @@ function initFeedSubscriber() {
 
 // Privacy-friendly first-party analytics: page path + referrer + a daily anonymous
 // visitor hash + coarse device/browser. No cookies, no third party. Consent-gated client-side.
+// The body PUT /admin/analytics/replay/config validates. Module-level and exported so the config import (lib/config-transfer.mjs) checks a seed with this schema rather than a copy of it.
+export const REPLAY_BODY = z.object({
+  enabled: z.boolean(),
+  // A percentage of sessions. Recording everybody is rarely what anybody wants and always
+  // what they get by leaving a default alone.
+  sampleRate: z.number().int().min(0).max(100).optional(),
+  keep: z.number().int().min(0).max(2000).optional(),
+});
+
+// Module-level and exported so the config import (lib/config-transfer.mjs) validates a seed
+// with the schema this route uses rather than a copy of it.
+export const goalSchema = z.object({
+  name: z.string().min(1).max(80),
+  kind: z.enum(['pageview', 'click', 'submit', 'input', 'copy', 'referrer', 'country', 'region', 'city', 'device', 'os', 'browser']),
+  path: z.string().max(200).nullish(),
+  label: z.string().max(120).nullish(),
+  target: z.number().int().min(0).max(100000000).nullish(),
+  active: z.boolean().optional(),
+});
+
+// Module-level and exported so the config import (lib/config-transfer.mjs) validates a seed
+// with the schema this route uses rather than a copy of it.
+export const retentionSchema = z.object({
+  pageviewDays: z.number().int().min(0).max(3650),
+  interactionDays: z.number().int().min(0).max(3650),
+  vitalDays: z.number().int().min(0).max(3650),
+  loginDays: z.number().int().min(0).max(3650),
+  errorDays: z.number().int().min(0).max(3650),
+  replayDays: z.number().int().min(0).max(3650),
+}).partial();
+
 export default async function analyticsRoutes(app) {
   initFeedSubscriber(); // start relaying other replicas' live events onto this instance's bus
 
@@ -181,13 +212,7 @@ export default async function analyticsRoutes(app) {
   });
 
   app.put('/admin/analytics/replay/config', { preHandler: requireCap('manage_analytics') }, async (req, reply) => {
-    const b = z.object({
-      enabled: z.boolean(),
-      // A percentage of sessions. Recording everybody is rarely what anybody wants and always
-      // what they get by leaving a default alone.
-      sampleRate: z.number().int().min(0).max(100).optional(),
-      keep: z.number().int().min(0).max(2000).optional(),
-    }).safeParse(req.body);
+    const b = REPLAY_BODY.safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
     const prev = (await p.adminSetting.findUnique({ where: { key: REPLAY_KEY } }))?.value || {};
@@ -639,14 +664,6 @@ export default async function analyticsRoutes(app) {
   // ── Conversion goals ────────────────────────────────────────────────────────
   // Interaction goals count InteractionEvents; dimension goals count pageviews matching a
   // visitor attribute (referrer / geo / tech). Both share the same visitor-based rate.
-  const goalSchema = z.object({
-    name: z.string().min(1).max(80),
-    kind: z.enum(['pageview', 'click', 'submit', 'input', 'copy', 'referrer', 'country', 'region', 'city', 'device', 'os', 'browser']),
-    path: z.string().max(200).nullish(),
-    label: z.string().max(120).nullish(),
-    target: z.number().int().min(0).max(100000000).nullish(),
-    active: z.boolean().optional(),
-  });
   // List goals with their completions + unique-visitor conversion rate over the window.
   app.get('/admin/analytics/goals', { preHandler: requireCap('manage_analytics') }, async (req) => {
     const p = await db();
@@ -822,14 +839,6 @@ export default async function analyticsRoutes(app) {
     return { config: resolveRetention(row?.value), defaults: RETENTION_DEFAULTS, tables: { pageview, interaction, vital, login, error, replay } };
   });
 
-  const retentionSchema = z.object({
-    pageviewDays: z.number().int().min(0).max(3650),
-    interactionDays: z.number().int().min(0).max(3650),
-    vitalDays: z.number().int().min(0).max(3650),
-    loginDays: z.number().int().min(0).max(3650),
-    errorDays: z.number().int().min(0).max(3650),
-    replayDays: z.number().int().min(0).max(3650),
-  }).partial();
   app.put('/admin/analytics/retention', { preHandler: requireCap('manage_analytics') }, async (req, reply) => {
     const b = retentionSchema.safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });

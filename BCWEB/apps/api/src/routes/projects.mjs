@@ -137,6 +137,17 @@ export async function versionedRawUrl(url) {
   return url;
 }
 
+// The body PUT /admin/projects/:key/code-graph validates. Module-level and exported so the config import (lib/config-transfer.mjs) checks a seed with this schema rather than a copy of it.
+export const CODEGRAPH_SETTINGS_BODY = z.object({
+  url: z.string().max(300).optional(),
+  // An empty string CLEARS the page secret — for an official project that means falling
+  // back to the environment, which has to be possible without editing the database by hand.
+  secret: z.string().max(200).optional(),
+});
+
+// The body PUT /projects/:key validates. Module-level and exported so the config import (lib/config-transfer.mjs) checks a seed with this schema rather than a copy of it.
+export const PROJECT_CONFIG_BODY = z.object({ config: z.record(z.any()) });
+
 export default async function projectRoutes(app) {
   // Admin: raw visibility/schedule state per fixed project — the public
   // GET /projects only exposes a computed `visible` bool for the CURRENT
@@ -857,12 +868,7 @@ export default async function projectRoutes(app) {
   });
 
   app.put('/admin/projects/:key/code-graph', { preHandler: requireEditor() }, async (req, reply) => {
-    const b = z.object({
-      url: z.string().max(300).optional(),
-      // An empty string CLEARS the page secret — for an official project that means falling
-      // back to the environment, which has to be possible without editing the database by hand.
-      secret: z.string().max(200).optional(),
-    }).safeParse(req.body);
+    const b = CODEGRAPH_SETTINGS_BODY.safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
     const k = settingsKey(req.params.key);
@@ -895,7 +901,7 @@ export default async function projectRoutes(app) {
     // or a grantee holding that specific project key. Content only — the reserved toggles
     // (visibility / home-news / blog-tab / schedule) live on their own cap-gated routes.
     if (!(await canEditProject(req.user, req.params.key))) return reply.code(403).send({ error: 'forbidden' });
-    const b = z.object({ config: z.record(z.any()) }).safeParse(req.body);
+    const b = PROJECT_CONFIG_BODY.safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_config' });
     const p = await db();
     const k = settingKey(req.params.key);

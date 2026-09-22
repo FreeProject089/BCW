@@ -7,7 +7,7 @@ import { db, requireRole, requireCap, optionalAuth } from '../lib/lib.mjs';
 // Every user-visible string has an optional French counterpart. The question and the
 // category are TITLES — the first thing a French reader sees — and they had none while the
 // answer did, so a translated answer still sat under an English heading.
-const faqSchema = z.object({
+export const faqSchema = z.object({
   question: z.string().min(1).max(300),
   questionFr: z.string().max(300).nullish(),
   answer: z.string().max(20_000).optional(),

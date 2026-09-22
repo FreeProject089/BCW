@@ -47,7 +47,9 @@ async function main() {
   }
 
   const projects = {};
-  for (const [key, name] of [['bmm', 'BetterModsManager'], ['bsm', 'BetterSaveManager'], ['community', 'Community']]) {
+  // The same names seed.mjs gives them: this upsert never updates, so a wrong name here would stick
+  // on a database where the demo seed ran first.
+  for (const [key, name] of [['bmm', 'Better Mods Manager'], ['bsm', 'Better Sound Maker'], ['community', 'BetterCommunity']]) {
     projects[key] = await p.project.upsert({ where: { key }, create: { key, name }, update: {} });
   }
 

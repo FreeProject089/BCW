@@ -314,8 +314,9 @@ does the signature verify over the list, and does every file hash to what the li
 second half is the point: signing only the manifest would say "this plugin is intact" while
 every script beside the manifest could have been swapped.
 
-Anyone can check one without installing it, at **Inspect a BMM file** — the check runs in the
-browser and the file is never uploaded.
+Anyone signed in can check one without installing BMM, at **Inspect a BMM file** in
+[/dev/tools](/dev/tools#inspect). A ZIP archive is read in the browser and only its entries' hashes
+are sent; a JSON document is checked on the server.
 
 :::warning[Unsigned is not invalid]
 A package with no \`bmm_signature.json\` reads as **unsigned**, not broken. Everything published
@@ -597,8 +598,9 @@ catalog was fetched from, never from what the catalog says about itself — an i
 grant that badge would be a way around the rule rather than part of it.
 :::
 
-Full field list, including \`repo\` and \`preset\` catalogs:
-[the catalogue index format guide](/docs/app-catalog).
+Each kind of catalogue documents its own entries: [apps](/docs/app-catalog),
+[plugins](/docs/plugin-catalog), [themes](/docs/theme-catalog), [presets](/docs/preset-catalog)
+and [Server Repos](/docs/server-repos).
 `,
   },
   {
@@ -622,7 +624,7 @@ Three things follow, and they are the whole design.
 :::warning[There is one compiler, and it is in BMM]
 Nothing on this site compiles BMMScript, and nothing should. A second implementation would be
 behind the app the day it was written — and it would be the one telling authors their scripts
-are fine. The [checker in /dev/tools](/dev/tools?tool=bmmscript) reads the shape and the names,
+are fine. The [checker in /dev/tools](/dev/tools#bmmscript) reads the shape and the names,
 and says out loud when it could not check the names.
 :::
 
@@ -805,12 +807,12 @@ Host a repository with us so BMM users can install and update your content from 
 ## How it works
 
 - We run the repo; **you** manage its content and access.
-- Hosting is **prepaid per term** — pick the size you need. Deleting a repo stops future renewals; there's no recurring charge to cancel.
+- Hosting is **prepaid per term**: pick the size you need. In the cart you choose whether it auto-renews (on by default); a renewing term is a real subscription you can cancel from Billing at any time, and the term already paid still runs to its end.
 - You get an auto-managed URL (\`owner/repo\`), or point BMM at your own self-hosted repo.
 
 ## Limits & pricing
 
-Storage, upload speed and CPU are set per repo. The first slice of storage is free; you only pay for what's above the free floor.
+Storage, upload speed and CPU are set per storage pool, and the repos in a pool share them. The first slice of storage is free; you only pay for what's above the free floor.
 
 :::warning[Deletion has a grace window]
 A deleted repo is kept for **72 hours** before its files are removed — you can undo within that window from your dashboard.
@@ -1500,7 +1502,7 @@ This is **not** the same thing as [the plugin API](/docs/api-reference), which r
 
 ## Getting a key
 
-Keys are minted from your **profile page**, under *API keys*. Each key has a name, a set of scopes, and an optional expiry.
+Keys are created at [/dev/config](/dev/config), under *API keys*. Each key has a name, a set of scopes, and an optional expiry.
 
 :::warning[The key is shown once]
 The server stores only a hash of your key, so it genuinely cannot show it to you again. Copy it when you create it. If you lose it, revoke it and mint another — that is the only path.
@@ -1528,9 +1530,23 @@ A key is allowed exactly what its scopes say, and a key with no scopes can do no
 | \`account:write\` | Your display name and bio. |
 | \`repos:read\` | Your repos, their file lists, their change history. |
 | \`catalog:read\` | Published catalog items and their change history. |
-| \`users:read\` | Public profiles — exactly what a signed-out visitor sees. |
+| \`users:read\` | Public profiles, exactly what a signed-out visitor sees. |
+| \`notifications:read\` | Your notifications (what lets BMM show them). |
+| \`notifications:write\` | Mark your notifications as read. |
+| \`pools:read\` | Your storage pools: size, contents and cost. |
+| \`catalogs:read\` | The catalogs you own and their items, unpublished ones included. |
+| \`payments:read\` | Your payment history and invoices (amounts and dates, never a card number). |
+| \`polls:read\` | The polls open to you and how you answered. |
+| \`polls:write\` | Answer polls on your behalf. |
+| \`transfers:read\` | Ownership transfers offered to or by you. |
+| \`favorites:read\` | The repos and catalogs you starred. |
+| \`economy:read\` | Your Discord level, XP, points and points-shop purchases. |
+| \`badges:read\` | The badges on your profile. |
+| \`charity:read\` | The Community Charity pot: association, totals, the month's vote. |
 
-Nothing that spends money, changes access control, or deletes anything is reachable by key. That is on purpose: a key lives in a script on a machine we do not control, so losing one should cost you read access and nothing more.
+\`GET /api/v1/scopes\` returns this list from the server, so it is always the current one.
+
+Nothing that spends money, changes access control, or deletes anything is reachable by key; the only writes are marking notifications read, your name and bio, and answering a poll. That is on purpose: a key lives in a script on a machine we do not control, so losing one should cost you little.
 
 ## Endpoints
 
@@ -1638,7 +1654,7 @@ there is no SDK of ours to install.
 
 ## Register your app
 
-Profile → **Sign in with BetterCommunity** → *Register an app*. You get a \`client_id\`, and
+[/dev/config](/dev/config) → **Sign in with BetterCommunity** → *Register an app*. You get a \`client_id\`, and
 a \`client_secret\` **shown once** — it is stored only as a hash, so a lost secret is rotated,
 never recovered.
 
@@ -2024,92 +2040,6 @@ and into theirs — the space follows the content, and both pools are recomputed
 `,
   },
   {
-    slug: 'landing-pages', category: 'Authoring', title: 'Building a landing page', icon: 'layers', order: 502,
-    body: `::toc[On this page]
-
-# Building a landing page
-
-\`/\` and \`/dev\` can be arranged block by block instead of chosen from three built-in layouts.
-**Admin → Navigation & footer → Page builder.**
-
-A built page replaces the built-in one entirely. Until you switch it on, nothing changes —
-and the switch is refused while the page has no blocks in it, so a half-built layout cannot
-become the front page by accident.
-
-## What a page is made of
-
-:::columns
-:::column
-**Layout** — \`section\`, \`row\`, \`col\`. Rows are a wrapping flex line by default; give one a
-number of columns and it becomes a real grid.
-:::
-:::column
-**Content** — headings, text, buttons, images, dividers, spacers and live numbers.
-:::
-:::column
-**Live sections** — the blocks the landing pages already draw: the showcase, the products,
-the news, the open poll, reviews, commissions, and the developer tiles.
-:::
-:::
-
-:::tip[One block does most of the work]
-A **text** block holds ordinary BetterCommunity markdown, so callouts, cards, tabs, columns,
-buttons, code and maths are all available inside it without the builder needing to know what
-any of them are. If you are reaching for a block and cannot find it, write it in a text block.
-:::
-
-## Numbers that are real
-
-Type \`{{members}}\` in any heading or text block and it renders the live count. The panel on
-the right lists every name with its current value beside it, so you can see what you are
-about to publish.
-
-\`members\` · \`items\` · \`downloads\` · \`repos\` · \`catalogs\` · \`posts\` · \`projects\` · \`apps\` ·
-\`plugins\` · \`themes\` · \`presets\`
-
-A **stat** block is the same numbers drawn as a tile with a label and an icon. A name that is
-not on that list renders as nothing rather than as \`{{typo}}\` — a visitor never sees the
-template that failed.
-
-## Desktop and phone
-
-Two layouts, and the phone one **inherits** by default: it draws the desktop tree, reflowed.
-That is not the same as being empty, and it is why the phone tab says so rather than quietly
-copying your desktop blocks.
-
-:::warning[Give it its own layout only when you mean it]
-The moment you press **Give it its own layout**, the two stop tracking each other. An edit to
-the desktop page will not reach the phone, and nothing will tell you which edit that was.
-
-Most pages want inheritance plus a couple of blocks hidden. Select a block and use **Shown
-on** — a block hidden on one layout is dimmed and hatched in the editor rather than removed,
-so it is still there to select.
-:::
-
-## The orb
-
-Each page decides whether the backdrop orb is drawn on it: **as the visitor prefers**, or
-**hidden on this page**. There is deliberately no option that turns it on for somebody who
-switched it off — they did that for a reason, and a landing page is not a good enough one to
-overrule it.
-
-## Components, export and import
-
-Select a block and **Save selection** to keep it as a named component. It appears in the
-palette and can be dropped into any page, with fresh ids each time, so two copies of a header
-are two headers rather than one that moves twice.
-
-**Export page** writes the current page as JSON; **Import page** reads one back. Ids are
-regenerated on the way in, so importing a page exported from this same site cannot collide
-with what is already there.
-
-:::note[Nothing is live until you save]
-The canvas is the real renderer with the real data, so what you are looking at is what
-visitors will get. It is still only in your browser until **Save**.
-:::
-`,
-  },
-  {
     slug: 'blog-posts', category: 'Authoring', title: 'Writing a blog post', icon: 'newspaper', order: 501,
     body: `::toc[On this page]
 
@@ -2279,7 +2209,7 @@ are notified when staff reply. Otherwise you can leave an e-mail or Discord so t
 
 ## Where reports go
 
-Staff read them in **Admin → Feedback & crash reports**. New reports are grouped by kind — a
+Staff read them in **Admin → Feedback & crashes**. New reports are grouped by kind — a
 crash first, since it is the one you could not work around — with the oldest untriaged one shown
 so nothing rots. Each report can be triaged, replied to, resolved or ignored.
 
@@ -2355,17 +2285,15 @@ convenience items. They are never bought with money.
 The bot's \`/casino\` lets you wager points on small games. The house edge is taken from the
 **profit** of a win, never from your stake, and every game's page shows its odds before you bet.
 
-Three of the games are **live tables** other members can join from the same message —
-**Crash** (a multiplier climbs; cash out before it stops), **Race** (six cars, pick yours) and
-**Pot** (everyone stakes what they like; the more you put in, the likelier you win) — and
-**Multi** opens coin flip, dice, roulette or the wheel as one shared roll.
+Two of the games are **live tables** other members can join from the same message:
+**Race** (six cars, pick yours) and **Pot** (everyone stakes what they like; the more you put
+in, the likelier you win). **Multi** opens coin flip, dice, roulette or the wheel as one shared roll.
 
 :::note[The pot rule]
 With **two or more** at a table the game settles between the players, not against the house:
 the losers' stakes form the pot, every winner keeps their own stake and takes a share of the
 pot in proportion to stake × multiplier, and the house edge is taken on that share only.
-Nobody wins → the house keeps the pot. Alone at a table you play the house as usual. Crash is
-never pooled — everybody cashes out on their own clock.
+Nobody wins → the house keeps the pot. Alone at a table you play the house as usual.
 :::
 
 Each game can carry its own house edge, and the maximum bet is whatever the server set — if it
@@ -2403,18 +2331,17 @@ Le \`/casino\` du bot permet de miser des points sur de petits jeux. L'avantage 
 pris sur le **gain** d'une victoire, jamais sur ta mise, et chaque page de jeu montre ses cotes
 avant que tu mises.
 
-Trois des jeux sont des **tables en direct** que d'autres membres rejoignent depuis le même
-message — **Crash** (un multiplicateur grimpe ; encaisse avant qu'il s'arrête), **Course** (six
-voitures, choisis la tienne) et **Cagnotte** (chacun mise ce qu'il veut ; plus tu mises, plus
-tu as de chances) — et **Multi** ouvre pile ou face, dés, roulette ou roue en un seul tirage
-partagé.
+Deux des jeux sont des **tables en direct** que d'autres membres rejoignent depuis le même
+message : **Course** (six voitures, choisis la tienne) et **Cagnotte** (chacun mise ce qu'il
+veut ; plus tu mises, plus tu as de chances). **Multi** ouvre pile ou face, dés, roulette ou
+roue en un seul tirage partagé.
 
 :::note[La règle de la cagnotte]
 À **deux ou plus** à une table, le jeu se règle entre les joueurs, pas contre la maison : les
 mises des perdants forment la cagnotte, chaque gagnant garde sa propre mise et prend une part
 de la cagnotte au prorata de mise × multiplicateur, et l'avantage maison n'est pris que sur
 cette part. Personne ne gagne → la maison garde la cagnotte. Seul à une table, tu joues contre
-la maison comme d'habitude. Crash n'est jamais mis en commun — chacun encaisse à son moment.
+la maison comme d'habitude.
 :::
 
 Chaque jeu peut porter son propre avantage maison, et la mise maximale est celle que le serveur
@@ -2492,7 +2419,7 @@ de ton tableau de bord.`,
 # Site bans & the auto-shield
 
 Admins can keep an address, a client or a creator out of **every** service — the site, the API, the
-hosted repos, the bot's endpoints — from **Admin → Roles & access → Bans & shield**. It is separate
+hosted repos, the bot's endpoints — from **Admin → Roles & permissions → Bans & shield**. It is separate
 from a per-repo access policy: this is the front door.
 
 ## What you can ban
@@ -2520,7 +2447,7 @@ clients, not a network flood.
 # Bans du site & bouclier automatique
 
 Les admins peuvent tenir une adresse, un client ou un créateur hors de **tous** les services — le
-site, l'API, les dépôts hébergés, les endpoints du bot — depuis **Admin → Rôles & accès → Bans &
+site, l'API, les dépôts hébergés, les endpoints du bot — depuis **Admin → Accès & permissions → Bans &
 bouclier**. C'est distinct d'une politique d'accès par dépôt : c'est la porte d'entrée.
 
 ## Ce qu'on peut bannir
@@ -2577,7 +2504,8 @@ const run = async () => {
   // (superseded by Introduction + it referenced admin-only telemetry), and the catalog
   // overview (superseded by the new Publishing page). 'api-reference' is kept — it's a
   // real public API reference, not an admin topic.
-  await p.docPage.deleteMany({ where: { slug: { in: ['test', 'features', 'catalog-formats'] } } }).catch(() => {});
+  // 'landing-pages' documented the admin page builder, which was removed (commit 52b38e24).
+  await p.docPage.deleteMany({ where: { slug: { in: ['test', 'features', 'catalog-formats', 'landing-pages'] } } }).catch(() => {});
   console.log(`docs seed: ${created} created, ${updated} updated, ${PAGES.length} total, ${translated} with a French body.`);
   await p.$disconnect();
 };

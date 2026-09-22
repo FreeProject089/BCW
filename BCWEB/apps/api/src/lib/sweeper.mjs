@@ -4,6 +4,7 @@
 // Their files are kept until that moment, then this job hard-deletes the rows and
 // their object-storage bytes. Runs periodically from the API process.
 import { db, notify, catalogLog, clearAccountLockCache, hostingGrace, humanHours } from './lib.mjs';
+import { progressKey as onboardingKey } from './onboarding.mjs';
 import { sweepMediaHashes } from './media-hash.mjs';
 import { sweepExpiringFiles } from './expiring-files.mjs';
 import { sweepAutoBadges } from '../routes/social.mjs';
@@ -721,7 +722,11 @@ export async function sweepUnverifiedAccounts(p, log) {
       kept++;
       continue;
     }
-    try { await p.user.delete({ where: { id: u.id } }); released++; }
+    try {
+      await p.user.delete({ where: { id: u.id } }); released++;
+      // Its first-run marker is a settings row, not a relation, so the cascade does not reach it.
+      await p.adminSetting.deleteMany({ where: { key: onboardingKey(u.id) } }).catch(() => {});
+    }
     catch (e) { log?.warn?.({ id: u.id, e: String(e?.message || e) }, 'sweeper: unverified release failed'); }
   }
   if (reminded || released || kept) {
@@ -892,6 +897,10 @@ export function startSweeper(app) {
       // A season ends on its schedule, not when somebody remembers the button.
       await runSeasonIfDue(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'season reset failed'));
       await sweepStaleMyoRequests(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'MYO auto-archive sweep failed'));
+      // "You have N unread messages" to anonymous senders. A timer sends them after a reply;
+      // this catches the ones a restart dropped. Claimed row by row, so never twice.
+      await import('../routes/threads.mjs').then(({ flushAnonThreadMails }) => flushAnonThreadMails(p))
+        .catch((e) => app.log.warn({ e: String(e) }, 'thread unread mail flush failed'));
       // Checkouts the webhook never finished (the API was down when Stripe called). Dynamic
       // import: the reconciler pulls in the webhook → hosting.mjs, which already has to
       // dynamic-import THIS module; a static import here would close that cycle.

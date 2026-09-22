@@ -10,6 +10,7 @@ import { useAuth } from './auth.jsx';
 import { useAsync, useUndoableDelete } from './pages.jsx';
 import { Button, Card, Badge, Input, Textarea, Field, Select, EmptyState, Spinner, Modal, useToast, useDialog } from '../ui/ui.jsx';
 import { ContactButton } from '../ui/contact.jsx';
+import { TeamInbox } from './team-inbox.jsx';
 
 const ROLE_KEY = { owner: 'tm.role.owner', admin: 'tm.role.admin', member: 'tm.role.member' };
 
@@ -386,6 +387,10 @@ function TeamDetail({ team, reload, justCreated = false }) {
           </div>
         </Card>
       )}
+
+      {/* The team's conversations live here, with the team. Hidden (the component renders
+          nothing) for a member whose role the team did not pick to answer. */}
+      <TeamInbox team={team} />
 
       {edit && (
         <Modal open onClose={() => setEdit(false)} title={t('tm.edit', 'Edit the team')} icon={Users} width="max-w-2xl">

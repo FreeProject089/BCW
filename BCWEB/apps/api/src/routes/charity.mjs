@@ -96,6 +96,17 @@ export async function charityCurrent(p) {
 }
 
 
+// The body PUT /admin/charity validates. Module-level and exported so the config import (lib/config-transfer.mjs) checks a seed with this schema rather than a copy of it.
+export const CHARITY_BODY = z.object({
+  enabled: z.boolean().optional(),
+  percent: z.number().optional(),
+  currency: z.string().min(1).max(8).optional(),
+  association: z.string().max(200).optional(),
+  // The landing design — normalised by normalizeCharityDesign (bounds, enum values, image
+  // URL shape); zod only checks it is an object so a new field never has to be listed twice.
+  design: z.record(z.unknown()).optional(),
+});
+
 export default async function charityRoutes(app) {
   // Public: the current month's pot — BetterCommunity's frozen share + the community's gifts,
   // summed, plus the configured percent/association. Read by the landing widget (Phase 3) and
@@ -266,15 +277,7 @@ export default async function charityRoutes(app) {
   // Admin: update the config. Percent is clamped server-side to [0, 50] regardless of input,
   // so the 50% ceiling holds even if the UI is bypassed.
   app.put('/admin/charity', { preHandler: requireCap('manage_donations') }, async (req, reply) => {
-    const body = z.object({
-      enabled: z.boolean().optional(),
-      percent: z.number().optional(),
-      currency: z.string().min(1).max(8).optional(),
-      association: z.string().max(200).optional(),
-      // The landing design — normalised by normalizeCharityDesign (bounds, enum values, image
-      // URL shape); zod only checks it is an object so a new field never has to be listed twice.
-      design: z.record(z.unknown()).optional(),
-    }).safeParse(req.body);
+    const body = CHARITY_BODY.safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'bad_request' });
 
     const p = await db();

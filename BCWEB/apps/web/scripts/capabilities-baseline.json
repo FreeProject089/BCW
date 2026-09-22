@@ -1,5 +1,5 @@
 {
-  "maxAdminOnlyRoutes": 107,
+  "maxAdminOnlyRoutes": 109,
   "reach": {
     "manage_analytics": [
       "/admin/analytics"

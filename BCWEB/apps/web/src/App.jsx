@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Routes, Route, Link, NavLink, Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { Code2, Boxes, Music2, Newspaper, Server, Rocket, LayoutDashboard, Shield, LogOut, Download, Menu, X, Sparkles, Bell, Trash2, CheckCheck, Mail, Home as HomeIcon, ChevronDown, MoreHorizontal, LayoutGrid, ShieldCheck, ArrowUpRight, Info, AlertTriangle, CheckCircle2, Settings as SettingsIcon, BookOpen, Search } from 'lucide-react';
+import { Code2, Boxes, Music2, Newspaper, Server, Rocket, LayoutDashboard, Shield, LogOut, Download, Menu, X, Sparkles, Bell, Trash2, CheckCheck, Mail, Home as HomeIcon, ChevronDown, MoreHorizontal, LayoutGrid, ShieldCheck, ArrowUpRight, Info, AlertTriangle, CheckCircle2, Settings as SettingsIcon, BookOpen, Search, Languages, LogIn } from 'lucide-react';
 import { useAuth } from './pages/auth.jsx';
 import { api } from './lib/api.js';
 import { onNotifsChanged, applyNotifChange, markNotifRead, markAllNotifsRead, deleteNotif } from './lib/notifs.js';
@@ -10,14 +10,15 @@ import { getHero3dDisabled } from './lib/prefs.js';
 import WelcomePrefs from './ui/WelcomePrefs.jsx';
 import { Button, useToast, Modal, useDialog } from './ui/ui.jsx';
 import { Badges, BadgeIcon } from './ui/Badges.jsx';
-import { ThemeToggle, SiteLogo } from './ui/theme.jsx';
+import { ThemeToggle, SiteLogo, useTheme } from './ui/theme.jsx';
+import { UtilGlyph, utilIconFor, utilSize } from './ui/topbar-glyph.jsx';
 
 import { useI18n, LangToggle, LangSelect } from './i18n.jsx';
 import CommandPalette from './ui/command-palette.jsx';
 import { openPalette } from './ui/palette-recent.js';
 import { buildDownbar } from './ui/mobilebar-items.js';
 import { KofiIcon, GithubIcon, DiscordIcon, RedditIcon, XIcon, YoutubeIcon, TwitchIcon,
-  MastodonIcon, BlueskyIcon, InstagramIcon, TelegramIcon, TiktokIcon, APP_LOGO } from './ui/brand.jsx';
+  MastodonIcon, BlueskyIcon, InstagramIcon, TelegramIcon, TiktokIcon, appLogoUrl } from './ui/brand.jsx';
 import { ShowcaseIcon, IconGlyph } from './ui/md.jsx';
 /**
  * Telemetry, imported so that losing it costs telemetry and not the site.
@@ -71,6 +72,7 @@ const named = lazyNamed;
 // The hero orb pulls in three.js (~460 KB) — lazy-load it so it never blocks first paint
 // (it's a decorative backdrop; a null fallback means it just fades in once loaded).
 const Hero3D = lazyChunk(() => import('./hero/Hero3D.jsx'));
+const CopyVerify = lazyChunk(() => import('./pages/copy-verify.jsx'));
 const ClosureCancel = lazyChunk(() => import('./pages/closure.jsx'));
 const PollsPage = lazyChunk(() => import('./pages/polls.jsx'));
 const CharityPage = lazyChunk(() => import('./pages/charity.jsx'));
@@ -223,7 +225,7 @@ function useNavBadge() {
 // project gets its logo for free.
 function projectLogo(to) {
   const m = /^\/p\/([a-z0-9-]+)/i.exec(String(to || ''));
-  return m ? APP_LOGO[m[1].toLowerCase()] : undefined;
+  return m ? appLogoUrl(m[1].toLowerCase()) : undefined;
 }
 
 // Every branch carries `nav-ic`, which is what the labels-only mode hides.
@@ -258,7 +260,7 @@ const sheet = ({ isActive }) => `flex items-center gap-2.5 px-3 py-2.5 rounded-x
 // Desktop dropdown pill for a configured "group" nav item — Twenty-style: opens on
 // hover (with a small close delay so the pointer can travel to the panel) and on click,
 // closes on outside-click / Esc / route change. Keyboard-focusable + aria-expanded.
-function NavDropdown({ item, t, lang }) {
+function NavDropdown({ item, t, lang, idx }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState(null);   // { left, top } fixed coords for the portaled panel
   const ref = useRef(null);               // the trigger wrapper
@@ -272,25 +274,31 @@ function NavDropdown({ item, t, lang }) {
   // overflow-x-auto clip; anchor it under the trigger and keep it there on scroll/resize.
   const place = () => { const r = ref.current?.getBoundingClientRect(); if (r) setPos({ left: r.left, top: r.bottom + 6 }); };
   useLayoutEffect(() => { if (open) place(); }, [open]);
+  // The document and window this bar lives in. Normally the page's; inside the admin Live
+  // preview it is the preview frame's, and a panel portalled into the PAGE's body (or an
+  // outside-click listener on the page's document) would land outside the frame entirely.
+  const ownDoc = () => ref.current?.ownerDocument || document;
   useEffect(() => {
     if (!open) return;
+    const win = ownDoc().defaultView || window;
     const onScroll = () => place();
-    window.addEventListener('scroll', onScroll, true);
-    window.addEventListener('resize', onScroll);
-    return () => { window.removeEventListener('scroll', onScroll, true); window.removeEventListener('resize', onScroll); };
+    win.addEventListener('scroll', onScroll, true);
+    win.addEventListener('resize', onScroll);
+    return () => { win.removeEventListener('scroll', onScroll, true); win.removeEventListener('resize', onScroll); };
   }, [open]);
   useEffect(() => {
     // Outside-click closes — but the panel lives outside `ref` (portal), so exclude it too.
+    const doc = ownDoc();
     const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target) && menuRef.current && !menuRef.current.contains(e.target)) setOpen(false); };
     const onEsc = (e) => { if (e.key === 'Escape') setOpen(false); };
-    document.addEventListener('mousedown', onDoc);
-    document.addEventListener('keydown', onEsc);
-    return () => { document.removeEventListener('mousedown', onDoc); document.removeEventListener('keydown', onEsc); };
+    doc.addEventListener('mousedown', onDoc);
+    doc.addEventListener('keydown', onEsc);
+    return () => { doc.removeEventListener('mousedown', onDoc); doc.removeEventListener('keydown', onEsc); };
   }, []);
   const enter = () => { clearTimeout(closeT.current); setOpen(true); };
   const leave = () => { clearTimeout(closeT.current); closeT.current = setTimeout(() => setOpen(false), 140); };
   return (
-    <div ref={ref} className="relative shrink-0" onMouseEnter={enter} onMouseLeave={leave}>
+    <div ref={ref} className="relative shrink-0" onMouseEnter={enter} onMouseLeave={leave} data-nav-idx={idx}>
       <button type="button" onClick={() => setOpen((o) => !o)} aria-haspopup="true" aria-expanded={open} className={pill({ isActive: active }) + ' shrink-0'}>
         <NavIcon item={item} size={16} /><span className="nav-lbl">{navLabel(item, t, lang)}</span><ChevronDown size={13} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
@@ -308,7 +316,7 @@ function NavDropdown({ item, t, lang }) {
             </NavLink>
           ))}
         </div>,
-        document.body,
+        ownDoc().body,
       )}
     </div>
   );
@@ -480,7 +488,7 @@ const NOTIF_LINK = {
   kofi_reward: '/dashboard', promo_redeemed: '/dashboard', discount: '/hosting#plans', free_hosting: '/dashboard?s=repos', free_pool: '/dashboard?s=repos', free_boost: '/dashboard?s=repos',
 };
 
-function NavNotifications() {
+function NavNotifications({ icon = null } = {}) {
   const { t, lang } = useI18n();
   const { user } = useAuth();
   const nav = useNavigate();
@@ -567,7 +575,7 @@ function NavNotifications() {
   return (
     <div className="relative" ref={ref}>
       <button className="nav-link !px-2 relative" onClick={() => { setOpen((o) => !o); if (!open) { load(); markPendingSeen(); } }} title={t('nav.notifications')} aria-label={t('nav.notifications')}>
-        <Bell size={16} />
+        {icon || <Bell size={16} />}
         {badge > 0 && <span className="absolute top-0.5 right-0.5 min-w-[15px] h-[15px] px-1 rounded-full bg-[var(--primary)] text-white text-[9px] font-bold grid place-items-center">{badge > 9 ? '9+' : badge}</span>}
       </button>
       {open && (
@@ -611,14 +619,21 @@ function NavNotifications() {
   );
 }
 
-function Nav() {
-  const { user, logout: rawLogout } = useAuth();
+// `preview` (admin Live preview only): { cfg, user }. The bar then renders from the editor's
+// draft config and a stand-in viewer instead of /nav and the signed-in account, and never
+// fetches anything personal (notifications, report counts). Everything else, every rule,
+// class and component, is the one visitors get; that is the point of the preview.
+export function Nav({ preview = null } = {}) {
+  const { user: authUser, logout: rawLogout } = useAuth();
+  const user = preview ? preview.user : authUser;
   const { t, lang } = useI18n();
   const dialog = useDialog();
+  const theme = useTheme()?.theme || 'dark';
   // One wrapper for every sign-out control on this bar. Two call sites (the icon and the
   // phone sheet) would otherwise honour the setting separately, and the one that forgot
   // would be the one people use.
   const logout = async () => {
+    if (preview) return;
     if (getLogoutConfirm() && !(await dialog.confirm({
       title: t('nav.signout.t', 'Sign out?'),
       message: t('nav.signout.m', 'You will need to sign in again, including your second factor if you use one.'),
@@ -636,7 +651,8 @@ function Nav() {
   // to the topbar (task: Project Announcement pages / visibility system).
   const [projVisible, setProjVisible] = useState(null); // { bmm: true, bsm: false, ... } | null (not loaded yet -> show all)
   const [pinnedShowcase, setPinnedShowcase] = useState([]);
-  const navCfg = useNavConfig(); // admin-configured nav (null -> use hardcoded NAV), shared with the bottom bar
+  const navCfgLive = useNavConfig(); // admin-configured nav (null -> use hardcoded NAV), shared with the bottom bar
+  const navCfg = preview ? preview.cfg : navCfgLive;
   // Admin-configured desktop layout (align · density · labels · projectsMax), via the shared
   // reader the preview also uses. labels:'icons' reuses the existing responsive icons-only
   // mode by FORCING is-compact regardless of width; density:'compact' tightens the pill gap.
@@ -726,14 +742,17 @@ function Nav() {
   useLayoutEffect(() => {
     const el = segNavRef.current;
     if (!el) return;
+    // The window this bar is laid out in: the page's, or the preview frame's.
+    const win = el.ownerDocument?.defaultView || window;
     const measure = () => {
-      if (window.innerWidth < 1250) { setCompact(true); return; }
+      if (win.innerWidth < 1250) { setCompact(true); return; }
       if (!el.classList.contains('is-compact')) neededRef.current = el.scrollWidth;
       const need = neededRef.current || el.scrollWidth;
       setCompact(el.clientWidth < need - 2); // -2 for sub-pixel rounding
     };
     measure();
-    const ro = new ResizeObserver(measure);
+    const RO = win.ResizeObserver || ResizeObserver;
+    const ro = new RO(measure);
     ro.observe(el);
     return () => ro.disconnect();
   }, [lang, effItems.length, pinnedShowcase.length, !!user, (user && (user.role === 'ADMIN' || user.role === 'MOD' || user.role === 'SUPERADMIN'))]);
@@ -756,33 +775,45 @@ function Nav() {
   const clusterB = orderIn(UTIL_B);
   // The auth/staff precondition is applied once, from the shared rule the Live preview
   // also uses — never re-tested per case below.
+  // The icon an admin picked for a button, for the theme on screen (ui/topbar-glyph.jsx).
+  const ug = (k, Fallback) => <UtilGlyph k={k} entry={uCfg[k]} theme={theme} fallback={Fallback} />;
+  const hasIcon = (k, th) => !!utilIconFor(uCfg[k], th);
+  const themeKnob = (th) => (hasIcon('theme', th) ? <UtilGlyph k="theme" entry={uCfg.theme} theme={th} size={Math.min(utilSize('theme', uCfg.theme), 14)} /> : null);
   const utilNode = (k) => {
     if (!utilAllowed(k, user)) return null;
     switch (k) {
-      case 'notifications': return <NavNotifications key="u-notif" />;
-      case 'projects': return <NavLink key="u-proj" to="/projects" className={({ isActive }) => `hidden sm:inline-flex nav-link !px-2 ${isActive ? 'nav-link-active' : ''}`} title={t('nav.projects')} aria-label={t('nav.projects')}><Boxes size={16} /></NavLink>;
-      case 'lang': return <LangToggle key="u-lang" type={uCfg.lang?.type || 'auto'} />;
-      case 'theme': return <ThemeToggle key="u-theme" />;
-      case 'settings': return <NavLink key="u-set" to="/settings" className={({ isActive }) => `nav-link !px-2 ${isActive ? 'nav-link-active' : ''}`} title={t('nav.settings', 'Settings')} aria-label={t('nav.settings', 'Settings')}><SettingsIcon size={16} /></NavLink>;
-      case 'dashboard': return <NavLink key="u-dash" to={unseen.mine > 0 ? '/dashboard?s=reports' : '/dashboard'} className={(s) => pill(s) + ' !py-2 !px-2.5 relative'} title={t('nav.dashboard')} aria-label={t('nav.dashboard')}><LayoutDashboard size={15} />{unseenDot(unseen.mine, t('nav.unseen.mine', '{n} report thread(s) with a reply you have not seen').replace('{n}', String(unseen.mine)))}</NavLink>;
-      case 'admin': return <NavLink key="u-adm" to={unseen.staff > 0 ? '/admin?s=reports' : '/admin'} className={(s) => pill(s) + ' !py-2 !px-2.5 relative'} title={t('nav.admin')} aria-label={t('nav.admin')}><Shield size={15} />{unseenDot(unseen.staff, t('nav.unseen.staff', '{n} report thread(s) waiting for staff').replace('{n}', String(unseen.staff)))}</NavLink>;
-      case 'profile': return <Link key="u-prof" to="/profile" className="rounded-full p-0.5 hover:ring-2 hover:ring-[var(--line-strong)] transition" title={user.displayName}><Avatar user={user} size={28} /></Link>;
-      case 'logout': return <Button key="u-out" variant="ghost" size="sm" onClick={logout} title={t('nav.signout')}><LogOut size={15} /></Button>;
-      case 'login': return <Link key="u-login" to="/auth"><Button variant="primary" size="sm" className="whitespace-nowrap rounded-full">{t('nav.signin')}</Button></Link>;
+      // The preview draws the bell without its fetches: it would otherwise show the ADMIN's
+      // own notifications inside a "signed-out visitor" preview.
+      case 'notifications': return preview
+        ? <span key="u-notif" className="nav-link !px-2 relative" title={t('nav.notifications')}>{ug('notifications', Bell)}</span>
+        : <NavNotifications key="u-notif" icon={hasIcon('notifications', theme) || uCfg.notifications?.size ? ug('notifications', Bell) : null} />;
+      case 'projects': return <NavLink key="u-proj" to="/projects" className={({ isActive }) => `hidden sm:inline-flex nav-link !px-2 ${isActive ? 'nav-link-active' : ''}`} title={t('nav.projects')} aria-label={t('nav.projects')}>{ug('projects', Boxes)}</NavLink>;
+      // Inert in the preview: it would switch the ADMIN's language, not the preview's.
+      case 'lang': return <span key="u-lang" className={preview ? 'pointer-events-none contents' : 'contents'}><LangToggle type={uCfg.lang?.type || 'auto'} icon={hasIcon('lang', theme) || uCfg.lang?.size ? ug('lang', Languages) : null} /></span>;
+      case 'theme': return <ThemeToggle key="u-theme" lightIcon={themeKnob('light')} darkIcon={themeKnob('dark')} />;
+      case 'settings': return <NavLink key="u-set" to="/settings" className={({ isActive }) => `nav-link !px-2 ${isActive ? 'nav-link-active' : ''}`} title={t('nav.settings', 'Settings')} aria-label={t('nav.settings', 'Settings')}>{ug('settings', SettingsIcon)}</NavLink>;
+      case 'dashboard': return <NavLink key="u-dash" to={unseen.mine > 0 ? '/dashboard?s=reports' : '/dashboard'} className={(s) => pill(s) + ' !py-2 !px-2.5 relative'} title={t('nav.dashboard')} aria-label={t('nav.dashboard')}>{ug('dashboard', LayoutDashboard)}{unseenDot(unseen.mine, t('nav.unseen.mine', '{n} report thread(s) with a reply you have not seen').replace('{n}', String(unseen.mine)))}</NavLink>;
+      case 'admin': return <NavLink key="u-adm" to={unseen.staff > 0 ? '/admin?s=reports' : '/admin'} className={(s) => pill(s) + ' !py-2 !px-2.5 relative'} title={t('nav.admin')} aria-label={t('nav.admin')}>{ug('admin', Shield)}{unseenDot(unseen.staff, t('nav.unseen.staff', '{n} report thread(s) waiting for staff').replace('{n}', String(unseen.staff)))}</NavLink>;
+      case 'profile': return <Link key="u-prof" to="/profile" className="rounded-full p-0.5 hover:ring-2 hover:ring-[var(--line-strong)] transition" title={user.displayName}><Avatar user={user} size={utilSize('profile', uCfg.profile)} /></Link>;
+      case 'logout': return <Button key="u-out" variant="ghost" size="sm" onClick={logout} title={t('nav.signout')}>{ug('logout', LogOut)}</Button>;
+      // Sign in is a text button; an icon is only drawn when one was picked.
+      case 'login': return <Link key="u-login" to="/auth"><Button variant="primary" size="sm" className="whitespace-nowrap rounded-full">{hasIcon('login', theme) && ug('login')}{t('nav.signin')}</Button></Link>;
       default: return null;
     }
   };
   const renderUtil = (k) => (uVisible(k) ? utilNode(k) : null);
   // Unseen report threads, on the entry that leads to them: your own on Dashboard, the staff
   // queue on Admin. The count is lib/reports-unseen.js (one shared poll of the Report flags).
-  const unseen = useReportsUnseen(!!user);
+  const unseen = useReportsUnseen(!!user && !preview);
   const unseenDot = (n, label) => n > 0 && <span className="absolute -top-1 -right-1 min-w-[15px] h-[15px] px-1 rounded-full bg-[var(--primary)] text-white text-[9px] font-bold grid place-items-center" title={label} aria-label={label}>{n > 9 ? '9+' : n}</span>;
   return (
     <header className="sticky top-0 z-40 px-2 sm:px-3 pt-2 sm:pt-3">
       <div className="max-w-7xl mx-auto rounded-2xl border border-[var(--line)] px-2.5 sm:px-3 h-14 flex items-center gap-1 flex-nowrap topbar"
         style={{ boxShadow: '0 10px 34px -14px rgba(0,0,0,0.30)' }}>
         <Link to="/" className="flex items-center gap-2 font-extrabold text-[15px] me-1 shrink-0" onClick={() => setOpen(false)}>
-          <SiteLogo alt="BC" className="w-8 h-8 rounded-xl object-contain" />
+          {hasIcon('brand', theme)
+            ? <span className="grid place-items-center shrink-0" style={{ width: utilSize('brand', uCfg.brand), height: utilSize('brand', uCfg.brand) }}>{ug('brand')}</span>
+            : <SiteLogo alt="BC" className="rounded-xl object-contain" style={{ width: utilSize('brand', uCfg.brand), height: utilSize('brand', uCfg.brand) }} />}
           <span className="text-[var(--text)] hidden sm:inline">BetterCommunity</span>
         </Link>
         {/* desktop segmented nav — icons-only when tight, icons+labels at xl+.
@@ -797,8 +828,8 @@ function Nav() {
         <div ref={segNavRef} className={`seg-nav ${compact || iconsOnly ? 'is-compact' : ''} ${textOnly && !(compact || iconsOnly) ? 'is-textonly' : ''} hidden lg:flex flex-1 min-w-0 overflow-x-auto no-scrollbar ${navAlignClass(layout.align)}`}>
           <nav className={`inline-flex items-center rounded-full bg-[var(--surface-2)] p-1 border border-[var(--line)] shrink-0 ${layout.density === 'compact' ? 'gap-0' : 'gap-0.5'}`}>
             {effItems.map((it, i) => it.type === 'group'
-              ? <NavDropdown key={'g' + i} item={it} t={t} lang={lang} />
-              : <NavLink key={it.to} to={it.to} title={navLabel(it, t, lang)} aria-label={navLabel(it, t, lang)} className={(s) => pill(s) + ' shrink-0'}><NavIcon item={it} size={16} /><span className="nav-lbl">{navLabel(it, t, lang)}</span></NavLink>)}
+              ? <NavDropdown key={'g' + i} item={it} t={t} lang={lang} idx={it._idx} />
+              : <NavLink key={it.to} to={it.to} data-nav-idx={it._idx} title={navLabel(it, t, lang)} aria-label={navLabel(it, t, lang)} className={(s) => pill(s) + ' shrink-0'}><NavIcon item={it} size={16} /><span className="nav-lbl">{navLabel(it, t, lang)}</span></NavLink>)}
             {projectsDropdown
               ? <NavDropdown key="proj-dd" item={projectsGroup} t={t} lang={lang} />
               : pinnedShowcase.map((p) => (
@@ -828,35 +859,114 @@ function Nav() {
         </div>
       </div>
 
-      {/* full menu sheet (below lg:) */}
+      {/* The phone menu (below lg:). Same visual language as the bottom bar: see MobileMenu. */}
       {open && (
-        <div className="lg:hidden mt-2 mx-2 sm:mx-3 rounded-2xl border border-[var(--line)] p-2 topbar anim-fade" style={{ boxShadow: '0 10px 34px -14px rgba(0,0,0,0.30)' }}>
-          <div className="grid grid-cols-2 gap-1">
-            {effItems.map((it, i) => it.type === 'group'
-              ? <NavSheetGroup key={'g' + i} item={it} t={t} lang={lang} onNavigate={() => setOpen(false)} />
-              : <NavLink key={it.to} to={it.to} className={sheet} onClick={() => setOpen(false)}><NavIcon item={it} size={16} />{navLabel(it, t, lang)}</NavLink>)}
-            {projectsDropdown
-              ? <NavSheetGroup key="proj-dd" item={projectsGroup} t={t} lang={lang} onNavigate={() => setOpen(false)} />
-              : pinnedShowcase.map((p) => <NavLink key={p.slug} to={`/project/${p.slug}`} className={sheet} onClick={() => setOpen(false)}><ShowcaseIcon icon={p.icon} size={16} fallback={<Sparkles size={16} />} />{p.isAnnouncing ? p.announceTitle || p.name : p.name}</NavLink>)}
-            {uVisible('projects') && <NavLink to="/projects" className={sheet} onClick={() => setOpen(false)}><Boxes size={16} /> {t('nav.projects')}</NavLink>}
-            <NavLink to="/contact" className={sheet} onClick={() => setOpen(false)}><Mail size={16} /> Contact</NavLink>
-            {uVisible('settings') && <NavLink to="/settings" className={sheet} onClick={() => setOpen(false)}><SettingsIcon size={16} /> {t('nav.settings', 'Settings')}</NavLink>}
-          </div>
-          <div className="h-px bg-[var(--line)] my-2" />
-          <div className="grid grid-cols-2 gap-1">
-            {user ? (<>
-              {uVisible('dashboard') && <NavLink to="/dashboard" className={sheet} onClick={() => setOpen(false)}><LayoutDashboard size={16} />{t("nav.dashboard")}</NavLink>}
-              {uVisible('admin') && canAdmin(user) && <NavLink to="/admin" className={sheet} onClick={() => setOpen(false)}><Shield size={16} />{t("nav.admin")}</NavLink>}
-              {uVisible('profile') && <NavLink to="/profile" className={sheet} onClick={() => setOpen(false)}><Avatar user={user} size={18} /> Profile</NavLink>}
-              {uVisible('logout') && <button className={sheet({ isActive: false }) + ' text-start'} onClick={() => { logout(); setOpen(false); }}><LogOut size={16} />{t("nav.signout")}</button>}
-            </>) : <Link to="/auth" className="col-span-2" onClick={() => setOpen(false)}><Button variant="primary" className="w-full">{t("nav.signin")}</Button></Link>}
-          </div>
-        </div>
+        <MobileMenu cfg={navCfg?.mobileMenu} items={effItems} projectsGroup={projectsDropdown ? projectsGroup : null}
+          pinned={projectsDropdown ? [] : pinnedShowcase} user={user} uVisible={uVisible} ug={ug}
+          onClose={() => setOpen(false)} onLogout={() => { logout(); setOpen(false); }} />
       )}
       {/* Lives inside the same sticky header, so it rides along under the topbar
           pill instead of scrolling away with the page content underneath it. */}
       <AnnouncementBanner />
     </header>
+  );
+}
+
+// The phone menu: what the hamburger opens below `lg`.
+//
+// It used to be a plain two-column list of rows, a different object from everything around
+// it, while the bottom bar under the thumb had its own floating surface, pill icons and accent
+// states. They are the same kind of thing (the site's navigation, on a phone), so this is now
+// drawn in the bar's language: the same floating surface and radius (.msheet mirrors .mbar),
+// the same pill behind the icon, the same accent on the page you are on, and a grid of tiles
+// shaped like the bar's tabs rather than a list of rows.
+//
+// nav.config.mobileMenu (all optional, the defaults reproduce a sensible menu with no config):
+//   layout   'tiles' | 'list'   tiles = the bar-like grid; list = rows, for long labels
+//   columns  3 | 4              tiles per row
+//   contact  boolean            the Contact shortcut (default on)
+//   extras   [{ label, labelFr, to, icon }]  extra shortcuts, the same shape as a bottom-bar
+//            dropup link, so an admin builds both with the same fields
+export const MOBILE_MENU_DEFAULT = { layout: 'tiles', columns: 4, contact: true, extras: [] };
+export function readMobileMenu(c) {
+  const m = c || {};
+  return {
+    layout: m.layout === 'list' ? 'list' : 'tiles',
+    columns: m.columns === 3 ? 3 : 4,
+    contact: m.contact !== false,
+    extras: (Array.isArray(m.extras) ? m.extras : []).filter((x) => x && String(x.to || '').startsWith('/')).slice(0, 8),
+  };
+}
+function MobileMenu({ cfg, items, projectsGroup, pinned, user, uVisible, ug, onClose, onLogout }) {
+  const { t, lang } = useI18n();
+  const m = readMobileMenu(cfg);
+  const [openGroup, setOpenGroup] = useState(null);
+  const tiles = m.layout === 'tiles';
+  const withIcon = (n) => (typeof n.icon === 'string' && NAV_ICONS[n.icon] ? { ...n, icon: NAV_ICONS[n.icon] } : n);
+  const cell = ({ isActive }) => `msheet-tile ${isActive ? 'is-active' : ''}`;
+  // One tile / row. `glyph` is a node (a configured utility icon); otherwise the item's own.
+  const link = (key, to, label, glyph, extra = {}) => (
+    <NavLink key={key} to={to} end={to === '/'} className={cell} onClick={onClose} {...extra}>
+      <span className="msheet-ic">{glyph}</span><span className="msheet-lbl">{label}</span>
+    </NavLink>
+  );
+  const group = (key, g) => {
+    const on = openGroup === key;
+    return [
+      <button key={key} type="button" className={`msheet-tile ${on ? 'is-open' : ''}`} aria-expanded={on} onClick={() => setOpenGroup(on ? null : key)}>
+        <span className="msheet-ic"><NavIcon item={withIcon(g)} size={18} /><ChevronDown size={11} className="msheet-chev" /></span>
+        <span className="msheet-lbl">{navLabel(g, t, lang)}</span>
+      </button>,
+      on && (
+        <div key={key + '-kids'} className="msheet-kids">
+          {(g.children || []).map((c, j) => link(key + '-' + j, c.to, navLabel(c, t, lang), <NavIcon item={withIcon(c)} size={17} />))}
+        </div>
+      ),
+    ];
+  };
+  const nav = [
+    ...items.flatMap((it, i) => (it.type === 'group'
+      ? group('g' + i, it)
+      : [link('l' + i, it.to, navLabel(it, t, lang), <NavIcon item={withIcon(it)} size={18} />, { 'data-nav-idx': it._idx })])),
+    ...(projectsGroup ? group('proj', projectsGroup) : []),
+    ...pinned.map((p) => link('p-' + p.slug, `/project/${p.slug}`, p.isAnnouncing ? p.announceTitle || p.name : p.name,
+      <ShowcaseIcon icon={p.icon} size={18} fallback={<Sparkles size={18} />} />)),
+  ];
+  const shortcuts = [
+    uVisible('projects') && link('s-proj', '/projects', t('nav.projects'), ug('projects', Boxes)),
+    m.contact && link('s-contact', '/contact', t('nav.contact', 'Contact'), <Mail size={18} />),
+    uVisible('settings') && link('s-set', '/settings', t('nav.settings', 'Settings'), ug('settings', SettingsIcon)),
+    ...m.extras.map((x, i) => link('x' + i, x.to, navLabel(x, t, lang) || x.to, <NavIcon item={withIcon({ ...x, icon: x.icon || 'Boxes' })} size={18} />)),
+  ].filter(Boolean);
+  const account = user ? [
+    uVisible('dashboard') && link('a-dash', '/dashboard', t('nav.dashboard'), ug('dashboard', LayoutDashboard)),
+    uVisible('admin') && canAdmin(user) && link('a-adm', '/admin', t('nav.admin'), ug('admin', Shield)),
+    uVisible('profile') && link('a-prof', '/profile', t('nav.profile', 'Profile'), <Avatar user={user} size={20} />),
+    uVisible('logout') && (
+      <button key="a-out" type="button" className="msheet-tile" onClick={onLogout}>
+        <span className="msheet-ic">{ug('logout', LogOut)}</span><span className="msheet-lbl">{t('nav.signout')}</span>
+      </button>
+    ),
+  ].filter(Boolean) : [];
+  const section = (title, kids) => kids.length > 0 && (
+    <section className="msheet-sec">
+      <div className="msheet-h">{title}</div>
+      <div className={`msheet-grid ${tiles ? 'is-tiles' : 'is-list'}`} style={tiles ? { gridTemplateColumns: `repeat(${m.columns}, minmax(0, 1fr))` } : undefined}>{kids}</div>
+    </section>
+  );
+  return (
+    <div className="lg:hidden msheet topbar anim-fade" role="navigation" aria-label={t('nav.menu.aria', 'Site menu')}>
+      <div className="msheet-grip" aria-hidden />
+      {section(t('nav.menu.nav', 'Browse'), nav)}
+      {section(t('nav.menu.short', 'Shortcuts'), shortcuts)}
+      {user
+        ? section(t('nav.menu.account', 'Your account'), account)
+        : uVisible('login') && (
+          <Link to="/auth" onClick={onClose} className="msheet-cta">
+            {ug('login', LogIn)} {t('nav.signin')}
+          </Link>
+        )}
+    </div>
   );
 }
 
@@ -880,10 +990,14 @@ function Nav() {
 // somewhere else, so the reader sees the flicker and never the reason for it. It also put a
 // scroll listener and a timer on every page for every visitor on a phone, to hide four words
 // that were never in the way.
-function MobileTabBar() {
+// `preview`: { cfg, user }, as for <Nav>. The admin Live preview renders this very bar
+// inside a phone-sized frame, where `fixed` docks it to the bottom of the frame.
+export function MobileTabBar({ preview = null } = {}) {
   const { t, lang } = useI18n();
-  const { user } = useAuth();
-  const navCfg = useNavConfig();
+  const { user: authUser } = useAuth();
+  const user = preview ? preview.user : authUser;
+  const navCfgLive = useNavConfig();
+  const navCfg = preview ? preview.cfg : navCfgLive;
   const badge = useNavBadge();
   const [openUp, setOpenUp] = useState(null); // index of the open dropup sheet, or null
   const bar = buildDownbar(navCfg, { signedIn: !!user });
@@ -937,7 +1051,7 @@ function MobileTabBar() {
           // The raised main action. On the default bar this is Search, and it opens the same
           // ⌘K palette the desktop has — the phone had no way in at all.
           if (n.kind === 'primary') {
-            const press = () => { if (n.act === 'search') openPalette(); };
+            const press = () => { if (n.act === 'search' && !preview) openPalette(); };
             const inner = (active) => <>
               <span className={`mbar-raise ${active ? 'is-on' : ''}`}><NavIcon item={withIcon(n)} size={22} /></span>
               {txt(n)}
@@ -1500,6 +1614,7 @@ export default function App() {
               <Route path="/authorize" element={<Authorize />} />
               <Route path="/verify-email" element={<VerifyEmail />} />
               <Route path="/contact" element={<Contact />} />
+              <Route path="/verify-copy" element={<CopyVerify />} />
               <Route path="/report" element={<ReportPage />} />
               <Route path="/messages/t/:token" element={<AnonThreadPage />} />
               <Route path="/teams/join/:token" element={<TeamJoin />} />

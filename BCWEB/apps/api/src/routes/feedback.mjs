@@ -338,6 +338,27 @@ export async function senderIdFrom({ sessionUid = null, headers = {}, aud, now, 
   return (await byBcId(claimed)) || null;
 }
 
+// Module-level and exported so the config import (lib/config-transfer.mjs) validates a seed
+// with the schema this route uses rather than a copy of it.
+export const projectIn = z.object({
+  enabled: z.boolean(), kinds: z.object({ feedback: z.boolean(), bug: z.boolean(), crash: z.boolean() }),
+  crashSampling: z.number().min(0).max(100), maxBodyKB: z.number().int().min(1).max(4096), maxAttachMB: z.number().int().min(0).max(200),
+  maxAttachments: z.number().int().min(0).max(40), dedupeMinutes: z.number().int().min(0).max(1440), minVersion: z.string().max(40),
+  blockedVersions: z.array(z.string().max(40)).max(50), blockedWords: z.array(z.string().max(60)).max(200),
+  requireContact: z.boolean(), openThread: z.boolean(), mailFallback: z.boolean(),
+});
+
+export const limitsIn = z.object({
+  perIp: z.object({ max: z.number().int().min(0).max(100000), windowMin: z.number().int().min(1).max(1440) }),
+  perAccount: z.object({ max: z.number().int().min(0).max(100000), windowMin: z.number().int().min(1).max(1440) }),
+  perProjectDay: z.number().int().min(0).max(10_000_000),
+  apiPerIpMin: z.number().int().min(0).max(100000), apiPerAccountMin: z.number().int().min(0).max(100000),
+});
+
+export const storageIn = z.object({ retentionDays: z.number().int().min(0).max(3650), maxTotalMB: z.number().int().min(0).max(1_000_000), closedRowDays: z.number().int().min(0).max(3650) });
+/** The body PUT /admin/feedback/config validates, and what `feedback.config` holds. */
+export const FEEDBACK_CONFIG_BODY = z.object({ projects: z.record(z.string().regex(/^[a-z0-9_-]{1,40}$/), projectIn), limits: limitsIn, storage: storageIn.optional() });
+
 export default async function feedbackRoutes(app) {
   // ── Public: what a client may send, before it builds the payload ──
   app.get('/feedback/:project/config', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (req) => {
@@ -484,22 +505,8 @@ export default async function feedbackRoutes(app) {
     return { ...cfg, knownProjects: known, defaults: { project: DEFAULT_PROJECT, limits: DEFAULT_LIMITS } };
   });
 
-  const projectIn = z.object({
-    enabled: z.boolean(), kinds: z.object({ feedback: z.boolean(), bug: z.boolean(), crash: z.boolean() }),
-    crashSampling: z.number().min(0).max(100), maxBodyKB: z.number().int().min(1).max(4096), maxAttachMB: z.number().int().min(0).max(200),
-    maxAttachments: z.number().int().min(0).max(40), dedupeMinutes: z.number().int().min(0).max(1440), minVersion: z.string().max(40),
-    blockedVersions: z.array(z.string().max(40)).max(50), blockedWords: z.array(z.string().max(60)).max(200),
-    requireContact: z.boolean(), openThread: z.boolean(), mailFallback: z.boolean(),
-  });
-  const limitsIn = z.object({
-    perIp: z.object({ max: z.number().int().min(0).max(100000), windowMin: z.number().int().min(1).max(1440) }),
-    perAccount: z.object({ max: z.number().int().min(0).max(100000), windowMin: z.number().int().min(1).max(1440) }),
-    perProjectDay: z.number().int().min(0).max(10_000_000),
-    apiPerIpMin: z.number().int().min(0).max(100000), apiPerAccountMin: z.number().int().min(0).max(100000),
-  });
   app.put('/admin/feedback/config', { preHandler: WRITE }, async (req, reply) => {
-    const storageIn = z.object({ retentionDays: z.number().int().min(0).max(3650), maxTotalMB: z.number().int().min(0).max(1_000_000), closedRowDays: z.number().int().min(0).max(3650) });
-    const b = z.object({ projects: z.record(z.string().regex(/^[a-z0-9_-]{1,40}$/), projectIn), limits: limitsIn, storage: storageIn.optional() }).safeParse(req.body);
+    const b = FEEDBACK_CONFIG_BODY.safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input', detail: b.error.issues?.[0] });
     const p = await db();
     // Storage is edited on the Hosting screen; a save from the feedback screen keeps it.

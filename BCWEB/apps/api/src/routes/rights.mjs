@@ -180,6 +180,9 @@ const staffView = (n) => ({
   reporter: n.reporter ? { id: n.reporter.id, displayName: n.reporter.displayName } : null,
 });
 
+// The body PUT /admin/rights/config validates. Module-level and exported so the config import (lib/config-transfer.mjs) checks a seed with this schema rather than a copy of it.
+export const RIGHTS_CONFIG_BODY = z.object({ strikeThreshold: z.number().int().min(1).max(50), strikeWindowDays: z.number().int().min(1).max(3650), counterDays: z.number().int().min(1).max(90), autoMatch: z.boolean() }).partial();
+
 export default async function rightsRoutes(app) {
   // ── public ───────────────────────────────────────────────────────────────────────────
   app.get('/rights/resolve', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (req, reply) => {
@@ -450,7 +453,7 @@ export default async function rightsRoutes(app) {
 
   app.get('/admin/rights/config', CAP, async () => ({ config: await rightsConfig(await db()) }));
   app.put('/admin/rights/config', { preHandler: requireCap('manage_reports') }, async (req, reply) => {
-    const b = z.object({ strikeThreshold: z.number().int().min(1).max(50), strikeWindowDays: z.number().int().min(1).max(3650), counterDays: z.number().int().min(1).max(90), autoMatch: z.boolean() }).partial().safeParse(req.body || {});
+    const b = RIGHTS_CONFIG_BODY.safeParse(req.body || {});
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
     const cfg = { ...(await rightsConfig(p)), ...b.data };

@@ -112,6 +112,29 @@ export const DESTINATIONS = {
           'Aucun mot de passe, jeton ni donnée d’autres personnes dans ce message.') },
     ],
   },
+  // Where the wrong text is decides who fixes it. `project` is a project picker (the refs
+  // come from GET /contact/projects) and appears only once `scope` says project.
+  translation: {
+    kind: 'translation',
+    title: L('A translation problem', 'Un problème de traduction'),
+    lead: L('A wrong, missing or clumsy translation, on the site or in one of the projects.',
+      'Une traduction fausse, manquante ou maladroite, sur le site ou dans un des projets.'),
+    fields: [
+      { name: 'scope', type: 'choice', required: true, max: 20,
+        label: L('Where is it?', 'Où est-ce ?'),
+        options: [
+          { value: 'site', label: L('On the site', 'Sur le site') },
+          { value: 'project', label: L('In a project', 'Dans un projet') },
+        ] },
+      { name: 'project', type: 'project', max: 90, requiredIf: { field: 'scope', equals: 'project' },
+        label: L('Which project', 'Quel projet') },
+      { name: 'page', type: 'text', required: true, max: 300,
+        label: L('Page, screen or text concerned', 'Page, écran ou texte concerné'),
+        placeholder: L('The address, or the sentence as it appears', 'L’adresse, ou la phrase telle qu’elle apparaît') },
+      { name: 'lang', type: 'text', max: 40,
+        label: L('Language', 'Langue'), placeholder: L('French', 'Français') },
+    ],
+  },
   bug: {
     kind: 'bug',
     title: L('Something is broken', 'Quelque chose est cassé'),
@@ -148,6 +171,11 @@ export const Q1 = [
     sub: L('Sign-in, a copy of my data, erasure', 'Connexion, copie de mes données, suppression'), next: 'account' },
   { id: 'security', icon: 'shield', label: L('A security problem', 'Un problème de sécurité'),
     sub: L('A flaw, a leak, something that should not be reachable', 'Une faille, une fuite, quelque chose qui ne devrait pas être accessible'), dest: 'security' },
+  // A project's maintainers, not the site team: opens that project's own contact inbox.
+  { id: 'project', icon: 'boxes', label: L('Write to a project', 'Écrire à un projet'),
+    sub: L('Its maintainers answer, not the site team', 'Ce sont ses mainteneurs qui répondent, pas l’équipe du site'), next: 'project' },
+  { id: 'translation', icon: 'languages', label: L('A translation problem', 'Un problème de traduction'),
+    sub: L('On the site or in a project', 'Sur le site ou dans un projet'), dest: 'translation' },
   { id: 'bug', icon: 'bug', label: L('Something is broken', 'Quelque chose est cassé'),
     sub: L('A page, a button, an upload', 'Une page, un bouton, un envoi'), dest: 'bug' },
   { id: 'other', icon: 'message', label: L('Something else', 'Autre chose'),
@@ -163,6 +191,12 @@ export const Q1 = [
  * time closes the tab.
  */
 export const Q2 = {
+  project: {
+    kind: 'project',
+    title: L('Which project?', 'Quel projet ?'),
+    hint: L('The message goes to the people who run it, in their inbox on the site.',
+      'Le message va aux personnes qui le gèrent, dans leur boîte sur le site.'),
+  },
   locate: {
     kind: 'locate',
     title: L('Where is it?', 'Où est-ce ?'),
@@ -221,6 +255,7 @@ export const TOPICS = {
   'data-delete': { dest: 'data_delete', en: '', fr: '' },
   'security-report': { dest: 'security', en: '', fr: '' },
   'bug-report': { dest: 'bug', en: '', fr: '' },
+  'translation': { dest: 'translation', en: '', fr: '' },
   'general': { dest: 'other', en: '', fr: '' },
 };
 
@@ -233,11 +268,12 @@ export function fieldsComplete(dest, values) {
   const spec = DESTINATIONS[dest];
   if (!spec) return false;
   for (const f of spec.fields || []) {
-    if (!f.required) continue;
+    const need = f.required || (f.requiredIf && values?.[f.requiredIf.field] === f.requiredIf.equals);
+    if (!need) continue;
     const v = values?.[f.name];
     if (f.type === 'check') { if (v !== true) return false; continue; }
     if (!String(v ?? '').trim()) return false;
-    if (String(v).trim().length > f.max) return false;
+    if (f.max && String(v).trim().length > f.max) return false;
   }
   return true;
 }

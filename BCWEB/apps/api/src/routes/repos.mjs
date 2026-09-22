@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { entityPoolQuotaBytes } from '../lib/entity-hosting.mjs';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { applyCampaign } from './campaigns.mjs';
 import { canManage, teamRoleOf } from '../lib/teams.mjs';
@@ -474,7 +475,8 @@ export default async function repoRoutes(app) {
     const group = await p.hostingGroup.findUnique({ where: { id: repo.groupId }, include: { repos: true } });
     const newBytes = BigInt(Math.round(b.data.storageGB * GiB));
     if (newBytes < repo.storageUsedBytes) return reply.code(409).send({ error: 'below_used' });
-    const others = group.repos.filter((r) => r.id !== repo.id).reduce((a, r) => a + r.storageQuotaBytes, 0n);
+    // Reservations by blogs and contact inboxes (lib/entity-hosting.mjs) are given away too.
+    const others = group.repos.filter((r) => r.id !== repo.id).reduce((a, r) => a + r.storageQuotaBytes, 0n) + await entityPoolQuotaBytes(p, group.id);
     if (others + newBytes > group.poolBytes) return reply.code(409).send({ error: 'pool_exceeded', freeGB: Number(group.poolBytes - others) / GiB });
     const out = await p.serverRepo.update({ where: { id: repo.id }, data: { storageQuotaBytes: newBytes } });
     return { repo: ser(out) };
@@ -1043,7 +1045,7 @@ export default async function repoRoutes(app) {
     if (group.ownerId !== req.user.uid && !['ADMIN', 'SUPERADMIN'].includes(req.user.role)) return reply.code(403).send({ error: 'forbidden' });
     // Storage is fungible: repos AND catalogs both draw from poolBytes.
     const catAgg = await p.communityCatalog.aggregate({ where: { groupId: group.id }, _sum: { storageQuotaBytes: true } });
-    const used = group.repos.reduce((a, r) => a + r.storageQuotaBytes, 0n) + (catAgg._sum.storageQuotaBytes || 0n);
+    const used = group.repos.reduce((a, r) => a + r.storageQuotaBytes, 0n) + (catAgg._sum.storageQuotaBytes || 0n) + await entityPoolQuotaBytes(p, group.id);
     const wantBytes = BigInt(Math.round(b.data.storageGB * GiB));
     if (used + wantBytes > group.poolBytes) return reply.code(409).send({ error: 'pool_exceeded', freeGB: Number(group.poolBytes - used) / GiB });
     const repo = await p.serverRepo.create({ data: {

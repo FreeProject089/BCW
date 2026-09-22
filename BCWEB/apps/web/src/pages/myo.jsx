@@ -25,6 +25,7 @@ import { DiscordIcon } from '../ui/brand.jsx';
 // rather than relocated at every call site — admin-myo.jsx imports it from here.
 export { fmtMoney } from '../lib/money.js';
 import { fmtMoney } from '../lib/money.js';
+import { ReceiptTicks } from '../ui/receipt.jsx';
 const KIND_META = {
   // The brand's own mark. The other three kinds stay on lucide, which is the point:
   // "App", "Website" and "Something else" are nobody's trademark.
@@ -438,7 +439,7 @@ function MessageRow({ m, lang }) {
           {m.body && <div className="whitespace-pre-wrap break-words">{m.body}</div>}
           {m.images?.length > 0 && <div className="flex flex-wrap gap-2 mt-2">{m.images.map((u) => <a key={u} href={u} target="_blank" rel="noreferrer"><img src={u} alt="" className="w-24 h-24 rounded-lg object-cover border border-[var(--line)]" /></a>)}</div>}
         </div>
-        <div className="text-[10px] text-[var(--faint)] mt-0.5 px-1">{new Date(m.createdAt).toLocaleString()}</div>
+        <div className="text-[10px] text-[var(--faint)] mt-0.5 px-1">{new Date(m.createdAt).toLocaleString()} <ReceiptTicks state={m.receipt} /></div>
       </div>
     </div>
   );

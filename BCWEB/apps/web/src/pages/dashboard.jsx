@@ -12,6 +12,7 @@ import { useIntro } from '../ui/IntroContext.jsx';
 import { MyRepos, Billing } from './repos.jsx';
 import { TransfersCard } from './profile.jsx';
 import { MyDiscordServers } from './discord-servers.jsx';
+import { OnboardingSlot } from './onboarding.jsx';
 
 // These two tabs live in admin.jsx (an artefact of splitting the old pages monolith —
 // nothing in admin.jsx renders them; this page is their only consumer). Referencing them
@@ -449,52 +450,16 @@ function NotificationsPanel() {
   );
 }
 
-// Gentle, dismissible prompt shown to any signed-in account WITHOUT 2FA — covers
-// every path in: a password signup, a GitHub/Discord OAuth signup (they land
-// here with no 2FA), and a normal login of an account that never enrolled. One
+// Gentle, dismissible prompt shown to any signed-in account WITHOUT 2FA: a password signup,
+// a GitHub/Discord OAuth signup, and a normal login of an account that never enrolled. One
 // tap goes to the 2FA setup; dismissal is per-device so it's never naggy.
-// Getting-started checklist (Goal-Gradient effect): a brand-new dashboard is a wall of
-// zeros, which reads as "0% done" and kills momentum. This starts users ABOVE zero
-// (account already ✓) and shows a visible path to first value. Controlled by the parent
-// so it can hand off to the 2FA nudge once dismissed. Auto-hides when every step is done.
-function GettingStarted({ user, items, repos, onSubmit, onDismiss }) {
-  const { t } = useI18n();
-  const steps = [
-    { key: 'account', label: t('gs.account', 'Create your account'), done: true },
-    { key: '2fa', label: t('gs.2fa', 'Secure it with 2FA'), done: !!user?.totpEnabled, to: '/profile?setup2fa=1' },
-    { key: 'item', label: t('gs.item', 'Submit your first item'), done: (items?.length || 0) > 0, action: 'submit' },
-    { key: 'repo', label: t('gs.repo', 'Host your first Server-Repo'), done: (repos?.length || 0) > 0, to: '/hosting#plans' },
-  ];
-  const done = steps.filter((s) => s.done).length;
-  const pct = Math.round((done / steps.length) * 100);
-  return (
-    <Card className="p-4 sm:p-5">
-      <div className="flex items-center gap-3 mb-3">
-        <div className="font-semibold flex items-center gap-2 min-w-0"><Rocket size={16} className="text-[var(--accent-ink)] shrink-0" /> <span className="truncate" title={t('gs.title', 'Getting started')}>{t('gs.title', 'Getting started')}</span></div>
-        <span className="ms-auto text-xs font-semibold tabular-nums text-[var(--muted)] shrink-0">{done}/{steps.length}</span>
-        <button onClick={onDismiss} className="text-[var(--faint)] hover:text-[var(--text)] p-1 shrink-0" title={t('gs.dismiss', 'Dismiss')}><X size={15} /></button>
-      </div>
-      <div className="progress-track mb-3"><div className="progress-fill is-done pop-in" style={{ width: `${pct}%` }} /></div>
-      <div className="space-y-1">
-        {steps.map((st) => {
-          const inner = (
-            <div className={`flex items-center gap-2.5 rounded-lg px-2.5 py-2 transition-colors ${!st.done && (st.to || st.action) ? 'hover:bg-[var(--surface-2)] press cursor-pointer' : ''}`}>
-              {st.done ? <CheckCircle2 size={18} className="text-[var(--success)] shrink-0" /> : <span className="w-[18px] h-[18px] rounded-full border-2 border-[var(--line-strong)] shrink-0" />}
-              <span className={`text-sm flex-1 ${st.done ? 'text-[var(--faint)] line-through' : 'font-medium'}`}>{st.label}</span>
-              {!st.done && (st.to || st.action) && <ArrowRight size={14} className="text-[var(--accent-ink)] shrink-0" />}
-            </div>
-          );
-          if (st.done || (!st.to && !st.action)) return <div key={st.key}>{inner}</div>;
-          if (st.action === 'submit') return <button key={st.key} type="button" className="w-full text-start" onClick={onSubmit}>{inner}</button>;
-          return <Link key={st.key} to={st.to}>{inner}</Link>;
-        })}
-      </div>
-    </Card>
-  );
-}
-
+//
+// It used to sit behind a "Getting started" checklist (account, 2FA, first item, first
+// Server-Repo) that was dismissed per device and shown to every account missing any of them.
+// That checklist is now the first-run flow (onboarding.jsx), shown once to new accounts and
+// customisable from the admin; the nudge is what everybody else, and a new account that has
+// finished or skipped the flow, still gets.
 const TWOFA_NUDGE_KEY = 'bcw_2fa_nudge_dismissed';
-const GS_DISMISS_KEY = 'bcw_gs_dismissed';
 function TwoFactorNudge() {
   const { user } = useAuth(); const { t } = useI18n();
   const [dismissed, setDismissed] = useState(() => { try { return localStorage.getItem(TWOFA_NUDGE_KEY) === '1'; } catch { return false; } });
@@ -866,7 +831,6 @@ export function Dashboard() {
   const { user } = useAuth(); const toast = useToast(); const nav = useNavigate(); const { t } = useI18n();
   const items = useAsync(() => api.get('/me/items'), []);
   const repos = useAsync(() => api.get('/me/repos'), []);
-  const [gsDismissed, setGsDismissed] = useState(() => { try { return localStorage.getItem(GS_DISMISS_KEY) === '1'; } catch { return false; } });
   const [editing, setEditing] = useState(null); // the item opened in the view/edit modal
   const cancelDelete = async (it) => { try { await api.post(`/catalog/${it.id}/delete/cancel`); toast.success(t('dash.delcancelled', 'Deletion cancelled.')); items.reload(); } catch { toast.error(t('dash.cancelfail', 'Failed to cancel.')); } };
 
@@ -1017,14 +981,9 @@ export function Dashboard() {
 
             <WaitingOnYou pending={pending} pollsOpen={pollsOpen} threadsUnread={threadsUnread} deliveries={ecoMe?.pendingDeliveries || 0} />
 
-            {/* Goal-gradient onboarding: the checklist owns first-run guidance (incl. 2FA);
-                once it's done or dismissed, fall back to the standalone 2FA nudge. */}
-            {(() => {
-              const complete = !!user?.totpEnabled && list.length > 0 && rlist.length > 0;
-              return (!gsDismissed && !complete)
-                ? <GettingStarted user={user} items={list} repos={rlist} onSubmit={() => nav('/submit')} onDismiss={() => { setGsDismissed(true); try { localStorage.setItem(GS_DISMISS_KEY, '1'); } catch {} }} />
-                : <TwoFactorNudge />;
-            })()}
+            {/* The first-run flow (onboarding.jsx), shown once to a new account; when there is
+                none to show (older accounts, or finished), the standalone 2FA nudge. */}
+            <OnboardingSlot fallback={<TwoFactorNudge />} />
 
             {/* Two columns from lg, and the reading order is unchanged at every width.
                 Measured at 1280: the overview was six full-width bands in an 876px column,

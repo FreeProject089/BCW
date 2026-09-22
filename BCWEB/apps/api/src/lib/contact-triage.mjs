@@ -30,13 +30,15 @@
  *   data_export · data_delete               legal deadlines (GDPR)
  *   report · copyright                      legal notices (DSA Art. 16, rights holders)
  *   account · security                      added with the triage
+ *   translation                             a wrong or missing translation, on the site
+ *                                           or in a project (the form asks which)
  *
  * `report` and `copyright` stay: the triage routes those people to /report, but the Terms
  * have pointed here for a long time and a message already sent must still land somewhere
  * countable.
  */
 export const CONTACT_KINDS = ['other', 'data_export', 'data_delete', 'bug', 'billing', 'appeal',
-  'report', 'copyright', 'account', 'security'];
+  'report', 'copyright', 'account', 'security', 'translation'];
 
 /**
  * A destination: the queue it files into, and the fields it asks for.
@@ -99,6 +101,19 @@ export const DESTINATIONS = {
       { name: 'nosecrets', label: 'Confirmed: no passwords, tokens or data about other people in this message', type: 'check', required: true },
     ],
   },
+  // A translation problem. WHERE decides who fixes it: the site's strings are ours, a
+  // project's are its maintainers'. `project` is a project ref (lib/project-ref.mjs) and is
+  // only asked for, and only required, when the answer to `scope` is a project. The route
+  // checks the ref names a real project and writes its NAME into the body.
+  translation: {
+    kind: 'translation',
+    fields: [
+      { name: 'scope', label: 'Where the translation is', type: 'choice', options: ['site', 'project'], required: true, max: 20 },
+      { name: 'project', label: 'Project', type: 'project', max: 90, requiredIf: { field: 'scope', equals: 'project' } },
+      { name: 'page', label: 'Page, screen or text concerned', required: true, max: 300 },
+      { name: 'lang', label: 'Language', max: 40 },
+    ],
+  },
   bug: {
     kind: 'bug',
     fields: [
@@ -131,12 +146,31 @@ export function validateContactFields(dest, raw) {
       out[f.name] = true;
       continue;
     }
+    // A choice is one of its options or nothing. An unknown value is refused rather than
+    // dropped: it is a client that disagrees with this table, and a silent drop would file
+    // a project's problem as the site's.
+    if (f.type === 'choice') {
+      const c = typeof v === 'string' ? v.trim() : '';
+      if (!c) { if (f.required) return { ok: false, error: 'field_required', field: f.name }; continue; }
+      if (!f.options.includes(c)) return { ok: false, error: 'field_invalid', field: f.name };
+      out[f.name] = c;
+      continue;
+    }
     // A number or a boolean where a string was expected is a client bug, not an attack:
     // read it as text rather than refusing, then apply the same rules.
     const s = v == null ? '' : String(typeof v === 'object' ? '' : v).trim();
     if (!s) { if (f.required) return { ok: false, error: 'field_required', field: f.name }; continue; }
     if (s.length > f.max) return { ok: false, error: 'field_too_long', field: f.name };
     out[f.name] = s;
+  }
+  // Conditional requirements, read once every field is in: `project` is required exactly
+  // when `scope` says project, and dropped when it does not (a stale pick from before the
+  // sender changed their mind must not travel).
+  for (const f of spec.fields) {
+    if (!f.requiredIf) continue;
+    const on = out[f.requiredIf.field] === f.requiredIf.equals;
+    if (on && !out[f.name]) return { ok: false, error: 'field_required', field: f.name };
+    if (!on) delete out[f.name];
   }
   return { ok: true, kind: spec.kind, fields: out };
 }

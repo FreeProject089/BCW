@@ -355,6 +355,21 @@ async function renderWelcomePng({ username = 'NewMember', members = 1024, server
   return await cv.encode('png');
 }
 
+// The body PUT /admin/bot/config validates. Module-level and exported so the config import (lib/config-transfer.mjs) checks a seed with this schema rather than a copy of it.
+export const BOT_CONFIG_BODY = z.object({ config: z.record(z.any()) });
+
+// The body PUT /admin/bot/guilds/:id validates. Module-level and exported so the config import (lib/config-transfer.mjs) checks a seed with this schema rather than a copy of it.
+export const BOT_GUILD_BODY = z.object({
+  memberMode: z.enum(['none', 'moderation', 'pool']).optional(),
+  logChannelId: z.string().max(32).nullable().optional(),
+  storeLogs: z.boolean().optional(),
+  hostingGroupId: z.string().max(40).nullable().optional(),
+  storageQuotaBytes: z.number().int().min(0).max(1_000_000_000_000).optional(),
+});
+
+// The body PUT /admin/bot/i18n validates. Module-level and exported so the config import (lib/config-transfer.mjs) checks a seed with this schema rather than a copy of it.
+export const BOT_I18N_BODY = z.object({ lang: z.string().regex(/^[a-z]{2}(-[A-Za-z]{2,4})?$/), strings: z.record(z.string().max(2000)).refine((o) => Object.keys(o).length <= 2000) });
+
 export default async function botRoutes(app) {
   // ── Admin dashboard: read/update bot config + see live status ──
   app.get('/admin/bot/config', { preHandler: requireCap('manage_bot') }, async () => {
@@ -500,13 +515,7 @@ export default async function botRoutes(app) {
   });
 
   app.put('/admin/bot/guilds/:id', { preHandler: requireCap('manage_bot') }, async (req, reply) => {
-    const b = z.object({
-      memberMode: z.enum(['none', 'moderation', 'pool']).optional(),
-      logChannelId: z.string().max(32).nullable().optional(),
-      storeLogs: z.boolean().optional(),
-      hostingGroupId: z.string().max(40).nullable().optional(),
-      storageQuotaBytes: z.number().int().min(0).max(1_000_000_000_000).optional(),
-    }).safeParse(req.body);
+    const b = BOT_GUILD_BODY.safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
     const cur = await p.botGuild.findUnique({ where: { guildId: req.params.id } });
@@ -530,7 +539,7 @@ export default async function botRoutes(app) {
   });
 
   app.put('/admin/bot/config', { preHandler: requireCap('manage_bot') }, async (req, reply) => {
-    const b = z.object({ config: z.record(z.any()) }).safeParse(req.body);
+    const b = BOT_CONFIG_BODY.safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_config' });
     const p = await db();
     await p.adminSetting.upsert({ where: { key: 'bot.config' }, create: { key: 'bot.config', value: b.data.config }, update: { value: b.data.config } });
@@ -1413,7 +1422,7 @@ export default async function botRoutes(app) {
     return { base: base?.value || {}, overrides: ov?.value || {} };
   });
   app.put('/admin/bot/i18n', { preHandler: requireCap('translate_site') }, async (req, reply) => {
-    const b = z.object({ lang: z.string().regex(/^[a-z]{2}(-[A-Za-z]{2,4})?$/), strings: z.record(z.string().max(2000)).refine((o) => Object.keys(o).length <= 2000) }).safeParse(req.body);
+    const b = BOT_I18N_BODY.safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
     const row = await p.adminSetting.findUnique({ where: { key: 'bot.i18n' } }).catch(() => null);

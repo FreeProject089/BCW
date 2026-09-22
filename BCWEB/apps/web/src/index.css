@@ -1707,3 +1707,98 @@ html[data-studio-open="1"], html[data-studio-open="1"] body { overflow: hidden; 
   .save-dock { bottom: calc(8px + env(safe-area-inset-bottom, 0px)); padding: 8px 8px 8px 12px; }
 }
 /* ════ END: home editor pass ════════════════════════════════════════════════════════════════ */
+
+/* ════ BEGIN: phone menu in the bottom bar's language (App.jsx MobileMenu) ══════════════════
+   The hamburger menu was a list of rows on a different surface from the floating bottom bar.
+   It now borrows the bar's surface (.mbar: line-strong border, 18px radius, the same shadow),
+   the bar's pill behind the icon, and its accent on the page you are on, so the two read as
+   one piece of navigation. Tiles are shaped like the bar's tabs. Labels WRAP rather than
+   truncate: a menu is where the full name of a page has to be readable.
+   Motion is off under prefers-reduced-motion, as it is for the bar.
+   ════════════════════════════════════════════════════════════════════════════════════════ */
+.msheet {
+  margin: 8px var(--mbar-gap, 10px) 0;
+  padding: 6px 8px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 18px;
+  box-shadow: 0 12px 30px -12px rgba(0, 0, 0, .5);
+  max-height: calc(100vh - 150px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.msheet-grip { width: 36px; height: 4px; margin: 2px auto 6px; border-radius: 99px; background: var(--line-strong); }
+.msheet-sec + .msheet-sec { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+.msheet-h {
+  font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--faint); padding: 2px 6px 6px;
+}
+.msheet-grid.is-tiles { display: grid; gap: 2px; }
+.msheet-grid.is-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px; }
+
+.msheet-tile {
+  position: relative; min-width: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+  gap: 4px; padding: 8px 4px 7px;
+  color: var(--muted); border-radius: 14px; text-align: center;
+  -webkit-tap-highlight-color: transparent;
+  transition: color .22s ease, transform .16s ease, background-color .2s ease;
+}
+.msheet-tile:hover { color: var(--text); }
+.msheet-tile:active { transform: scale(.95); }
+.msheet-tile.is-active, .msheet-tile.is-open { color: var(--accent-ink); }
+.msheet-grid.is-list .msheet-tile { flex-direction: row; justify-content: flex-start; text-align: start; gap: 10px; padding: 7px 8px; }
+
+.msheet-ic {
+  position: relative; display: grid; place-items: center; flex: none;
+  width: 46px; height: 30px; border-radius: 999px;
+  transition: transform .3s cubic-bezier(.22, 1, .36, 1);
+}
+.msheet-grid.is-list .msheet-ic { width: 38px; height: 28px; }
+/* The bar's pill: a pseudo-element, so no Tailwind alpha on a CSS variable. Faint at rest
+   (a tile needs an edge to read as a target), full on the current page. */
+.msheet-ic::before {
+  content: ''; position: absolute; inset: 0; border-radius: 999px;
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  transition: background-color .24s ease, transform .34s cubic-bezier(.34, 1.56, .64, 1);
+}
+.msheet-tile.is-active .msheet-ic::before, .msheet-tile.is-open .msheet-ic::before {
+  background: color-mix(in srgb, var(--primary) 16%, transparent);
+}
+.msheet-tile.is-active .msheet-ic { transform: translateY(-1px); }
+.msheet-ic > * { position: relative; }
+.msheet-chev { position: absolute !important; right: 3px; bottom: 2px; transition: transform .2s ease; }
+.msheet-tile.is-open .msheet-chev { transform: rotate(180deg); }
+
+.msheet-lbl {
+  display: block; max-width: 100%;
+  font-size: 11px; line-height: 1.2;
+  overflow-wrap: anywhere; hyphens: auto;
+}
+.msheet-grid.is-list .msheet-lbl { font-size: 13px; }
+
+/* An opened group: its links as a strip across the whole row, on the bar's inset surface. */
+.msheet-kids {
+  grid-column: 1 / -1;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 2px;
+  margin: 2px 0 4px; padding: 4px;
+  border-radius: 14px; background: var(--surface-2); border: 1px solid var(--line);
+}
+
+/* Signed out: one full-width call to action, the bar's raised button colours. */
+.msheet-cta {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  margin-top: 10px; padding: 11px 14px; border-radius: 14px;
+  font-size: 14px; font-weight: 600; color: #fff;
+  background: linear-gradient(140deg, var(--primary), var(--primary-2));
+  box-shadow: 0 10px 22px -10px color-mix(in srgb, var(--primary) 70%, transparent);
+}
+
+/* On a tablet the full-width sheet made 170px tiles. It hangs under the menu button instead,
+   at a phone-like width, the way a dropup hangs over its tab. */
+@media (min-width: 640px) {
+  .msheet { max-width: 26rem; margin-inline-start: auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .msheet-tile, .msheet-ic, .msheet-ic::before, .msheet-chev { transition: none !important; }
+}
+/* ════ END: phone menu ════════════════════════════════════════════════════════════════════ */

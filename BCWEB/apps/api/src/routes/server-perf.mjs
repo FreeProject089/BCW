@@ -50,6 +50,10 @@ function cachedProbes(p) {
 
 // Read-only monitoring — no dangerous action lives here, so plain ADMIN is enough
 // (no step-up 2FA / canControlServer required, unlike server-control.mjs).
+// The body PUT /admin/server/thresholds validates: every known threshold, each optional.
+// Exported so the config import (lib/config-transfer.mjs) checks `alerts.thresholds` with it.
+export const THRESHOLDS_BODY = z.object(Object.fromEntries(ALERT_THRESHOLD_KEYS.map((k) => [k, z.number().min(0).max(100000).optional()])));
+
 export default async function serverPerfRoutes(app) {
   // Warm the probe cache at boot so the first admin visit already has deps/SSL populated.
   db().then((p) => refreshProbes(p)).catch(() => {});
@@ -357,9 +361,7 @@ export default async function serverPerfRoutes(app) {
   });
 
   app.put('/admin/server/thresholds', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
-    const shape = {};
-    for (const k of T_KEYS) shape[k] = z.number().min(0).max(100000).optional();
-    const b = z.object(shape).safeParse(req.body || {});
+    const b = THRESHOLDS_BODY.safeParse(req.body || {});
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
     // Store only what was sent; an absent key falls back to the default at read time, so
