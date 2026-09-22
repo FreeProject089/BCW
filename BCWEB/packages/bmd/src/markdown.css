@@ -24,7 +24,9 @@
 .md-body h1:first-child, .md-body h2:first-child, .md-body h3:first-child { margin-top: 0; }
 .md-body p, .md-body ul, .md-body ol { margin: .7em 0; }
 .md-body ul, .md-body ol { padding-left: 1.4em; } .md-body li { margin: .3em 0; }
-.md-body a { color: var(--primary-2); text-decoration: underline; }
+/* --accent-ink, not --primary-2: the accent is a fill, and as link text it measured 2.0:1 on a
+   white card. A host without --accent-ink keeps the old colour. */
+.md-body a { color: var(--accent-ink, var(--primary-2)); text-decoration: underline; }
 .md-body code { background: var(--surface-2); border: 1px solid var(--line); border-radius: 5px; padding: .1em .4em; font-size: .9em; }
 .md-body pre { background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r, var(--bmd-radius, 10px)); padding: 14px; overflow: auto; }
 .md-body pre code { background: none; border: 0; padding: 0; }
@@ -56,7 +58,7 @@
 /* Callouts — lucide icon (no unicode emoji); custom kind/colour supported */
 .md-body .doc-callout { --c: #2563eb; border: 1px solid var(--line); border-left: 3px solid var(--c);
   border-radius: 0 12px 12px 0; padding: 12px 16px; margin: 1.1em 0; background: color-mix(in srgb, var(--c) 7%, transparent); }
-.md-body .doc-callout-title { display: flex; align-items: center; gap: 7px; font-weight: 800; font-size: 12.5px; letter-spacing: .03em; color: var(--c); margin-bottom: 3px; }
+.md-body .doc-callout-title { display: flex; align-items: center; gap: 7px; font-weight: 800; font-size: 12.5px; letter-spacing: .03em; color: color-mix(in srgb, var(--c) 62%, var(--text, currentColor)); margin-bottom: 3px; }
 .md-body .doc-callout-title .doc-icon-svg { color: var(--c); flex: none; }
 .md-body .doc-callout > :not(.doc-callout-title):last-child { margin-bottom: 0; }
 .md-body .doc-callout-info    { --c: #2563eb; }
@@ -91,7 +93,7 @@
 .md-body .doc-step-marker {
   flex: 0 0 28px; width: 28px; height: 28px; border-radius: 999px;
   display: grid; place-items: center; font-size: 13px; font-weight: 700; line-height: 1;
-  background: var(--step, var(--primary)); color: #fff; position: relative; z-index: 1; margin: 0;
+  background: var(--step, var(--primary)); color: var(--on-primary, #fff); position: relative; z-index: 1; margin: 0;
 }
 /* Marker SHAPES (`:::steps{shape=square}`, or on one step).
    A numbered procedure, a checklist and a set of options all rendered as the same disc; the
@@ -172,7 +174,7 @@
 .md-body .doc-card-body { padding: 13px 15px; }
 .md-body .doc-card-body > :last-child { margin-bottom: 0; }
 .md-body .doc-card-title { font-weight: 800; font-size: 15px; margin-bottom: 4px; display: flex; align-items: center; gap: 7px; }
-.md-body a.doc-card .doc-card-title { color: var(--card-accent); }
+.md-body a.doc-card .doc-card-title { color: color-mix(in srgb, var(--card-accent) 58%, var(--text, currentColor)); }
 /* Columns */
 .md-body .doc-columns { display: flex; flex-wrap: wrap; gap: 18px; margin: 1.1em 0; }
 .md-body .doc-column { flex: 1 1 220px; min-width: 0; }
@@ -182,7 +184,7 @@
 .md-body .doc-file-info { flex: 1; min-width: 120px; }
 .md-body .doc-file-name { font-weight: 700; }
 .md-body .doc-file-size { font-size: 12px; color: var(--muted); }
-.md-body .doc-file-btn { text-decoration: none !important; font-size: 13px; font-weight: 600; padding: 6px 12px; border-radius: var(--r, var(--bmd-radius, 8px)); background: var(--primary); color: #fff !important; border: 1px solid var(--primary); }
+.md-body .doc-file-btn { text-decoration: none !important; font-size: 13px; font-weight: 600; padding: 6px 12px; border-radius: var(--r, var(--bmd-radius, 8px)); background: var(--primary); color: var(--on-primary, #fff) !important; border: 1px solid var(--primary); }
 .md-body .doc-file-btn-ghost { background: transparent; color: var(--text) !important; border-color: var(--line-strong); }
 /* Alignment wrappers */
 .md-body .doc-align { margin: 1.1em 0; }
@@ -197,7 +199,7 @@
 /* Inline tag / badge chip */
 .md-body .doc-badge { --badge: var(--primary); display: inline-block; font-size: 11px; font-weight: 700; line-height: 1.6;
   padding: 1px 9px; margin: 0 2px; border-radius: 999px; vertical-align: middle; white-space: nowrap;
-  color: var(--badge); background: color-mix(in srgb, var(--badge) 14%, transparent); border: 1px solid color-mix(in srgb, var(--badge) 40%, transparent); }
+  color: color-mix(in srgb, var(--badge) 58%, var(--text, currentColor)); background: color-mix(in srgb, var(--badge) 14%, transparent); border: 1px solid color-mix(in srgb, var(--badge) 40%, transparent); }
 /* A button in a document.
    One shape, three sizes, and a colour that comes in as --btn. Coloured by the SURFACE rather
    than by a border, because a button that reads as a button is the whole point of it not being
@@ -222,6 +224,7 @@
    the outline variant below is the escape hatch for a pale custom one. */
 @supports not (color: color-contrast(#000 vs #fff, #111)) {
   :is(.md-body, .pb-page) .doc-btn { color: #fff; }
+  :is(.md-body, .pb-page) .doc-btn:not([style*="--btn"]):not(.doc-btn-outline) { color: var(--on-primary, #fff); }
 }
 :is(.md-body, .pb-page) .doc-btn:hover { filter: brightness(1.08); }
 :is(.md-body, .pb-page) .doc-btn:active { transform: translateY(1px); }
@@ -286,7 +289,7 @@
   color: var(--text); white-space: normal; text-align: left; }
 .md-body .doc-comment-img { width: 100%; border-radius: var(--r, var(--bmd-radius, 6px)); max-height: 140px; object-fit: cover; }
 .md-body .doc-comment-text { color: var(--muted); line-height: 1.4; }
-.md-body .doc-comment-link { color: var(--primary-2); font-size: 12px; text-decoration: underline; word-break: break-all; }
+.md-body .doc-comment-link { color: var(--accent-ink, var(--primary-2)); font-size: 12px; text-decoration: underline; word-break: break-all; }
 /* Internal link hover-preview card */
 .md-body .md-linkprev { position: relative; }
 .md-body .md-linkprev-card { position: absolute; bottom: 100%; left: 0; margin-bottom: 6px; z-index: 30; width: max-content; max-width: 260px;
@@ -523,7 +526,7 @@ details[open] > .doc-toc-m-summary .doc-toc-m-chevron { transform: rotate(90deg)
 .md-body .doc-faq-item > .doc-faq-q::-webkit-details-marker { display: none; }
 .md-body .doc-faq-item > .doc-faq-q::after { content: '+'; margin-left: auto; color: var(--muted); font-weight: 400; font-size: 1.2em; line-height: 1; transition: transform .15s; }
 .md-body .doc-faq-item[open] > .doc-faq-q::after { transform: rotate(45deg); }
-.md-body .doc-faq-item[open] > .doc-faq-q { color: var(--primary-2); }
+.md-body .doc-faq-item[open] > .doc-faq-q { color: var(--accent-ink, var(--primary-2)); }
 .md-body .doc-faq-item > :not(.doc-faq-q) { padding: 0 16px; color: var(--muted); }
 .md-body .doc-faq-item > :last-child { padding-bottom: 12px; }
 /* Checklist */
