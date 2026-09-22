@@ -540,7 +540,7 @@ export function Hosting() {
           // pixels in front of the others is a choice the page has already made for you. The
           // scale only from lg, where the grid has room for it to grow without touching its
           // neighbours, and never on a card that cannot be bought.
-          <div key={pl.id} className={`card plan-hover relative flex flex-col p-5 min-w-0 ${planDisabled ? 'plan-dead opacity-60' : ''} ${recommended && !planDisabled ? 'plan-reco z-10 !border-[var(--primary)] tint-primary-soft ring-2 ring-[var(--primary)] shadow-[0_12px_32px_-14px_var(--primary)] lg:scale-[1.03]' : ''}`}>
+          <div key={pl.id} className={`card plan-hover relative flex flex-col p-5 min-w-0 ${planDisabled ? 'plan-dead opacity-60' : ''} ${recommended && !planDisabled ? 'plan-reco z-10 lg:scale-[1.03]' : ''}`}>
             {/* A filled pill rather than a word floating in the padding — four cards with a
                 gap at the top of three of them read as three cards missing something. The
                 other three keep an invisible copy so the bodies stay on the same line. */}
