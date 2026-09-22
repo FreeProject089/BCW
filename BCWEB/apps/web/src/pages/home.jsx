@@ -604,8 +604,8 @@ export function Home({ draft = null }) {
               <div className="flex items-start gap-4 flex-wrap">
                 <span className="grid place-items-center w-11 h-11 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] transition-colors group-hover:b-primary shrink-0"><ShieldCheck size={20} className="text-[var(--accent-ink)]" /></span>
                 <div className="min-w-0 flex-1">
-                  <div className="font-semibold">{t('home.feat.moderated', 'Every listing says how it was checked')}</div>
-                  <div className="text-sm text-[var(--muted)] mt-1.5 leading-relaxed max-w-2xl">{t('home.feat.moderated.d', 'Two ways in: reviewed by us first, or posted straight by its maker. Every page tells you which, no guessing.')}</div>
+                  <div className="font-semibold">{t('home.feat.moderated2', 'What is checked, and by whom')}</div>
+                  <div className="text-sm text-[var(--muted)] mt-1.5 leading-relaxed max-w-2xl">{t('home.feat.moderated2.d', 'The official catalogue is read by the team before it goes live. Community catalogues and repositories are published by their owners, and anyone can report them.')}</div>
                 </div>
               </div>
 
