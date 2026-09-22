@@ -10,6 +10,7 @@ import { ErrorBoundary } from './ui/ErrorBoundary.jsx';
 import App from './App.jsx';
 import { applyGlassPrefs, applyTexturePref } from './lib/prefs.js';
 import { readSceneConfig, applyReveal } from './hero/scene-shapes.js';
+import { registerServiceWorker } from './lib/pwa.js';
 import './index.css';
 
 // Apply saved translucent-surface prefs before first paint (no style flash).
@@ -23,6 +24,10 @@ applyTexturePref();
 // switches. Holding the first paint on a preference about animation would be the animation
 // costing more than it is worth.
 void readSceneConfig().then((c) => applyReveal(c.reveal));
+
+// The service worker: the app shell offline, hashed assets from disk, /api never cached.
+// A no-op in dev (and it unregisters anything a built preview left behind) — see lib/pwa.js.
+registerServiceWorker();
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>

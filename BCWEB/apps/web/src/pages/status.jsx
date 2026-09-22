@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { CheckCircle2, AlertTriangle, XCircle, MinusCircle, Bell } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, XCircle, MinusCircle, Bell, ChevronDown } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { useAsync, Loading } from './pages.jsx';
@@ -53,6 +53,19 @@ export default function StatusPage() {
   const { data, err, loading, reload } = useAsync(() => api.get('/status'), []);
   const [email, setEmail] = useState('');
   const [busy, setBusy] = useState(false);
+  // How many past incidents are on screen. The list was rendered whole: every outage in the
+  // 90-day window, each with its whole write-up, under a heading with no count and no end.
+  // A bad month is fifty of them, and the subscribe box — the one thing on this page a
+  // visitor can act on — ended up several screens below the fold.
+  //
+  // This pages CLIENT-SIDE, and that is a compromise worth naming: GET /status takes no
+  // paging parameters and answers with the whole window in one object (capped at 50 by the
+  // route itself — see apps/api/src/routes/status.mjs, which this agent must not change). So
+  // the bytes all arrive either way; what this fixes is the page, not the request. If the
+  // endpoint ever grows `?before=`/`?take=`, the only change here is where `more()` gets the
+  // next batch from.
+  const PAGE = 8;
+  const [shown, setShown] = useState(PAGE);
 
   const subscribe = async () => {
     if (!email.trim()) return;
@@ -99,6 +112,14 @@ export default function StatusPage() {
   const d = data || {};
   const b = BANNER[d.state] || BANNER.unknown;
   const fdate = (x) => new Date(x).toLocaleString();
+  const incidents = d.incidents || [];
+  // An ongoing incident is the reason somebody opened this page, so it is never paged away:
+  // the open ones are pinned to the top of the first batch whatever their date. The server
+  // already sorts by start date descending, which puts a three-week-old open outage below
+  // yesterday's resolved one.
+  const ordered = [...incidents].sort((a, x) => (a.endedAt ? 1 : 0) - (x.endedAt ? 1 : 0));
+  const page = ordered.slice(0, shown);
+  const rest = ordered.length - page.length;
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-8">
@@ -143,13 +164,20 @@ export default function StatusPage() {
 
       {/* `plate`: a section kicker between two cards has no card of its own, so it sat on the
           3D backdrop and measured 4.31:1 against it. See index.css. */}
-      <h2 className="plate w-fit text-[11px] uppercase tracking-wider text-[var(--faint)] mb-2 px-1">{t('st.incidents', 'Past incidents')}</h2>
+      <div className="flex items-baseline justify-between gap-3 mb-2">
+        <h2 className="plate w-fit text-[11px] uppercase tracking-wider text-[var(--faint)] px-1">{t('st.incidents', 'Past incidents')}</h2>
+        {ordered.length > 0 && (
+          <span className="plate w-fit px-1 text-[11px] text-[var(--faint)] tabular-nums">
+            {t('st.inc.count', '{n} of {total}').replace('{n}', String(page.length)).replace('{total}', String(ordered.length))}
+          </span>
+        )}
+      </div>
       <Card className="p-4 mb-6">
-        {!(d.incidents || []).length ? (
+        {!ordered.length ? (
           <div className="text-[13px] text-[var(--muted)]">{t('st.noincidents', 'Nothing has broken in this window.')}</div>
         ) : (
           <ul className="space-y-3">
-            {d.incidents.map((i) => (
+            {page.map((i) => (
               <li key={i.id} className="border-s-2 ps-3" style={{ borderColor: i.endedAt ? 'var(--line)' : 'var(--error)' }}>
                 <div className="flex items-center gap-2 flex-wrap text-sm">
                   <span className="font-medium">{SERVICE_NAME(i.key, i.service, t)}</span>
@@ -170,6 +198,25 @@ export default function StatusPage() {
               </li>
             ))}
           </ul>
+        )}
+        {rest > 0 && (
+          <div className="mt-3 pt-3 border-t border-[var(--line)] flex items-center justify-center">
+            <Button size="sm" onClick={() => setShown((n) => n + PAGE)}>
+              <ChevronDown size={14} />
+              {t('st.inc.more', 'Show {n} more').replace('{n}', String(Math.min(PAGE, rest)))}
+            </Button>
+          </div>
+        )}
+        {/* The window and the route's own ceiling, said once, at the end of the list — the
+            place where somebody who has read everything wonders whether that is everything.
+            A page that just stops is a page you cannot tell apart from one that is hiding
+            something. */}
+        {rest === 0 && ordered.length > 0 && (
+          <div className="mt-3 pt-3 border-t border-[var(--line)] text-[11px] text-[var(--faint)] text-center">
+            {ordered.length >= 50
+              ? t('st.inc.cap', 'That is the last one this page carries. Older incidents are not published.')
+              : t('st.inc.end', 'That is every incident in the last {n} days.').replace('{n}', String(d.windowDays || 90))}
+          </div>
         )}
       </Card>
       <Card className="p-4">

@@ -83,6 +83,13 @@ export function ReposPage() {
     catch { setFavOverlay((o) => ({ ...o, [r.id]: cur })); toast.error(t('repos.fav.failed', 'Failed.')); }
   };
 
+  // Tags are shown folded away. There is one button per distinct tag across the whole list,
+  // and nobody caps how many tags a repo may carry: at 375px the row measured two lines with
+  // five tags in the data and grows without limit as repos are listed. It was the third full
+  // row of filters above the first repo.
+  const [tagsOpen, setTagsOpen] = useState(false);
+  const [sort, setSort] = useState('best'); // best (the server's own order) | favorites | name
+
   const allTags = [...new Set(repos.flatMap((r) => r.tags || []))].sort();
   const withOverlay = repos.map((r) => ({ ...r, ...(favOverlay[r.id] || {}) }));
   const filtered = withOverlay.filter((r) => {
@@ -94,10 +101,24 @@ export function ReposPage() {
     if (q) { const s = q.toLowerCase(); if (!`${r.name} ${r.description || ''} ${(r.tags || []).join(' ')} ${r.owner?.displayName || ''}`.toLowerCase().includes(s)) return false; }
     return true;
   });
+  // 'best' is deliberately a no-op: the server already ranks official, then partner, then a
+  // rotating slice of boosted community repos, then the rest. Re-sorting it here by anything
+  // would throw that away, and the boost is a thing people pay for.
+  const shown = sort === 'best' ? filtered
+    : sort === 'favorites' ? [...filtered].sort((a, b) => (b.favoriteCount || 0) - (a.favoriteCount || 0))
+      : [...filtered].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  const anyFilter = !!(q || tag || hostedOnly || onlineOnly || favOnly || cat !== 'all');
+  const clearAll = () => { setQ(''); setTag(''); setHostedOnly(false); setOnlineOnly(false); setFavOnly(false); setCat('all'); };
+  // One chip shape for both rows. They used to be two different treatments (the tiers were
+  // bordered pills, the three switches were full `btn`s at 36px) stacked as two wrapping
+  // rows, which is most of why there were 557px of controls above the first repo.
+  const chip = (on) => `text-xs px-2.5 py-1 rounded-lg border flex items-center gap-1 shrink-0 whitespace-nowrap transition ${on ? 'border-[var(--primary)] text-[var(--text)] panel' : 'border-[var(--line)] panel text-[var(--muted)] hover:text-[var(--text)]'}`;
 
   return (
     <div>
-      <PageHeader icon={Server} title={t('repos.title', 'Server Repos')} subtitle={t('repos.sub', 'Verified community repositories, featured ones first.')}
+      {/* The subtitle is where "verified" is said now. It used to be a green badge on every
+          single card, which is where a claim goes to stop being read. */}
+      <PageHeader icon={Server} title={t('repos.title', 'Server Repos')} subtitle={t('repos.sub2', 'Every repo here has been checked by a moderator. Official and partner repos come first.')}
         actions={<div className="flex items-center gap-2 flex-wrap">
           <FeedLink path="/api/repos.json" label={t('repos.feed', 'This list as JSON')}
             hint={t('repos.feed.h', 'Every listed, verified repo as a JSON feed, the same list, for a script or another client.')} />
@@ -107,35 +128,52 @@ export function ReposPage() {
           <FeedMenu kind="repo" />
         </div>} />
 
-      {/* search + filters */}
-      <div className="flex flex-col sm:flex-row gap-2 mb-3">
-        <div className="relative flex-1">
+      {/* Search, then ONE strip of chips.
+          What was here: a search box, a wrapping row of three 36px buttons, a wrapping row of
+          four tier pills, and a wrapping row of one button per tag. Measured at 375x812 with
+          fourteen repos and five distinct tags, that put the first repo card 557px down the
+          page — two thirds of a phone screen of controls before a single repo. The strip
+          below scrolls sideways instead of wrapping, the two kinds of filter share one shape,
+          and the tags fold away behind their own count. */}
+      {/* One row, not two stacked ones: the search and the sort are the same decision and
+          stacking them cost another 44px of the phone screen before any repo. */}
+      <div className="flex gap-2 mb-2">
+        <div className="relative flex-1 min-w-0">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" />
           <input className="input !ps-9" placeholder={t('repos.search', 'Search repos, tags, authors…')} value={q} onChange={(e) => setQ(e.target.value)} />
-          {q && <button onClick={() => setQ('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)] hover:text-[var(--text)]"><X size={15} /></button>}
+          {q && <button onClick={() => setQ('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)] hover:text-[var(--text)]" aria-label={t('common.clear', 'Clear')}><X size={15} /></button>}
         </div>
-        <div className="flex gap-2 flex-wrap">
-          <button onClick={() => setHostedOnly((v) => !v)} className={`btn ${hostedOnly ? 'btn-primary' : ''}`}><Cloud size={14} /> {t('repos.hostedonly', 'Hosted only')}</button>
-          <button onClick={() => setOnlineOnly((v) => !v)} className={`btn ${onlineOnly ? 'btn-primary' : ''}`}><Wifi size={14} /> {t('repos.onlineonly', 'Online only')}</button>
-          {user && <button onClick={() => setFavOnly((v) => !v)} className={`btn ${favOnly ? 'btn-primary' : ''}`}><Star size={14} /> {t('repos.favonly', 'Favorited')}</button>}
-        </div>
+        <Dropdown size="sm" value={sort} onChange={setSort} className="w-36 sm:w-44 shrink-0" options={[
+          { value: 'best', label: t('repos.sort.best', 'Recommended') },
+          { value: 'favorites', label: t('repos.sort.fav', 'Most favourited') },
+          { value: 'name', label: t('repos.sort.az', 'Name (A-Z)') },
+        ]} />
       </div>
-      {/* Trust-tier filter — official / partner / community (same tiers as the badges). */}
-      <div className="flex flex-wrap gap-1.5 mb-3">
+      <div className="flex gap-1.5 mb-2 overflow-x-auto no-scrollbar -mx-1 px-1 py-0.5">
         {[['all', t('repos.tier.all', 'All tiers'), null],
           ['official', t('repos.cat.official', 'Official'), BadgeCheck],
           ['partner', t('repos.cat.partner', 'Partner'), Handshake],
           ['community', t('repos.cat.community', 'Community'), Users]].map(([key, label, Ico]) => (
-          <button key={key} onClick={() => setCat(key)} className={`text-xs px-2.5 py-1 rounded-lg border flex items-center gap-1 transition ${cat === key ? 'border-[var(--primary)] text-[var(--text)] panel' : 'border-[var(--line)] panel text-[var(--muted)] hover:text-[var(--text)]'}`}>
+          <button key={key} onClick={() => setCat(key)} className={chip(cat === key)} aria-pressed={cat === key}>
             {Ico && <Ico size={11} />} {label}
           </button>
         ))}
+        <span className="w-px shrink-0 bg-[var(--line)] mx-0.5 self-stretch" aria-hidden />
+        <button onClick={() => setHostedOnly((v) => !v)} className={chip(hostedOnly)} aria-pressed={hostedOnly}><Cloud size={11} /> {t('repos.hostedonly', 'Hosted only')}</button>
+        <button onClick={() => setOnlineOnly((v) => !v)} className={chip(onlineOnly)} aria-pressed={onlineOnly}><Wifi size={11} /> {t('repos.onlineonly', 'Online only')}</button>
+        {user && <button onClick={() => setFavOnly((v) => !v)} className={chip(favOnly)} aria-pressed={favOnly}><Star size={11} /> {t('repos.favonly', 'Favorited')}</button>}
+        {allTags.length > 0 && (
+          <button onClick={() => setTagsOpen((v) => !v)} className={chip(!!tag)} aria-expanded={tagsOpen}>
+            <Tag size={11} /> {tag || t('repos.tags.n', 'Tags ({n})').replace('{n}', String(allTags.length))}
+            <ChevronDown size={11} className={`transition-transform ${tagsOpen ? 'rotate-180' : ''}`} />
+          </button>
+        )}
       </div>
-      {allTags.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 mb-5">
-          <button onClick={() => setTag('')} className={`text-xs px-2.5 py-1 rounded-lg border ${!tag ? 'border-[var(--primary)] text-[var(--text)] panel' : 'border-[var(--line)] panel text-[var(--muted)] hover:text-[var(--text)]'}`}>{t('repos.alltags', 'All')}</button>
+      {tagsOpen && allTags.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-3 rounded-xl border border-[var(--line)] panel p-2">
+          <button onClick={() => setTag('')} className={chip(!tag)}>{t('repos.alltags', 'All')}</button>
           {allTags.map((tg) => (
-            <button key={tg} onClick={() => setTag(tg === tag ? '' : tg)} className={`text-xs px-2.5 py-1 rounded-lg border flex items-center gap-1 ${tag === tg ? 'border-[var(--primary)] text-[var(--text)] panel' : 'border-[var(--line)] panel text-[var(--muted)] hover:text-[var(--text)]'}`}><Tag size={10} /> {tg}</button>
+            <button key={tg} onClick={() => setTag(tg === tag ? '' : tg)} className={chip(tag === tg)}><Tag size={10} /> {tg}</button>
           ))}
         </div>
       )}
@@ -146,21 +184,35 @@ export function ReposPage() {
           action={{ label: t('dash.hostrepo', 'Host a repo'), to: '/hosting#plans', icon: Cloud }} />
         : !filtered.length ? <EmptyState icon={Search} title={t('repos.nomatch.t', 'No matches')}
           sub={t('repos.nomatch.s2', 'No listed repo matches the search and the filters you have on.')}
-          action={{ label: t('repos.nomatch.a', 'Clear the filters'), icon: X, onClick: () => { setQ(''); setTag(''); setHostedOnly(false); setOnlineOnly(false); setFavOnly(false); setCat('all'); } }} />
+          action={{ label: t('repos.nomatch.a', 'Clear the filters'), icon: X, onClick: clearAll }} />
         : (
           <>
-            <div className="text-xs text-[var(--faint)] mb-2">{filtered.length} {filtered.length === 1 ? t('repos.one', 'repo') : t('repos.many', 'repos')}</div>
+            <div className="text-xs text-[var(--faint)] mb-2 flex items-center gap-2">
+              <span>{filtered.length} {filtered.length === 1 ? t('repos.one', 'repo') : t('repos.many', 'repos')}</span>
+              {/* Only when something is actually filtering. A permanent "clear" reads as an
+                  instruction and gets pressed by people who have not filtered anything. */}
+              {anyFilter && <button onClick={clearAll} className="inline-flex items-center gap-1 hover:text-[var(--text)] underline"><X size={11} /> {t('repos.clear', 'Clear filters')}</button>}
+            </div>
             <div className="grid md:grid-cols-2 gap-4">
-              {filtered.map((r) => {
+              {shown.map((r) => {
                 const online = r.status === 'ONLINE';
                 return (
-                  <Card key={r.id} hover className={`p-5 ${r.featured ? 'border-[var(--ring)]' : ''}`} style={r.featured ? { boxShadow: '0 0 0 1px var(--primary), 0 16px 40px -18px var(--primary-glow)' } : undefined}>
+                  <Card key={r.id} hover className={`p-5 flex flex-col ${r.featured ? 'border-[var(--ring)]' : ''}`} style={r.featured ? { boxShadow: '0 0 0 1px var(--primary), 0 16px 40px -18px var(--primary-glow)' } : undefined}>
                     <div className="flex items-center justify-between gap-2">
-                      <div className="font-semibold flex items-center gap-2 min-w-0"><GitBranch size={16} className="text-[var(--accent-ink)] shrink-0" /> <span className="truncate" title={r.name}>{r.name}</span></div>
+                      {/* The name is a LINK, and it was not one. /r/:id is a real page — the
+                          repo's own public page, with its description, its links, its
+                          fingerprint and its report button — and nothing on this list pointed
+                          at it. The only way in was a share link somebody sent you. */}
+                      <Link to={`/r/${r.id}`} className="font-semibold flex items-center gap-2 min-w-0 hover:text-[var(--accent-ink)] transition">
+                        <GitBranch size={16} className="text-[var(--accent-ink)] shrink-0" /> <span className="truncate" title={r.name}>{r.name}</span>
+                      </Link>
                       <div className="flex items-center gap-1.5 shrink-0">
                         {(() => { const cat = repoCategoryMeta(r.category, t); return cat && <Badge tone={cat.tone}><cat.Icon size={11} /> {cat.label}</Badge>; })()}
                         {r.featured && <Badge tone="amber"><ChevronsUp size={11} /> {t('repos.featured', 'Featured')}</Badge>}
-                        <Badge tone="green"><ShieldCheck size={11} /> {t('repos.verified', 'Verified')}</Badge>
+                        {/* No "Verified" badge here any more. This endpoint only ever returns
+                            verified repos, so it was on 100% of the cards: a badge every row
+                            carries distinguishes nothing and is read as noise. It is said
+                            once, in the page subtitle, where it is actually information. */}
                         <button onClick={() => toggleFavorite(r)} title={r.favorited ? t('repos.unfavorite', 'Unfavorite') : t('repos.favorite', 'Favorite')}
                           className={`flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full border ${r.favorited ? 'border-warning-border text-warning bg-warning-bg' : 'border-[var(--line)] text-[var(--faint)] hover:text-warning'}`}>
                           <Star size={12} fill={r.favorited ? 'currentColor' : 'none'} /> {r.favoriteCount || 0}
@@ -174,16 +226,25 @@ export function ReposPage() {
                     </div>
                     {r.description && <p className="text-sm text-[var(--muted)] mt-2 line-clamp-2">{r.description}</p>}
                     {r.tags?.length > 0 && <div className="flex flex-wrap gap-1.5 mt-2">{r.tags.map((tg) => <button key={tg} onClick={() => setTag(tg)}><Badge><Tag size={10} /> {tg}</Badge></button>)}</div>}
-                    {r.hosted && <div className="text-xs text-[var(--faint)] mt-2">{gb(r.storageUsedBytes)} / {gb(r.storageQuotaBytes)} GB</div>}
-                    {r.fingerprint && (
-                      <button onClick={() => { navigator.clipboard?.writeText(r.fingerprint); toast.success(t('repos.idcopied', 'Repo ID copied.')); }}
-                        title={t('repos.id.hint', 'Unique Repo ID, quote it when contacting support.')}
-                        className="inline-flex items-center gap-1.5 mt-2 text-[11px] font-mono text-[var(--faint)] hover:text-[var(--accent-ink)] transition">
-                        <Fingerprint size={11} /> {r.fingerprint} <Copy size={10} className="opacity-60" />
-                      </button>
-                    )}
+                    {/* Everything above is about the repo; everything below is what you can do
+                        with it. `flex-1` between them pins the action row to the bottom of the
+                        card, so in a two-column grid the primary button of every card in a row
+                        lands on the same line instead of wherever that card's description
+                        happened to end. */}
+                    <div className="flex-1" />
+                    <div className="flex items-center gap-3 flex-wrap mt-2 text-[11px] text-[var(--faint)]">
+                      {r.hosted && <span className="tabular-nums">{gb(r.storageUsedBytes)} / {gb(r.storageQuotaBytes)} GB</span>}
+                      {r.fingerprint && (
+                        <button onClick={() => { navigator.clipboard?.writeText(r.fingerprint); toast.success(t('repos.idcopied', 'Repo ID copied.')); }}
+                          title={t('repos.id.hint', 'Unique Repo ID, quote it when contacting support.')}
+                          className="inline-flex items-center gap-1.5 font-mono hover:text-[var(--accent-ink)] transition">
+                          <Fingerprint size={11} /> {r.fingerprint} <Copy size={10} className="opacity-60" />
+                        </button>
+                      )}
+                    </div>
                     <div className="flex flex-wrap gap-2 mt-3">
                       <a href={`bmm://repo/connect?url=${encodeURIComponent(repoJsonUrl(r))}`}><Button size="sm" variant="primary"><GitBranch size={13} /> {t('repos.openbmm', 'Open in BMM')}</Button></a>
+                      <Link to={`/r/${r.id}`}><Button size="sm"><ArrowRight size={13} /> {t('repos.details', 'Details')}</Button></Link>
                       {repoJsonUrl(r) && <Button size="sm" onClick={() => copyJson(r)}><Copy size={13} /> {t('repos.copyjson', 'Copy repo.json')}</Button>}
                       {r.links?.discord && <a href={r.links.discord} target="_blank" rel="noreferrer"><Button size="sm">Discord</Button></a>}
                       {r.links?.website && <a href={r.links.website} target="_blank" rel="noreferrer"><Button size="sm">{t('repos.website', 'Website')}</Button></a>}

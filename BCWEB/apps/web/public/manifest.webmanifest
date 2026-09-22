@@ -1,0 +1,25 @@
+{
+  "id": "/",
+  "name": "BetterCommunity",
+  "short_name": "BetterCommunity",
+  "description": "The hub for the Better* projects: moderated catalogs of apps, plugins, themes and presets, shared Server-Repos, hosting, and the docs to build your own.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui", "browser"],
+  "orientation": "any",
+  "lang": "en",
+  "dir": "ltr",
+  "background_color": "#f4efe8",
+  "theme_color": "#f97316",
+  "categories": ["productivity", "developer", "utilities"],
+  "icons": [
+    { "src": "/logo.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/maskable.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Catalog", "short_name": "Catalog", "url": "/catalog", "icons": [{ "src": "/logo.png", "sizes": "512x512", "type": "image/png" }] },
+    { "name": "Server Repos", "short_name": "Repos", "url": "/repos", "icons": [{ "src": "/logo.png", "sizes": "512x512", "type": "image/png" }] },
+    { "name": "Status", "short_name": "Status", "url": "/status", "icons": [{ "src": "/logo.png", "sizes": "512x512", "type": "image/png" }] }
+  ]
+}

@@ -1,17 +1,38 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Home as HomeIcon, Trophy, Play, RotateCcw, Gamepad2, ChevronDown, Timer } from 'lucide-react';
+import { Home as HomeIcon, Trophy, Play, RotateCcw, Gamepad2, ChevronDown, Timer, Heart, WifiOff, Zap, Pause } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { useAuth } from './auth.jsx';
 import { Card, Button } from '../ui/ui.jsx';
 import Avatar from '../ui/Avatar.jsx';
 
+// The play field, in game units. The canvas is drawn at devicePixelRatio and stretched by CSS
+// to whatever room the column has, so every number below is resolution-independent and the
+// orbs are not soft on a phone.
 const W = 340, H = 460;
+const LIVES = 3;
+const PADDLE_Y = H - 26;
 
-// A tiny "Orb Fall" catcher — move the paddle to catch the orange BetterCommunity orbs
-// (+1) and dodge the red ones (game over). Runs entirely client-side (canvas + rAF); the
-// score is submitted to a leaderboard only if you're signed in. This is the 404 page.
+// "Orb Fall": catch the orange BetterCommunity orbs, dodge the red ones. Entirely client-side
+// (canvas + rAF); the score reaches the monthly leaderboard only if you are signed in.
+//
+// This is also the OFFLINE page: when the service worker serves the app shell with no network
+// behind it, App.jsx renders this component with `offline`. So nothing here may depend on the
+// API to be usable — the game runs with no data at all, and every request on this page is
+// allowed to fail quietly and say so.
+//
+// What changed in the rules, and why:
+//   · one red orb used to end the run outright. On a field this narrow, with drift on the
+//     orbs, that is a run ending in about twenty seconds through no real mistake — so there
+//     are three lives and a moment of invulnerability after a hit, which is the difference
+//     between "I was unlucky" and "I was careless".
+//   · catching in a row now pays. Every fifth consecutive catch raises the multiplier (to a
+//     cap of x4) and a MISSED orange orb resets it. Before, missing one cost nothing at all,
+//     so the only skill the game asked for was avoiding red.
+//   · the ramp is on the clock, not on the score. It used to be on the score, which with a
+//     multiplier would mean a good run making itself impossible at four times the rate.
+
 /**
  * How much of the season is left, in the largest unit that is still honest.
  *
@@ -34,14 +55,19 @@ function timeLeft(endsAt, t) {
     return t('nf.leftM', '{n} min left').replace('{n}', String(Math.max(1, mins)));
 }
 
-export default function NotFound() {
+/** The multiplier a run of consecutive catches is worth. Five catches a step, four at most. */
+const comboMult = (combo) => Math.min(4, 1 + Math.floor(combo / 5));
+
+/** `offline` — rendered as the offline destination rather than as a wrong address. */
+export default function NotFound({ offline = false }) {
   const { t } = useI18n(); const { user } = useAuth();
   const canvasRef = useRef(null);
   const g = useRef(null);                 // mutable game state (kept out of React)
-  const [phase, setPhase] = useState('ready'); // ready | playing | over
-  const [score, setScore] = useState(0);
+  const [phase, setPhase] = useState('ready'); // ready | playing | paused | over
+  const [hud, setHud] = useState({ score: 0, lives: LIVES, combo: 0 });
   const [best, setBest] = useState(0);
   const [board, setBoard] = useState([]);
+  const [boardErr, setBoardErr] = useState(false);
   const [saved, setSaved] = useState(null); // { improved } after submitting
   // The countdown is text, not state — but it has to be RECOMPUTED for the page to keep
   // telling the truth. A 404 with a leaderboard is a page people leave open; a minute tick is
@@ -63,97 +89,184 @@ export default function NotFound() {
   const [awards, setAwards] = useState(null);   // last month's podium
 
   const loadBoard = () => api.get('/game/leaderboard?game=orbfall')
-    .then((r) => { const { leaderboard, ...rest } = r; setBoard(leaderboard || []); setSeason(rest); })
-    .catch(() => {});
+    .then((r) => { const { leaderboard, ...rest } = r; setBoard(leaderboard || []); setSeason(rest); setBoardErr(false); })
+    .catch(() => setBoardErr(true));
   useEffect(() => {
     loadBoard();
     // Last month's podium, and — if you are on it — your code. Signed in or not: the winners
     // are public, the code is only ever returned to the person who won it.
     api.get('/game/awards?game=orbfall').then((r) => setAwards(r)).catch(() => {});
+    // eslint-disable-next-line
   }, []);
 
-  // Resolve theme colours once (canvas can't use CSS vars directly).
+  /**
+   * Motion the game can do without.
+   *
+   * A falling-object game cannot honour prefers-reduced-motion by standing still, so it
+   * honours it where the motion is decoration and not information: no screen shake, no
+   * drifting starfield, no particle bursts, no glow trail behind an orb. The orbs, the
+   * paddle and the reading of the game are untouched.
+   *
+   * Read live rather than once, because a visitor can change it while the tab is open.
+   */
+  const calm = useRef(false);
+  useEffect(() => {
+    const mq = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+    if (!mq) return undefined;
+    const sync = () => { calm.current = mq.matches; };
+    sync();
+    mq.addEventListener?.('change', sync);
+    return () => mq.removeEventListener?.('change', sync);
+  }, []);
+
+  // Resolve theme colours once per run (canvas can't use CSS vars directly).
   const colors = () => { const cs = getComputedStyle(document.documentElement); return {
     primary: cs.getPropertyValue('--primary').trim() || '#f97316',
-    line: cs.getPropertyValue('--line-strong').trim() || 'rgba(128,128,128,.3)',
     text: cs.getPropertyValue('--text').trim() || '#1a1714',
   }; };
 
   const end = (finalScore) => {
     cancelAnimationFrame(g.current?.raf);
+    if (g.current) g.current.alive = false;
     setPhase('over'); setBest((b) => Math.max(b, finalScore));
     if (user) api.post('/game/score', { game: 'orbfall', score: finalScore }).then((r) => { setSaved({ improved: r.improved }); loadBoard(); }).catch(() => {});
     else setSaved(null);
   };
 
-  const start = () => {
-    const c = canvasRef.current; if (!c) return; const ctx = c.getContext('2d');
-    const col = colors();
-    // Slow-drifting starfield for depth (regenerated each game).
-    const stars = Array.from({ length: 46 }, () => ({ x: Math.random() * W, y: Math.random() * H, r: Math.random() * 1.4 + 0.3, s: Math.random() * 0.25 + 0.05 }));
-    const st = { px: W / 2, kv: 0, pw: 60, orbs: [], parts: [], spawn: 0, speed: 1, score: 0, shake: 0, last: performance.now(), raf: 0, alive: true, stars };
-    g.current = st; setScore(0); setSaved(null); setPhase('playing');
-    const loop = (now) => {
-      if (!st.alive) return;
-      const dt = Math.min(50, now - st.last); st.last = now; const f = dt / 16;
-      st.speed += dt / 34000;                                  // steeper ramp = harder over time
-      st.pw = Math.max(38, 60 - st.score * 0.45);              // paddle shrinks as you score
-      st.spawn -= dt;
-      if (st.spawn <= 0) {
-        st.spawn = Math.max(260, 820 - st.score * 16);          // faster spawns
-        const bad = Math.random() < Math.min(0.52, 0.16 + st.score * 0.014); // more red over time
-        const drift = (Math.random() - 0.5) * Math.min(1.6, st.score * 0.05); // sideways drift late-game
-        st.orbs.push({ x: 20 + Math.random() * (W - 40), y: -14, r: bad ? 12 : 11, bad, vy: (1.9 + Math.random() * 1.2) * st.speed, vx: drift });
-      }
-      // Keyboard: accelerate towards a top speed, and stop dead when nothing is held. The
-      // paddle is clamped to the walls rather than bouncing — a wall is where you park.
-      const want = (keys.current.right ? 1 : 0) - (keys.current.left ? 1 : 0);
-      st.kv = want ? Math.max(-7.2, Math.min(7.2, (st.kv || 0) + want * 0.9 * f)) : (st.kv || 0) * Math.pow(0.72, f);
-      if (Math.abs(st.kv) < 0.02) st.kv = 0;
-      if (st.kv) st.px = Math.max(st.pw / 2, Math.min(W - st.pw / 2, st.px + st.kv * f));
+  // Keep the backing store at the real pixel density of whatever width the column gave the
+  // canvas. Without this the orbs are visibly soft on a phone, where the 340-unit field is
+  // stretched across a 3x screen.
+  const sizeCanvas = (c) => {
+    const dpr = Math.min(3, window.devicePixelRatio || 1);
+    if (c.width !== Math.round(W * dpr)) { c.width = Math.round(W * dpr); c.height = Math.round(H * dpr); }
+    const ctx = c.getContext('2d');
+    ctx.setTransform(c.width / W, 0, 0, c.height / H, 0, 0);
+    return ctx;
+  };
 
-      const py = H - 26;
-      for (const o of st.orbs) { o.y += o.vy * f; o.x += (o.vx || 0) * f; if (o.x < o.r || o.x > W - o.r) o.vx = -(o.vx || 0); }
-      st.orbs = st.orbs.filter((o) => {
-        if (o.y >= py - 12 && o.y <= py + 16 && Math.abs(o.x - st.px) < st.pw / 2 + o.r) {
-          if (o.bad) { st.alive = false; burst(st, o.x, o.y, '#ef4444', 18); st.shake = 12; end(st.score); return false; }
-          st.score += 1; setScore(st.score); burst(st, o.x, py, col.primary, 8); return false;
+  const start = () => {
+    const c = canvasRef.current; if (!c) return;
+    const ctx = sizeCanvas(c);
+    const col = colors();
+    const stars = calm.current ? [] : Array.from({ length: 46 }, () => ({ x: Math.random() * W, y: Math.random() * H, r: Math.random() * 1.4 + 0.3, s: Math.random() * 0.25 + 0.05 }));
+    const st = {
+      px: W / 2, kv: 0, pw: 62, orbs: [], parts: [], spawn: 0, elapsed: 0,
+      score: 0, combo: 0, bestCombo: 0, lives: LIVES, invuln: 0,
+      shake: 0, last: performance.now(), raf: 0, alive: true, paused: false, stars, col,
+    };
+    g.current = st; setHud({ score: 0, lives: LIVES, combo: 0 }); setSaved(null); setPhase('playing');
+    st.raf = requestAnimationFrame(loop);
+  };
+
+  // One frame. Declared outside `start` so pause/resume can restart it without rebuilding the
+  // world — a paused game that resumed into a fresh field would be a reset with extra steps.
+  const loop = (now) => {
+    const st = g.current; if (!st || !st.alive || st.paused) return;
+    const c = canvasRef.current; if (!c) return;
+    const ctx = c.getContext('2d');
+    const col = st.col;
+    const quiet = calm.current;
+    // Clamped: a tab that was in the background hands back a multi-second delta, and without
+    // the clamp every orb teleports past the paddle the moment you come back.
+    const dt = Math.min(50, now - st.last); st.last = now; const f = dt / 16;
+    st.elapsed += dt / 1000;
+    st.invuln = Math.max(0, st.invuln - dt);
+
+    // The ramp, on the clock. Roughly: one orb every 820ms at the start, every 300ms after
+    // half a minute; one orb in seven is red at the start, one in two after thirty seconds.
+    const e = st.elapsed;
+    const speed = 1 + e / 34;
+    st.pw = Math.max(40, 62 - e * 0.55);
+    st.spawn -= dt;
+    if (st.spawn <= 0) {
+      st.spawn = Math.max(300, 820 - e * 18);
+      const bad = Math.random() < Math.min(0.5, 0.14 + e * 0.012);
+      const drift = (Math.random() - 0.5) * Math.min(1.6, e * 0.05);
+      st.orbs.push({ x: 20 + Math.random() * (W - 40), y: -14, r: bad ? 12 : 11, bad, vy: (1.9 + Math.random() * 1.2) * speed, vx: drift });
+    }
+
+    // Keyboard: accelerate towards a top speed, and stop dead when nothing is held. The
+    // paddle is clamped to the walls rather than bouncing — a wall is where you park.
+    const want = (keys.current.right ? 1 : 0) - (keys.current.left ? 1 : 0);
+    st.kv = want ? Math.max(-7.2, Math.min(7.2, (st.kv || 0) + want * 0.9 * f)) : (st.kv || 0) * Math.pow(0.72, f);
+    if (Math.abs(st.kv) < 0.02) st.kv = 0;
+    if (st.kv) st.px = Math.max(st.pw / 2, Math.min(W - st.pw / 2, st.px + st.kv * f));
+
+    for (const o of st.orbs) { o.y += o.vy * f; o.x += (o.vx || 0) * f; if (o.x < o.r || o.x > W - o.r) o.vx = -(o.vx || 0); }
+    let changed = false;
+    st.orbs = st.orbs.filter((o) => {
+      const caught = o.y >= PADDLE_Y - 12 && o.y <= PADDLE_Y + 16 && Math.abs(o.x - st.px) < st.pw / 2 + o.r;
+      if (caught) {
+        if (o.bad) {
+          // A moment of grace after a hit. Without it two orbs arriving together cost two
+          // lives for one mistake, which reads as the game cheating.
+          if (st.invuln > 0) return false;
+          st.lives -= 1; st.combo = 0; st.invuln = 700;
+          if (!quiet) { burst(st, o.x, o.y, '#ef4444', 18); st.shake = 12; }
+          changed = true;
+          if (st.lives <= 0) { end(st.score); return false; }
+          return false;
         }
-        return o.y < H + 20;
-      });
-      // particles
+        st.combo += 1; st.bestCombo = Math.max(st.bestCombo, st.combo);
+        st.score += comboMult(st.combo - 1);
+        if (!quiet) burst(st, o.x, PADDLE_Y, col.primary, 8);
+        changed = true;
+        return false;
+      }
+      if (o.y >= H + 20) {
+        // A missed orange orb is the only thing that breaks a combo. A red one falling past
+        // is what is supposed to happen.
+        if (!o.bad && st.combo) { st.combo = 0; changed = true; }
+        return false;
+      }
+      return true;
+    });
+    if (changed) setHud({ score: st.score, lives: st.lives, combo: st.combo });
+    if (!st.alive) return;
+
+    if (!quiet) {
       for (const pt of st.parts) { pt.x += pt.vx * f; pt.y += pt.vy * f; pt.vy += 0.12 * f; pt.life -= dt; }
       st.parts = st.parts.filter((pt) => pt.life > 0);
       st.shake = Math.max(0, st.shake - dt * 0.05);
+    }
 
-      // ── draw ──
-      ctx.clearRect(0, 0, W, H);
-      ctx.save();
-      if (st.shake > 0.5) ctx.translate((Math.random() - 0.5) * st.shake, (Math.random() - 0.5) * st.shake);
-      // starfield
-      for (const s of st.stars) { s.y += s.s * f; if (s.y > H) { s.y = 0; s.x = Math.random() * W; } ctx.fillStyle = `rgba(255,255,255,${0.10 + s.r * 0.12})`; ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, 7); ctx.fill(); }
-      // orbs (glow + highlight + faint trail)
-      for (const o of st.orbs) {
-        const cc = o.bad ? '#ef4444' : col.primary;
-        ctx.globalAlpha = 0.18; ctx.fillStyle = cc; ctx.beginPath(); ctx.arc(o.x, o.y - o.vy, o.r * 0.9, 0, 7); ctx.fill(); ctx.globalAlpha = 1;
-        ctx.shadowColor = cc; ctx.shadowBlur = 14; ctx.fillStyle = cc; ctx.beginPath(); ctx.arc(o.x, o.y, o.r, 0, 7); ctx.fill(); ctx.shadowBlur = 0;
-        ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.beginPath(); ctx.arc(o.x - o.r / 3, o.y - o.r / 3, o.r / 3.2, 0, 7); ctx.fill();
-      }
-      // particles
-      for (const pt of st.parts) { ctx.globalAlpha = Math.max(0, pt.life / 400); ctx.fillStyle = pt.c; ctx.beginPath(); ctx.arc(pt.x, pt.y, pt.r, 0, 7); ctx.fill(); }
-      ctx.globalAlpha = 1;
-      // paddle (glow)
-      ctx.shadowColor = col.primary; ctx.shadowBlur = 12; ctx.fillStyle = col.primary; roundRect(ctx, st.px - st.pw / 2, py, st.pw, 9, 5); ctx.fill(); ctx.shadowBlur = 0;
-      ctx.restore();
-      st.raf = requestAnimationFrame(loop);
-    };
+    // ── draw ──
+    ctx.clearRect(0, 0, W, H);
+    ctx.save();
+    if (!quiet && st.shake > 0.5) ctx.translate((Math.random() - 0.5) * st.shake, (Math.random() - 0.5) * st.shake);
+    for (const s of st.stars) { s.y += s.s * f; if (s.y > H) { s.y = 0; s.x = Math.random() * W; } ctx.fillStyle = `rgba(255,255,255,${0.10 + s.r * 0.12})`; ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, 7); ctx.fill(); }
+    for (const o of st.orbs) {
+      const cc = o.bad ? '#ef4444' : col.primary;
+      if (!quiet) { ctx.globalAlpha = 0.18; ctx.fillStyle = cc; ctx.beginPath(); ctx.arc(o.x, o.y - o.vy, o.r * 0.9, 0, 7); ctx.fill(); ctx.globalAlpha = 1; }
+      ctx.shadowColor = cc; ctx.shadowBlur = 14; ctx.fillStyle = cc; ctx.beginPath(); ctx.arc(o.x, o.y, o.r, 0, 7); ctx.fill(); ctx.shadowBlur = 0;
+      ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.beginPath(); ctx.arc(o.x - o.r / 3, o.y - o.r / 3, o.r / 3.2, 0, 7); ctx.fill();
+    }
+    for (const pt of st.parts) { ctx.globalAlpha = Math.max(0, pt.life / 400); ctx.fillStyle = pt.c; ctx.beginPath(); ctx.arc(pt.x, pt.y, pt.r, 0, 7); ctx.fill(); }
+    ctx.globalAlpha = 1;
+    // The paddle blinks while it cannot be hurt, which is how you know the grace period is
+    // still running. A steady 0.45 alpha instead of a flash when motion is reduced.
+    ctx.globalAlpha = st.invuln > 0 ? (quiet ? 0.45 : (Math.floor(st.invuln / 90) % 2 ? 0.3 : 1)) : 1;
+    ctx.shadowColor = col.primary; ctx.shadowBlur = 12; ctx.fillStyle = col.primary;
+    roundRect(ctx, st.px - st.pw / 2, PADDLE_Y, st.pw, 9, 5); ctx.fill();
+    ctx.shadowBlur = 0; ctx.globalAlpha = 1;
+    ctx.restore();
     st.raf = requestAnimationFrame(loop);
   };
+
   // Spawn a little particle burst (catch / crash feedback).
   function burst(st, x, y, c, n) { for (let i = 0; i < n; i++) { const a = Math.random() * 7, sp = Math.random() * 2.6 + 0.6; st.parts.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 1, r: Math.random() * 2 + 1, c, life: 400 }); } }
 
-  // Controls — pointer / touch position the paddle; the keyboard drives it.
-  const move = (clientX) => { const st = g.current, c = canvasRef.current; if (!st?.alive || !c) return; const rect = c.getBoundingClientRect(); st.px = Math.max(st.pw / 2, Math.min(W - st.pw / 2, (clientX - rect.left) * (W / rect.width))); };
+  const resume = () => {
+    const st = g.current; if (!st || !st.alive) return;
+    st.paused = false; st.last = performance.now();
+    setPhase('playing');
+    st.raf = requestAnimationFrame(loop);
+  };
+  const pause = () => {
+    const st = g.current; if (!st || !st.alive || st.paused) return;
+    st.paused = true; cancelAnimationFrame(st.raf);
+    setPhase('paused');
+  };
 
   /**
    * Which arrow keys are DOWN, read by the game loop.
@@ -193,35 +306,149 @@ export default function NotFound() {
     };
   }, []);
 
+  // A run does not continue while nobody is watching. rAF is throttled or stopped in a hidden
+  // tab, so what used to happen was a game that froze and then, on the clamped first frame
+  // back, resumed exactly where it was with a screenful of orbs on top of the paddle.
+  useEffect(() => {
+    const onHide = () => { if (document.visibilityState === 'hidden') pause(); };
+    document.addEventListener('visibilitychange', onHide);
+    return () => document.removeEventListener('visibilitychange', onHide);
+    // eslint-disable-next-line
+  }, []);
+
+  // Space / P pause and resume; Enter or Space starts a run and plays again.
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'p' || e.key === 'P' || e.key === ' ') {
+        if (phase === 'playing') { e.preventDefault(); pause(); return; }
+        if (phase === 'paused') { e.preventDefault(); resume(); return; }
+      }
+      if ((e.key === 'Enter' || e.key === ' ') && (phase === 'ready' || phase === 'over')) { e.preventDefault(); start(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line
+  }, [phase]);
+
+  /**
+   * Pointing at the paddle.
+   *
+   * The move listeners are on the WINDOW while a run is on, not on the canvas. On a mouse
+   * that means the paddle keeps following once the cursor has slid off the side of a 340px
+   * field, which is exactly where you want it when an orb is hugging the wall; on a phone it
+   * means the finger can rest below the field instead of covering the orbs it is chasing.
+   */
+  const move = (clientX) => {
+    const st = g.current, c = canvasRef.current;
+    if (!st?.alive || st.paused || !c) return;
+    const rect = c.getBoundingClientRect();
+    st.px = Math.max(st.pw / 2, Math.min(W - st.pw / 2, (clientX - rect.left) * (W / rect.width)));
+  };
+  useEffect(() => {
+    if (phase !== 'playing') return undefined;
+    const onPointer = (e) => move(e.clientX);
+    const onTouch = (e) => { const p = e.touches?.[0]; if (p) move(p.clientX); };
+    window.addEventListener('pointermove', onPointer);
+    window.addEventListener('touchmove', onTouch, { passive: true });
+    return () => { window.removeEventListener('pointermove', onPointer); window.removeEventListener('touchmove', onTouch); };
+    // eslint-disable-next-line
+  }, [phase]);
+
+  // Draw the empty field once before the first run, so the panel is a game that has not
+  // started rather than a blank rectangle with a button over it.
+  useEffect(() => {
+    const c = canvasRef.current; if (!c || phase === 'playing') return;
+    if (g.current?.alive) return;
+    const ctx = sizeCanvas(c);
+    const col = colors();
+    ctx.clearRect(0, 0, W, H);
+    ctx.globalAlpha = 0.35; ctx.fillStyle = col.primary;
+    roundRect(ctx, W / 2 - 31, PADDLE_Y, 62, 9, 5); ctx.fill();
+    ctx.globalAlpha = 1;
+    // eslint-disable-next-line
+  }, [phase]);
+
+  const mult = comboMult(Math.max(0, hud.combo - 1));
+
   return (
-    <div className="max-w-4xl mx-auto text-center py-6">
+    <div className="max-w-4xl mx-auto py-6">
       {/* The page number, and one line. There were two headings above the game saying the
           same thing in different words — "Lost in space" over "that page doesn't exist" —
           and neither told anybody anything they had not worked out from the 404. */}
-      <div className="text-[86px] leading-none font-black text-[var(--accent-ink)] tracking-tight select-none">404</div>
-      <p className="text-[var(--muted)] mt-1 mb-7">{t('nf.sub', 'That page does not exist. Have a game instead.')}</p>
+      <div className="text-center">
+        {offline ? (
+          <>
+            <WifiOff size={54} className="mx-auto text-[var(--accent-ink)]" strokeWidth={1.5} />
+            <h1 className="text-2xl font-black mt-3">{t('nf.off.t', 'You are offline')}</h1>
+            <p className="text-[var(--muted)] mt-1 mb-7 text-sm">{t('nf.off.s', 'This page is the one part of the site that does not need us. Everything else comes back when your connection does.')}</p>
+          </>
+        ) : (
+          <>
+            <div className="text-[86px] leading-none font-black text-[var(--accent-ink)] tracking-tight select-none">404</div>
+            <p className="text-[var(--muted)] mt-1 mb-7">{t('nf.sub', 'That page does not exist. Have a game instead.')}</p>
+          </>
+        )}
+      </div>
 
       <div className="flex flex-col md:flex-row gap-6 items-start justify-center">
         {/* Game */}
-        <div className="relative shrink-0 mx-auto" style={{ width: W }}>
-          <canvas ref={canvasRef} width={W} height={H} onPointerMove={(e) => move(e.clientX)} onTouchMove={(e) => move(e.touches[0].clientX)}
-            className="rounded-2xl border border-[var(--line)] panel touch-none w-full" style={{ aspectRatio: `${W}/${H}`, maxWidth: '100%' }} />
-          <div className="absolute top-2.5 left-3 text-sm font-bold tabular-nums text-[var(--text)] scrim px-2 py-0.5 rounded-md backdrop-blur">{score}</div>
-          {phase !== 'playing' && (
-            <div className="absolute inset-0 grid place-items-center rounded-2xl scrim backdrop-blur-sm">
-              <div className="text-center px-4">
-                {phase === 'over' && <>
-                  <div className="text-xs uppercase tracking-wider text-[var(--faint)]">{t('nf.gameover', 'Game over')}</div>
-                  <div className="text-4xl font-black text-[var(--accent-ink)] my-1">{score}</div>
-                  {saved?.improved ? <div className="text-xs text-success mb-2 inline-flex items-center gap-1"><Trophy size={12} /> {t('nf.newbest', 'New personal best!')}</div>
-                    : user ? <div className="text-xs text-[var(--faint)] mb-2">{t('nf.best', 'Your best: {n}').replace('{n}', best)}</div>
-                    : <div className="text-xs text-[var(--faint)] mb-2"><Link to="/auth" className="text-[var(--accent-ink)] underline">{t('nf.signin', 'Sign in')}</Link> {t('nf.tosave', 'to save your score')}</div>}
-                </>}
-                <Button variant="primary" onClick={start}>{phase === 'over' ? <><RotateCcw size={16} /> {t('nf.again', 'Play again')}</> : <><Play size={16} /> {t('nf.play', 'Play')}</>}</Button>
-                <div className="text-[11px] text-[var(--faint)] mt-3 leading-relaxed">{t('nf.how', 'Catch orange, dodge red. Mouse, finger, or hold ← →.')}</div>
-              </div>
+        <div className="shrink-0 mx-auto w-full" style={{ maxWidth: W }}>
+          {/* The score used to be one number floating over the top-left corner of the field,
+              on top of the orbs. Three things now matter to a run (what it is worth, what is
+              multiplying it, and how much rope is left), so they sit in a row above the
+              field where they are readable and out of the way of the game. */}
+          <div className="flex items-center gap-2 mb-2 px-0.5">
+            <div className="text-2xl font-black tabular-nums leading-none text-[var(--text)]" aria-live="off">{hud.score}</div>
+            {mult > 1 && (
+              <span className="inline-flex items-center gap-1 text-[11px] font-bold px-1.5 py-0.5 rounded-md text-[var(--accent-ink)]"
+                style={{ background: 'color-mix(in srgb, var(--primary) 16%, transparent)' }}>
+                <Zap size={11} /> x{mult}
+              </span>
+            )}
+            <div className="flex-1" />
+            <div className="flex items-center gap-1" role="img"
+              aria-label={t('nf.livesleft', '{n} lives left').replace('{n}', String(Math.max(0, hud.lives)))}>
+              {Array.from({ length: LIVES }, (_, i) => (
+                <Heart key={i} size={14} className={i < hud.lives ? 'text-[var(--error)]' : 'text-[var(--line-strong)]'} fill={i < hud.lives ? 'currentColor' : 'none'} />
+              ))}
             </div>
-          )}
+            {phase === 'playing' && (
+              <button onClick={pause} className="text-[var(--faint)] hover:text-[var(--text)] p-1 -me-1 rounded-md"
+                title={t('nf.pause', 'Pause')} aria-label={t('nf.pause', 'Pause')}><Pause size={15} /></button>
+            )}
+          </div>
+          <div className="relative">
+            <canvas ref={canvasRef}
+              onPointerDown={(e) => { if (phase === 'playing') move(e.clientX); }}
+              className="rounded-2xl border border-[var(--line)] panel touch-none w-full block" style={{ aspectRatio: `${W}/${H}` }} />
+            {phase !== 'playing' && (
+              <div className="absolute inset-0 grid place-items-center rounded-2xl scrim backdrop-blur-sm">
+                <div className="text-center px-4">
+                  {phase === 'over' && <>
+                    <div className="text-xs uppercase tracking-wider text-[var(--faint)]">{t('nf.gameover', 'Game over')}</div>
+                    <div className="text-4xl font-black text-[var(--accent-ink)] my-1">{hud.score}</div>
+                    {g.current?.bestCombo > 4 && (
+                      <div className="text-[11px] text-[var(--muted)] mb-1">
+                        {t('nf.bestcombo', 'Longest streak: {n}').replace('{n}', String(g.current.bestCombo))}
+                      </div>
+                    )}
+                    {saved?.improved ? <div className="text-xs text-success mb-2 inline-flex items-center gap-1"><Trophy size={12} /> {t('nf.newbest', 'New personal best!')}</div>
+                      : user ? <div className="text-xs text-[var(--faint)] mb-2">{t('nf.best', 'Your best: {n}').replace('{n}', best)}</div>
+                      : <div className="text-xs text-[var(--faint)] mb-2"><Link to="/auth" className="text-[var(--accent-ink)] underline">{t('nf.signin', 'Sign in')}</Link> {t('nf.tosave', 'to save your score')}</div>}
+                  </>}
+                  {phase === 'paused'
+                    ? <Button variant="primary" onClick={resume}><Play size={16} /> {t('nf.resume', 'Resume')}</Button>
+                    : <Button variant="primary" onClick={start}>{phase === 'over' ? <><RotateCcw size={16} /> {t('nf.again', 'Play again')}</> : <><Play size={16} /> {t('nf.play', 'Play')}</>}</Button>}
+                  {phase !== 'paused' && (
+                    <div className="text-[11px] text-[var(--faint)] mt-3 leading-relaxed">
+                      {t('nf.how2', 'Catch orange, dodge red. Three lives. Five catches in a row doubles what the next ones are worth, and a missed orange one puts you back to nothing.')}
+                      <span className="block mt-1">{t('nf.keys', 'Mouse, finger, or hold the left and right arrows. Space pauses.')}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Leaderboard — collapsible (collapsed by default on phones). */}
@@ -230,7 +457,14 @@ export default function NotFound() {
             <Trophy size={15} className="text-warning" /> <span className="flex-1 text-start">{t('nf.leaderboard', 'Leaderboard')}</span>
             <ChevronDown size={16} className={`md:hidden text-[var(--faint)] transition-transform ${boardOpen ? 'rotate-180' : ''}`} />
           </button>
-          {boardOpen && (board.length ? <div className="space-y-1.5 mt-3">
+          {/* The board could not be fetched. Said plainly, because an empty board and an
+              unreachable one look identical and mean opposite things — and on the offline
+              page this is the expected case, not a fault. */}
+          {boardOpen && boardErr ? (
+            <div className="text-[12px] text-[var(--faint)] py-3 text-center inline-flex items-center gap-1.5 w-full justify-center">
+              <WifiOff size={12} className="shrink-0" /> {t('nf.boardoff', 'The board needs a connection. The game does not.')}
+            </div>
+          ) : boardOpen && (board.length ? <div className="space-y-1.5 mt-3">
             {board.map((r) => (
               <div key={r.rank} className="flex items-center gap-2.5 text-sm">
                 <span className={`w-5 text-center font-bold tabular-nums ${r.rank <= 3 ? 'text-warning' : 'text-[var(--faint)]'}`}>{r.rank}</span>
@@ -275,8 +509,8 @@ export default function NotFound() {
                 <span>
                   {t('nf.season', 'Board for {s}').replace('{s}', season.season)}
                   {timeLeft(season.endsAt, t)
-                    ? ` \u00b7 ${timeLeft(season.endsAt, t)}`
-                    : ` \u00b7 ${t('nf.resets', 'resets on the 1st')}`}
+                    ? ` · ${timeLeft(season.endsAt, t)}`
+                    : ` · ${t('nf.resets', 'resets on the 1st')}`}
                 </span>
               </div>
             </div>
@@ -310,7 +544,13 @@ export default function NotFound() {
         </Card>
       </div>
 
-      <Link to="/" className="inline-flex items-center gap-1.5 mt-8 text-sm text-[var(--muted)] hover:text-[var(--text)] transition"><HomeIcon size={15} /> {t('nf.home', 'Back to home')}</Link>
+      {/* Offline, every other address on the site is the same blank wall this page is
+          standing in for, so it does not offer one. */}
+      {!offline && (
+        <div className="text-center">
+          <Link to="/" className="inline-flex items-center gap-1.5 mt-8 text-sm text-[var(--muted)] hover:text-[var(--text)] transition"><HomeIcon size={15} /> {t('nf.home', 'Back to home')}</Link>
+        </div>
+      )}
     </div>
   );
 }

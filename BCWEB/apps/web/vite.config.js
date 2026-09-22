@@ -2,6 +2,8 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { fileURLToPath } from 'node:url';
 import { resolve, dirname } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 
 // B.MD lives in packages/bmd — a real npm package (its own package.json, README, docs, CHANGELOG)
 // that this app consumes IN PLACE. Not through node_modules: there is no root workspace in this
@@ -69,9 +71,86 @@ function verificationTag() {
   };
 }
 
+/**
+ * The PWA: a manifest link in <head>, and a service worker built from the real bundle.
+ *
+ * Same reason as verificationTag() above for going through a plugin: index.html is the
+ * owner's file. The <link rel="manifest"> is injected here; the manifest itself is a static
+ * file in public/ because nothing in it depends on the build.
+ *
+ * The WORKER does depend on the build, which is the whole point of generating it:
+ *
+ *   · it precaches the app shell and the exact hashed chunks the offline destination needs.
+ *     The 404 page is a lazily imported route, so "offline lands on the 404 page with the
+ *     game playable" is only true if that chunk AND everything it imports are in the cache
+ *     before the network goes away. A hand-written list cannot name them: the file names
+ *     carry a content hash that changes whenever the code does.
+ *   · the cache names carry a build id, so `activate` drops every cache from every previous
+ *     build in one sweep and two builds can never be mixed.
+ *
+ * scripts/sw-source.js holds the worker's code and the caching policy it implements, written
+ * out. This function only fills in the two placeholders and emits the result as dist/sw.js.
+ * Read the generated file after a build if you want to check the list: it is plain and short.
+ */
+function bcwebPwa() {
+  const SRC = resolve(dirname(fileURLToPath(import.meta.url)), 'scripts/sw-source.js');
+  // Unhashed files that are part of the shell's first paint or of the installed-app identity.
+  // world.json (1 MB, the globe on the analytics map) is deliberately NOT here: it is not on
+  // any path to the offline page, and precaching it would cost every visitor a megabyte on
+  // install to make one admin screen work offline.
+  const STATIC = ['/manifest.webmanifest', '/logo.png', '/logo-white.webp', '/icons/maskable.svg'];
+  // Which lazily imported routes must survive offline. The 404 page is the offline
+  // destination (the owner's call), so its chunk is not optional.
+  const OFFLINE_ROUTES = ['pages/notfound.jsx'];
+  return {
+    name: 'bcweb-pwa',
+    transformIndexHtml() {
+      return [{ tag: 'link', attrs: { rel: 'manifest', href: '/manifest.webmanifest' }, injectTo: 'head' }];
+    },
+    generateBundle(_opts, bundle) {
+      const chunks = Object.values(bundle).filter((c) => c.type === 'chunk');
+      const byName = new Map(chunks.map((c) => [c.fileName, c]));
+      const wanted = new Set();
+      // Walk a chunk and everything it STATICALLY imports. Dynamic imports are left out on
+      // purpose: following those from the entry would drag in every route on the site and
+      // turn a precache into a full mirror.
+      const walk = (chunk, seen = new Set()) => {
+        if (!chunk || seen.has(chunk.fileName)) return;
+        seen.add(chunk.fileName);
+        wanted.add('/' + chunk.fileName);
+        for (const css of chunk.viteMetadata?.importedCss || []) wanted.add('/' + css);
+        for (const imp of chunk.imports || []) walk(byName.get(imp), seen);
+      };
+      for (const c of chunks) if (c.isEntry) walk(c);
+      for (const route of OFFLINE_ROUTES) {
+        const hit = chunks.find((c) => c.facadeModuleId && c.facadeModuleId.replace(/\\/g, '/').endsWith(route));
+        if (hit) walk(hit);
+        else this.warn(`[bcweb-pwa] no chunk for ${route}: the offline page will not work offline`);
+      }
+      for (const s of STATIC) wanted.add(s);
+      // A build id that changes only when the output does, so a rebuild of identical sources
+      // does not needlessly evict every visitor's asset cache.
+      const list = [...wanted].sort();
+      const build = createHash('sha256').update(list.join('\n')).digest('hex').slice(0, 12);
+      // replaceAll, not replace. The worker's own header comment NAMES both placeholders
+      // while explaining them, so a single-occurrence replace substituted the prose and left
+      // the code holding `const BUILD = '__BUILD_ID__'` and `const PRECACHE = __PRECACHE__`.
+      // That builds green and emits a file: the worker then throws on its first line at
+      // install time, silently, and the only symptom is a site that never caches anything.
+      const source = readFileSync(SRC, 'utf8')
+        .replaceAll('__BUILD_ID__', build)
+        .replaceAll('__PRECACHE__', JSON.stringify(list, null, 2));
+      if (source.includes('__BUILD_ID__') || source.includes('__PRECACHE__')) {
+        this.error('[bcweb-pwa] a placeholder survived substitution in sw.js');
+      }
+      this.emitFile({ type: 'asset', fileName: 'sw.js', source });
+    },
+  };
+}
+
 // Dev proxies /api -> the API container so the SPA + API share an origin.
 export default defineConfig(async () => ({
-  plugins: [react(), verificationTag()],
+  plugins: [react(), verificationTag(), bcwebPwa()],
   resolve: {
     alias: [
       { find: /^@bettercommunity\/bmd$/, replacement: `${BMD}/index.jsx` },

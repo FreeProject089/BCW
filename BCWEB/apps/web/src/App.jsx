@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Routes, Route, Link, NavLink, Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { Code2, Boxes, Music2, Newspaper, Server, Rocket, LayoutDashboard, Shield, LogOut, Download, Menu, X, Sparkles, Bell, Trash2, CheckCheck, Mail, Home as HomeIcon, ChevronDown, MoreHorizontal, LayoutGrid, ShieldCheck, ArrowUpRight, Info, AlertTriangle, CheckCircle2, Settings as SettingsIcon, BookOpen, Search, Languages, LogIn, Cloud, HelpCircle } from 'lucide-react';
+import { Code2, Boxes, Orbit, Music2, Newspaper, Server, Rocket, LayoutDashboard, Shield, LogOut, Download, Menu, X, Sparkles, Bell, Trash2, CheckCheck, Mail, Home as HomeIcon, ChevronDown, MoreHorizontal, LayoutGrid, ShieldCheck, ArrowUpRight, Info, AlertTriangle, CheckCircle2, Settings as SettingsIcon, BookOpen, Search, Languages, LogIn, Cloud, HelpCircle } from 'lucide-react';
 import { useAuth } from './pages/auth.jsx';
 import { api } from './lib/api.js';
 import { onNotifsChanged, applyNotifChange, markNotifRead, markAllNotifsRead, deleteNotif } from './lib/notifs.js';
@@ -48,6 +48,7 @@ import { getOrbTransitionPref, getLogoutConfirm } from './lib/prefs.js';
 import { canAdmin, effectiveCaps, hasProjectGrant, utilAllowed } from './lib/roles.js';
 import { readLayout, navAlignClass } from './lib/navLayout.js';
 import CookieConsent from './ui/CookieConsent.jsx';
+import PwaUpdatePrompt from './ui/pwa-update.jsx';
 import PromoBadge from './ui/promo-badge.jsx';
 import EventEffect from './hero/event-effect.jsx';
 import { IntroProvider, useIntro } from './ui/IntroContext.jsx';
@@ -91,6 +92,21 @@ const StudioPage = lazyChunk(() => import('./pages/studio.jsx'));
 // route almost nobody reaches. Split out it is worth 9 KB gzip, which is what the bundle
 // budget was over by, and it costs a Suspense flash on a page that is already a surprise.
 const NotFound = lazyChunk(() => import('./pages/notfound.jsx'));
+// Was this document opened with no network at all?
+//
+// Read ONCE, at module load, and never again. When the service worker cannot reach the site
+// it answers a navigation with the precached app shell (scripts/sw-source.js, rule 3), and
+// what boots is this app with nothing behind it: every page would render its own "could not
+// load" state, one by one, which is a broken site rather than an offline one. So an offline
+// boot goes straight to the 404 page, which is the one screen here that needs no server and
+// has a game on it. That is the owner's call and it is what makes the offline fallback worth
+// having at all.
+//
+// It is deliberately NOT reactive to going offline mid-session: throwing away the article
+// somebody is reading because the train went into a tunnel would be worse than the per-page
+// fallbacks they already get. Coming back online DOES clear it, because then the route they
+// asked for can finally be shown.
+const BOOTED_OFFLINE = typeof navigator !== 'undefined' && navigator.onLine === false;
 // Sign-in is a route like any other. It was eager because it is important, which is not
 // the same as being needed on first paint: somebody arriving at the home page does not
 // need the sign-in form until they click.
@@ -150,7 +166,7 @@ const DEFAULT_ITEMS = [
 // Icons an admin can pick for a configured nav item — a curated, safe whitelist
 // (only these render; an unknown name falls back to Boxes). Keys are the values
 // stored in the nav config; keep them stable.
-const NAV_ICONS = { Boxes, Music2, Newspaper, Server, Rocket, Shield, Download, Sparkles, Mail, Home: HomeIcon, BookOpen, LayoutGrid, Info, Bell, Code: Code2, Search, Cloud, LogIn, LayoutDashboard, HelpCircle };
+const NAV_ICONS = { Boxes, Orbit, Music2, Newspaper, Server, Rocket, Shield, Download, Sparkles, Mail, Home: HomeIcon, BookOpen, LayoutGrid, Info, Bell, Code: Code2, Search, Cloud, LogIn, LayoutDashboard, HelpCircle };
 
 // Built-in topbar utility elements, split by their responsive cluster (see Topbar).
 // Admins reorder/hide WITHIN a cluster; the keys are the config identifiers — keep stable.
@@ -643,6 +659,14 @@ export function Nav({ preview = null } = {}) {
   };
   const [open, setOpen] = useState(false);
   const loc = useLocation();
+  // The phone sheet is an overlay (see the header below), so Escape has to close it: with
+  // the page hidden behind it there is no longer anywhere else to click by accident.
+  useEffect(() => {
+    if (!open) return;
+    const onEsc = (e) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('keydown', onEsc);
+    return () => document.removeEventListener('keydown', onEsc);
+  }, [open]);
   const segNavRef = useRef(null);
   const neededRef = useRef(0);                     // seg-nav width needed WITH labels
   const [compact, setCompact] = useState(false);   // icons-only (pills + Dashboard/Admin) when tight
@@ -693,7 +717,7 @@ export function Nav({ preview = null } = {}) {
   // ones too, so it always has more than this menu does. Saying so once is better than a
   // visitor concluding these are all of them.
   const projectsGroup = projectsDropdown ? {
-    type: 'group', k: 'nav.projects', icon: Boxes,
+    type: 'group', k: 'nav.projects', icon: Orbit,
     children: [
       ...pinnedShowcase.slice(0, layout.projectsMax).map((p) => ({
         to: `/project/${p.slug}`,
@@ -787,7 +811,7 @@ export function Nav({ preview = null } = {}) {
       case 'notifications': return preview
         ? <span key="u-notif" className="nav-link !px-2 relative" title={t('nav.notifications')}>{ug('notifications', Bell)}</span>
         : <NavNotifications key="u-notif" icon={hasIcon('notifications', theme) || uCfg.notifications?.size ? ug('notifications', Bell) : null} />;
-      case 'projects': return <NavLink key="u-proj" to="/projects" className={({ isActive }) => `hidden sm:inline-flex nav-link !px-2 ${isActive ? 'nav-link-active' : ''}`} title={t('nav.projects')} aria-label={t('nav.projects')}>{ug('projects', Boxes)}</NavLink>;
+      case 'projects': return <NavLink key="u-proj" to="/projects" className={({ isActive }) => `hidden sm:inline-flex nav-link !px-2 ${isActive ? 'nav-link-active' : ''}`} title={t('nav.projects')} aria-label={t('nav.projects')}>{ug('projects', Orbit)}</NavLink>;
       // Inert in the preview: it would switch the ADMIN's language, not the preview's.
       case 'lang': return <span key="u-lang" className={preview ? 'pointer-events-none contents' : 'contents'}><LangToggle type={uCfg.lang?.type || 'auto'} icon={hasIcon('lang', theme) || uCfg.lang?.size ? ug('lang', Languages) : null} /></span>;
       case 'theme': return <ThemeToggle key="u-theme" lightIcon={themeKnob('light')} darkIcon={themeKnob('dark')} />;
@@ -808,7 +832,10 @@ export function Nav({ preview = null } = {}) {
   const unseenDot = (n, label) => n > 0 && <span className="absolute -top-1 -right-1 min-w-[15px] h-[15px] px-1 rounded-full bg-[var(--primary)] text-[var(--on-primary)] text-[9px] font-bold grid place-items-center" title={label} aria-label={label}>{n > 9 ? '9+' : n}</span>;
   return (
     <header className="sticky top-0 z-40 px-2 sm:px-3 pt-2 sm:pt-3">
-      <div className="max-w-7xl mx-auto rounded-2xl border border-[var(--line)] px-2.5 sm:px-3 h-14 flex items-center gap-1 flex-nowrap topbar"
+      {/* The bar and the phone sheet share this box. It is `relative` and it carries the
+          max width, because the sheet hangs off it as an OVERLAY — see below for why. */}
+      <div className="max-w-7xl mx-auto relative">
+      <div className="rounded-2xl border border-[var(--line)] px-2.5 sm:px-3 h-14 flex items-center gap-1 flex-nowrap topbar"
         style={{ boxShadow: '0 10px 34px -14px rgba(0,0,0,0.30)' }}>
         <Link to="/" className="flex items-center gap-2 font-extrabold text-[15px] me-1 shrink-0" onClick={() => setOpen(false)}>
           {hasIcon('brand', theme)
@@ -855,16 +882,32 @@ export function Nav({ preview = null } = {}) {
         <div className="lg:hidden flex items-center gap-1 shrink-0">
           {user ? <Link to="/profile" onClick={() => setOpen(false)}><Avatar user={user} size={28} /></Link>
             : <Link to="/auth"><Button variant="primary" size="sm" className="rounded-full">{t('nav.signin')}</Button></Link>}
-          <button className="nav-link !px-2 shrink-0" onClick={() => setOpen((v) => !v)} aria-label="Menu">{open ? <X size={20} /> : <Menu size={20} />}</button>
+          <button className="nav-link !px-2 shrink-0" onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-label={t('nav.menu.aria', 'Site menu')}>{open ? <X size={20} /> : <Menu size={20} />}</button>
         </div>
       </div>
 
-      {/* The phone menu (below lg:). Same visual language as the bottom bar: see MobileMenu. */}
+      {/* The phone menu (below lg:). Same visual language as the bottom bar: see MobileMenu.
+          It used to be rendered here as an ordinary block inside the sticky header, which
+          means it took part in the layout: opening it grew the header from 64px to 407px and
+          pushed the whole page down by 343px (measured at 375x812 — main's top went 64 -> 407,
+          body scrollHeight 6958 -> 7300). Every card under the bar jumped a screenful, which
+          is what "opening the dropdown breaks the layout" was.
+          A menu is an overlay, so it is positioned as one: absolute, hung under the bar, out
+          of flow. Nothing below it moves. The sheet keeps its own margins and max-width, so
+          the look committed in 20fd0998 is untouched — only the box it sits in changed. */}
       {open && (
-        <MobileMenu cfg={navCfg?.mobileMenu} items={effItems} projectsGroup={projectsDropdown ? projectsGroup : null}
-          pinned={projectsDropdown ? [] : pinnedShowcase} user={user} uVisible={uVisible} ug={ug}
-          onClose={() => setOpen(false)} onLogout={() => { logout(); setOpen(false); }} />
+        <div className="absolute left-0 right-0 top-full z-10 lg:hidden">
+          <MobileMenu cfg={navCfg?.mobileMenu} items={effItems} projectsGroup={projectsDropdown ? projectsGroup : null}
+            pinned={projectsDropdown ? [] : pinnedShowcase} user={user} uVisible={uVisible} ug={ug}
+            onClose={() => setOpen(false)} onLogout={() => { logout(); setOpen(false); }} />
+        </div>
       )}
+      </div>
+      {/* An overlay hides what is under it, so it also has to be dismissable from there:
+          a tap anywhere outside closes, and so does Escape. In flow neither was needed —
+          you could always see and reach the page. `-z-10` keeps it behind the sheet and the
+          bar while still covering the page. */}
+      {open && <button type="button" className="fixed inset-0 -z-10 lg:hidden cursor-default" aria-hidden tabIndex={-1} onClick={() => setOpen(false)} />}
       {/* Lives inside the same sticky header, so it rides along under the topbar
           pill instead of scrolling away with the page content underneath it. */}
       <AnnouncementBanner />
@@ -933,7 +976,7 @@ function MobileMenu({ cfg, items, projectsGroup, pinned, user, uVisible, ug, onC
       <ShowcaseIcon icon={p.icon} size={18} fallback={<Sparkles size={18} />} />)),
   ];
   const shortcuts = [
-    uVisible('projects') && link('s-proj', '/projects', t('nav.projects'), ug('projects', Boxes)),
+    uVisible('projects') && link('s-proj', '/projects', t('nav.projects'), ug('projects', Orbit)),
     m.contact && link('s-contact', '/contact', t('nav.contact', 'Contact'), <Mail size={18} />),
     uVisible('settings') && link('s-set', '/settings', t('nav.settings', 'Settings'), ug('settings', SettingsIcon)),
     ...m.extras.map((x, i) => link('x' + i, x.to, navLabel(x, t, lang) || x.to, <NavIcon item={withIcon({ ...x, icon: x.icon || 'Boxes' })} size={18} />)),
@@ -1453,6 +1496,14 @@ export default function App() {
   const loc = useLocation();
   const toast = useToast();
   const { t, lang } = useI18n();
+  // See BOOTED_OFFLINE above. One-way: it can only be cleared, by the network coming back.
+  const [offline, setOffline] = useState(BOOTED_OFFLINE);
+  useEffect(() => {
+    if (!offline) return undefined;
+    const back = () => setOffline(false);
+    window.addEventListener('online', back);
+    return () => window.removeEventListener('online', back);
+  }, [offline]);
   // Session replay is imported LAZILY and last: it is the only one of these that can pull in
   // rrweb, and a visitor who declined analytics or an install with the switch off must never
   // download it. initReplay() checks consent before the dynamic import resolves anything heavy.
@@ -1567,6 +1618,7 @@ export default function App() {
           <main ref={mainRef} id="main-content" tabIndex={-1}
             className={`relative z-10 flex-1 w-full mx-auto px-4 py-10 anim-fade ${/^\/docs(\/|$)/.test(loc.pathname) ? 'max-w-[84rem]' : 'max-w-6xl'}`}>
             <Suspense fallback={<div className="flex justify-center py-20 text-[var(--muted)]"><span className="anim-fade">…</span></div>}>
+            {offline ? <NotFound offline /> : (
             <Routes>
               <Route path="/" element={<Home />} />
               <Route path="/catalog" element={<Catalog />} />
@@ -1656,11 +1708,13 @@ export default function App() {
               <Route path="/studio/:kind/:id/:index?" element={<Protected role={['MOD', 'ADMIN']}><StudioPage /></Protected>} />
               <Route path="*" element={<NotFound />} />
             </Routes>
+            )}
             </Suspense>
           </main>
           <Footer />
           <MobileTabBar />
           <CookieConsent />
+          <PwaUpdatePrompt />
         </AppReveal>
       </div>
     </IntroProvider>

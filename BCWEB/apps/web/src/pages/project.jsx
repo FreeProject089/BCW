@@ -4,7 +4,7 @@ import { ArrowRight, Scale,
   Download, Github, MessageCircle, Heart, Globe, BookOpen, Users, ScrollText, ShieldCheck,
   FileText, ListTodo, Boxes, ExternalLink, FolderGit2, ChevronRight, ChevronDown,
   CheckCircle2, Clock, Circle, CalendarDays, Rocket, Wrench, Sparkles, FlaskConical, Newspaper, Network, Pencil,
-  Play, Radio, Megaphone, GitBranch, ShoppingBag, Key, Copy, LayoutTemplate, Lock
+  Play, Radio, Megaphone, GitBranch, ShoppingBag, Key, Copy, LayoutTemplate, Lock, Orbit, Search, X
 } from 'lucide-react';
 import Markdown, { matchesLang, ShowcaseIcon, IconGlyph } from '../ui/md.jsx';
 
@@ -1295,35 +1295,87 @@ function RequestListing() {
   );
 }
 
+/**
+ * "Other projects" — the /projects grid.
+ *
+ * Three things were wrong with it, and only one of them was cosmetic.
+ *
+ *   · The cards did not line up. Each one is a `<Card h-full>` inside a bare `<Link>`, and an
+ *     `<a>` is display:inline, so `h-full` resolved against a box with no height: a row of
+ *     three cards was three different heights, stepping down wherever a tagline happened to
+ *     stop. The Link is a block that fills its grid cell now, and the cards match.
+ *   · There was no way to tell a shipped project from an announced one except a small line of
+ *     grey text, and no way to find anything: no search, no count, no ordering. A grid is
+ *     fine for six projects and useless for thirty.
+ *   · The icon was `Boxes`, which is also the catalogue's icon, the topbar's Projects icon
+ *     and the icon on two of its own empty states. `Orbit` belongs to this page: the Better*
+ *     projects orbiting the one in the middle is what the page is for, and it matches the
+ *     orb the whole site is built around.
+ */
 export function OtherProjects() {
   const { t } = useI18n();
   const { data, loading } = useFetch(() => api.get('/showcase'), []);
   const projects = data?.projects || [];
+  const [q, setQ] = useState('');
+  const nq = q.trim().toLowerCase();
+  const match = (p) => !nq || `${p.name} ${p.announceTitle || ''} ${p.tagline || ''}`.toLowerCase().includes(nq);
+  const shown = projects.filter(match);
+  // Announced-but-not-out projects go last. They are the ones you cannot use yet, and leading
+  // a list of projects with things that do not exist yet is the wrong first impression — the
+  // countdown page is still one click away, exactly where it was.
+  const ordered = [...shown].sort((a, b) => (a.isAnnouncing ? 1 : 0) - (b.isAnnouncing ? 1 : 0));
+  const soon = ordered.filter((p) => p.isAnnouncing).length;
   return (
     <div>
-      <PageHeader icon={Boxes} title={t('nav.projects') || 'Projects'} subtitle={t('projects.sub') || 'More from the Better* ecosystem.'} />
+      <PageHeader icon={Orbit} title={t('nav.projects') || 'Projects'} subtitle={t('projects.sub') || 'More from the Better* ecosystem.'} />
+      {/* The search appears once there is enough to search. Below that it is a control that
+          does nothing but take a row. */}
+      {!loading && projects.length > 5 && (
+        <div className="relative mb-4 max-w-sm">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" />
+          <input className="input !ps-9" placeholder={t('proj.search', 'Search projects…')} value={q} onChange={(e) => setQ(e.target.value)} />
+          {q && <button onClick={() => setQ('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)] hover:text-[var(--text)]" aria-label={t('common.clear', 'Clear')}><X size={15} /></button>}
+        </div>
+      )}
       {loading ? <div className="flex items-center gap-2 text-[var(--muted)] py-8"><Spinner /> {t('common.loading')}</div>
-        : projects.length ? (
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {projects.map((p) => (
-              <Link key={p.slug} to={`/project/${p.slug}`}>
-                <Card hover className="p-5 h-full">
-                  <div className="flex items-center gap-3">
-                    {p.icon
-                      ? <div className="grid place-items-center w-11 h-11 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] shrink-0 p-1.5 text-[var(--accent-ink)]"><ShowcaseIcon icon={p.icon} size={28} rounded={8} /></div>
-                      : <div className="grid place-items-center w-11 h-11 rounded-xl bg-gradient-to-br from-brand to-brand-2 text-[var(--on-primary)] font-extrabold text-sm shrink-0">{p.short}</div>}
-                    <div className="min-w-0">
-                      <div className="font-semibold truncate">{p.isAnnouncing ? (p.announceTitle || p.name) : p.name}</div>
-                      {p.isAnnouncing && <div className="text-[11px] text-[var(--accent-ink)] flex items-center gap-1"><Clock size={11} /> {t('prj.comingsoon', "Coming soon")}</div>}
+        : ordered.length ? (
+          <>
+            {projects.length > 5 && (
+              <div className="text-xs text-[var(--faint)] mb-2">
+                {t('proj.count', '{n} projects').replace('{n}', String(ordered.length))}
+                {soon > 0 && ` · ${t('proj.countsoon', '{n} still to come').replace('{n}', String(soon))}`}
+              </div>
+            )}
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {ordered.map((p) => (
+                <Link key={p.slug} to={`/project/${p.slug}`} className="block h-full group">
+                  <Card hover className="p-5 h-full flex flex-col">
+                    <div className="flex items-center gap-3">
+                      {p.icon
+                        ? <div className="grid place-items-center w-11 h-11 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] shrink-0 p-1.5 text-[var(--accent-ink)]"><ShowcaseIcon icon={p.icon} size={28} rounded={8} /></div>
+                        : <div className="grid place-items-center w-11 h-11 rounded-xl bg-gradient-to-br from-brand to-brand-2 text-[var(--on-primary)] font-extrabold text-sm shrink-0">{p.short}</div>}
+                      <div className="min-w-0 flex-1">
+                        <div className="font-semibold truncate" title={p.isAnnouncing ? (p.announceTitle || p.name) : p.name}>{p.isAnnouncing ? (p.announceTitle || p.name) : p.name}</div>
+                        {p.isAnnouncing && <div className="text-[11px] text-[var(--accent-ink)] flex items-center gap-1"><Clock size={11} /> {t('prj.comingsoon', 'Coming soon')}</div>}
+                      </div>
                     </div>
-                  </div>
-                  {p.tagline && <p className="text-sm text-[var(--muted)] mt-3 line-clamp-3">{p.tagline}</p>}
-                </Card>
-              </Link>
-            ))}
-          </div>
-        ) : <EmptyState icon={Boxes} title={t('proj.list.none', 'No projects yet')} sub={t('proj.list.noneSub', 'Featured projects will appear here.')}
-          action={{ label: t('proj.list.none.a', 'Browse the catalogue'), to: '/catalog', icon: Boxes }} />}
+                    {p.tagline && <p className="text-sm text-[var(--muted)] mt-3 line-clamp-3">{p.tagline}</p>}
+                    {/* Pinned to the bottom of a card that now has a bottom. Without it the
+                        only thing telling you a card is a link was the cursor. */}
+                    <div className="flex-1" />
+                    <div className="mt-3 pt-2.5 border-t border-[var(--line)] text-[12px] text-[var(--faint)] group-hover:text-[var(--accent-ink)] transition inline-flex items-center gap-1">
+                      {p.isAnnouncing ? t('proj.seeteaser', 'See the countdown') : t('proj.openpage', 'Open the project')} <ArrowRight size={12} />
+                    </div>
+                  </Card>
+                </Link>
+              ))}
+            </div>
+          </>
+        ) : nq ? <EmptyState icon={Search} title={t('proj.nomatch', 'No matches')}
+          sub={t('proj.nomatch.s', 'No project here matches what you typed.')}
+          action={{ label: t('common.clear', 'Clear'), icon: X, onClick: () => setQ('') }} />
+          : <EmptyState icon={Orbit} title={t('proj.list.none', 'No projects yet')} sub={t('proj.list.noneSub', 'Featured projects will appear here.')}
+            action={{ label: t('proj.list.none.a', 'Browse the catalogue'), to: '/catalog', icon: Boxes }} />}
       <RequestListing />
     </div>
   );
