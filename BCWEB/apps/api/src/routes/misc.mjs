@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { db, requireRole, requireCap, hasCap, optionalAuth, slugify, logAudit, notify, notifyAll, clearAccountLockCache, clearUserCache, CAPABILITIES, NOTIF_CATEGORIES, currentUser, httpUrl } from '../lib/lib.mjs';
+import { isDemoKey } from '../lib/demo.mjs';
 import { suspendOwned, restoreOwned, cancelSubscriptions, anonymiseAccount } from './closure.mjs';
 import { addStaffNote, notifyAccountAction, notesFor, NOTE_KINDS } from '../lib/staff-notes.mjs';
 import { shredUser } from '../lib/shred.mjs';
@@ -3732,6 +3733,11 @@ export default async function miscRoutes(app) {
   app.put('/admin/settings/:key', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
     const p = await db();
     const value = req.body?.value ?? req.body;
+    // `demo.*` has exactly one writer, lib/demo.mjs, which clamps the duration and size and
+    // records who started it. Writing the row here would skip all three (a demo that never
+    // expires, a billion generated items) — so this door is shut and routes/demo.mjs is the
+    // way in. See isDemoKey.
+    if (isDemoKey(req.params.key)) return reply.code(409).send({ error: 'use_demo_routes', key: req.params.key });
     if (SUPERADMIN_ONLY_SETTINGS.has(req.params.key) && req.user?.role !== 'SUPERADMIN') {
       return reply.code(403).send({ error: 'superadmin_required', key: req.params.key });
     }
