@@ -213,7 +213,12 @@ export function embedFor(category, ev = {}) {
       if (ev.content) e.fields.push({ name: 'Message', value: clip(ev.content, 700) });
       if (ev.attachments?.length) e.fields.push(listField('Attachments', ev.attachments.map((a) => a.name)));
       const o = ev.outcome || {};
-      const res = o.failed ? `Failed: ${o.failed}` : o.banned ? 'banned' : o.kicked ? 'kicked' : o.timeoutMin ? `timed out ${o.timeoutMin} min` : o.warned ? `warning #${o.warned}${o.triggered ? ` → ${o.triggered.kind}` : ''}${o.recorded === false ? ' (local — site unreachable)' : ''}` : ev.deleted ? 'message deleted' : 'logged';
+      const warned = o.warned ? `warning #${o.warned}${o.triggered ? ` → ${o.triggered.kind}` : ''}${o.recorded === false ? ' (local — site unreachable)' : ''}` : '';
+      const base = o.failed ? `Failed: ${o.failed}` : o.banned ? 'banned' : o.kicked ? 'kicked' : o.timeoutMin ? `timed out ${o.timeoutMin} min`
+        : o.roleAdded ? `role <@&${o.roleAdded}> given${o.roleMin ? ` for ${o.roleMin} min` : ''}` : o.roleRemoved ? `role <@&${o.roleRemoved}> removed` : '';
+      // A progressive rule's hit that did not count yet says how far along it is.
+      const strike = o.strike ? `strike ${o.strike.hit}/${o.strike.every} (no warning yet)` : '';
+      const res = [base, warned, strike].filter(Boolean).join(' · ') || (ev.deleted ? 'message deleted' : 'logged');
       e.fields.push({ name: 'Result', value: res });
       break;
     }
@@ -440,6 +445,25 @@ export async function adminAlert(kind, payload, { title = null } = {}) {
     queue.push(`t:${thread.id}`, { payload });
     return true;
   } catch (e) { console.warn('[logs] adminAlert failed:', e?.message || e); return false; }
+}
+
+/**
+ * The alerts-forum post for `kind`, for a caller that must EDIT what it sends there later (the
+ * server-perf incidents). adminAlert() goes through the merging queue, which is right for a
+ * stream of notices and wrong for a message that has to be found again: the queue may fold it
+ * into another. Null when no forum is configured, as adminAlert's `false`.
+ */
+export async function alertThread(kind) {
+  try {
+    if (!client) return null;
+    const cfg = await config();
+    const forumId = cfg?.alerts?.forumId;
+    if (!cfg?.enabled || !forumId) return null;
+    const forum = client.channels.cache.get(forumId) || await client.channels.fetch(forumId).catch(() => null);
+    if (!isForum(forum)) return null;
+    const tag = ALERT_KINDS[kind] || 'Announcement';
+    return await ensureForumPost(forum, `${tag} alerts`, { tags: [tag], summary: `**${tag}** — every ${tag.toLowerCase()} alert the bot raises, newest last.`, reaction: ic('staff') || '', pin: true });
+  } catch (e) { console.warn('[logs] alertThread failed:', e?.message || e); return null; }
 }
 
 // ── Setup (used by /logs setup) ───────────────────────────────────────────────────────────

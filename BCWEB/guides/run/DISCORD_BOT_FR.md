@@ -160,7 +160,10 @@ d'un rôle et peut donc prévenir avant.
 
 L'**automod** est piloté par les données. Onze règles : spam, mentions en masse, invitations,
 liens, mots, majuscules, zalgo, pièces jointes, âge du compte, selfbot, raid. Chacune a ses
-propres seuils et une action parmi `log` / `delete` / `warn` / `timeout` / `kick` / `ban`,
+propres seuils et une action parmi `log` / `delete` / `warn` / `timeout` / `kick` / `ban` /
+`addRole` / `removeRole` (ces deux-là prennent un `roleId` ; `addRole` aussi un `roleMin`, 0 =
+jusqu'à ce qu'un modérateur le retire — le retrait minuté vit dans la mémoire du bot, un
+redémarrage avant l'échéance laisse le rôle),
 plus trois paramètres que toute règle accepte : si le message est supprimé, si le membre est
 prévenu en MP, et un interrupteur **observation seule** qui enregistre le déclenchement sans
 rien exécuter. Les règles sur les messages prennent aussi leurs propres exemptions de rôles
@@ -172,6 +175,14 @@ L'**échelle d'avertissements** (`warnThresholds`) est partagée par `/warn` et 
 lignes « à N avertissements, faire X », sur le compte exact, de sorte que l'avertissement qui
 franchit un palier agit et que les suivants non. `warnDecayHours` (défaut 168) est la durée
 pendant laquelle un avertissement compte.
+
+Une règle sur les messages peut **alimenter cette échelle progressivement** : `countsAsWarn`
+(toujours actif pour l'action `warn`), `warnEvery` (N : chaque Nième déclenchement de cette
+règle par ce membre enregistre un avertissement, donc 3 = les deux premiers ne coûtent que
+l'action de la règle) et `warnWindowMin` (défaut 60 ; durée de mémoire d'un déclenchement).
+L'avertissement passe par le même dossier que `/warn` : il n'y a pas de second compteur.
+Plusieurs règles sur un même message enregistrent au plus un avertissement. Les infractions en
+attente vivent en mémoire : un redémarrage les oublie, jamais les avertissements enregistrés.
 
 Défauts à connaître : automod activé, avec spam, mentions, invitations, zalgo, pièces
 jointes, selfbot et raid actifs ; liens, mots, majuscules et âge du compte inactifs.
@@ -245,7 +256,11 @@ langue du bot pour ce serveur, ouvrir le tableau de bord. `/setup` la reposte.
 ### Giveaways
 
 Deux sortes. Les giveaways **du staff** se créent au dashboard et peuvent porter une
-récompense d'inventaire. Les giveaways **des membres** sont
+récompense d'inventaire, ou un **lot économie** (`prizeKind: economy`) : des points dans la
+monnaie configurée et/ou de l'XP, versés par le même registre qu'un don du staff (type
+`grant`, `ref giveaway:<id>`), donc visibles dans l'historique du membre. Un gagnant non lié
+est crédité sur sa ligne fantôme et le reçoit en liant son compte. Le tirage n'est pris
+qu'une fois (mise à jour conditionnelle) : un rapport rejoué ne paie ni n'annonce deux fois. Les giveaways **des membres** sont
 `/giveaway <lot> <minutes> [gagnants]`, uniquement sur Discord, plafonnés à 5 actifs par
 serveur ; le lot est ce que l'organisateur remet lui-même. Le bot poste la carte avec un
 bouton Participer, tire au sort à l'échéance, et enregistre participations et gagnants sur le
@@ -260,7 +275,7 @@ ne réannonce jamais rien.
 | Quoi | Cadence | Notes |
 |---|---|---|
 | Articles de blog | 5 min | Plusieurs routes ; chaque route choisit un salon et quels blogs inclure (`*`, une clé de projet, ou `showcase`). Un id de salon est unique au monde, donc une route peut viser n'importe quel serveur où est le bot. La déduplication est par salon. |
-| Alertes de perf serveur | 2 min | CPU / RAM / disque / service à terre, depuis le moniteur de l'API. Un salon général séparé pour les incidents est optionnel. |
+| Alertes de perf serveur | 2 min | CPU / RAM / disque / service à terre / erreurs, depuis le moniteur de l'API. **Un message par incident**, modifié à mesure et clos par une courte réponse « résolu » ; les événements d'un même type arrivés ensemble partagent un message. Chacun porte un bouton **Détails** vers `/admin?s=serverperf&alert=<id>`. Un salon général séparé pour les incidents est optionnel. |
 | Pourboires Ko-fi | 2 min | Avec le total courant. Copié aussi dans le forum d'alertes admin. |
 | Paiements et remboursements Stripe | 2 min | Plusieurs salons pour chacun ; les remboursements retombent sur les salons de paiement. L'e-mail client est masqué et les noms affichés sont dépouillés du markdown Discord. |
 | Annonces | 20 s | Événements, promotions, demandes de commission, incidents. Un rôle n'est pingué que si c'est urgent. |
@@ -268,6 +283,19 @@ ne réannonce jamais rien.
 | MP de masse | 30 s | **Cadencé exprès** : 10 par passage, espacés d'une seconde, soit environ 1200 par heure. Discord traite une rafale de MP comme du spam et c'est le bot qui est signalé. La progression est une ligne sur le serveur, donc un redémarrage reprend au lieu de tout renvoyer deux fois. |
 | Panneaux de rôles | 60 s | Voir plus haut. |
 | Saisons d'économie | 10 min | Le premier passage après un redémarrage amorce le numéro de saison et n'annonce rien. |
+
+### Son statut Discord
+
+Désactivé par défaut (`presence.enabled`). Admin → Bot Discord règle la pastille (`online` /
+`idle` / `dnd` / `invisible`), le type d'activité et la ligne, avec `{guilds}` `{members}`
+`{status}` `{stripe}`, plus des lignes optionnelles affichées à tour de rôle toutes les
+`rotateSec` (30 s minimum). Avec `health`, un incident de la page de statut prend la ligne et
+passe la pastille en idle ou dnd ; avec `stripe`, le **statut publié par Stripe lui-même** (lu
+par l'API sur `www.stripestatus.com/api/v2/status.json`, en cache 5 minutes, jamais bloquant)
+s'affiche dans les mots de Stripe tant qu'il n'est pas opérationnel. La même source décide
+désormais la ligne Stripe de la page de statut : elle appelait `/v1/balance` avec notre clé,
+ce qui répondait « notre clé marche-t-elle » et virait au rouge sur une clé restreinte ou
+renouvelée.
 
 ### L'économie
 

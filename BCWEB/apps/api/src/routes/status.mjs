@@ -13,7 +13,8 @@
 
 import { z } from 'zod';
 import { randomBytes } from 'node:crypto';
-import { db, requireCap, logAudit } from '../lib/lib.mjs';
+import { db, requireCap, logAudit, botAuth } from '../lib/lib.mjs';
+import { stripeStatus, STRIPE_STATUS_PAGE } from '../lib/stripe-status.mjs';
 import { DEP_LABELS, DEP_KEYS, checkDependencies, getDepsConfig } from '../lib/monitor.mjs';
 import { dailyUptime, overallUptime, serviceState, overallState } from '../lib/status-page.mjs';
 import { sendMail, mailShell, escapeHtml, emailEnabled } from '../lib/mail.mjs';
@@ -81,6 +82,33 @@ export default async function statusRoutes(app) {
       incidents,
       // No `metrics` any more — see the header. The daily figures are an admin read now.
       generatedAt: now,
+    };
+  });
+
+  // ── What the bot shows as its Discord status ────────────────────────────────
+  //
+  // The same verdict the public page gives (state per service, overall banner), plus Stripe's
+  // OWN published state in detail — the presence line can say "Stripe: degraded" when Stripe
+  // says so, which a boolean cannot. Polled by the bot every two minutes; Stripe's part is
+  // cached for five (lib/stripe-status.mjs), so this never multiplies requests to Stripe.
+  // Bot-secret only: it is the public page's content, but the bot is its only reader.
+  app.get('/bot/status', async (req, reply) => {
+    if (!botAuth(req, reply)) return;
+    const p = await db();
+    const [probes, enabled, open, stripe] = await Promise.all([
+      checkDependencies(p).catch(() => ({})),
+      getDepsConfig(p).catch(() => ({})),
+      p.serviceOutage.findMany({ where: { endedAt: null } }).catch(() => []),
+      process.env.STRIPE_SECRET_KEY ? stripeStatus() : Promise.resolve(null),
+    ]);
+    const services = DEP_KEYS.filter((k) => enabled[k] !== false).map((key) => ({
+      key, label: DEP_LABELS[key] || key, state: serviceState(probes[key], open.find((o) => o.dep === key) || null),
+    }));
+    return {
+      state: overallState(services.map((s) => s.state)),
+      services,
+      stripe: stripe ? { state: stripe.state, description: stripe.description, stale: !!stripe.stale, page: STRIPE_STATUS_PAGE } : null,
+      url: `${SITE}/status`,
     };
   });
 

@@ -12,6 +12,8 @@ import { ALERT_THRESHOLDS, readThresholds } from './thresholds.mjs';
 import { getRedis } from './redis.mjs';
 import { checkStorageHealth } from './storage.mjs';
 import { notify } from './lib.mjs';
+import { stripeStatus, stripeUp } from './stripe-status.mjs';
+import { planAlert } from './alert-incident.mjs';
 
 // ── CPU% — classic two-snapshot os.cpus() diff (reflects what this container's
 // scheduler sees; under an unrestricted cgroup that's effectively the host's). ──
@@ -124,10 +126,13 @@ const DEP_CHECKS = {
   web: async () => {
     try { const r = await fetch('http://web/', { signal: AbortSignal.timeout(4000) }); return r.ok; } catch { return false; }
   },
+  // Stripe's OWN published status (lib/stripe-status.mjs), not a call with our key: `/v1/balance`
+  // answered "does our key work", and a restricted or rotated key painted Stripe red while
+  // Stripe was fine. Still null without a key — an install that does not take payments has no
+  // Stripe row to show. Cached 5 min and never throws; "cannot tell" is null, not down.
   stripe: async () => {
     if (!process.env.STRIPE_SECRET_KEY) return null;
-    try { const r = await fetch('https://api.stripe.com/v1/balance', { headers: { Authorization: `Bearer ${process.env.STRIPE_SECRET_KEY}` }, signal: AbortSignal.timeout(5000) }); return r.ok; }
-    catch { return false; }
+    return stripeUp(await stripeStatus());
   },
 };
 export const DEP_LABELS = { db: 'Database', storage: 'Object storage', bot: 'Discord bot', telemetry: 'Telemetry dashboard', web: 'Website', stripe: 'Stripe' };
@@ -335,7 +340,6 @@ function flushRequestStats() {
   return snap;
 }
 
-const ALERT_DEBOUNCE_MS = 30 * 60 * 1000; // don't re-alert the SAME message more than every 30 min
 
 /**
  * How bad, per kind.
@@ -364,13 +368,25 @@ export const ALERT_SEVERITY = {
 };
 export const severityOf = (kind) => ALERT_SEVERITY[kind] || 'warning';
 
+// One row per INCIDENT (lib/alert-incident.mjs has the why). A keyed condition that is still
+// open is UPDATED with the latest text instead of creating a new row every tick — the message
+// carries the live number ("CPU at 93%"), so the old kind+message debounce never matched and
+// every tick became a new Discord post. Returns the row only when people should be told: a new
+// incident, or one whose severity just went up. An update or a re-opened flap returns null.
 async function maybeAlert(p, kind, message, { key = null, severity = null } = {}) {
-  // Debounce on kind + message (not kind alone): a persistent "Object storage is
-  // unreachable" no longer spams, but a DIFFERENT dependency failing the same tick
-  // still alerts instead of being swallowed by the first one's cooldown.
-  const recent = await p.serverAlertLog.findFirst({ where: { kind, message }, orderBy: { createdAt: 'desc' } });
-  if (recent && Date.now() - recent.createdAt.getTime() < ALERT_DEBOUNCE_MS) return null;
-  return p.serverAlertLog.create({ data: { kind, message, key, severity: severity || severityOf(kind) } });
+  const sev = severity || severityOf(kind);
+  const [open, lastResolved, lastSame] = key
+    ? await Promise.all([
+      p.serverAlertLog.findFirst({ where: { key, resolvedAt: null }, orderBy: { createdAt: 'desc' } }),
+      p.serverAlertLog.findFirst({ where: { key, resolvedAt: { not: null } }, orderBy: { resolvedAt: 'desc' } }),
+      null,
+    ])
+    : [null, null, await p.serverAlertLog.findFirst({ where: { kind, message }, orderBy: { createdAt: 'desc' } })];
+  const plan = planAlert({ kind, message, key, severity: sev }, { open, lastResolved, lastSame });
+  if (plan.op === 'skip') return null;
+  if (plan.op === 'create') return p.serverAlertLog.create({ data: { kind, message, key, severity: sev } });
+  const row = await p.serverAlertLog.update({ where: { id: plan.id }, data: plan.data });
+  return plan.fired ? row : null;
 }
 
 /**

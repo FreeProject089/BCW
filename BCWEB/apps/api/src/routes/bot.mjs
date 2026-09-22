@@ -13,6 +13,7 @@ import { ICONS as BOT_ICONS, ICON_STYLE_DEFAULTS, renderEmoji, renderEmojiPack }
 import { emitWebhook } from '../lib/webhooks.mjs';
 import { grantAutoBadges } from './social.mjs';
 import { economyLevelFor, economyXpForLevel, economyPointsEarned, economyView, mergeShadowEconomy } from '../lib/economy-curve.mjs';
+import { normEconomyReward, rewardOf, rewardLabel, claimDraw, awardEconomyReward } from '../lib/giveaway-reward.mjs';
 
 // B4: a guild's member-storage config, created lazily on first sight with the safe default
 // (mode `none` — store nothing). Every member write goes through this so a guild the admin
@@ -76,6 +77,17 @@ const DEFAULT_BOT_CONFIG = {
   // payments, contact/commission doorbell, legal notice, moderation escalation, the digest)
   // becomes a tagged post there instead of a loose message. Unset → channels, as before.
   alerts: { enabled: false, channelId: '', generalChannelId: '', forumId: '' },
+  // The bot's Discord status (presence) — see the bot's features/presence.mjs.
+  //   status   → online | idle | dnd | invisible
+  //   type     → playing | watching | listening | competing | custom (custom = the text alone)
+  //   text     → the line, with {guilds} {members} {status} {stripe}; `rotate` adds more lines
+  //              shown in turn every `rotateSec` (min 30 — Discord rate-limits presence).
+  //   health   → while the status page is not all green, the line becomes `healthText`
+  //              ({services} = what is affected) and the dot idle (partial) / dnd (major).
+  //   stripe   → while STRIPE's own published status is not operational, say so with
+  //              `stripeText` ({stripe} = Stripe's description). Read from stripestatus.com.
+  // Off by default: an install that never opens this screen keeps the plain online dot.
+  presence: { enabled: false, status: 'online', type: 'watching', text: '{guilds} servers', rotate: [], rotateSec: 60, health: true, healthText: 'Incident: {services}', stripe: true, stripeText: 'Stripe: {stripe}' },
   // Where each kind of announcement lands, and who gets pinged when one is urgent.
   //
   // Empty means "the general channel", which is what every existing install has been doing —
@@ -1078,11 +1090,12 @@ export default async function botRoutes(app) {
   app.get('/admin/bot/giveaways', { preHandler: requireCap('manage_bot') }, async () => {
     const p = await db();
     const list = await p.giveaway.findMany({ orderBy: { createdAt: 'desc' }, take: 50 });
-    return { giveaways: list.map((g) => ({ id: g.id, prize: g.prize, channelId: g.channelId, endsAt: g.endsAt, winnersCount: g.winnersCount, status: g.status, entryCount: g.entries.length + g.siteEntrants.length, winnerIds: g.winnerIds, hasGift: !!g.giftConfig, requirements: g.requirements || null, kind: g.kind, audience: g.audience, prizeKind: g.prizeKind, guildId: g.guildId || null, createdAt: g.createdAt })) };
+    return { giveaways: list.map((g) => ({ id: g.id, prize: g.prize, channelId: g.channelId, endsAt: g.endsAt, winnersCount: g.winnersCount, status: g.status, entryCount: g.entries.length + g.siteEntrants.length, winnerIds: g.winnerIds, hasGift: !!g.giftConfig, requirements: g.requirements || null, kind: g.kind, audience: g.audience, prizeKind: g.prizeKind, reward: rewardOf(g), guildId: g.guildId || null, createdAt: g.createdAt })) };
   });
   app.post('/admin/bot/giveaways', { preHandler: requireCap('manage_bot') }, async (req, reply) => {
     const b = z.object({
-      prize: z.string().min(1).max(200),
+      // Optional only for an `economy` prize, whose name defaults to what it pays ("500 coins").
+      prize: z.string().max(200).optional(),
       channelId: z.string().min(5).max(32).optional(),
       durationMinutes: z.number().int().min(1).max(60 * 24 * 60),
       winnersCount: z.number().int().min(1).max(50).default(1),
@@ -1093,8 +1106,11 @@ export default async function botRoutes(app) {
       audience: z.enum(['discord', 'site', 'both']).default('discord'),
       // The prize: `promo` mints a code from `gift` on reveal; `custom` reveals `prizeContent`
       // (a code/link/text you type now); `none` is bragging rights. The win lands in inventory.
-      prizeKind: z.enum(['promo', 'custom', 'none']).default('promo'),
+      // `economy` pays `reward` (points in the configured currency and/or XP) straight into the
+      // winner's balance through the grant ledger (lib/giveaway-reward.mjs).
+      prizeKind: z.enum(['promo', 'custom', 'none', 'economy']).default('promo'),
       prizeContent: z.string().max(4000).optional(),
+      reward: z.object({ points: z.number().int().min(0).max(1000000).optional(), xp: z.number().int().min(0).max(10000000).optional() }).optional(),
       // Entry gate: require a linked BetterCommunity account (Discord ⇄ BCWEB) and/or
       // a linked BMM creator id. Enforced server-side when a user clicks Enter.
       requirements: z.object({ linked: z.boolean().optional(), creator: z.boolean().optional() }).optional(),
@@ -1103,17 +1119,23 @@ export default async function botRoutes(app) {
     const needsChannel = b.data.audience !== 'site';
     if (needsChannel && !b.data.channelId) return reply.code(400).send({ error: 'channel_required' });
     if (b.data.prizeKind === 'custom' && !b.data.prizeContent?.trim()) return reply.code(400).send({ error: 'prize_content_required' });
+    const reward = b.data.prizeKind === 'economy' ? normEconomyReward(b.data.reward) : null;
+    if (b.data.prizeKind === 'economy' && !reward) return reply.code(400).send({ error: 'reward_required' });
     const p = await db();
+    const prize = b.data.prize?.trim() || (reward ? rewardLabel(reward, (await getBotConfig(p)).economy?.currencyName) : '');
+    if (!prize) return reply.code(400).send({ error: 'invalid_input' });
     // A creator-id requirement implies a linked account (creator ids live on BCWEB accounts).
     // A site or both giveaway needs a linked account to enter (that IS the account entering).
     const rawReqs = b.data.requirements || {};
     const linked = !!(rawReqs.linked || rawReqs.creator) || b.data.audience !== 'discord';
     const reqs = (linked || rawReqs.creator) ? { linked, creator: !!rawReqs.creator } : null;
     const gw = await p.giveaway.create({ data: {
-      prize: b.data.prize, channelId: needsChannel ? b.data.channelId : null, winnersCount: b.data.winnersCount,
+      prize, channelId: needsChannel ? b.data.channelId : null, winnersCount: b.data.winnersCount,
       endsAt: new Date(Date.now() + b.data.durationMinutes * 60_000),
       kind: 'admin', audience: b.data.audience, prizeKind: b.data.prizeKind, prizeContent: b.data.prizeContent?.trim() || null,
-      giftConfig: b.data.gift || null, requirements: reqs,
+      // An economy prize keeps its amounts in giftConfig ({ points, xp }); only `promo` reads
+      // giftConfig as a promo gift, so the two never meet.
+      giftConfig: reward || b.data.gift || null, requirements: reqs,
       winnerMessage: b.data.winnerMessage?.trim() || null, createdBy: req.user.uid,
     } });
     return { ok: true, id: gw.id };
@@ -1139,7 +1161,7 @@ export default async function botRoutes(app) {
     const me = await p.user.findUnique({ where: { id: req.user.uid }, select: { _count: { select: { creatorLinks: true } } } });
     const meetsCreator = (me?._count?.creatorLinks || 0) > 0;
     return { giveaways: list.map((g) => ({
-      id: g.id, prize: g.prize, endsAt: g.endsAt, winnersCount: g.winnersCount, prizeKind: g.prizeKind,
+      id: g.id, prize: g.prize, endsAt: g.endsAt, winnersCount: g.winnersCount, prizeKind: g.prizeKind, reward: rewardOf(g),
       entrantCount: g.siteEntrants.length + g.entries.length, entered: g.siteEntrants.includes(req.user.uid),
       requiresCreator: !!g.requirements?.creator, meetsCreator,
     })) };
@@ -1164,7 +1186,10 @@ export default async function botRoutes(app) {
     // Only the giveaways the bot owns: those with a Discord channel (audience discord|both).
     // A site-only giveaway has no channel and is posted/drawn by the server, never the bot.
     const list = await p.giveaway.findMany({ where: { status: 'active', audience: { in: ['discord', 'both'] }, channelId: { not: null } }, take: 100 });
-    return { giveaways: list.map((g) => ({ id: g.id, prize: g.prize, channelId: g.channelId, messageId: g.messageId, endsAt: g.endsAt, winnersCount: g.winnersCount, entries: g.entries, requirements: g.requirements || null, winnerMessage: g.winnerMessage || null, due: new Date(g.endsAt) <= new Date() })) };
+    // The reward travels with its label already in the configured currency ("500 coins + 200
+    // XP"), so the card and the DM say the same thing the site does.
+    const currency = list.some((g) => g.prizeKind === 'economy') ? ((await getBotConfig(p)).economy?.currencyName || 'points') : 'points';
+    return { giveaways: list.map((g) => { const reward = rewardOf(g); return { id: g.id, prize: g.prize, channelId: g.channelId, messageId: g.messageId, endsAt: g.endsAt, winnersCount: g.winnersCount, entries: g.entries, requirements: g.requirements || null, winnerMessage: g.winnerMessage || null, reward, rewardLabel: reward ? rewardLabel(reward, currency) : null, due: new Date(g.endsAt) <= new Date() }; }) };
   });
   app.post('/bot/giveaways/:id/posted', async (req, reply) => {
     if (!botAuth(req, reply)) return;
@@ -1219,7 +1244,16 @@ export default async function botRoutes(app) {
     const p = await db();
     const gw = await p.giveaway.findUnique({ where: { id: req.params.id } });
     if (!gw) return reply.code(404).send({ error: 'not_found' });
-    await p.giveaway.update({ where: { id: gw.id }, data: { status: 'ended', winnerIds: b.data.winnerIds } });
+    // The draw is TAKEN, not overwritten: one conditional update, and only the caller that wins
+    // it delivers anything. It used to be an unconditional update, so a retried request (or two
+    // bot processes) re-ran every delivery below. `already` tells the bot not to announce twice.
+    if (!(await claimDraw(p, gw.id, b.data.winnerIds))) return { ok: true, already: true, winnerIds: gw.winnerIds, delivered: [], rewarded: [], rewardShadow: [], gifts: {} };
+    const eco = (await getBotConfig(p)).economy || {};
+    const onLevelUp = (userId, e) => {
+      emitWebhook(p, userId, 'economy.level_up', { level: e.level, from: e.from, xp: e.xp, pointsGranted: 0, by: 'giveaway' }).catch(() => {});
+      grantAutoBadges(p, { event: 'level', user: { id: userId }, level: e.level }).catch(() => {});
+    };
+    const rewarded = [], rewardShadow = [];
     // Each winner with a linked account gets the prize in their BCWEB INVENTORY (sealed) plus a
     // dashboard notification; they reveal it there to mint the promo code, or to read the custom
     // content the creator typed. The bot DMs them too (pointing at the inventory). A winner with
@@ -1227,6 +1261,16 @@ export default async function botRoutes(app) {
     const delivered = [];
     for (const did of b.data.winnerIds) {
       const link = await p.discordLink.findUnique({ where: { discordId: did } });
+      // Points / XP: a linked winner through the grant ledger, an unlinked one on the shadow
+      // row their link will fold in. Wrapped: one failed payout must not stop the others.
+      if (rewardOf(gw)) {
+        const r = await awardEconomyReward(p, eco, { giveaway: gw, userId: link?.userId || null, discordId: link ? null : did, onLevelUp }).catch(() => null);
+        if (r?.paid) {
+          rewarded.push(did);
+          if (r.via === 'shadow') rewardShadow.push(did);
+          if (link) notify(p, link.userId, 'giveaway_win', `You won “${gw.prize}” — it has been added to your balance.`, { bodyFr: `Tu as gagné « ${gw.prize} » — c’est ajouté à ton solde.`, href: '/dashboard?s=economy' }).catch(() => {});
+        }
+      }
       if (!link) continue;
       const row = await deliverGiveawayPrize(p, { userId: link.userId, giveaway: gw, via: 'discord' }).catch(() => null);
       if (!row) continue; // prizeKind=none — nothing to put in the inventory
@@ -1234,7 +1278,8 @@ export default async function botRoutes(app) {
       delivered.push(did);
     }
     // `gifts` kept (empty) for the bot's DM code path — codes are now minted on reveal, not here.
-    return { ok: true, delivered, gifts: {} };
+    // `rewardShadow`: winners paid on the unlinked shadow row, whose DM invites them to link.
+    return { ok: true, delivered, rewarded, rewardShadow, gifts: {} };
   });
 
   app.post('/bot/payments/announced', async (req, reply) => {
@@ -2876,7 +2921,9 @@ export default async function botRoutes(app) {
 // ── The two per-guild subtrees an owner (dashboard) or a manager (Discord) may write ───────
 // Kept as constants so the owner route and the bot route parse the SAME shape. Every number
 // is bounded; every list is capped; every action is an enum — an unknown key is stripped.
-const AUTOMOD_ACTION = z.enum(['log', 'delete', 'warn', 'timeout', 'kick', 'ban']);
+// addRole / removeRole: the restrictive role actions (a muted / read-only role the server
+// configures, or taking a role away). Message rules only; `roleId` names the role.
+const AUTOMOD_ACTION = z.enum(['log', 'delete', 'warn', 'timeout', 'kick', 'ban', 'addRole', 'removeRole']);
 const idList = (n = 100) => z.array(z.string().max(32)).max(n);
 // The parameters every rule carries alongside its own thresholds (documented at the top of the
 // bot's features/automod.mjs). All optional: a rule saved as `{ enabled, action }` by an older
@@ -2891,6 +2938,15 @@ const MSG_RULE_PARAMS = {
   ...RULE_PARAMS,
   deleteMessage: z.boolean().optional(),
   exempt: z.object({ roles: idList().optional(), channels: idList().optional() }).optional(),
+  // Progressive warnings (the bot's automod.mjs, warnPolicy): whether a hit counts toward the
+  // shared warn ladder, and from which hit. `warnEvery: 3` = the 1st and 2nd hits within
+  // `warnWindowMin` cost only the rule's action, the 3rd records a warning, and so on.
+  countsAsWarn: z.boolean().optional(),
+  warnEvery: z.number().int().min(1).max(50).optional(),
+  warnWindowMin: z.number().int().min(0).max(43200).optional(),
+  // addRole / removeRole: which role, and for addRole how long (0 = until removed by hand).
+  roleId: z.string().max(32).optional(),
+  roleMin: z.number().int().min(0).max(40320).optional(),
 };
 const rule = (extra) => z.object({ enabled: z.boolean().optional(), action: AUTOMOD_ACTION.optional(), timeoutMin: z.number().int().min(1).max(40320).optional(), ...MSG_RULE_PARAMS, ...extra }).optional();
 const MODERATION_SCHEMA = z.object({

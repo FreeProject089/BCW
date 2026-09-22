@@ -151,7 +151,10 @@ dashboard's role picker reports a role's position so it can warn you first.
 
 The **automod** is data driven. Eleven rules: spam, mass mentions, invites, links, words,
 caps, zalgo, attachments, account age, selfbot, raid. Each has its own thresholds and an
-action from `log` / `delete` / `warn` / `timeout` / `kick` / `ban`, plus three parameters
+action from `log` / `delete` / `warn` / `timeout` / `kick` / `ban` / `addRole` / `removeRole`
+(the last two take a `roleId`; `addRole` also a `roleMin`, 0 = until a moderator removes it —
+the timed removal lives in the bot's memory, so a restart before it fires leaves the role on),
+plus three parameters
 every rule accepts: whether the message is deleted, whether the member is told by DM, and a
 **watch-only** switch that records the rule firing and carries nothing out. Message rules
 also take their own role/channel exemptions on top of the global list (roles, channels,
@@ -161,6 +164,14 @@ severe wins; they are never stacked.
 The **warn ladder** (`warnThresholds`) is shared by `/warn` and the automod: rows of "at N
 warnings, do X", matched on the exact count, so the warning that crosses a line fires and
 later ones do not. `warnDecayHours` (default 168) is how long a warning counts.
+
+A message rule can **count toward that ladder progressively**: `countsAsWarn` (always on for
+the `warn` action), `warnEvery` (N: every Nth hit of this rule by this member records one
+warning, so 3 means the first two hits cost only the rule's action) and `warnWindowMin`
+(default 60; how long a hit is remembered). The warning is written through the same site
+record `/warn` uses; there is no second counter. Several rules firing on one message record at
+most one warning. Pending strikes live in the bot's memory: a restart forgets strikes, never
+recorded warnings.
 
 Defaults worth knowing: automod on, with spam, mentions, invites, zalgo, attachments,
 selfbot and raid enabled; links, words, caps and account age off.
@@ -228,7 +239,11 @@ language for this server, open the dashboard. `/setup` posts it again.
 ### Giveaways
 
 Two kinds. **Staff** giveaways are created on the dashboard and can carry an inventory
-reward. **Member** giveaways are `/giveaway <prize> <minutes> [winners]`, Discord-only,
+reward, or an **economy** prize (`prizeKind: economy`): points in the configured currency
+and/or XP, paid through the same ledger as a staff grant (kind `grant`, `ref giveaway:<id>`),
+so it shows in the member's history. An unlinked winner is credited on their shadow row and
+gets it when they link. The draw is taken once (a conditional update): a retried report pays
+nobody twice and announces nothing twice. **Member** giveaways are `/giveaway <prize> <minutes> [winners]`, Discord-only,
 capped at 5 active per server; the prize is whatever the host hands over. The bot posts the
 card with an Enter button, draws when the end time passes, and records entries and winners on
 the site. A giveaway may require a linked account, or a linked account with a BMM creator id.
@@ -241,7 +256,7 @@ it, mark it done **server-side**, so a restart never re-announces anything.
 | What | Cadence | Notes |
 |---|---|---|
 | Blog posts | 5 min | Multiple routes; each route picks a channel and which blogs to include (`*`, a project key, or `showcase`). A channel id is globally unique, so a route can target any server the bot is in. Dedup is per channel. |
-| Server-perf alerts | 2 min | CPU / RAM / disk / service-down, from the API's monitor. A separate general channel for incidents is optional. |
+| Server-perf alerts | 2 min | CPU / RAM / disk / service-down / errors, from the API's monitor. **One message per incident**, edited as it changes and closed with a short "resolved" reply; events of one kind arriving together share a message. Each carries a **Details** button to `/admin?s=serverperf&alert=<id>`. A separate general channel for incidents is optional. |
 | Ko-fi tips | 2 min | With the running total. Also copied to the admin-alerts forum. |
 | Stripe payments and refunds | 2 min | Multiple channels each; refunds fall back to the payment channels. The customer e-mail is masked and display names are stripped of Discord markdown. |
 | Announcements | 20 s | Events, promotions, commission requests, incidents. A role is pinged only when one is urgent. |
@@ -249,6 +264,17 @@ it, mark it done **server-side**, so a restart never re-announces anything.
 | DM broadcast | 30 s | **Paced on purpose**: 10 per poll, a second apart, so roughly 1200 an hour. Discord treats a DM burst as spam and the account that gets flagged is the bot. Progress is a row on the server, so a restart resumes instead of DMing everyone twice. |
 | Role panels | 60 s | See above. |
 | Economy seasons | 10 min | The first poll after a restart seeds the season number and announces nothing. |
+
+### Its Discord status
+
+Off by default (`presence.enabled`). Admin → Discord bot sets the dot (`online` / `idle` / `dnd`
+/ `invisible`), the activity type and the line, with `{guilds}` `{members}` `{status}` `{stripe}`,
+plus optional lines shown in turn every `rotateSec` (30 s minimum). With `health` on, an
+incident on the status page takes over the line and turns the dot idle or dnd; with `stripe` on,
+Stripe's **own published status** (read by the API from `www.stripestatus.com/api/v2/status.json`,
+cached 5 minutes, never fatal) is shown in Stripe's words while it is not operational. The same
+source now decides the Stripe row of the status page: it used to call `/v1/balance` with our
+key, which answered "does our key work" and turned red on a restricted or rotated key.
 
 ### The economy
 

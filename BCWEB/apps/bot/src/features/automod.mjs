@@ -32,6 +32,11 @@
 //       //   'timeout'  delete + timeout for `timeoutMin` minutes
 //       //   'kick'     delete + kick
 //       //   'ban'      delete + ban
+//       //   'addRole'  delete + give the member `roleId` (a muted / read-only role the server
+//       //              set up) for `roleMin` minutes, 0 = until a moderator removes it
+//       //   'removeRole' delete + take `roleId` away (e.g. the "verified" role)
+//       //   (Read-only everywhere is what Discord's own timeout already is: the member reads
+//       //   but cannot post, react, speak or join voice, and Discord lifts it itself.)
 //       //
 //       // PARAMETERS every rule also accepts, all optional and all defaulted so a rule saved
 //       // as nothing but `{ enabled, action }` keeps behaving exactly as it did:
@@ -43,6 +48,16 @@
 //       //                          watch a rule for a week before letting it bite.
 //       //   exempt: { roles: [], channels: [] }   message rules only — on TOP of the global
 //       //                          exemption list above, never instead of it.
+//       //   countsAsWarn: false    message rules only — a hit also counts toward the SHARED
+//       //                          warn ladder (the same site record /warn writes). Always on
+//       //                          for action 'warn'.
+//       //   warnEvery: 1           …from which hit: every Nth hit of THIS rule by THIS member
+//       //                          within warnWindowMin records one warning. 3 = the first two
+//       //                          hits cost only the action, the third is a warning, the
+//       //                          sixth another. 1 = every hit (the old behaviour).
+//       //   warnWindowMin: 60      how long a hit is remembered for that count (0 = until the
+//       //                          bot restarts). In memory: a restart forgets pending strikes,
+//       //                          never recorded warnings.
 //       rules: {
 //         spam:        { enabled: true,  action: 'timeout', timeoutMin: 10, maxMessages: 6, windowSec: 5, maxRepeats: 3, repeatWindowSec: 30 },
 //         mentions:    { enabled: true,  action: 'timeout', timeoutMin: 60, maxUsers: 6, maxRoles: 3, everyone: false },
@@ -81,12 +96,16 @@
 //   most severe wins, they are never stacked.
 
 import { PermissionFlagsBits } from 'discord.js';
-import { guildConfig } from '../config.mjs';
+import { guildConfig, config } from '../config.mjs';
+import { makeT, localeOf } from '../i18n.mjs';
 import { api } from '../api.mjs';
 import { modStats } from '../store.mjs';
 
-export const ACTIONS = ['log', 'delete', 'warn', 'timeout', 'kick', 'ban'];
-const SEVERITY = { log: 0, delete: 1, warn: 2, timeout: 3, kick: 4, ban: 5, quarantine: 3, lockdown: 3 };
+export const ACTIONS = ['log', 'delete', 'warn', 'timeout', 'kick', 'ban', 'addRole', 'removeRole'];
+// A role taken away sits between a warning and a timeout; a restrictive role given is a timeout
+// the server shaped itself, so it ranks just under one (a timeout AND a mute role firing on the
+// same message → the timeout).
+const SEVERITY = { log: 0, delete: 1, warn: 2, removeRole: 2.5, addRole: 2.8, timeout: 3, kick: 4, ban: 5, quarantine: 3, lockdown: 3 };
 export const RULES = ['spam', 'mentions', 'invites', 'links', 'words', 'caps', 'zalgo', 'attachments', 'accountAge', 'selfbot', 'raid'];
 /** The rules that judge a MESSAGE. The other two judge a join, so they have nothing to delete
  *  and no channel/role of their own to be exempt in. */
@@ -100,7 +119,7 @@ const LADDER_NOOPS = ['log', 'delete', 'warn'];
 // Parameters every rule accepts on top of its own thresholds. Merged into the defaults below
 // so normalizeAutomod fills them in for a rule that was saved without them.
 const COMMON_PARAMS = { dm: false, logOnly: false };
-const MSG_PARAMS = { ...COMMON_PARAMS, deleteMessage: true };
+const MSG_PARAMS = { ...COMMON_PARAMS, deleteMessage: true, countsAsWarn: false, warnEvery: 1, warnWindowMin: 60, roleId: '', roleMin: 0 };
 
 export const DEFAULT_AUTOMOD = {
   enabled: true,
@@ -145,13 +164,23 @@ export function normalizeAutomod(raw) {
       if (Array.isArray(dv)) out[k] = strList(s[k]).map((x) => x.toLowerCase());
       else if (typeof dv === 'boolean') out[k] = bool(s[k], dv);
       else if (typeof dv === 'number') out[k] = num(s[k], dv, 0);
+      else if (k === 'roleId') out[k] = /^\d{5,32}$/.test(String(s[k] ?? '').trim()) ? String(s[k]).trim() : '';
       else if (k === 'action') {
         const a = String(s[k] || '').toLowerCase();
         const ok = name === 'accountAge' ? JOIN_ACTIONS : name === 'raid' ? ['log', 'timeout', 'kick', 'ban'] : ACTIONS;
-        out[k] = ok.includes(a) ? a : dv;
+        // Case-insensitive, returned in its canonical spelling: `addRole` is camelCase and a
+        // lower-cased comparison would drop it back to the default.
+        out[k] = ok.find((x) => x.toLowerCase() === a) || dv;
       }
     }
     if (name === 'words') out.patterns = strList(s.patterns, 500); // case is the pattern's business
+    if (MESSAGE_RULES.includes(name)) {
+      out.warnEvery = Math.max(1, Math.min(50, Math.floor(out.warnEvery) || 1));
+      out.warnWindowMin = Math.floor(out.warnWindowMin);
+      // A role action with no role cannot be carried out; it falls back to deleting, which is
+      // what the rule would at least have done, rather than silently doing nothing.
+      if ((out.action === 'addRole' || out.action === 'removeRole') && !out.roleId) out.action = 'delete';
+    }
     // Per-rule exemptions: roles and channels this rule alone ignores, ON TOP of the global
     // list. Only message rules have them — a join has no channel and no roles yet.
     if (MESSAGE_RULES.includes(name)) {
@@ -204,7 +233,7 @@ export function escalationFor(count, ladder = DEFAULT_LADDER) {
 // ── State ─────────────────────────────────────────────────────────────────────────────────
 /** Per-guild memory. Bounded: a user keeps their last 60 messages / 2 min, joins keep 5 min. */
 export function createState() {
-  return { users: new Map(), joins: [], warns: new Map(), lockdownUntil: 0, lockdownSince: 0, previousVerification: null };
+  return { users: new Map(), joins: [], warns: new Map(), strikes: new Map(), lockdownUntil: 0, lockdownSince: 0, previousVerification: null };
 }
 const USER_KEEP_MS = 120_000, USER_KEEP_N = 60, JOIN_KEEP_MS = 300_000;
 
@@ -344,9 +373,50 @@ const act = (rule, r, reason, meta = {}, { deleteMessage = true } = {}) => {
     rule, action, reason,
     deleteMessage: action !== 'log' && r.deleteMessage !== false && deleteMessage,
     timeoutMin: action === 'timeout' || action === 'quarantine' ? (r.timeoutMin || 10) : null,
+    roleId: action === 'addRole' || action === 'removeRole' ? (r.roleId || null) : null,
+    roleMin: action === 'addRole' ? (r.roleMin || 0) : null,
+    // Does this hit feed the warn ladder, and from which hit (warnPolicy below). Watch-only
+    // never counts: a rule being observed must not be quietly building a ban case.
+    warn: action === 'log' ? null : (action === 'warn' || r.countsAsWarn) ? { every: r.warnEvery || 1, windowMin: r.warnWindowMin ?? 60 } : null,
     dm: !!r.dm, meta,
   };
 };
+
+/**
+ * Progressive warnings: which of these hits records a warning on the shared ladder.
+ *
+ * Per rule, per member, within the rule's window. A rule with `warn.every = 3` lets the first
+ * two hits cost only the rule's own action; the third records ONE warning and the count starts
+ * again. Several rules firing on one message count each their own hit, and still record at
+ * most one warning — one message is one offence. The warning itself goes to the site
+ * (api.warn → lib/warns.mjs), so it lands on the SAME count /warn and the admin screen use:
+ * there is no second counter to disagree with the ladder.
+ *
+ * Mutates `state.strikes`; returns { warn: { rule, hit, every } | null, strikes: [{ rule, hit, every }] }.
+ */
+export function warnPolicy(actions, state, userId, now = Date.now()) {
+  const strikes = [];
+  let warn = null;
+  if (!state.strikes) state.strikes = new Map();
+  for (const a of actions || []) {
+    if (!a?.warn) continue;
+    const key = `${a.rule}:${userId}`;
+    const win = (a.warn.windowMin || 0) * 60_000;
+    const list = (state.strikes.get(key) || []).filter((t) => !win || now - t <= win);
+    list.push(now);
+    const every = Math.max(1, a.warn.every || 1);
+    const hit = list.length;
+    if (hit >= every) {
+      state.strikes.delete(key);
+      if (!warn) warn = { rule: a.rule, hit, every };
+    } else state.strikes.set(key, list);
+    strikes.push({ rule: a.rule, hit, every });
+  }
+  // Bounded like the rest of the state: a long-running bot in a busy server must not grow this
+  // forever. The oldest keys go first; losing one only forgets a strike, never a warning.
+  if (state.strikes.size > 5000) for (const k of [...state.strikes.keys()].slice(0, 1000)) state.strikes.delete(k);
+  return { warn, strikes };
+}
 
 /**
  * One message in. Updates the state (recent messages per user), returns every rule that
@@ -533,46 +603,82 @@ const log = (guildId, category, event) => { try { return Promise.resolve(logSink
  * A closed DM is the normal case, not a failure, so this never throws and never blocks the
  * action it describes.
  */
-async function dmMember(user, guild, best, reason) {
+/**
+ * The DM, in the server's language (the one its admin picked in /setup, else the bot's
+ * default). Pure, so the four languages are tested without a gateway.
+ * `policy` is warnPolicy()'s answer: a recorded warning, or how far along the strikes are.
+ */
+export function automodDmText(t, { server, reason, best, policy }) {
+  const act = best.action === 'warn' ? 'delete' : best.action;
+  const what = act === 'timeout' ? t('am.dm.timeout', { min: best.timeoutMin || 10 })
+    : act === 'addRole' ? (best.roleMin ? t('am.dm.addRoleFor', { min: best.roleMin }) : t('am.dm.addRole'))
+      : t(`am.dm.${act}`);
+  const strike = (policy?.strikes || []).find((x) => x.rule === best.rule) || (policy?.strikes || [])[0];
+  const warnLine = policy?.warn ? t('am.dm.warned')
+    : strike && strike.every > 1 ? t('am.dm.strike', { n: strike.hit, of: strike.every }) : null;
+  return [t('am.dm.head', { server: server || t('am.dm.thisServer'), reason }), what, warnLine].filter(Boolean).join('\n');
+}
+
+async function dmMember(user, guild, best, reason, policy = null) {
   if (!best?.dm || typeof user?.send !== 'function') return false;
-  const what = {
-    log: 'It was recorded. Nothing else happened.',
-    delete: 'Your message was removed.',
-    warn: 'Your message was removed and a warning was added to your record.',
-    timeout: `Your message was removed and you cannot post for ${best.timeoutMin || 10} minute(s).`,
-    kick: 'You were removed from the server.',
-    ban: 'You were banned from the server.',
-  }[best.action] || '';
-  const body = [`**${guild?.name || 'This server'}** — an automod rule fired: ${reason}`, what].filter(Boolean).join('\n');
+  const cfg = await config().catch(() => null);
+  const t = makeT(localeOf({ guildId: guild?.id }, cfg), cfg?.i18n);
+  const body = automodDmText(t, { server: guild?.name, reason, best, policy });
   return user.send(body.slice(0, 1900)).then(() => true).catch(() => false);
 }
 
-/** Carry out the actions on a message's author. */
-async function applyToMember(member, guild, best, reason, targetUser) {
-  if (!best || best.action === 'log' || best.action === 'delete') return null;
+/**
+ * Record one warning on the site's ladder — the count /warn and the admin screen use. The site
+ * queues whatever the count buys (a timeout at 3, a kick at 5…) as an ordinary BotAction. When
+ * the site cannot be reached, the local ladder stands in so a repeat offender is not waved
+ * through because the API blinked.
+ */
+async function recordAutomodWarn(member, guild, targetUser, why) {
+  const r = await api.warn(targetUser.id, why, guild.id, 'automod');
+  if (r) return { warned: r.count, triggered: r.triggered || null, recorded: true };
+  const cfg = await automodConfig(guild.id);
+  const count = recordWarn(stateFor(guild.id), targetUser.id, cfg?.automod);
+  const esc = escalationFor(count, cfg?.ladder);
+  if (esc && member) {
+    if (esc.kind === 'timeout') { await member.timeout(esc.minutes * 60_000, why); modStats.timeouts++; }
+    else if (esc.kind === 'kick') { await member.kick(why); modStats.kicks++; }
+    else if (esc.kind === 'ban') await guild.members.ban(targetUser.id, { reason: why });
+  }
+  return { warned: count, triggered: esc, recorded: false };
+}
+
+/**
+ * Carry out the action on a message's author, then — separately — the warning, when the
+ * progressive policy says this hit is the one that counts. `warnDecision` is warnPolicy()'s
+ * `warn` for a message; for a join (no strikes) it is the old rule: action 'warn' warns.
+ */
+async function applyToMember(member, guild, best, reason, targetUser, warnDecision = undefined) {
+  if (!best) return null;
   const why = `Automod: ${reason}`.slice(0, 500);
+  const shouldWarn = warnDecision === undefined ? best.action === 'warn' : !!warnDecision;
+  let out = null;
   try {
-    if (best.action === 'warn') {
-      const r = await api.warn(targetUser.id, why, guild.id, 'automod');
-      if (r) return { warned: r.count, triggered: r.triggered || null, recorded: true };
-      // The site could not be reached: the local ladder stands in so a repeat offender is not
-      // waved through just because the API blinked.
-      const cfg = await automodConfig(guild.id);
-      const count = recordWarn(stateFor(guild.id), targetUser.id, cfg?.automod);
-      const esc = escalationFor(count, cfg?.ladder);
-      if (esc && member) {
-        if (esc.kind === 'timeout') { await member.timeout(esc.minutes * 60_000, why); modStats.timeouts++; }
-        else if (esc.kind === 'kick') { await member.kick(why); modStats.kicks++; }
-        else if (esc.kind === 'ban') await guild.members.ban(targetUser.id, { reason: why });
-      }
-      return { warned: count, triggered: esc, recorded: false };
-    }
-    if (!member) return { failed: 'member not in server' };
-    if (best.action === 'timeout') { await member.timeout(Math.min(best.timeoutMin || 10, 28 * 24 * 60) * 60_000, why); modStats.timeouts++; return { timeoutMin: best.timeoutMin }; }
-    if (best.action === 'kick') { await member.kick(why); modStats.kicks++; return { kicked: true }; }
-    if (best.action === 'ban') { await guild.members.ban(targetUser.id, { reason: why }); return { banned: true }; }
-  } catch (e) { return { failed: String(e?.message || e).slice(0, 200) }; }
-  return null;
+    const needsMember = ['timeout', 'kick', 'addRole', 'removeRole'].includes(best.action);
+    if (needsMember && !member) out = { failed: 'member not in server' };
+    else if (best.action === 'timeout') { await member.timeout(Math.min(best.timeoutMin || 10, 28 * 24 * 60) * 60_000, why); modStats.timeouts++; out = { timeoutMin: best.timeoutMin }; }
+    else if (best.action === 'kick') { await member.kick(why); modStats.kicks++; out = { kicked: true }; }
+    else if (best.action === 'ban') { await guild.members.ban(targetUser.id, { reason: why }); out = { banned: true }; }
+    else if (best.action === 'addRole') {
+      // Discord refuses a role above the bot's own, or without Manage Roles — reported, never
+      // thrown. The timed removal lives in this process: a restart before it fires leaves the
+      // role on, which is why "0 = until removed" is the honest default.
+      await member.roles.add(best.roleId, why);
+      out = { roleAdded: best.roleId, roleMin: best.roleMin || 0 };
+      if (best.roleMin > 0) setTimeout(() => { member.roles.remove(best.roleId, 'Automod: role time elapsed').catch(() => {}); }, Math.min(best.roleMin, 28 * 24 * 60) * 60_000).unref?.();
+    } else if (best.action === 'removeRole') { await member.roles.remove(best.roleId, why); out = { roleRemoved: best.roleId }; }
+  } catch (e) { out = { failed: String(e?.message || e).slice(0, 200) }; }
+  if (shouldWarn && !(out?.kicked || out?.banned)) {
+    // A kicked or banned member's warning would buy nothing they can still receive; the
+    // action already says more than the warning would.
+    try { out = { ...(out || {}), ...(await recordAutomodWarn(member, guild, targetUser, why)) }; }
+    catch (e) { out = { ...(out || {}), failed: String(e?.message || e).slice(0, 200) }; }
+  }
+  return out;
 }
 
 /** messageCreate → automod. Runs after the legacy moderation handler; never throws. */
@@ -591,19 +697,23 @@ export async function onAutomodMessage(msg) {
     }
   }
   const plain = toPlainMessage(msg, inviteGuilds);
-  const actions = evaluateMessage(plain, stateFor(msg.guild.id), c.automod);
+  const state = stateFor(msg.guild.id);
+  const actions = evaluateMessage(plain, state, c.automod);
   if (!actions.length) return;
   const best = strongest(actions);
   const reason = actions.map((a) => `${a.rule}: ${a.reason}`).join('; ');
+  const policy = warnPolicy(actions, state, msg.author.id, plain.createdAt);
   let deleted = false;
   if (actions.some((a) => a.deleteMessage)) { deleted = await msg.delete().then(() => true).catch(() => false); if (deleted) modStats.purged++; }
   // Before the action, not after: once somebody is kicked or banned there is no mutual server
   // left and Discord refuses the DM, so a message sent afterwards would never arrive.
-  const dmSent = await dmMember(msg.author, msg.guild, best, reason);
-  const outcome = await applyToMember(msg.member, msg.guild, best, reason, msg.author);
-  console.log(`[automod] ${msg.guild.name}: ${msg.author.tag} — ${reason} → ${best.action}${outcome?.failed ? ` (failed: ${outcome.failed})` : ''}`);
+  const dmSent = await dmMember(msg.author, msg.guild, best, reason, policy);
+  const outcome = await applyToMember(msg.member, msg.guild, best, reason, msg.author, policy.warn);
+  const strike = policy.strikes.find((x) => x.rule === best.rule) || policy.strikes[0];
+  const logged = strike && !policy.warn && strike.every > 1 ? { ...(outcome || {}), strike } : outcome;
+  console.log(`[automod] ${msg.guild.name}: ${msg.author.tag} — ${reason} → ${best.action}${policy.warn ? ' + warning' : ''}${outcome?.failed ? ` (failed: ${outcome.failed})` : ''}`);
   await log(msg.guild.id, 'automod', {
-    kind: 'automod', rule: actions.map((a) => a.rule).join('+'), action: best.action, reason, deleted, outcome, dm: dmSent,
+    kind: 'automod', rule: actions.map((a) => a.rule).join('+'), action: best.action, reason, deleted, outcome: logged, dm: dmSent,
     user: { id: msg.author.id, tag: msg.author.tag, avatar: msg.author.displayAvatarURL?.({ size: 64 }) },
     channelId: msg.channelId, messageId: msg.id, content: msg.content, attachments: plain.attachments,
   });

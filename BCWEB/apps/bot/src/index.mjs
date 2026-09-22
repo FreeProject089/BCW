@@ -34,6 +34,7 @@ import { pollGiveaways } from './features/giveaways.mjs';
 import { pollRolePanels } from './features/rolepanel.mjs';
 import { pollLinks } from './features/links.mjs';
 import { pollSeason } from './features/season.mjs';
+import { startPresence } from './features/presence.mjs';
 import { temp, modStats } from './store.mjs';
 
 let client = null;
@@ -195,6 +196,9 @@ function buildClient() {
     // Economy seasons: the first poll seeds the season number, later ones announce a new one (10 min).
     pollSeason(c).catch(() => {});
     timers.push(setInterval(() => pollSeason(c).catch(() => {}), 10 * 60_000));
+    // The Discord status line (presence): configured from the admin dashboard, reflects the
+    // status page and Stripe's own status when asked to. Every 30 s, applied only on change.
+    timers.push(startPresence(c));
   });
   c.on(Events.InteractionCreate, guard(handleInteraction));
   c.on(Events.VoiceStateUpdate, guard((o, n) => onVoiceStateUpdate(c, o, n)));

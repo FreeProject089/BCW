@@ -13,6 +13,41 @@ import { learnButton } from '../help.mjs';
 // of this card. The help card a press opens is in the presser's own language.
 const T = makeT('en');
 
+/**
+ * What the draw's answer from the site means for the channel. Pure.
+ *   'announce'  this process took the draw: post the winners, DM them.
+ *   'already'   somebody else took it first (a retry, a second process): say NOTHING — the
+ *               winners were announced by whoever took it, and a second post would name
+ *               different winners for the same giveaway.
+ *   'retry'     the site could not be reached: say nothing now, the giveaway is still active
+ *               and due, so the next poll draws again. Announcing here was the old bug: the
+ *               API call's failure was swallowed into `{ gifts: {} }`, the bot announced
+ *               winners the site never recorded, and the next poll drew and announced again.
+ */
+export function drawOutcome(res) {
+  if (!res || res.ok !== true) return 'retry';
+  return res.already ? 'already' : 'announce';
+}
+
+/**
+ * The winner's DM. Pure: the template with its variables, then the one line that says where
+ * the prize is — a gift code, the inventory, or (an economy prize) the balance it went into.
+ */
+export function winnerDm({ tpl, did, username, server, prize, code = null, delivered = false, reward = null, shadow = false, siteUrl, t }) {
+  let content = (tpl && tpl.trim() ? tpl : 'Congrats {user} — you won {prize}!')
+    .replaceAll('{user}', `<@${did}>`)
+    .replaceAll('{username}', username || 'there')
+    .replaceAll('{server}', server || 'the server')
+    .replaceAll('{prize}', prize);
+  content = code ? content.replaceAll('{code}', `\`${code}\``) : content.replace(/\s*`?\{code\}`?/g, '');
+  if (code) content += tpl && tpl.includes('{code}')
+    ? `\nRedeem it at ${siteUrl}/dashboard (Billing → “Redeem a promo code”).`
+    : `\nYour gift code: \`${code}\` — redeem it at ${siteUrl}/dashboard (Billing → “Redeem a promo code”).`;
+  else if (reward) content += `\n${shadow ? t('gw.rewardShadow', { reward, url: `${siteUrl}/profile` }) : t('gw.rewardPaid', { reward })}`;
+  else if (delivered) content += `\nYour prize is in your BetterCommunity inventory — reveal it at ${siteUrl}/dashboard (Shop & inventory).`;
+  return content;
+}
+
 async function resolveChannel(client, id) {
   return client.channels.cache.get(id) || await client.channels.fetch(id).catch(() => null);
 }
@@ -39,7 +74,7 @@ export async function pollGiveaways(client) {
             : '';
         const msg = await ch.send(ui.card({
           title: `${ui.ic('enter')} Giveaway!`,
-          body: [`**Prize:** ${gw.prize}`, `**Winners:** ${gw.winnersCount}`, `**Ends:** <t:${endTs}:R> (<t:${endTs}:f>)`, reqLine.trim() || null, '', 'Press **Enter** below to join — one entry per person.'],
+          body: [`**Prize:** ${gw.prize}`, gw.rewardLabel && gw.rewardLabel !== gw.prize ? T('gw.reward', { reward: gw.rewardLabel }) : null, `**Winners:** ${gw.winnersCount}`, `**Ends:** <t:${endTs}:R> (<t:${endTs}:f>)`, reqLine.trim() || null, '', 'Press **Enter** below to join — one entry per person.'],
           buttons: [ui.btn(`gw:enter:${gw.id}`, 'Enter', ButtonStyle.Primary, { emoji: 'enter' }), learnButton(T, 'giveaway')],
         })).catch((e) => { console.warn('[bot] giveaway post failed', e.message); return null; });
         if (msg) { await api.giveawayPosted(gw.id, msg.id); console.log(`[bot] giveaway ${gw.id} posted in ${gw.channelId}`); }
@@ -52,6 +87,11 @@ export async function pollGiveaways(client) {
         for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
         const winners = pool.slice(0, Math.min(gw.winnersCount, pool.length));
         const res = await api.giveawayDrawn(gw.id, winners);
+        const outcome = drawOutcome(res);
+        if (outcome !== 'announce') {
+          console.log(`[bot] giveaway ${gw.id}: draw ${outcome === 'already' ? 'already taken — nothing announced' : 'not recorded by the site — will retry'}`);
+          continue;
+        }
         const ch = await resolveChannel(client, gw.channelId);
         if (ch?.send) {
           await ch.send(winners.length
@@ -70,21 +110,18 @@ export async function pollGiveaways(client) {
         // Winners whose prize was placed in their BCWEB inventory (a linked account with a
         // promo/custom prize). Codes are minted on REVEAL there now, not embedded in the DM.
         const delivered = new Set(res?.delivered || []);
-        const tpl = (gw.winnerMessage && gw.winnerMessage.trim()) || 'Congrats {user} — you won {prize}!';
+        // Points / XP paid by the site (economy prize): `rewarded` were paid, `rewardShadow` on
+        // the unlinked shadow row their link will fold in.
+        const rewarded = new Set(res?.rewarded || []);
+        const shadow = new Set(res?.rewardShadow || []);
         for (const did of winners) {
           const code = gifts[did];
           try {
             const u = await client.users.fetch(did);
-            let content = tpl
-              .replaceAll('{user}', `<@${did}>`)
-              .replaceAll('{username}', u?.username || 'there')
-              .replaceAll('{server}', ch?.guild?.name || 'the server')
-              .replaceAll('{prize}', gw.prize);
-            content = code ? content.replaceAll('{code}', `\`${code}\``) : content.replace(/\s*`?\{code\}`?/g, '');
-            if (code) content += tpl.includes('{code}')
-              ? `\nRedeem it at ${SITE_URL}/dashboard (Billing → “Redeem a promo code”).`
-              : `\nYour gift code: \`${code}\` — redeem it at ${SITE_URL}/dashboard (Billing → “Redeem a promo code”).`;
-            else if (delivered.has(did)) content += `\nYour prize is in your BetterCommunity inventory — reveal it at ${SITE_URL}/dashboard (Shop & inventory).`;
+            const content = winnerDm({
+              tpl: gw.winnerMessage, did, username: u?.username, server: ch?.guild?.name, prize: gw.prize, code,
+              delivered: delivered.has(did), reward: rewarded.has(did) ? gw.rewardLabel : null, shadow: shadow.has(did), siteUrl: SITE_URL, t: T,
+            });
             await u.send({ content });
           } catch (e) { console.warn('[bot] giveaway winner DM failed', did, e.message); }
         }

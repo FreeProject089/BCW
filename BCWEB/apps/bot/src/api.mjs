@@ -66,6 +66,13 @@ export const api = {
   // Server-perf alerts (CPU/RAM/disk/service-down) not yet posted + mark them done.
   alertsUnannounced: () => call('GET', '/bot/alerts/unannounced').then((r) => r.alerts || []).catch(() => []),
   alertsMarkAnnounced: (ids) => call('POST', '/bot/alerts/announced', { ids }).catch(() => {}),
+  // One message per incident: `fresh` to post, `updates` to edit (text / severity / resolved),
+  // each with `url` (the admin page for it) and `fp` (what the bot records it drew). Null on
+  // failure so the poller does nothing rather than re-posting from an empty answer.
+  alertsPending: () => call('GET', '/bot/alerts/pending').catch(() => null),
+  alertsPosted: (posts) => call('POST', '/bot/alerts/posted', { posts }).catch((e) => { console.warn('[bot] alertsPosted failed:', e.message); return null; }),
+  // The status page's verdict + Stripe's own published state, for the presence line.
+  siteStatus: () => call('GET', '/bot/status').catch(() => null),
   // Ko-fi tips not yet posted (+ running totals for the embed) + mark them done.
   kofiUnannounced: () => call('GET', '/bot/kofi/unannounced').then((r) => ({ tips: r.tips || [], totals: r.totals || {} })).catch(() => ({ tips: [], totals: {} })),
   kofiMarkAnnounced: (ids) => call('POST', '/bot/kofi/announced', { ids }).catch(() => {}),
@@ -84,7 +91,9 @@ export const api = {
   giveawayCreate: (data) => call('POST', '/bot/giveaways/create', data),
   giveawayPosted: (id, messageId) => call('POST', `/bot/giveaways/${id}/posted`, { messageId }).catch(() => {}),
   giveawayEnter: (id, discordId) => call('POST', `/bot/giveaways/${id}/enter`, { discordId }),
-  giveawayDrawn: (id, winnerIds) => call('POST', `/bot/giveaways/${id}/drawn`, { winnerIds }).catch(() => ({ gifts: {} })),
+  // Null on failure, NOT an empty success: the old `{ gifts: {} }` let the bot announce winners
+  // the site never recorded, then draw and announce different ones on the next poll.
+  giveawayDrawn: (id, winnerIds) => call('POST', `/bot/giveaways/${id}/drawn`, { winnerIds }).catch((e) => { console.warn('[bot] giveawayDrawn failed:', e.message); return null; }),
   issueLink: (discordId, username) => call('POST', '/bot/link/issue', { discordId, username }),
   account: (discordId) => call('GET', `/bot/account/${discordId}`).catch(() => ({ linked: false })),
   // Bulk-sync ONE guild's roster into the member database (startup + periodic full scan). The

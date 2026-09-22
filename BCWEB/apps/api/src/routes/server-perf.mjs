@@ -5,6 +5,7 @@ import { db, requireRole, requireCap, botAuth } from '../lib/lib.mjs';
 import { windowBounds, summariseDaily, compareDaily, dailyPoint } from '../lib/metrics-compare.mjs';
 import { checkSslExpiry, checkDependenciesTimed, cgroupMemory, sampleAndAlert, getDepsConfig, DEP_KEYS, DEP_LABELS, readNetBytes, getBandwidthByCat, getRepoUploadKbps, getRepoRateStats, sampleRepoRates } from '../lib/monitor.mjs';
 import { realDiskStats } from './hosting.mjs';
+import { alertFingerprint, pendingAlertUpdates, prunePosts } from '../lib/alert-incident.mjs';
 
 
 // The dependency checks + SSL probe do live network I/O (a TLS handshake to the site,
@@ -503,5 +504,75 @@ export default async function serverPerfRoutes(app) {
     const p = await db();
     await p.serverAlertLog.updateMany({ where: { id: { in: b.data.ids } }, data: { announced: true } });
     return { ok: true };
+  });
+
+  // ── One Discord message per incident (lib/alert-incident.mjs has the why) ──
+  //
+  // `fresh`   rows never posted — the bot posts them (keyed incidents one message each,
+  //           keyless events of one kind grouped into one message).
+  // `updates` rows already posted whose text / severity / resolution changed since — the bot
+  //           EDITS its message, and posts one short "resolved" reply the first time it sees
+  //           the row resolved.
+  // Every row carries `url`, the admin page that opens on it. What the bot posted (channel,
+  // message, the fingerprint it drew) lives in AdminSetting `bot.alertPosts`, NOT in bot.config:
+  // that object round-trips through the dashboard's save and would clobber it.
+  const alertUrl = (id) => `${(process.env.SITE_URL || 'http://localhost').replace(/\/+$/, '')}/admin?s=serverperf&alert=${encodeURIComponent(id)}`;
+  const decorate = (a) => ({ id: a.id, kind: a.kind, key: a.key, message: a.message, severity: a.severity, createdAt: a.createdAt, resolvedAt: a.resolvedAt, fp: alertFingerprint(a), url: alertUrl(a.id) });
+  app.get('/bot/alerts/pending', async (req, reply) => {
+    if (!botAuth(req, reply)) return;
+    const p = await db();
+    const postsRow = await p.adminSetting.findUnique({ where: { key: 'bot.alertPosts' } }).catch(() => null);
+    const posts = postsRow?.value?.posts || {};
+    const [fresh, postedRows] = await Promise.all([
+      p.serverAlertLog.findMany({ where: { announced: false }, orderBy: { createdAt: 'asc' }, take: 25 }),
+      Object.keys(posts).length ? p.serverAlertLog.findMany({ where: { id: { in: Object.keys(posts) } } }) : [],
+    ]);
+    const updates = pendingAlertUpdates(postedRows, posts).slice(0, 25);
+    return { fresh: fresh.map(decorate), updates: updates.map((u) => ({ ...decorate(u), post: u.post })) };
+  });
+  app.post('/bot/alerts/posted', async (req, reply) => {
+    if (!botAuth(req, reply)) return;
+    const b = z.object({
+      posts: z.array(z.object({
+        id: z.string().max(40),
+        channelId: z.string().max(32),
+        messageId: z.string().max(32),
+        fp: z.string().max(20),
+        resolvedNotice: z.boolean().optional(),
+      })).max(60),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const ids = [...new Set(b.data.posts.map((x) => x.id))];
+    const row = await p.adminSetting.findUnique({ where: { key: 'bot.alertPosts' } }).catch(() => null);
+    const posts = { ...(row?.value?.posts || {}) };
+    const now = Date.now();
+    for (const x of b.data.posts) posts[x.id] = { channelId: x.channelId, messageId: x.messageId, fp: x.fp, resolvedNotice: !!x.resolvedNotice, at: now };
+    const rows = await p.serverAlertLog.findMany({ where: { id: { in: Object.keys(posts) } }, select: { id: true, resolvedAt: true } });
+    const next = prunePosts(posts, Object.fromEntries(rows.map((r) => [r.id, r])), now);
+    await p.adminSetting.upsert({ where: { key: 'bot.alertPosts' }, create: { key: 'bot.alertPosts', value: { posts: next } }, update: { value: { posts: next } } });
+    await p.serverAlertLog.updateMany({ where: { id: { in: ids } }, data: { announced: true } });
+    return { ok: true };
+  });
+
+  // One alert with what surrounds it — the page the Discord message links to. The same
+  // condition's earlier incidents (by key) answer "has this happened before", and a
+  // service_down alert carries the outage it belongs to.
+  app.get('/admin/server/alerts/:id', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const p = await db();
+    const alert = await p.serverAlertLog.findUnique({ where: { id: String(req.params.id) } });
+    if (!alert) return reply.code(404).send({ error: 'not_found' });
+    const [history, outage] = await Promise.all([
+      alert.key ? p.serverAlertLog.findMany({ where: { key: alert.key, id: { not: alert.id } }, orderBy: { createdAt: 'desc' }, take: 20 }) : [],
+      alert.key?.startsWith('service_down:')
+        ? p.serviceOutage.findFirst({ where: { dep: alert.key.slice('service_down:'.length), startedAt: { lte: new Date(alert.createdAt.getTime() + 15 * 60_000) } }, orderBy: { startedAt: 'desc' } })
+        : null,
+    ]);
+    const end = alert.resolvedAt || new Date();
+    return {
+      alert: { ...alert, durationSec: Math.max(0, Math.round((end - alert.createdAt) / 1000)), ongoing: !alert.resolvedAt },
+      history: history.map((h) => ({ id: h.id, message: h.message, severity: h.severity, createdAt: h.createdAt, resolvedAt: h.resolvedAt })),
+      outage: outage ? { id: outage.id, dep: outage.dep, label: DEP_LABELS[outage.dep] || outage.dep, startedAt: outage.startedAt, endedAt: outage.endedAt } : null,
+    };
   });
 }

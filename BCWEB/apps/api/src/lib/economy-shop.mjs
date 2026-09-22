@@ -375,10 +375,17 @@ export async function drawDueSiteGiveaways(p, log = null) {
     const pool = [...new Set(gw.siteEntrants || [])];
     for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
     const winners = pool.slice(0, Math.min(gw.winnersCount, pool.length));
-    await p.giveaway.update({ where: { id: gw.id }, data: { status: 'ended', winnerIds: winners } });
+    // Taken, not overwritten (lib/giveaway-reward.mjs): a second sweeper tick or a second API
+    // replica that reaches the same giveaway gets count 0 and delivers nothing. Imported lazily:
+    // that module imports movePoints from this one.
+    const { claimDraw, rewardOf, awardEconomyReward } = await import('./giveaway-reward.mjs');
+    if (!(await claimDraw(p, gw.id, winners))) continue;
+    const eco = rewardOf(gw) ? ((await p.adminSetting.findUnique({ where: { key: 'bot.config' } }).catch(() => null))?.value?.economy || {}) : null;
     for (const uid of winners) {
+      if (eco) await awardEconomyReward(p, eco, { giveaway: gw, userId: uid }).catch(() => {});
       await deliverGiveawayPrize(p, { userId: uid, giveaway: gw, via: 'site' }).catch(() => {});
-      await notify(p, uid, 'giveaway_win', `You won “${gw.prize}” — it’s in your inventory; reveal it to claim.`, { bodyFr: `Tu as gagné « ${gw.prize} » — c’est dans ton inventaire ; révèle-le pour le récupérer.`, href: '/dashboard?s=economy' }).catch(() => {});
+      if (eco) await notify(p, uid, 'giveaway_win', `You won “${gw.prize}” — it has been added to your balance.`, { bodyFr: `Tu as gagné « ${gw.prize} » — c’est ajouté à ton solde.`, href: '/dashboard?s=economy' }).catch(() => {});
+      else await notify(p, uid, 'giveaway_win', `You won “${gw.prize}” — it’s in your inventory; reveal it to claim.`, { bodyFr: `Tu as gagné « ${gw.prize} » — c’est dans ton inventaire ; révèle-le pour le récupérer.`, href: '/dashboard?s=economy' }).catch(() => {});
     }
     drawn += 1;
     if (log) log.info?.(`[sweeper] site giveaway ${gw.id} drawn: ${winners.length} winner(s)`);
