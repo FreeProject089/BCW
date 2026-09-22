@@ -1,6 +1,7 @@
 // The season reset and the statistics against a real database, with namespaced fixtures.
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { lockRow, unlockRow } from './row-lock.mjs';
 
 const RUN = !!process.env.DATABASE_URL;
 const skip = RUN ? false : 'set DATABASE_URL to a throwaway Postgres to run the economy DB tests';
@@ -13,6 +14,9 @@ before(async () => {
   if (!RUN) return;
   lib = await import('../src/lib/lib.mjs');
   p = await lib.db();
+  // A season reset is GLOBAL (every UserEconomy row) and the season state is a singleton:
+  // economy-history-admin.test.mjs touches both, so the two files take turns (row-lock.mjs).
+  await lockRow(p, 'economy.global');
   eco = await import('../src/lib/economy-season.mjs');
   const Fastify = (await import('fastify')).default;
   app = Fastify();
@@ -30,6 +34,7 @@ after(async () => {
     await p.userEconomy.deleteMany({ where: { userId: { in: ids } } });
     await p.user.deleteMany({ where: { id: { in: ids } } });
   }
+  await unlockRow(p, 'economy.global');
   await app?.close();
   await p?.$disconnect?.();
 });

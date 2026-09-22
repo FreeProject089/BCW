@@ -399,11 +399,54 @@ export async function listLedger(p, userId, { kind = null, take = 100 } = {}) {
   return rows.map((r) => ({ id: r.id, kind: r.kind, delta: r.delta, balance: r.balance, ref: r.ref, meta: r.meta || null, createdAt: r.createdAt }));
 }
 
-/** Retention: forget ledger rows older than `economy.historyDays` (0 = keep forever). */
-export async function sweepEconomyHistory(p, eco) {
+/**
+ * Retention for the point ledger: forget rows older than `economy.historyDays` AND, beyond
+ * that, rows past `economy.historyMax` (newest kept). Either is 0 = no limit of that kind;
+ * both off means the ledger is kept for ever, which is the old behaviour and still allowed.
+ *
+ * The two limits exist because they fail differently: an age limit alone lets a busy month
+ * put a million rows in the table and keeps every one of them for 180 days, and a row cap
+ * alone keeps a quiet server's history from 2019 for ever. The cap is a global newest-N over
+ * the table, not per member — the thing being bounded is the TABLE.
+ *
+ * It never touches UserEconomy: a balance is a column on that row, not a sum of the ledger,
+ * so forgetting history cannot move anyone's points. That is the property the tests pin.
+ *
+ * Returns { aged, capped, total } — counts, for the sweeper's log line.
+ */
+export async function sweepEconomyHistory(p, eco, now = Date.now()) {
   const days = num(eco?.historyDays, 180);
-  if (!(days > 0)) return 0;
-  const r = await p.economyLedger.deleteMany({ where: { createdAt: { lt: new Date(Date.now() - days * 864e5) } } });
+  const max = Math.max(0, Math.round(num(eco?.historyMax, 0)));
+  let aged = 0, capped = 0;
+  if (days > 0) {
+    aged = (await p.economyLedger.deleteMany({ where: { createdAt: { lt: new Date(now - days * 864e5) } } })).count || 0;
+  }
+  if (max > 0) {
+    // Find the boundary row (the max-th newest) and delete everything older, rather than
+    // reading ids for what may be hundreds of thousands of rows. Ties on createdAt are broken
+    // by id so the boundary is a single, stable row.
+    const edge = await p.economyLedger.findMany({ orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], skip: max - 1, take: 1, select: { createdAt: true, id: true } });
+    if (edge.length) {
+      const { createdAt, id } = edge[0];
+      capped = (await p.economyLedger.deleteMany({ where: { OR: [{ createdAt: { lt: createdAt } }, { createdAt, id: { lt: id } }] } })).count || 0;
+    }
+  }
+  return { aged, capped, total: aged + capped };
+}
+
+/**
+ * An admin emptying the point history on purpose. Same guarantee as the sweep: ledger rows
+ * only, never a balance. `olderThanDays` keeps the recent tail; `userId` limits it to one
+ * member. Returns the number of rows removed. The CALLER writes the audit entry (it has the
+ * acting user); there is no path to this function that should skip it.
+ */
+export async function clearEconomyHistory(p, { olderThanDays = 0, userId = null } = {}, now = Date.now()) {
+  const days = Math.max(0, Math.round(num(olderThanDays, 0)));
+  const where = {
+    ...(days > 0 ? { createdAt: { lt: new Date(now - days * 864e5) } } : {}),
+    ...(userId ? { userId: String(userId) } : {}),
+  };
+  const r = await p.economyLedger.deleteMany({ where });
   return r.count || 0;
 }
 

@@ -931,8 +931,8 @@ export function startSweeper(app) {
         if (n) app.log.info(`[sweeper] badge rules granted ${n} badge(s)`);
         // The point ledger's retention rides the same daily tick.
         const eco = (await p.adminSetting.findUnique({ where: { key: 'bot.config' } }))?.value?.economy || {};
-        const gone = await sweepEconomyHistory(p, eco).catch(() => 0);
-        if (gone) app.log.info(`[sweeper] economy history: aged out ${gone} row(s)`);
+        const gone = await sweepEconomyHistory(p, eco).catch(() => ({ aged: 0, capped: 0, total: 0 }));
+        if (gone.total) app.log.info(`[sweeper] economy history: removed ${gone.total} row(s) (${gone.aged} past historyDays, ${gone.capped} past historyMax)`);
       })().catch((e) => app.log.warn({ e: String(e) }, 'badge sweep failed'));
       // The 404 game's monthly podium. Idempotent in the database (GameAward is unique on
       // game+season+rank), so running this every ten minutes mints nothing after the first.

@@ -13,6 +13,7 @@ import { ICONS as BOT_ICONS, ICON_STYLE_DEFAULTS, renderEmoji, renderEmojiPack, 
 import { SETTING_KEY as APP_EMOJI_KEY } from '../lib/app-emoji-map.mjs';
 import { emitWebhook } from '../lib/webhooks.mjs';
 import { grantAutoBadges } from './social.mjs';
+import { kofiGoalTotals } from './kofi.mjs';
 import { economyLevelFor, economyXpForLevel, economyPointsEarned, economyView, mergeShadowEconomy } from '../lib/economy-curve.mjs';
 import { normEconomyReward, rewardOf, rewardLabel, claimDraw, awardEconomyReward } from '../lib/giveaway-reward.mjs';
 
@@ -181,8 +182,12 @@ const DEFAULT_BOT_CONFIG = {
     // Members handing points to each other (/gift, the site's Boutique). A daily cap per giver
     // keeps a compromised account from draining itself into another in one go; 0 = no cap.
     gifts: { enabled: true, min: 1, maxPerDay: 0 },
-    // How long the point ledger (purchases, casino, gifts, grants) is kept. 0 = forever.
+    // How long the point ledger (purchases, casino, gifts, grants) is kept, and how many rows
+    // of it at most (newest kept). 0 = no limit of that kind; both 0 = kept for ever. The
+    // sweeper applies them daily (lib/economy-shop.mjs → sweepEconomyHistory); neither ever
+    // changes a balance, only the history.
     historyDays: 180,
+    historyMax: 0,
     // Custom emoji for the bot's buttons: { [key]: '<:name:id>' } — see lib/bot-emoji.mjs.
     icons: {},
   },
@@ -782,11 +787,15 @@ export default async function botRoutes(app) {
   app.get('/bot/kofi/unannounced', async (req, reply) => {
     if (!botAuth(req, reply)) return;
     const p = await db();
-    const [tips, agg] = await Promise.all([
+    // "Total raised" in the footer is the SAME number as the site's goal bar: tips since the
+    // goal's `since`, in the goal's currency, other currencies not converted (kofiGoalTotals).
+    // It used to aggregate every KofiDonation ever, in any currency, and the bot printed it
+    // under the new tip's currency.
+    const [tips, goalRow] = await Promise.all([
       p.kofiDonation.findMany({ orderBy: { createdAt: 'asc' }, select: { id: true, fromName: true, amount: true, currency: true, isSubscription: true, createdAt: true } }),
-      p.kofiDonation.aggregate({ _sum: { amount: true }, _count: { _all: true } }),
+      p.adminSetting.findUnique({ where: { key: 'kofi.goal' } }),
     ]);
-    const totals = { totalAmount: agg._sum.amount || 0, tipCount: agg._count._all };
+    const totals = await kofiGoalTotals(p, goalRow?.value);
     const row = await p.adminSetting.findUnique({ where: { key: 'bot.kofiAnnounced' } });
     if (!row) {
       await p.adminSetting.create({ data: { key: 'bot.kofiAnnounced', value: { ids: tips.map((x) => x.id) } } });
@@ -2378,11 +2387,58 @@ export default async function botRoutes(app) {
   }));
 
   // Admin: what still needs a person — roles and custom rewards bought with points — and the
-  // button that says it was handed over. Newest first, pending on top.
+  // button that says it was handed over.
+  //
+  // Sorted and filtered SERVER-SIDE. It used to return the 100 newest rows, pending first, and
+  // that is a list you cannot work from: with more than 100 purchases the oldest undelivered
+  // one — the person who has been waiting longest, the only row that really matters — is not
+  // on the page at all, and no amount of sorting in the browser can bring it back.
+  //
+  // `sort` is a key into a CLOSED map, never a field name from the query string: an orderBy
+  // built from user input orders by anything in the row and turns a list into a way to read
+  // columns a page never shows.
+  const PURCHASE_SORTS = {
+    recent: [{ createdAt: 'desc' }],
+    oldest: [{ createdAt: 'asc' }],
+    member: [{ user: { displayName: 'asc' } }, { createdAt: 'desc' }],
+    item: [{ itemName: 'asc' }, { createdAt: 'desc' }],
+    status: [{ status: 'desc' }, { createdAt: 'desc' }], // pending before delivered
+    cost: [{ cost: 'desc' }, { createdAt: 'desc' }],
+  };
   app.get('/admin/economy/purchases', { preHandler: requireCap('manage_economy') }, async (req) => {
     const p = await db();
-    const rows = await p.economyPurchase.findMany({ orderBy: [{ status: 'desc' }, { createdAt: 'desc' }], take: 100, include: { user: { select: { id: true, displayName: true } } } });
-    return { purchases: rows.map((r) => ({ id: r.id, userId: r.userId, displayName: r.user.displayName, itemId: r.itemId, name: r.itemName, kind: r.kind, cost: r.cost, via: r.via, status: r.status, delivery: r.delivery, createdAt: r.createdAt })) };
+    const take = Math.min(200, Math.max(1, parseInt(req.query?.take, 10) || 100));
+    const skip = Math.max(0, parseInt(req.query?.skip, 10) || 0);
+    // Default: pending on top, newest first — what the page showed before, so a caller that
+    // passes nothing sees no change.
+    const sort = PURCHASE_SORTS[req.query?.sort] ? req.query.sort : 'status';
+    const status = ['pending', 'delivered'].includes(req.query?.status) ? req.query.status : null;
+    // SHOP_KINDS is an object keyed by kind (badge, role, custom…), not a list.
+    const kind = req.query?.kind && Object.hasOwn(SHOP_KINDS, req.query.kind) ? req.query.kind : null;
+    const via = ['site', 'discord'].includes(req.query?.via) ? req.query.via : null;
+    const itemId = String(req.query?.itemId || '').trim().slice(0, 64);
+    const q = String(req.query?.q || '').trim().slice(0, 80); // a member, by name or id
+    // Dates are half-open [from, to): `to` is a DAY the admin picked, and a closed <= would
+    // drop everything bought later that same day.
+    const date = (v) => { const d = new Date(String(v || '')); return Number.isNaN(d.getTime()) ? null : d; };
+    const from = date(req.query?.from), to = date(req.query?.to);
+    const where = {
+      ...(status ? { status } : {}),
+      ...(kind ? { kind } : {}),
+      ...(via ? { via } : {}),
+      ...(itemId ? { itemId } : {}),
+      ...(from || to ? { createdAt: { ...(from ? { gte: from } : {}), ...(to ? { lt: to } : {}) } } : {}),
+      ...(q ? { OR: [{ userId: q }, { user: { displayName: { contains: q, mode: 'insensitive' } } }] } : {}),
+    };
+    const [rows, total, pending] = await Promise.all([
+      p.economyPurchase.findMany({ where, orderBy: PURCHASE_SORTS[sort], take, skip, include: { user: { select: { id: true, displayName: true } } } }),
+      p.economyPurchase.count({ where }),
+      p.economyPurchase.count({ where: { status: 'pending' } }), // the badge, unfiltered on purpose
+    ]);
+    return {
+      purchases: rows.map((r) => ({ id: r.id, userId: r.userId, displayName: r.user.displayName, itemId: r.itemId, name: r.itemName, kind: r.kind, cost: r.cost, via: r.via, status: r.status, delivery: r.delivery, createdAt: r.createdAt })),
+      total, take, skip, sort, pending, sorts: Object.keys(PURCHASE_SORTS),
+    };
   });
   app.post('/admin/economy/purchases/:id/deliver', { preHandler: requireCap('manage_economy') }, async (req, reply) => {
     const p = await db();

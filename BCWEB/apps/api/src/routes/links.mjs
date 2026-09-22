@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import crypto from 'node:crypto';
 import { db, requireRole, notify, hashApiKey, safeEqual, ownedContent } from '../lib/lib.mjs';
+import { boundedSet } from '../lib/boundedmap.mjs';
 import { mergeShadowEconomy } from '../lib/economy-curve.mjs';
 import { genKey, prefixOf } from './api-keys.mjs';
 import { grantAutoBadges } from './social.mjs';
@@ -12,6 +13,51 @@ function genCode() {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   const pick = (n) => Array.from({ length: n }, () => alphabet[crypto.randomInt(alphabet.length)]).join('');
   return `${pick(4)}-${pick(4)}`;
+}
+
+// ── The pairing-code request limit (per creator id, per IP) ─────────────────────────────
+//
+// RESIDUAL RISK, recorded deliberately. For a v4 creator id never seen with a v5 key there is
+// nothing to check a requester against, so ANYONE may still ask for a pairing code for SOMEONE
+// ELSE's id and will be shown the code. That is kept on purpose for compatibility with clients
+// that have no v5 key (decision by the owner). The attack it leaves open is: guess or harvest a
+// creator id, request its code, and link it to your own account before its real owner does —
+// but only while the id is UNLINKED and UNPINNED (`creatorProofGate` refuses an id that has a
+// key pin, and an already-linked id returns `{linked:true}` with no code).
+//
+// What this limit adds is the cost of doing it at scale: creator ids are opaque, so the attack
+// needs enumeration, and enumeration is what is now capped — per id, and per client IP, in a
+// fixed window. It does NOT make a targeted attempt against one known id impossible. The fix
+// for that is a v5 key on the id, which is exactly what `/link/upgrade` is for.
+//
+// The per-id count is only charged to UNPROVEN (v4) requests: an id that proved ownership must
+// never be locked out of its own pairing by a stranger burning its budget. The per-IP count is
+// charged to everybody — a proven caller has no reason to ask hundreds of times.
+//
+// In-process and per-replica (like the account limiter in server.mjs): an attacker behind many
+// IPs across many replicas is not what this stops. Bounded so it cannot grow under a flood.
+export const LINK_REQUEST_WINDOW_MS = 10 * 60_000;
+export const LINK_REQUEST_MAX_PER_ID = 5;   // unproven asks for ONE id
+export const LINK_REQUEST_MAX_PER_IP = 30;  // ids asked for by ONE address
+const linkHits = new Map(); // key -> { at, n }
+
+/** Charge one request against `key`. Returns { ok } or { ok:false, retryAfterSec }. */
+export function hitLinkLimit(key, max, now = Date.now(), map = linkHits) {
+  const rec = map.get(key);
+  if (!rec || now - rec.at >= LINK_REQUEST_WINDOW_MS) {
+    boundedSet(map, key, { at: now, n: 1 }, 20_000, LINK_REQUEST_WINDOW_MS);
+    return { ok: true, remaining: max - 1 };
+  }
+  rec.n += 1;
+  if (rec.n > max) return { ok: false, retryAfterSec: Math.ceil((LINK_REQUEST_WINDOW_MS - (now - rec.at)) / 1000) };
+  return { ok: true, remaining: max - rec.n };
+}
+
+/** The real client IP — the last X-Forwarded-For hop Caddy appends, as server.mjs does. */
+function linkClientIp(req) {
+  const xff = req.headers?.['x-forwarded-for'];
+  if (xff) { const parts = String(xff).split(',').map((x) => x.trim()).filter(Boolean); if (parts.length) return parts[parts.length - 1]; }
+  return req.ip || '0.0.0.0';
 }
 
 // Account ↔ BMM creator-id linking. Local-first: BMM keeps working offline; only
@@ -26,8 +72,17 @@ export default async function linkRoutes(app) {
     // Whoever requests the code for an id is whoever sees the code, so an id that has been
     // seen with a v5 key must PROVE it here (lib/creator-identity.mjs). A v4 client sends no
     // proof and is answered exactly as before.
+    // Per-IP first (it costs nothing and is charged to every caller).
+    const ipHit = hitLinkLimit(`ip:${linkClientIp(req)}`, LINK_REQUEST_MAX_PER_IP);
+    if (!ipHit.ok) return reply.code(429).send({ error: 'rate_limited', retryAfterSec: ipHit.retryAfterSec });
     const gate = await creatorProofGate(p, b.data.creatorId, b.data.proof, expectedProofAudience());
     if (!gate.ok) return reply.code(gate.error === 'unavailable' ? 503 : 403).send({ error: gate.error });
+    // Per-id, unproven callers only — see LINK_REQUEST_* above for the risk this caps and the
+    // one it does not.
+    if (!gate.version) {
+      const idHit = hitLinkLimit(`id:${String(b.data.creatorId).trim().toLowerCase()}`, LINK_REQUEST_MAX_PER_ID);
+      if (!idHit.ok) return reply.code(429).send({ error: 'rate_limited', retryAfterSec: idHit.retryAfterSec });
+    }
     // Already linked? Tell BMM so it can show "already linked" instead of a code.
     const existing = await p.creatorLink.findUnique({ where: { creatorId: b.data.creatorId } });
     if (existing) return { linked: true };

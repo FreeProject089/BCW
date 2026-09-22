@@ -4,21 +4,38 @@
 // everyone's. That is the right tool for starting over and the wrong one for "take the
 // sample data out of my site", which is what this is for.
 //
-// It works because seed-demo marks its own rows: catalog items get a `demo-` slug prefix and
-// its authors are `demo-author-N@bettercommunity.local`. Nothing else is touched — and the
-// counts are printed BEFORE the delete so a surprise is visible while it is still a number
-// on a screen rather than a missing catalog.
+// It works because seed-demo RECORDS the ids it created in AdminSetting['seed.demoRows'],
+// and this script deletes by id, intersected with that record. It used to match on names
+// instead — a `demo-` slug, a `demo-author-` address — and both are shapes a real user can
+// produce: a submission under a project keyed `demo` is slugged `demo-…`, and this script
+// would have deleted it. Matching a name is matching something somebody else can choose.
+//
+// The rule below is therefore absolute: an id that is not in the record is never deleted,
+// whatever it is called. Counts are printed BEFORE the delete so a surprise is visible while
+// it is still a number on a screen rather than a missing catalog.
 import { PrismaClient } from '@prisma/client';
+import { readSeedRecord, SEED_RECORD_KEY } from './lib/demo-seed-record.mjs';
 
 const p = new PrismaClient();
 const dry = process.argv.includes('--dry-run');
 
-const DEMO_SLUG = { slug: { startsWith: 'demo-' } };
-const DEMO_USER = { email: { startsWith: 'demo-author-' } };
-
 async function main() {
-  const items = await p.catalogItem.count({ where: DEMO_SLUG });
-  const users = await p.user.findMany({ where: DEMO_USER, select: { id: true, email: true } });
+  const record = await readSeedRecord(p);
+  const itemIds = record.itemIds;
+  const userIds = record.userIds;
+
+  if (!itemIds.length && !userIds.length) {
+    console.log(`[clear-demo] no seed record (AdminSetting['${SEED_RECORD_KEY}'] is absent or empty): nothing to delete.`);
+    // Say plainly what is NOT being deleted, so "but my catalogue is full of demo- items"
+    // has an answer that is not "run it again harder".
+    const named = await p.catalogItem.count({ where: { slug: { startsWith: 'demo-' } } });
+    if (named) console.log(`[clear-demo] ${named} catalog item(s) have a demo- slug — NOT deleted: a slug is a name anyone can pick, not proof the seeder made the row. Re-run \`npm run seed:demo\` to take ownership of a fresh set.`);
+    return;
+  }
+
+  // What is actually still there (rows may have been deleted by hand since the seed).
+  const items = await p.catalogItem.count({ where: { id: { in: itemIds } } });
+  const users = await p.user.findMany({ where: { id: { in: userIds.length ? userIds : ['-'] } }, select: { id: true, email: true } });
 
   // What ELSE those accounts own. A demo author that somehow acquired real content is the
   // case where deleting the account quietly takes something with it, so it is counted and
@@ -30,14 +47,15 @@ async function main() {
       repos: await p.serverRepo.count({ where: { ownerId: { in: ids } } }),
       // ownerId, not authorId. CatalogItem is owned; BlogPost is authored. Guessing the
       // wrong one here does not warn — Prisma refuses the query outright, which is the
-      // friendly version of this repo’s usual field-name failure.
-      otherItems: await p.catalogItem.count({ where: { ownerId: { in: ids }, NOT: DEMO_SLUG } }),
+      // friendly version of this repo's usual field-name failure.
+      otherItems: await p.catalogItem.count({ where: { ownerId: { in: ids }, NOT: { id: { in: itemIds } } } }),
     }
     : { posts: 0, repos: 0, otherItems: 0 };
 
-  console.log(`[clear-demo] catalog items with a demo- slug : ${items}`);
-  console.log(`[clear-demo] demo accounts                   : ${users.length}${users.length ? ' (' + users.map((u) => u.email).join(', ') + ')' : ''}`);
-  console.log(`[clear-demo] those accounts also own          : ${owned.posts} post(s), ${owned.repos} repo(s), ${owned.otherItems} non-demo catalog item(s)`);
+  console.log(`[clear-demo] recorded by the last seed:demo     : ${itemIds.length} item(s), ${userIds.length} account(s) (at ${record.at || 'unknown date'})`);
+  console.log(`[clear-demo] still present, and deletable       : ${items}`);
+  console.log(`[clear-demo] demo accounts                      : ${users.length}${users.length ? ' (' + users.map((u) => u.email).join(', ') + ')' : ''}`);
+  console.log(`[clear-demo] those accounts also own            : ${owned.posts} post(s), ${owned.repos} repo(s), ${owned.otherItems} non-recorded catalog item(s)`);
 
   if (owned.posts || owned.repos || owned.otherItems) {
     console.log('[clear-demo] REFUSING: a demo account owns content the demo seed did not create.');
@@ -47,9 +65,12 @@ async function main() {
 
   if (dry) { console.log('[clear-demo] --dry-run: nothing deleted.'); return; }
 
-  const delItems = await p.catalogItem.deleteMany({ where: DEMO_SLUG });
-  const delUsers = await p.user.deleteMany({ where: DEMO_USER });
-  console.log(`[clear-demo] deleted ${delItems.count} catalog item(s) and ${delUsers.count} account(s).`);
+  // Both deletes are keyed on the recorded ids. There is deliberately no slug/email filter
+  // anywhere below: a row that is not in the record cannot be reached from here.
+  const delItems = await p.catalogItem.deleteMany({ where: { id: { in: itemIds } } });
+  const delUsers = userIds.length ? await p.user.deleteMany({ where: { id: { in: userIds } } }) : { count: 0 };
+  await p.adminSetting.deleteMany({ where: { key: SEED_RECORD_KEY } });
+  console.log(`[clear-demo] deleted ${delItems.count} catalog item(s) and ${delUsers.count} account(s); cleared the seed record.`);
 
   const left = await p.catalogItem.count();
   console.log(`[clear-demo] catalog items remaining: ${left}`);

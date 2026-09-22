@@ -13,6 +13,7 @@
 // snapshotted and put back.
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { lockRow, unlockRow } from './row-lock.mjs';
 
 const RUN = !!process.env.DATABASE_URL;
 const skip = RUN ? false : 'set DATABASE_URL to a throwaway Postgres to run the Ko-fi goal tests';
@@ -26,6 +27,8 @@ before(async () => {
   const lib = await import('../src/lib/lib.mjs');
   cache = await import('../src/lib/cache.mjs');
   p = await lib.db();
+  // kofi-bot-total.test.mjs stands up the same singleton row; one at a time (row-lock.mjs).
+  await lockRow(p, 'kofi.goal');
   savedGoal = await p.adminSetting.findUnique({ where: { key: 'kofi.goal' } });
   const Fastify = (await import('fastify')).default;
   app = Fastify();
@@ -40,6 +43,7 @@ after(async () => {
   if (savedGoal) await p.adminSetting.upsert({ where: { key: 'kofi.goal' }, create: savedGoal, update: { value: savedGoal.value } });
   else await p.adminSetting.deleteMany({ where: { key: 'kofi.goal' } });
   cache.invalidate('kofi.stats');
+  await unlockRow(p, 'kofi.goal');
   await app?.close();
   await p?.$disconnect?.();
 });

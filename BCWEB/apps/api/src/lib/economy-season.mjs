@@ -208,6 +208,46 @@ export async function economyStats(p, { days = 30 } = {}) {
   };
 }
 
+/**
+ * How many past seasons the state row keeps. The history lives INSIDE one AdminSetting JSON
+ * value, so it is capped rather than paginated in the database: 24 entries is two years of
+ * monthly seasons, and a row that grows without a bound is a row that is read on every
+ * dashboard load. Ending a 25th season drops the oldest entry — permanently, this is the
+ * only copy. The ledger keeps its own `season` rows (one per member per reset) for as long
+ * as the point-history retention allows.
+ */
+export const SEASON_HISTORY_MAX = 24;
+
+/**
+ * Past seasons, newest first, as the admin endpoint serves them: a season is the span
+ * BETWEEN two resets, so each entry's `start` is the previous (older) reset — or the moment
+ * the season clock started, for the oldest one we still hold. `startEstimated` says when that
+ * start is unknown (the entry fell off the cap, or predates the state row): a `null` start
+ * printed as a date would be a lie, and one made up from the cap would be a worse one.
+ *
+ * Pure: the caller resolves `by` (a user id, or 'schedule') to a name.
+ */
+export function seasonHistory(state) {
+  const entries = Array.isArray(state?.history) ? state.history : [];
+  // Stored newest-first. Sort defensively — one hand-edited row must not scramble the spans.
+  const rows = [...entries].sort((a, b) => Date.parse(b?.at || 0) - Date.parse(a?.at || 0));
+  return rows.map((e, i) => {
+    const older = rows[i + 1];
+    const start = older?.at || (i === rows.length - 1 ? state?.since || null : null);
+    return {
+      seasonNo: Number(e?.seasonNo) || null,
+      start: start || null,
+      startEstimated: !start,
+      end: e?.at || null,
+      endedBy: e?.by || null,          // a user id, or 'schedule'
+      affected: Number(e?.affected) || 0,   // members whose row the reset wrote
+      holders: Number(e?.holders) || 0,     // of those, how many actually had points
+      points: Number(e?.points) || 0,       // points retired
+      resetXp: e?.resetXp === true,         // was XP wiped too
+    };
+  });
+}
+
 export const SEASON_STATE_KEY = 'economy.seasonState';
 
 export async function readSeasonState(p) {
@@ -238,7 +278,7 @@ export async function runSeasonReset(p, cfg, { by = 'schedule', log = null } = {
   }
   const state = await readSeasonState(p);
   const entry = { at: at.toISOString(), by, affected: r.count, holders: holders.length, points: holders.reduce((a, h) => a + h.points, 0), resetXp: c.resetXp, seasonNo: state.seasonNo };
-  const next = { ...state, lastResetAt: at.toISOString(), seasonNo: state.seasonNo + 1, history: [entry, ...state.history].slice(0, 24) };
+  const next = { ...state, lastResetAt: at.toISOString(), seasonNo: state.seasonNo + 1, history: [entry, ...state.history].slice(0, SEASON_HISTORY_MAX) };
   await writeSeasonState(p, next);
   log?.info?.(`[economy] season ${entry.seasonNo} ended by ${by}: ${entry.affected} member(s), ${entry.points} point(s) retired${c.resetXp ? ', XP wiped' : ''}`);
   return entry;

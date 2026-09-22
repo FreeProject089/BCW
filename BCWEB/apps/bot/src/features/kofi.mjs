@@ -29,7 +29,7 @@ export async function pollKofi(client) {
         const card = ui.card({
           title: `${ui.icx('kofi')}New Ko-fi tip!`, color: 0xff5e5b, // Ko-fi red
           body: `**${tip.fromName || 'Anonymous'}** just tipped **${tip.amount.toFixed(2)} ${tip.currency}**${tip.isSubscription ? ' *(monthly supporter)*' : ''} — thank you!`,
-          footer: `Total raised: ${(totals.totalAmount || 0).toFixed(2)} ${tip.currency} · ${totals.tipCount || 0} tips`,
+          footer: `Total raised: ${(totals.totalAmount || 0).toFixed(2)} ${totals.currency || tip.currency} · ${totals.tipCount || 0} tips`,
           buttons: [ui.btn(`${SITE_URL}/about#support`, 'Support the project')],
         });
         // The public thank-you in the tips channel stays; the admin forum gets a copy in its

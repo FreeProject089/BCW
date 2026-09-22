@@ -307,7 +307,11 @@ export async function stopDemo(p) {
  */
 export async function demoAudit(p) {
   const settings = await p.adminSetting.count({ where: { key: { startsWith: DEMO_PREFIX } } });
-  const seededItems = await p.catalogItem.count({ where: { slug: { startsWith: 'demo-' } } });
+  // The dev seeder's own rows, as IT recorded them (AdminSetting['seed.demoRows']) — not
+  // rows that merely look seeded. Read inline rather than imported: this file is the one
+  // whose import list a test reads to prove demo mode reaches nothing side-effecting.
+  const seedRow = await p.adminSetting.findUnique({ where: { key: 'seed.demoRows' } });
+  const seededItems = Array.isArray(seedRow?.value?.itemIds) ? seedRow.value.itemIds.length : 0;
   return {
     clean: settings === 0 && overlays.size === 0,
     settings, overlays: overlays.size,

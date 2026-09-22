@@ -86,7 +86,12 @@ describe('the v5 format', () => {
     const stranger = keypair();
     assert.equal(verifyCreatorProofV5(mintV5(c, { chain: [...c.chain, cert(c.cid, stranger, keypair().pub, 3)] }), AUD, NOW), null, 'a link signed by an outsider');
     const [h, seg, sig] = mintV5(c).split('.');
-    assert.equal(verifyCreatorProofV5(`${h}.${seg}.${sig.slice(0, -2)}AA`, AUD, NOW), null, 'a tampered signature');
+    // Flip a bit in the DECODED signature. Rewriting the last two base64url characters looks
+    // like the same thing and is not: the final character of an 86-char encoding carries two
+    // significant bits, so `…AA` reproduces the original signature byte for byte about 6% of
+    // the time — a tamper test that tests nothing, one run in sixteen, and fails nothing.
+    const tampered = Buffer.from(sig, 'base64url'); tampered[0] ^= 0xff;
+    assert.equal(verifyCreatorProofV5(`${h}.${seg}.${tampered.toString('base64url')}`, AUD, NOW), null, 'a tampered signature');
     assert.equal(verifyCreatorProofV5(`${h}.${b64u(Buffer.from(seg, 'base64url').toString().replace('"v":5', '"v":5 '))}.${sig}`, AUD, NOW), null, 'a tampered payload');
   });
 
