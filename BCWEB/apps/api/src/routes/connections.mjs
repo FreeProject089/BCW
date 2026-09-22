@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { z } from 'zod';
-import { db, requireRole } from '../lib/lib.mjs';
+import { db, requireRole, safeEqual } from '../lib/lib.mjs';
 
 // Social CONNECTIONS (shown on the public profile), distinct from OAuth login. Each
 // provider is only offered if its credentials are configured in .env. OAuth2 providers
@@ -31,6 +31,9 @@ export const OAUTH = {
   twitch: {
     id: () => env('TWITCH_CLIENT_ID'), secret: () => env('TWITCH_CLIENT_SECRET'),
     authUrl: 'https://id.twitch.tv/oauth2/authorize', tokenUrl: 'https://id.twitch.tv/oauth2/token', scope: '',
+    // Ask every time which Twitch account: a browser signed in to an alt would otherwise link
+    // the alt silently, and the person only finds out from their public profile.
+    extraAuth: { force_verify: 'true' },
     async profile(token) {
       const r = await fetch('https://api.twitch.tv/helix/users', { headers: { Authorization: `Bearer ${token}`, 'Client-Id': env('TWITCH_CLIENT_ID') } });
       if (!r.ok) throw new Error('profile_failed'); const u = (await r.json())?.data?.[0];
@@ -67,6 +70,70 @@ export const verifyConnectState = (state) => {
   } catch { return null; }
 };
 const verify = verifyConnectState;
+
+// The browser binding, same idea as the sign-in flow's `bcw_oauth` (SECURITY_AUDIT.md, Sept
+// pentest finding 1). The state names the account to attach to, so a lured callback could not
+// touch the VICTIM's account; but it could attach the victim's Twitch / Steam to the ATTACKER's
+// public profile, which is a claim to be somebody. The attacker can mint a state and hold an
+// assertion, but cannot plant this cookie in the victim's browser.
+const CONNECT_BIND_COOKIE = 'bcw_connect';
+const CONNECT_COOKIE_SECURE = /^https:/i.test(process.env.SITE_URL || process.env.SITE_DOMAIN || '');
+const sha256 = (x) => crypto.createHash('sha256').update(String(x)).digest('hex');
+function bindConnect(reply) {
+  const nonce = crypto.randomBytes(16).toString('hex');
+  reply.setCookie(CONNECT_BIND_COOKIE, nonce, { httpOnly: true, sameSite: 'lax', path: '/', secure: CONNECT_COOKIE_SECURE, maxAge: Math.floor(STATE_TTL_MS / 1000) });
+  return sha256(nonce);
+}
+/** True when this callback comes back to the browser that started it. Single use. Exported
+ *  for oauth.mjs, whose login callback finishes the GitHub / YouTube connects. */
+export function connectBound(req, reply, claims) {
+  const c = req.cookies?.[CONNECT_BIND_COOKIE];
+  reply.clearCookie(CONNECT_BIND_COOKIE, { path: '/' });
+  return !!(claims?.bind && c && safeEqual(sha256(c), claims.bind));
+}
+
+// ── Steam OpenID 2.0 ──
+// The query string that comes back from Steam is the attacker's to write; nothing in it is
+// believed until Steam itself has said so (check_authentication), and even then only the
+// fields Steam SIGNED, pointing where we asked, for an id of Steam's own shape.
+export const STEAM_OP = 'https://steamcommunity.com/openid/login';
+const STEAM_ID_RE = /^https:\/\/steamcommunity\.com\/openid\/id\/(\d{17})$/;
+const STEAM_MUST_SIGN = ['op_endpoint', 'claimed_id', 'identity', 'return_to', 'response_nonce', 'assoc_handle'];
+/**
+ * Everything that can be checked BEFORE asking Steam. Returns { steamId } or { error }.
+ * `expectedReturnTo` is the exact return_to this server sent at /start (the query carries the
+ * signed state, so it is recomputable from what came back).
+ */
+export function steamAssertionShape(q, expectedReturnTo) {
+  const g = (k) => (typeof q?.[`openid.${k}`] === 'string' ? q[`openid.${k}`] : '');
+  if (g('ns') !== 'http://specs.openid.net/auth/2.0') return { error: 'bad_ns' };
+  if (g('mode') !== 'id_res') return { error: g('mode') === 'cancel' ? 'cancelled' : 'bad_mode' };
+  if (g('op_endpoint') !== STEAM_OP) return { error: 'bad_op' };
+  if (g('return_to') !== expectedReturnTo) return { error: 'bad_return_to' };
+  const claimed = g('claimed_id');
+  const m = STEAM_ID_RE.exec(claimed);
+  if (!m || g('identity') !== claimed) return { error: 'no_steamid' };
+  const signed = new Set(g('signed').split(','));
+  if (!STEAM_MUST_SIGN.every((f) => signed.has(f))) return { error: 'unsigned_fields' };
+  if (!g('sig') || !g('response_nonce')) return { error: 'unsigned_fields' };
+  return { steamId: m[1] };
+}
+/** Steam's own verdict on the assertion, parsed strictly (key:value lines, per the spec). */
+export function steamSaysValid(text) {
+  return String(text || '').split('\n').some((l) => l.trim() === 'is_valid:true');
+}
+// A verified assertion is good once. Steam should refuse a replayed nonce itself; this does not
+// bet on it. Bounded: entries die with the state that carried them.
+const steamNonces = new Map();
+function steamNonceFresh(nonce) {
+  const now = Date.now();
+  for (const [k, t] of steamNonces) if (now - t > STATE_TTL_MS) steamNonces.delete(k); else break;
+  if (steamNonces.has(nonce)) return false;
+  if (steamNonces.size > 5000) steamNonces.delete(steamNonces.keys().next().value);
+  steamNonces.set(nonce, now);
+  return true;
+}
+
 const redirectUri = (provider) => `${SITE_URL}/api/auth/connect/${provider}/callback`;
 const loginCallback = (key) => `${SITE_URL}/api/auth/oauth/${key}/callback`;
 // The redirect URI an OAuth2 connect provider uses — the reused login callback when set.
@@ -112,8 +179,17 @@ export default async function connectionRoutes(app) {
   // My connections (also returned inline by /me, but handy standalone).
   app.get('/me/connections', { preHandler: requireRole() }, async (req) => {
     const p = await db();
-    const rows = await p.socialConnection.findMany({ where: { userId: req.user.uid }, select: { provider: true, handle: true, url: true } });
-    return { connections: rows };
+    const [rows, roster, signin] = await Promise.all([
+      p.socialConnection.findMany({ where: { userId: req.user.uid }, select: { provider: true, handle: true, url: true } }),
+      p.discordLink.findFirst({ where: { userId: req.user.uid }, select: { username: true, discordId: true } }),
+      p.oAuthAccount.findFirst({ where: { userId: req.user.uid, provider: 'discord' }, select: { username: true, providerAccountId: true } }),
+    ]);
+    // Discord is not a SocialConnection: it comes from the bot's roster link or from Discord as
+    // a sign-in method. Reported apart so the profile can offer "show on my profile" for it,
+    // with the same precedence the public profile uses (social.mjs buildPublicProfile).
+    const handle = roster?.username || signin?.username || null;
+    const dc = (roster || signin) ? { handle, via: roster ? 'bot' : 'signin' } : null;
+    return { connections: rows, discord: dc };
   });
 
   app.delete('/me/connections/:provider', { preHandler: requireRole() }, async (req) => {
@@ -152,7 +228,7 @@ export default async function connectionRoutes(app) {
     if (prov.scope) url.searchParams.set('scope', prov.scope);
     for (const [k, v] of Object.entries(prov.extraAuth || {})) url.searchParams.set(k, v);
     // `connect: name` marks this as a connect (not login) state — the shared callback keys off it.
-    url.searchParams.set('state', sign({ uid: req.user.uid, connect: name }));
+    url.searchParams.set('state', sign({ uid: req.user.uid, connect: name, bind: bindConnect(reply) }));
     return reply.redirect(url.toString());
   });
 
@@ -165,6 +241,7 @@ export default async function connectionRoutes(app) {
     if (!prov) return fail(reply, 'unknown_provider');
     const claims = verify(req.query?.state);
     if (!claims || claims.connect !== name) return fail(reply, 'bad_state');
+    if (!connectBound(req, reply, claims)) return fail(reply, 'bad_state');
     if (!req.query?.code) return fail(reply, 'no_code');
     try {
       await exchangeConnect(await db(), { name, code: req.query.code, uid: claims.uid });
@@ -175,8 +252,8 @@ export default async function connectionRoutes(app) {
   // ── Steam (OpenID 2.0) ──
   async function steamStart(req, reply) {
     if (!env('STEAM_API_KEY')) return reply.code(503).send({ error: 'not_configured' });
-    const returnTo = `${redirectUri('steam')}?s=${encodeURIComponent(sign({ uid: req.user.uid, connect: 'steam' }))}`;
-    const url = new URL('https://steamcommunity.com/openid/login');
+    const returnTo = `${redirectUri('steam')}?s=${encodeURIComponent(sign({ uid: req.user.uid, connect: 'steam', bind: bindConnect(reply) }))}`;
+    const url = new URL(STEAM_OP);
     url.searchParams.set('openid.ns', 'http://specs.openid.net/auth/2.0');
     url.searchParams.set('openid.mode', 'checkid_setup');
     url.searchParams.set('openid.return_to', returnTo);
@@ -189,23 +266,32 @@ export default async function connectionRoutes(app) {
   async function steamCallback(req, reply) {
     const claims = verify(req.query?.s);
     if (!claims || claims.connect !== 'steam') return fail(reply, 'bad_state');
-    const claimed = String(req.query?.['openid.claimed_id'] || '');
-    const m = claimed.match(/\/id\/(\d+)$/) || claimed.match(/\/openid\/id\/(\d+)$/);
-    if (!m) return fail(reply, 'no_steamid');
-    // Verify the assertion with Steam (check_authentication).
+    if (!connectBound(req, reply, claims)) return fail(reply, 'bad_state');
+    if (!env('STEAM_API_KEY')) return fail(reply, 'not_configured');
+    // The return_to we sent, recomputed from the signed state that came back with it. OpenID 2.0
+    // §11.1: an assertion aimed at any other URL is not for us, whatever Steam says about it.
+    const shape = steamAssertionShape(req.query, `${redirectUri('steam')}?s=${encodeURIComponent(String(req.query.s))}`);
+    if (shape.error) return fail(reply, shape.error === 'cancelled' ? 'no_code' : 'not_verified');
     try {
+      // Steam's verdict (check_authentication): the openid.* fields exactly as received, mode
+      // swapped. A string-only copy, so a repeated key (an array in the parsed query) cannot
+      // smuggle a second value past what was checked above.
       const body = new URLSearchParams();
-      for (const [k, v] of Object.entries(req.query)) if (k.startsWith('openid.')) body.set(k, String(v));
+      for (const [k, v] of Object.entries(req.query)) if (k.startsWith('openid.') && typeof v === 'string') body.set(k, v);
       body.set('openid.mode', 'check_authentication');
-      const vres = await fetch('https://steamcommunity.com/openid/login', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body });
-      const vtext = await vres.text();
-      if (!/is_valid\s*:\s*true/i.test(vtext)) return fail(reply, 'not_verified');
-      const steamId = m[1];
+      const vres = await fetch(STEAM_OP, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'text/plain' }, body, signal: AbortSignal.timeout(10_000) });
+      if (!vres.ok || !steamSaysValid(await vres.text())) return fail(reply, 'not_verified');
+      if (!steamNonceFresh(String(req.query['openid.response_nonce']))) return fail(reply, 'not_verified');
+      const steamId = shape.steamId;
       let handle = steamId, url = `https://steamcommunity.com/profiles/${steamId}`;
       try {
-        const s = await fetch(`https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/?key=${env('STEAM_API_KEY')}&steamids=${steamId}`);
+        const s = await fetch(`https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/?key=${encodeURIComponent(env('STEAM_API_KEY'))}&steamids=${steamId}`, { signal: AbortSignal.timeout(10_000) });
         const player = (await s.json())?.response?.players?.[0];
-        if (player) { handle = player.personaname || steamId; url = player.profileurl || url; }
+        if (player && String(player.steamid) === steamId) {
+          handle = String(player.personaname || steamId);
+          // Rendered as a link on the public profile: only ever a Steam Community URL.
+          if (typeof player.profileurl === 'string' && /^https:\/\/steamcommunity\.com\/(id|profiles)\/[^\s"'<>]+$/.test(player.profileurl)) url = player.profileurl;
+        }
       } catch { /* keep defaults */ }
       const p = await db();
       await p.socialConnection.upsert({

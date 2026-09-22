@@ -203,7 +203,11 @@ export async function buildPublicProfile(p, id, viewer) {
     const connections = {};
     // github can come from a dedicated social connection or the login OAuth account.
     if (show.has('github') && (social.github || gh?.username)) connections.github = social.github ? { handle: social.github.handle, url: social.github.url } : { handle: gh.username, url: `https://github.com/${gh.username}` };
-    if (show.has('discord') && (u.discordLinks[0]?.username)) connections.discord = u.discordLinks[0].username;
+    // Discord: the bot's roster link when there is one, else the Discord linked as a sign-in
+    // method. Either proves the identity; the second is all a member has when the roster link
+    // for that Discord id is held elsewhere or was never made.
+    const dc = u.discordLinks[0]?.username || u.oauthAccounts.find((a) => a.provider === 'discord')?.username;
+    if (show.has('discord') && dc) connections.discord = dc;
     if (show.has('bmm') && u.creatorLinks[0]) connections.bmm = u.creatorLinks[0].displayName || u.creatorLinks[0].creatorId;
     if (show.has('website') && u.website) connections.website = u.website;
     for (const prov of ['youtube', 'twitch', 'steam', 'kofi']) {

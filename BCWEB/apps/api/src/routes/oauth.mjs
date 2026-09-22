@@ -4,7 +4,7 @@ import { db, issueSession, requireRole, optionalAuth, safeEqual, notify } from '
 import { priorLoginContext, maybeAlertLogin } from '../lib/login-alert.mjs';
 import { sendMail, mailShell, emailEnabled } from '../lib/mail.mjs';
 import { mergeShadowEconomy } from '../lib/economy-curve.mjs';
-import { verifyConnectState, exchangeConnect, OAUTH as CONNECT_OAUTH } from './connections.mjs';
+import { verifyConnectState, exchangeConnect, connectBound, OAUTH as CONNECT_OAUTH } from './connections.mjs';
 import { grantAutoBadges } from './social.mjs';
 import { flagEnabled, disabledReply } from '../lib/flags.mjs';
 
@@ -26,14 +26,28 @@ const maskEmail = (e) => { const [l, d] = String(e).split('@'); return `${l.slic
  *  maps to at most one BCWEB account). Shared by the three places a provider gets attached. */
 async function attachDiscord(p, name, profile, user) {
   if (name !== 'discord') return;
-  const owner = await p.discordLink.findUnique({ where: { discordId: profile.id } });
+  let owner = await p.discordLink.findUnique({ where: { discordId: profile.id }, include: { user: { select: { closedAt: true } } } });
+  // A roster link left on a CLOSED account is a leftover, the same way a sign-in link is (see
+  // providerHolder): nobody can use that account, and the person who just proved they own the
+  // Discord identity is the only one it can mean.
+  // undo: not offered, the row belongs to an account that no longer exists as an identity.
+  if (owner && owner.userId !== user.id && owner.user?.closedAt) {
+    await p.discordLink.deleteMany({ where: { id: owner.id, userId: owner.userId } }).catch(() => {});
+    owner = null;
+  }
   if (!owner) {
     await p.discordLink.create({ data: { userId: user.id, discordId: profile.id, username: profile.username, pendingSync: true } }).catch(() => {});
     mergeShadowEconomy(p, profile.id, user.id, ((await p.adminSetting.findUnique({ where: { key: 'bot.config' } }))?.value || {}).economy || {}).catch(() => {});
     grantAutoBadges(p, { event: 'discord', user }).catch(() => {});
-  } else if (owner.userId === user.id) {
-    await p.discordLink.update({ where: { discordId: profile.id }, data: { username: profile.username, pendingSync: true } }).catch(() => {});
+    return 'attached';
   }
+  if (owner.userId === user.id) {
+    await p.discordLink.update({ where: { discordId: profile.id }, data: { username: profile.username, pendingSync: true } }).catch(() => {});
+    return 'mine';
+  }
+  // Held by another live account (it ran /link there). Left alone, but the caller says so:
+  // this used to be silent, so the sign-in link succeeded and the bot link never appeared.
+  return 'held';
 }
 
 /** An account that was just created through a provider has no password. It gets one offered
@@ -139,11 +153,14 @@ const safeNext = (n) => (typeof n === 'string' && /^\/[^/\\]/.test(n) && n.lengt
 // a valid `state`, and — the callback being a GET with a sameSite:lax session cookie — link the
 // attacker's provider identity onto the victim's account (account takeover), or force the victim
 // into the attacker's session. The cookie the attacker cannot set in the victim's browser.
-function signState(provider, next, bind) {
+function signState(provider, next, bind, intent) {
   const claims = { provider, nonce: crypto.randomBytes(12).toString('hex'), ts: Date.now() };
   const ok = safeNext(next);
   if (ok) claims.next = ok;
   if (bind) claims.bind = bind;
+  // 'link' = started from Profile › Sign-in methods. Signed like the rest, so the callback can
+  // tell "add a method to me" from "sign me in" even when the session did not come back.
+  if (intent === 'link') claims.intent = 'link';
   const payload = Buffer.from(JSON.stringify(claims)).toString('base64url');
   const sig = crypto.createHmac('sha256', JWT_SECRET).update(payload).digest('hex').slice(0, 32);
   return `${payload}.${sig}`;
@@ -170,6 +187,60 @@ function verifyState(state, provider) {
 function slugName(base) {
   return String(base || 'user').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 20) || 'user';
 }
+
+/**
+ * Who holds this provider identity as a SIGN-IN method, or nobody.
+ *
+ * One answer for the three places that ask (link from the profile, "Continue with…", and the
+ * link-proposal confirm), because they asked separately before and all three were wrong the
+ * same way: a row on a CLOSED account counted as "another BetterCommunity account".
+ *
+ * Such rows exist. Closures swept between the closure sweeper (3ba098c2, Aug 14) and the day
+ * anonymiseAccount learned to delete OAuthAccount rows (28b0330b, Sep 5) anonymised the account
+ * and left its sign-in links in place. The account has no address, no password and no sessions,
+ * and cannot be reopened, yet its row made the profile say "already linked to another account"
+ * to the person who owns the Discord, and made "Continue with Discord" sign them INTO the
+ * closed account.
+ *
+ * A closed holder's row is therefore removed and the identity reported free. That is not a
+ * takeover route: the caller has just proven control of the provider identity (code exchange on
+ * a state bound to this browser), and the account it is taken from is closed, which is the
+ * state in which anonymiseAccount deletes these rows anyway. A LIVE holder, suspended or banned
+ * included, is returned as is and every caller still refuses it.
+ */
+export async function providerHolder(p, provider, providerAccountId) {
+  const row = await p.oAuthAccount.findUnique({
+    where: { provider_providerAccountId: { provider, providerAccountId: String(providerAccountId) } },
+    include: { user: true },
+  });
+  if (!row) return null;
+  if (row.user?.closedAt) {
+    // undo: not offered, this finishes what anonymiseAccount does for every closure today.
+    await p.oAuthAccount.deleteMany({ where: { id: row.id, userId: row.userId } });
+    return null;
+  }
+  return row;
+}
+
+// The details of a refused link, handed to the profile page in a short-lived signed cookie and
+// read once through GET /me/oauth/conflict. Not in the redirect URL: that lands in access logs
+// and browser history. What it tells is safe to tell THIS person: they just proved control of
+// the provider identity, and that identity already signs in to the account it names.
+const CONFLICT_COOKIE = 'bcw_link_conflict';
+const CONFLICT_TTL_MS = 5 * 60 * 1000;
+const signBlob = (obj) => {
+  const payload = Buffer.from(JSON.stringify({ ...obj, ts: Date.now() })).toString('base64url');
+  return `${payload}.${crypto.createHmac('sha256', JWT_SECRET).update(`conflict.${payload}`).digest('hex').slice(0, 32)}`;
+};
+const readBlob = (v) => {
+  if (typeof v !== 'string' || !v.includes('.')) return null;
+  const [payload, sig] = v.split('.');
+  if (!safeEqual(crypto.createHmac('sha256', JWT_SECRET).update(`conflict.${payload}`).digest('hex').slice(0, 32), sig)) return null;
+  try {
+    const c = JSON.parse(Buffer.from(payload, 'base64url').toString());
+    return Date.now() - c.ts > CONFLICT_TTL_MS ? null : c;
+  } catch { return null; }
+};
 
 export default async function oauthRoutes(app) {
   // Feature-detection — the frontend only shows a "Continue with X" button once
@@ -204,7 +275,7 @@ export default async function oauthRoutes(app) {
     // the only holder of. A random nonce goes in an httpOnly cookie; its hash rides the state.
     const bindNonce = crypto.randomBytes(16).toString('hex');
     reply.setCookie(OAUTH_BIND_COOKIE, bindNonce, oauthBindCookie);
-    url.searchParams.set('state', signState(req.params.provider, req.query?.next, sha256(bindNonce)));
+    url.searchParams.set('state', signState(req.params.provider, req.query?.next, sha256(bindNonce), req.query?.intent));
     return reply.redirect(url.toString());
   });
 
@@ -224,6 +295,7 @@ export default async function oauthRoutes(app) {
     // provider reuses THIS callback, link the account instead of logging in.
     const connect = verifyConnectState(state);
     if (connect && CONNECT_OAUTH[connect.connect]?.reuseLogin === name) {
+      if (!connectBound(req, reply, connect)) return reply.redirect(`${SITE_URL}/profile?connect_error=bad_state`);
       if (!code) return reply.redirect(`${SITE_URL}/profile?connect_error=no_code`);
       try { await exchangeConnect(await db(), { name: connect.connect, code, uid: connect.uid }); return reply.redirect(`${SITE_URL}/profile?connected=${connect.connect}`); }
       catch (e) { req.log.error(e); return reply.redirect(`${SITE_URL}/profile?connect_error=${encodeURIComponent(e?.message || 'unexpected')}`); }
@@ -238,6 +310,12 @@ export default async function oauthRoutes(app) {
     const bindCookie = req.cookies?.[OAUTH_BIND_COOKIE];
     reply.clearCookie(OAUTH_BIND_COOKIE, { path: '/' });
     if (!stateClaims.bind || !bindCookie || !safeEqual(sha256(String(bindCookie)), stateClaims.bind)) return fail('bad_state');
+    // A Link click whose session did not survive the round trip (expired, revoked, signed out in
+    // another tab) used to fall through to the LOGIN branch below: a new account created from the
+    // provider's address, signed in, and holding the provider identity from then on. The next
+    // Link attempt from the real account then read "already linked to another account", about an
+    // account the person never knowingly made. Refused before the code is even exchanged.
+    if (stateClaims.intent === 'link' && !req.user?.uid) return reply.redirect(`${SITE_URL}/profile?tab=security&link_error=signed_out`);
     if (!code) return fail('no_code');
     try {
       const tokenRes = await fetch(provider.tokenUrl, {
@@ -251,21 +329,30 @@ export default async function oauthRoutes(app) {
       if (!profile.email) return fail('no_email');
 
       const p = await db();
-      const existingLink = await p.oAuthAccount.findUnique({
-        where: { provider_providerAccountId: { provider: name, providerAccountId: profile.id } },
-        include: { user: true },
-      });
+      // null when nobody holds it OR when the holder was a closed account (see providerHolder).
+      const existingLink = await providerHolder(p, name, profile.id);
 
       // Already signed in: this is "add a sign-in method" from the profile, not a login. The
       // session is the proof of ownership — no e-mail match needed — and a provider identity
       // that already belongs to another account is refused rather than moved.
       if (req.user?.uid) {
-        if (existingLink && existingLink.userId !== req.user.uid) return reply.redirect(`${SITE_URL}/profile?tab=security&link_error=already_linked`);
+        if (existingLink && existingLink.userId !== req.user.uid) {
+          // Still refused, and the row does not move: moving it is the account takeover the
+          // September pentest closed. What changes is that the person is told WHICH account
+          // holds it, so "already linked" stops reading as a lie when the holder is an account
+          // they made once with this provider and forgot.
+          const h = existingLink.user;
+          reply.setCookie(CONFLICT_COOKIE, signBlob({
+            uid: req.user.uid, provider: name, handle: String(profile.username || '').slice(0, 64),
+            holder: { email: h?.email ? maskEmail(h.email) : null, displayName: String(h?.displayName || '').slice(0, 64), passwordless: !h?.passwordHash },
+          }), { httpOnly: true, sameSite: 'lax', path: '/', secure: OAUTH_COOKIE_SECURE, maxAge: Math.floor(CONFLICT_TTL_MS / 1000) });
+          return reply.redirect(`${SITE_URL}/profile?tab=security&link_error=already_linked`);
+        }
         const me = await p.user.findUnique({ where: { id: req.user.uid } });
         if (!me) return fail('unexpected');
         if (!existingLink) await p.oAuthAccount.create({ data: { userId: me.id, provider: name, providerAccountId: profile.id, username: profile.username } });
-        await attachDiscord(p, name, profile, me);
-        return reply.redirect(`${SITE_URL}/profile?tab=security&linked=${name}`);
+        const roster = await attachDiscord(p, name, profile, me);
+        return reply.redirect(`${SITE_URL}/profile?tab=security&linked=${name}${roster === 'held' ? '&roster=held' : ''}`);
       }
 
       let user;
@@ -330,6 +417,14 @@ export default async function oauthRoutes(app) {
     return { links, hasPassword: !!me?.passwordHash };
   });
 
+  // Why the last Link was refused: read once, by the account it was refused for.
+  app.get('/me/oauth/conflict', { preHandler: requireRole() }, async (req, reply) => {
+    const c = readBlob(req.cookies?.[CONFLICT_COOKIE]);
+    reply.clearCookie(CONFLICT_COOKIE, { path: '/' });
+    if (!c || c.uid !== req.user.uid) return { conflict: null };
+    return { conflict: { provider: c.provider, label: LABEL[c.provider] || c.provider, handle: c.handle || null, holder: c.holder || null } };
+  });
+
   // Detach a provider. Refused when it is the account's only way in: an account with no
   // password and no other provider would be unreachable the moment this returned.
   app.delete('/me/oauth/:provider', { preHandler: requireRole() }, async (req, reply) => {
@@ -374,7 +469,7 @@ export default async function oauthRoutes(app) {
     if (typeof b.password === 'string' && b.password && user.passwordHash) proven = await argon2.verify(user.passwordHash, b.password).catch(() => false);
     if (!proven && typeof b.code === 'string' && /^\d{6}$/.test(b.code.trim()) && row.codeHash) proven = safeEqual(sha256(b.code.trim()), row.codeHash);
     if (!proven) return reply.code(401).send({ error: 'wrong_credentials' });
-    const taken = await p.oAuthAccount.findUnique({ where: { provider_providerAccountId: { provider: row.provider, providerAccountId: row.providerAccountId } } });
+    const taken = await providerHolder(p, row.provider, row.providerAccountId);
     if (taken && taken.userId !== user.id) return reply.code(409).send({ error: 'already_linked' });
     if (!taken) await p.oAuthAccount.create({ data: { userId: user.id, provider: row.provider, providerAccountId: row.providerAccountId, username: row.username } });
     // Never set an avatar → adopt the provider's picture (the deliberate-choice test is

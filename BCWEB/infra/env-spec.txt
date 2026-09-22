@@ -74,6 +74,9 @@ DISCORD_CLIENT_ID|Integrations|text||Discord OAuth client id|Empty = no "Continu
 DISCORD_CLIENT_SECRET|Integrations|secret||Discord OAuth secret|when:DISCORD_CLIENT_ID=*
 GOOGLE_CLIENT_ID|Integrations|text||Google OAuth client id|Empty = no "Continue with Google" button.
 GOOGLE_CLIENT_SECRET|Integrations|secret||Google OAuth secret|when:GOOGLE_CLIENT_ID=*
+TWITCH_CLIENT_ID|Integrations|text||Twitch app client id|Empty = no Twitch card under Profile, Social accounts. Register <SITE_URL>/api/auth/connect/twitch/callback on the Twitch app.
+TWITCH_CLIENT_SECRET|Integrations|secret||Twitch app secret|when:TWITCH_CLIENT_ID=*
+STEAM_API_KEY|Integrations|text||Steam Web API key|Empty = no Steam card under Profile, Social accounts. From steamcommunity.com/dev/apikey; a generated value would not work, so none is offered.
 
 # ── 7. Secrets with sane generated values ────────────────────────────────────
 _S7|Secrets|info||| Generated. You never type these, and nothing outside this machine needs them.

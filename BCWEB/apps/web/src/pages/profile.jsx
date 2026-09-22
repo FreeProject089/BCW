@@ -281,7 +281,7 @@ export default function Profile() {
                 {[['github', 'GitHub'], ['discord', 'Discord'], ['bmm', 'BMM (creator id)'], ['website', t('prof.website2', 'Website')]]
                   .filter(([k]) => k === 'website' ? !!user.website
                     : k === 'github' ? (user.oauthAccounts?.some((a) => a.provider === 'github') || user.socialConnections?.some((c) => c.provider === 'github'))
-                    : k === 'discord' ? (user._count?.discordLinks > 0)
+                    : k === 'discord' ? (user._count?.discordLinks > 0 || user.oauthAccounts?.some((a) => a.provider === 'discord'))
                     : k === 'bmm' ? (user._count?.creatorLinks > 0) : true)
                   .map(([k, label]) => (
                   <label key={k} className="flex items-center gap-1.5 text-sm cursor-pointer">
@@ -1364,7 +1364,7 @@ function DiscordLinks() {
             <div className="text-sm font-medium">{t('disl.viaApp', 'Link with Discord')}</div>
             <div className="text-[11px] text-[var(--muted)]">{t('disl.viaApp.h', 'Opens Discord’s sign-in; the account is linked to the bot right away, nothing to copy.')}</div>
           </div>
-          <Button variant="primary" size="sm" onClick={() => { window.location.href = '/api/auth/oauth/discord/start'; }}><DiscordIcon size={14} /> {t('disl.viaApp.btn', 'Continue with Discord')}</Button>
+          <Button variant="primary" size="sm" onClick={() => { window.location.href = '/api/auth/oauth/discord/start?intent=link'; }}><DiscordIcon size={14} /> {t('disl.viaApp.btn', 'Continue with Discord')}</Button>
         </div>
       )}
       <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1">{prov?.discord ? t('disl.orcode', 'Or with a code') : t('disl.withcode', 'With a code')}</div>
@@ -1412,10 +1412,30 @@ function SignInMethods() {
   useEffect(() => { load(); }, []);
   useEffect(() => {
     const q = new URLSearchParams(location.search);
-    if (q.get('linked')) { toast.success(t('sim.linked', 'Sign-in method linked.')); q.delete('linked'); history.replaceState({}, '', `${location.pathname}?${q}`); load(); }
+    if (q.get('linked')) {
+      toast.success(t('sim.linked', 'Sign-in method linked.'));
+      // Discord signs you in now, but the bot's link for that Discord id sits on another account
+      // (somebody ran /link there). Said out loud: it used to succeed silently and leave the
+      // Discord card below empty.
+      if (q.get('roster') === 'held') toast.error(t('sim.rosterheld', 'This Discord already has a bot link on another BetterCommunity account, so roles and levels stay there. Unlink it on that account, then use Link with Discord again.'), { duration: 12000 });
+      q.delete('linked'); q.delete('roster'); history.replaceState({}, '', `${location.pathname}?${q}`); load();
+    }
     else if (q.get('link_error')) {
-      toast.error(q.get('link_error') === 'already_linked' ? t('sim.taken', 'That account is already linked to another BetterCommunity account.') : t('sim.failed', 'Could not link that account.'));
+      const why = q.get('link_error');
       q.delete('link_error'); history.replaceState({}, '', `${location.pathname}?${q}`);
+      if (why === 'signed_out') toast.error(t('sim.signedout', 'Your session ended before the provider sent you back, so nothing was linked. Sign in again, then retry.'));
+      else if (why !== 'already_linked') toast.error(t('sim.failed', 'Could not link that account.'));
+      else {
+        // Name the account that holds it. "Already linked" with no name reads as a lie when the
+        // holder is an account made once with this provider and forgotten.
+        api.get('/me/oauth/conflict').then(({ conflict: c }) => {
+          if (!c?.holder) { toast.error(t('sim.taken', 'That account is already linked to another BetterCommunity account.')); return; }
+          const who = [c.holder.displayName, c.holder.email].filter(Boolean).join(', ');
+          toast.error(t('sim.takenby', 'Your {p} account {h} already signs in to another BetterCommunity account ({who}). Sign in to that account with {p}, unlink it under Sign-in methods, then link it here.')
+            .replaceAll('{p}', c.label).replace('{h}', c.handle ? `"${c.handle}"` : '').replace('{who}', who).replace(/\s{2,}/g, ' '),
+          { duration: 12000 });
+        }).catch(() => toast.error(t('sim.taken', 'That account is already linked to another BetterCommunity account.')));
+      }
     }
   }, []); // eslint-disable-line
   if (!providers || !data) return null;
@@ -1464,7 +1484,7 @@ function SignInMethods() {
             </div>
             {l
               ? <Button size="sm" variant="ghost" disabled={methods <= 1} title={methods <= 1 ? t('sim.last', 'This is the only way into your account, set a password first.') : ''} onClick={() => unlink(k)}>{t('sim.unlink', 'Unlink')}</Button>
-              : providers[k] ? <Button size="sm" variant="default" onClick={() => { window.location.href = `/api/auth/oauth/${k}/start`; }}>{t('sim.link', 'Link')}</Button> : null}
+              : providers[k] ? <Button size="sm" variant="default" onClick={() => { window.location.href = `/api/auth/oauth/${k}/start?intent=link`; }}>{t('sim.link', 'Link')}</Button> : null}
           </div>
         ); })}
       </div>
@@ -1482,9 +1502,11 @@ function SocialConnections() {
   const { t } = useI18n(); const toast = useToast(); const { user, refresh } = useAuth();
   const [providers, setProviders] = useState(null);
   const [conns, setConns] = useState([]);
+  const [discord, setDiscord] = useState(null);
+  const [signinDiscord, setSigninDiscord] = useState(false);
   const [kofi, setKofi] = useState('');
-  const load = () => Promise.all([api.get('/auth/connect/providers'), api.get('/me/connections')])
-    .then(([p, c]) => { setProviders(p); setConns(c.connections || []); }).catch(() => setProviders({}));
+  const load = () => Promise.all([api.get('/auth/connect/providers'), api.get('/me/connections'), api.get('/auth/oauth/providers').catch(() => ({}))])
+    .then(([p, c, o]) => { setProviders(p); setConns(c.connections || []); setDiscord(c.discord || null); setSigninDiscord(!!o?.discord); }).catch(() => setProviders({}));
   useEffect(() => { load(); }, []);
   useEffect(() => {
     const q = new URLSearchParams(location.search);
@@ -1506,7 +1528,12 @@ function SocialConnections() {
   }, []); // eslint-disable-line
   if (!providers) return null;
   const configured = CONN_META.filter(([k]) => providers[k]);
-  if (configured.length === 0) return null;
+  // Staff see what this server could offer and what it takes to switch it on; members only
+  // ever see what works.
+  const staff = user?.role === 'ADMIN' || user?.role === 'SUPERADMIN';
+  const unconfigured = staff ? CONN_META.filter(([k, , , , kind]) => kind === 'oauth' && !providers[k]) : [];
+  const discordRow = !!discord || signinDiscord;
+  if (configured.length === 0 && !discordRow && unconfigured.length === 0) return null;
   const linked = Object.fromEntries(conns.map((c) => [c.provider, c]));
   const show = new Set(user?.showConnections || []);
   // Disconnecting is one click and reconnecting is a whole OAuth round trip through another
@@ -1534,6 +1561,22 @@ function SocialConnections() {
     <Card className="p-5">
       <div className="text-sm font-semibold mb-1 flex items-center gap-2"><Link2 size={15} className="text-[var(--accent-ink)]" /> {t('sc.title', 'Social accounts')}</div>
       <div className="space-y-2">
+        {/* Discord: from the bot's roster link or from Discord as a sign-in method. Unlinking it
+            lives under Sign-in methods; this row only decides whether the profile shows it. */}
+        {discordRow && <div className="rounded-xl bg-[var(--surface-2)] px-3 py-2.5">
+          <div className="flex items-center gap-2.5">
+            <span className="grid place-items-center w-8 h-8 rounded-lg bg-[var(--bg-solid)] shrink-0"><DiscordIcon size={17} style={{ color: '#5865f2' }} /></span>
+            <div className="flex-1 min-w-0">
+              <div className="font-medium text-sm">Discord</div>
+              <div className="text-[11px] text-[var(--faint)] truncate" title={discord?.handle || ''}>{discord ? (discord.handle || t('sim.on', 'Active')) : t('sc.notlinked', 'Not linked')}</div>
+            </div>
+            {!discord && signinDiscord && <Button size="sm" variant="default" onClick={() => { window.location.href = '/api/auth/oauth/discord/start?intent=link'; }}>{t('sc.connect', 'Connect')}</Button>}
+          </div>
+          {discord && <label className="flex items-center justify-between gap-2 mt-2 pt-2 border-t border-[var(--line)] text-sm cursor-pointer">
+            <span className="text-[var(--muted)]">{t('sc.showprofile', 'Show on my profile')}</span>
+            <button type="button" onClick={() => toggleShow('discord', !show.has('discord'))} aria-pressed={show.has('discord')} aria-label={t('sc.showprofile', 'Show on my profile')} className={`w-10 h-5.5 rounded-full relative shrink-0 transition ${show.has('discord') ? 'bg-[var(--primary)]' : 'bg-[var(--line-strong)]'}`} style={{ height: 22, width: 40 }}><span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${show.has('discord') ? 'left-[20px]' : 'left-0.5'}`} /></button>
+          </label>}
+        </div>}
         {configured.map(([k, Ico, label, color, kind]) => { const c = linked[k]; return (
           <div key={k} className="rounded-xl bg-[var(--surface-2)] px-3 py-2.5">
             <div className="flex items-center gap-2.5">
@@ -1565,7 +1608,20 @@ function SocialConnections() {
             </label>}
           </div>
         ); })}
+        {unconfigured.map(([k, Ico, label]) => (
+          <div key={k} className="rounded-xl border border-dashed border-[var(--line)] px-3 py-2.5 flex items-center gap-2.5">
+            <span className="grid place-items-center w-8 h-8 rounded-lg bg-[var(--surface-2)] shrink-0 text-[var(--faint)]"><Ico size={17} /></span>
+            <div className="flex-1 min-w-0">
+              <div className="font-medium text-sm text-[var(--muted)]">{label}</div>
+              <div className="text-[11px] text-[var(--faint)]">
+                {t('sc.unconf', 'Hidden from members: not configured on this server. Set')} <code className="break-all">{CONN_ENV[k]}</code>
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
     </Card>
   );
 }
+// What each connect provider needs in infra/compose/.env (shown to staff only).
+const CONN_ENV = { youtube: 'GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET', twitch: 'TWITCH_CLIENT_ID + TWITCH_CLIENT_SECRET', steam: 'STEAM_API_KEY' };
