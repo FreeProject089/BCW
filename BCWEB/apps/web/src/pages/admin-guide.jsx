@@ -16,7 +16,7 @@ import {
   BookOpen, Search, BellIcon, Inbox, Users, Shield, Settings2, Boxes, Newspaper, BadgeCheck,
   Server, CreditCard, Rocket, Megaphone, Sparkles, Wand2, KeyRound, MessageSquare, Cpu,
   TrendingUp, Sliders, Navigation, Palette, Lock, History, Scale, Gavel, HardDrive, Languages, ListTodo,
-  Pencil, Plus, Trash2, Save, ChevronUp, ChevronDown, X, FileText, ChevronsDownUp, ChevronsUpDown, Info, AlertTriangle,
+  Pencil, Plus, Trash2, Save, ChevronUp, ChevronDown, X, FileText, ChevronsDownUp, ChevronsUpDown, Info, AlertTriangle, FlaskConical, Wallet,
 } from 'lucide-react';
 import { Bug as BugIcon } from 'lucide-react';
 import { useI18n } from '../i18n.jsx';
@@ -259,6 +259,19 @@ export const GUIDE = [
         [
           { en: 'Turning the undo window off makes deferred saves (blog, docs, nav, theme) commit immediately instead of after a grace period.', fr: 'Désactiver la fenêtre d’annulation fait que les enregistrements différés (blog, docs, nav, thème) s’appliquent immédiatement au lieu d’après un délai.' },
         ]),
+      G('money', Wallet, 'Money', 'Argent',
+        'Everything about money in one tab: customers and revenue (with running costs), payments still waiting on Stripe, promotions and promo codes, Ko-fi and the Community Charity. Each part keeps the permission it always had.',
+        'Tout ce qui touche à l’argent dans un onglet : clients et revenus (avec les coûts), paiements encore en attente chez Stripe, promotions et codes promo, Ko-fi et la Cagnotte communautaire. Chaque partie garde la permission qu’elle avait.',
+        [
+          { en: 'Hosting plans stay under Hosting: they define the product. Marketplace products stay under Projects.', fr: 'Les offres d’hébergement restent sous Hébergement : elles définissent le produit. Les produits de la boutique restent sous Projets.' },
+        ]),
+      G('demo', FlaskConical, 'Demo mode', 'Mode démo',
+        'Shows the dashboard with believable generated content for a presentation. Admins only. Nothing is written but one setting, visitors keep seeing the real site, and it switches itself off when its time runs out.',
+        'Montre le tableau de bord avec un contenu généré crédible, pour une présentation. Admins uniquement. Rien n’est écrit à part un réglage, les visiteurs voient toujours le vrai site, et il s’éteint tout seul à la fin du temps choisi.',
+        [
+          { en: 'Every admin screen shows a banner with the time left while a demo runs.', fr: 'Chaque écran admin affiche un bandeau avec le temps restant pendant une démo.' },
+          { en: 'Actions taken in the demo (publishing an item, say) are kept in memory and never saved.', fr: 'Les actions faites dans la démo (publier un élément, par exemple) restent en mémoire et ne sont jamais enregistrées.' },
+        ]),
       G('navui', Navigation, 'Navigation & footer', 'Navigation & pied de page',
         'Topbar (a custom ordered nav with groups, per-item icons and FR/EN names, desktop layout, and the mobile bottom bar), Footer, and Home page. The i18n text editor for all site strings lives here too.',
         'Topbar (une navigation ordonnée personnalisée avec groupes, icônes par item et noms FR/EN, mise en page desktop, et la barre du bas mobile), Pied de page, et Page d’accueil. L’éditeur i18n de tous les textes du site est ici aussi.',
@@ -303,7 +316,7 @@ export const GUIDE_TABS = {
   tasks: ['tasks'],
   moderation: ['moderation', 'reports', 'rights', 'lookalikes', 'messages', 'legal', 'sanctions'],
   feedback: ['feedback'],
-  users: ['users', 'planusers'],
+  users: ['users', 'planusers', 'maillog'],
   access: ['access'],
   security: ['security', 'history'],
   projects: ['projects', 'showcase', 'marketplace'],
@@ -322,6 +335,8 @@ export const GUIDE_TABS = {
   serverperf: ['serverperf', 'storage', 'statuspage', 'serveradv'],
   analytics: ['analytics', 'goals', 'errors'],
   settings: ['settings'],
+  money: ['money'],
+  demo: ['demo'],
   navui: ['navui', 'footer', 'homepage'],
   languages: ['languages'],
   sitetheme: ['sitetheme'],
@@ -613,6 +628,16 @@ const GUIDE_MORE = {
     ],
     traps: [
       { en: 'Capacity, retention and pricing caps are NOT here — they live in Hosting settings, one screen for every cap.', fr: 'Capacité, rétention et tarifs ne sont PAS ici — ils sont dans Réglages d’hébergement, un seul écran pour tous les plafonds.' },
+    ],
+  },
+  demo: {
+    steps: [
+      { en: 'Pick a duration (up to 8 hours) and a catalogue size, then Start. The dataset appears below the banner.', fr: 'Choisis une durée (jusqu’à 8 heures) et une taille de catalogue, puis Démarrer. Les données apparaissent sous le bandeau.' },
+      { en: 'Present from the demo screen. Stop when you are done: the check under the button proves nothing demo remains.', fr: 'Présente depuis l’écran de démo. Arrête quand tu as fini : la vérification sous le bouton prouve qu’il ne reste rien de la démo.' },
+    ],
+    traps: [
+      { en: 'Starting again replaces the running demo with a new one; a tab still open on the old one is moved to the new one.', fr: 'Redémarrer remplace la démo en cours par une nouvelle ; un onglet encore ouvert sur l’ancienne passe à la nouvelle.' },
+      { en: 'It never proves the real pipeline works: no real search, cache, checkout or mail. For that, seed a development database.', fr: 'Elle ne prouve jamais que la vraie chaîne fonctionne : ni vraie recherche, ni cache, ni paiement, ni e-mail. Pour cela, remplis une base de développement.' },
     ],
   },
   navui: {

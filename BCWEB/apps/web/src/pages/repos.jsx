@@ -4,7 +4,7 @@ import {
   Server, GitBranch, Star, Plus, Pencil, Trash2, UploadCloud, Eye, EyeOff, CheckCircle2,
   XCircle, Clock, ShieldCheck, ExternalLink, Tag, Users, HardDrive, Settings2, Receipt, Printer, Rocket,
   Files, FileText, FileJson, FolderUp, CreditCard, Search, X, Wifi, WifiOff, Zap, Lock, Download, Copy, RefreshCw, AlertTriangle, LayoutDashboard, MoreHorizontal, Ticket,
-  Ban, Globe, Shield, ChevronDown, Fingerprint, Info, Sliders, Cpu, Check, BadgeCheck, Handshake, Boxes, GitMerge, Link2, ArrowRight,
+  Ban, Globe, Shield, ChevronDown, Fingerprint, Info, Sliders, Cpu, Check, BadgeCheck, Handshake, Boxes, GitMerge, Link2, ArrowRight, Activity,
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ReportButton } from '../ui/report.jsx';
@@ -12,6 +12,7 @@ import { api, uploadRepoFile } from '../lib/api.js';
 import { useToast, useDialog, Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, PageHeader, EmptyState, Spinner, Modal, ActionBar, SkeletonGrid, ColorInput } from '../ui/ui.jsx';
 import { startOwnershipTransfer } from './pages.jsx';
 import { useUploads } from './uploads.jsx';
+import { LiveTraffic } from './traffic-live.jsx';
 import { useI18n } from '../i18n.jsx';
 import BoostCredits from '../ui/boost-credits.jsx';
 import FeedLink, { FeedMenu } from '../ui/feed-link.jsx';
@@ -484,6 +485,7 @@ function PoolsPanel({ groups, onAddRepo, t, reload, toast, dialog }) {
   // Collapsible (persisted) so the pools list can be hidden when the dashboard is busy.
   const [collapsed, setCollapsed] = useState(() => { try { return localStorage.getItem('bcw.pools.collapsed') === '1'; } catch { return false; } });
   const toggleCollapsed = () => setCollapsed((v) => { const n = !v; try { localStorage.setItem('bcw.pools.collapsed', n ? '1' : '0'); } catch { /* ignore */ } return n; });
+  const [trafficId, setTrafficId] = useState(null); // the pool whose live traffic is open
   return (
     <div className="mb-5 space-y-2.5">
       <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -519,6 +521,7 @@ function PoolsPanel({ groups, onAddRepo, t, reload, toast, dialog }) {
               </div>
               <Button size="sm" variant="primary" onClick={() => onAddRepo(g)}><Plus size={13} /> {t('repos.addrepo', 'Add repo')}</Button>
               <a href={`/submit?pool=${g.id}`}><Button size="sm" variant="default"><Boxes size={13} /> {t('repos.addcatalog', 'Add catalog')}</Button></a>
+              <Button size="sm" variant={trafficId === g.id ? 'primary' : 'ghost'} onClick={() => setTrafficId(trafficId === g.id ? null : g.id)} title={t('pools.traffic.h', 'Who is downloading from this pool right now')}><Activity size={13} /> {t('pools.traffic', 'Traffic')}</Button>
               {groups.length > 1 && <label className="flex items-center gap-1.5 text-xs text-[var(--muted)] cursor-pointer select-none px-2 py-1 rounded-lg border border-[var(--line)] hover:border-[var(--primary-2)]" title={t('pools.selectmerge', 'Select to merge')}>
                 <input type="checkbox" checked={sel.has(g.id)} onChange={() => toggleSel(g.id)} /> <GitMerge size={12} /> {t('pools.select', 'Merge')}
               </label>}
@@ -542,6 +545,7 @@ function PoolsPanel({ groups, onAddRepo, t, reload, toast, dialog }) {
                 ))}
               </div>
             ) : <div className="mt-2 text-[11px] text-[var(--faint)]">{t('pools.empty', 'Empty, add a repo or catalog to start using this space.')}</div>}
+            {trafficId === g.id && <LiveTraffic bare url={`/me/hosting/groups/${g.id}/traffic`} />}
             {/* Merged pool carrying several separate paid subs → offer a consolidation quote. */}
             {g.subCount >= 2 && (() => {
               const q = quotes[g.id];

@@ -95,6 +95,7 @@
     ],
     "manage_users": [
       "/admin/bot",
+      "/admin/mail",
       "/admin/pending",
       "/admin/sanctions",
       "/admin/users"

@@ -83,6 +83,7 @@ import botEmojiRoutes from './routes/bot-emoji.mjs';
 import mediaFlagRoutes from './routes/media-flags.mjs';
 import adminSearchRoutes from './routes/admin-search.mjs';
 import demoRoutes from './routes/demo.mjs';
+import mailLogRoutes from './routes/mail-log.mjs';
 import fileLinkRoutes from './routes/files.mjs';
 import jwt from 'jsonwebtoken';
 import connectionRoutes from './routes/connections.mjs';
@@ -435,6 +436,7 @@ await app.register(botEmojiRoutes); // the bot fetches its icon set and uploads 
 await app.register(mediaFlagRoutes); // perceptual-hash flags: pictures that look like another account's
 await app.register(adminSearchRoutes); // the dashboard's one search box over every table it holds
 await app.register(demoRoutes); // admin-only demo mode: an overlay served to admins, never rows in real tables (lib/demo.mjs)
+await app.register(mailLogRoutes); // the sent-mail log: recipient masked in lists, never a body (lib/mail-log.mjs)
 await app.register(fileLinkRoutes); // /f/<token>: files behind links that stop working (MYO deliverables, mail attachments)
 await app.register(rightsRoutes); // rights notices (copyright & co.), the queue, the protected-works registry
 await app.register(connectionRoutes); // social profile connections (youtube/twitch/github/steam)

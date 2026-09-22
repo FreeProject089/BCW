@@ -6,6 +6,7 @@ import { onNotifsChanged, applyNotifChange, markAllNotifsRead, deleteNotif, dele
 import { useI18n } from '../i18n.jsx';
 import { Card, Button, Badge, EmptyState, Spinner, useToast, useDialog } from '../ui/ui.jsx';
 import { useAuth } from './auth.jsx';
+import NotifApiKeyCard from './notif-api-key.jsx';
 
 // /notifications — one centre for everybody.
 //
@@ -213,6 +214,7 @@ export default function NotificationCentre() {
       </Card>
 
       <div className="mt-4"><Preferences /></div>
+      <div className="mt-4"><NotifApiKeyCard /></div>
     </div>
   );
 }

@@ -9,6 +9,7 @@ import { api } from '../lib/api.js';
 import { ContentSanctionForm } from './admin-sanctions.jsx';
 import { useI18n } from '../i18n.jsx';
 import { useFetch, gb, DotDropdown, RepoStatusSelect, RepoCategorySelect, StatusBadges, HostFilesModal } from './repos.jsx';
+import { AdminPoolTraffic } from './traffic-live.jsx';
 
 /* ── Admin: all repos ── */
 // Admin: paste a Repo ID (BCR-XXXX-XXXX) and see the full combined-identity
@@ -187,6 +188,8 @@ export function AdminPools() {
   if (loading) return <Loading />;
   return (
     <div>
+      {/* Every pool at once (repos AND catalogues), or one pool picked from the list below. */}
+      <AdminPoolTraffic groups={groups} />
       <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
         <h2 className="font-semibold flex items-center gap-2"><HardDrive size={16} className="text-[var(--accent-ink)]" /> {t('apools.title', 'Storage pools (all users)')} <span className="text-xs text-[var(--faint)] font-normal">{groups.length}</span></h2>
         <div className="flex items-center gap-2">

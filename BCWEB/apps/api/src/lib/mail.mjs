@@ -3,6 +3,7 @@
 // false — callers fall back gracefully (e.g. the reset endpoint returns a devToken).
 import nodemailer from 'nodemailer';
 import { BRAND_LOGO_DATA_URI } from './brand-logo-data.mjs';
+import { recordMail } from './mail-log.mjs';
 
 const SITE = (process.env.SITE_URL || 'http://localhost:5176').replace(/\/$/, '');
 
@@ -153,12 +154,20 @@ export function emailEnabled() {
  */
 export async function sendMail({ to, subject, html, text, headers, attachments, mailId }) {
   subject = mailSubject(mailId, subject);
-  if (!emailEnabled()) return false;
+  // Every outcome is logged (lib/mail-log.mjs): recipient, template id, redacted subject,
+  // status. Never the body — that is where the link or the code lives.
+  if (!emailEnabled()) { recordMail({ to, subject, mailId, status: 'disabled', attachments }); return false; }
   const from = process.env.SMTP_FROM || 'BetterCommunity <no-reply@localhost>';
   // `attachments` is forwarded explicitly. This function destructures its argument, so a
   // caller passing something it does not name gets it SILENTLY DROPPED — a data-export mail
   // would have gone out with no data in it and nothing would have failed.
-  await tx().sendMail({ from, to, subject, html, text, headers, attachments });
+  try {
+    await tx().sendMail({ from, to, subject, html, text, headers, attachments });
+  } catch (err) {
+    recordMail({ to, subject, mailId, status: 'failed', error: err, attachments });
+    throw err;
+  }
+  recordMail({ to, subject, mailId, status: 'sent', attachments });
   return true;
 }
 

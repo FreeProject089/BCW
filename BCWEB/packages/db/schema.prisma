@@ -101,6 +101,9 @@ model User {
   legalAcceptedAt  DateTime?
   stripeCustomerId String?        @unique
   apiKeys          ApiKey[]
+  // Mails sent to this account's address, matched when the mail was sent. Cascade: an
+  // erased account takes its mail history with it (see MailLog).
+  mailLogs         MailLog[]
   customDomains     CustomDomain[]
   boostCredits      BoostCredit[]
   polls            Poll[]         @relation("PollAuthor")
@@ -940,6 +943,39 @@ model CommunityCatalog {
 //
 // `path` is a stored relative path ('catalog.json', or an item slug), never a request URL:
 // a URL carries the query string, and the query string is the secret.
+// One row per mail the platform tried to send: the "see every e-mail sent" screen.
+//
+// Written by lib/mail.mjs sendMail (through lib/mail-log.mjs), the one function every mail
+// goes through, whether it was delivered, refused by the transport, or skipped because
+// mail is switched off. Fire-and-forget: a failed log write never fails a mail.
+//
+// NO BODY IS STORED, on purpose. Bodies carry the secrets a mail exists to deliver (a
+// verification link, a password-reset token, a gift code, a data export). What is kept is
+// the template id (`mailId`, the gallery's key), the subject with anything link- or
+// token-shaped replaced, and the transport's error text redacted the same way.
+//
+// `to` is the full address: the list masks it, and only a reader holding manage_users (who
+// can already read every account's address) is sent it whole. `userId` is set when the
+// address belonged to an account at send time, so account erasure removes the rows.
+// Retention: 90 days AND at most 20 000 rows, pruned opportunistically (lib/mail-log.mjs).
+model MailLog {
+  id          String   @id @default(cuid())
+  to          String
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mailId      String   @default("")
+  subject     String   @default("")
+  status      String // sent | failed | disabled
+  error       String?
+  attachments Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([status, createdAt])
+  @@index([mailId, createdAt])
+  @@index([userId])
+}
+
 model CatalogAccessEvent {
   id        String           @id @default(cuid())
   catalog   CommunityCatalog @relation(fields: [catalogId], references: [id], onDelete: Cascade)

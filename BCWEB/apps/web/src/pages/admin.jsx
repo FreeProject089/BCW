@@ -12,7 +12,7 @@ import {
   BarChart3, Boxes, Music2, Puzzle, Server, Rocket, Download, Power, PowerOff, ArrowRight, ArrowRightLeft, Search, Upload, Bell, CheckCircle2, XCircle, Wallet, Scale, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Vote, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronUp, ChevronRight, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical, Check, ExternalLink, Palette, Pencil, Gavel, Code2, Database, Network, Share2, Link as LinkIcon, PlayCircle, Anchor, Boxes as BoxesIcon, Image as ImageIcon, ShoppingBag, Key, Coins, ShieldAlert, ServerCog, HeartPulse, Wrench, Bot, OctagonAlert, Flag as FlagIcon } from 'lucide-react';
 import { Bug as BugIcon } from 'lucide-react';
 // The `all` sub-tab on Hosting settings; nothing else here needs a plain list glyph.
-import { List } from 'lucide-react';
+import { List, FlaskConical } from 'lucide-react';
 import { Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, EmptyState, Spinner, Modal, ActionBar, ByteSize, formatBytes, useDialog, useToast, copyText, ColorInput, Explain } from '../ui/ui.jsx';
 import { AppLogo } from '../ui/brand.jsx';
 import Markdown, { IconGlyph, ShowcaseIcon } from '../ui/md.jsx';
@@ -54,6 +54,13 @@ import { useTheme } from '../ui/theme.jsx';
 import { rawStatusLabel, DotDropdown } from './repos.jsx';
 import { analyseTrend, robustCeiling } from '../lib/trend.js';
 import { AdminRepos, AdminPools } from './repos-admin.jsx';
+import { AdminCatalogTraffic, LiveTraffic } from './traffic-live.jsx';
+import { AdminDemo, AdminFirstRun, DemoBanner } from './admin-demo.jsx';
+import { AdminMailLog } from './admin-maillog.jsx';
+import { BotGiveawaysCard as BotGiveawaysCardNew } from './discord-giveaways.jsx';
+import { BotEmojiSyncCard } from './discord-emojis.jsx';
+import { BotPresencePanel } from './discord-presence.jsx';
+import { AlertFocus } from './admin-alert-focus.jsx';
 import { TotpQuickFill } from './twofa-fill.jsx';
 import { AutomodEditor, LogsEditor, WarnLadderEditor, normAutomod, normLadder, normLogs, ladderForSave } from './discord-automod.jsx';
 import { PerfDailyMetrics } from './admin-server-metrics.jsx';
@@ -236,6 +243,8 @@ export function Admin() {
   const raw = [
     { heading: t('adm.h.help', 'Reference') },
     isMod && { id: 'guide', label: t('adm.tab.guide', 'Admin guide'), icon: BookOpen },
+    // Admin-only, like its routes (requireRole('ADMIN') in demo.mjs, not a capability).
+    isAdmin && { id: 'demo', label: t('adm.tab.demo', 'Demo mode'), icon: FlaskConical },
 
     { heading: t('adm.h.queues', 'Waiting on you') },
     // No badge, deliberately. This tab is a DIGEST of the six queues below, and every one of
@@ -264,7 +273,8 @@ export function Admin() {
     can('manage_users') && { id: 'users', label: t('adm.tab.users', 'Accounts'), icon: Users,
       sub: [
         { id: 'users', label: t('adm.tab.users2', 'All accounts'), icon: Users },
-        { id: 'planusers', label: t('adm.tab.planusers', 'Free vs paid'), icon: Receipt },
+        // Same gate as its routes (manage_users): the log's one personal field is an address.
+        { id: 'maillog', label: t('adm.tab.maillog', 'Sent e-mails'), icon: Send },
         isAdmin && { id: 'access', label: t('adm.tab.access', 'Roles & permissions'), icon: Shield },
         // The two "who did what" screens, together: the audit chain and the whole-site
         // history read the same way and were two sections apart.
@@ -307,21 +317,35 @@ export function Admin() {
         { id: 'pools', label: t('adm.tab.pools', 'Storage pools'), icon: HardDrive },
         { id: 'transfers', label: t('adm.tab.transfers', 'Ownership'), icon: ArrowRightLeft },
         can('manage_hosting') && { id: 'hosting', label: t('adm.tab.hosting', 'Free hosting'), icon: Rocket },
-        can('manage_hosting') && { id: 'payments', label: t('adm.tab.payments', 'Pending payments'), icon: CreditCard },
       ].filter(Boolean) },
+    // Hosting plans stay here: they DEFINE the hosting product (sizes, speeds, what each tier
+    // includes) and are edited beside the pools they size. What people paid lives in Money.
     isAdmin && { id: 'plans', label: t('adm.tab.plans2', 'Hosting plans'), icon: CreditCard },
 
-    { heading: t('adm.h.growth', 'Growth & money') },
-    can('manage_promotions') && { id: 'promotions', label: t('adm.tab.promotions', 'Promotions & codes'), icon: Megaphone },
+    { heading: t('adm.h.money', 'Money') },
+    // Money: one place for what came in, what is owed and what was given away.
+    //
+    // "Customers & revenue" sat under Accounts and "Pending payments" under Server repos, so
+    // the question "how is the money doing" meant opening two unrelated groups. Leaf ids are
+    // unchanged (?s=planusers, ?s=payments, ?s=promotions, ?s=kofi, ?s=charity keep landing),
+    // and every leaf keeps the exact gate it had in its old group. Deliberately NOT here:
+    // Hosting plans (the product definition, above), Marketplace (edits products attached to
+    // project pages, under Projects), Commissions (a work queue with a badge, under Growth).
+    (can('manage_users') || can('manage_hosting') || can('manage_promotions') || can('manage_donations')) && { id: 'money', label: t('adm.tab.money', 'Money'), icon: Wallet,
+      sub: [
+        // Was under Accounts, whose gate was manage_users; that is still its gate.
+        can('manage_users') && { id: 'planusers', label: t('adm.tab.planusers', 'Free vs paid'), icon: Receipt },
+        can('manage_hosting') && { id: 'payments', label: t('adm.tab.payments', 'Pending payments'), icon: CreditCard },
+        can('manage_promotions') && { id: 'promotions', label: t('adm.tab.promotions', 'Promotions & codes'), icon: Megaphone },
+        // Community Charity used to be a card at the foot of Home page; it is money that is not
+        // a sale, like Ko-fi. Same capability as Ko-fi.
+        can('manage_donations') && { id: 'kofi', label: t('adm.tab.kofi2', 'Ko-fi'), icon: KofiIcon },
+        can('manage_donations') && { id: 'charity', label: t('adm.tab.charity', 'Community Charity'), icon: Heart },
+      ].filter(Boolean) },
+
+    { heading: t('adm.h.growth2', 'Growth') },
     can('manage_events') && { id: 'events', label: t('adm.tab.events', 'Events'), icon: Sparkles },
     can('manage_myo') && { id: 'myo', label: t('adm.tab.myo', 'Commissions'), icon: Wand2, badge: pc.myo || undefined },
-    // Community Charity used to be a card at the foot of Home page; it is money that is not a
-    // sale, like Ko-fi, and it needed its own place to be found. Same capability as Ko-fi.
-    can('manage_donations') && { id: 'kofi', label: t('adm.tab.kofi', 'Ko-fi & funding'), icon: KofiIcon,
-      sub: [
-        { id: 'kofi', label: t('adm.tab.kofi2', 'Ko-fi'), icon: KofiIcon },
-        { id: 'charity', label: t('adm.tab.charity', 'Community Charity'), icon: Heart },
-      ] },
 
     { heading: t('adm.h.integrations', 'Integrations') },
     isAdmin && { id: 'sso', label: t('adm.tab.sso', 'SSO / OAuth'), icon: Shield },
@@ -376,6 +400,9 @@ export function Admin() {
             the entry that documents THIS one, and guideEntryForTab is checked against the tab
             list by check-guide-coverage.mjs so it cannot quietly point nowhere. */}
         <GuideLink tab={s} />
+        {/* While a demo runs, every admin screen says so; the demo screen has its own. */}
+        {isAdmin && <DemoBanner current={s} />}
+        {s === 'demo' && <AdminDemo />}
         {s === 'homepage' && <><SceneEditor /><ShowcaseEditor /><HomePageEditor /></>}
         {s === 'languages' && <><LanguagesCard /><BotI18nCard /></>}
         {s === 'moderation' && <div>
@@ -452,13 +479,14 @@ export function Admin() {
           </div> : <EmptyState icon={CheckCircle2} title={t('mod.empty.t', 'Queue is empty')} sub={t('mod.empty.s2', 'Nothing is waiting for review. Submissions land here the moment somebody sends one.')} />)}
           {review && <SubmissionReview sub={review} onClose={() => setReview(null)} onApprove={() => { approve(review); setReview(null); }} onReject={() => { reject(review); setReview(null); }} reload={subs.reload} />}
         </div>}
-        {s === 'needs' && <AdminNeedsAttention data={pending.data} loading={pending.loading} onReload={pending.reload} />}
+        {s === 'needs' && <AdminNeedsAttention data={pending.data} loading={pending.loading} onReload={pending.reload} isAdmin={isAdmin} />}
         {s === 'tasks' && <AdminTasks />}
         {/* The new screen renders AdminThreads itself, under its policy card. */}
         {s === 'messages' && <AdminMessagesScreen />}
         {s === 'lookalikes' && <AdminMediaFlags />}
         {s === 'legal' && <AdminLegal />}
         {s === 'users' && <AdminUsers />}
+        {s === 'maillog' && <AdminMailLog />}
         {s === 'planusers' && <AdminPlanUsers />}
         {s === 'access' && <AdminAccess isSuperAdmin={isSuperAdmin} />}
         {s === 'security' && <AdminSecurity />}
@@ -2461,6 +2489,8 @@ function AdminServerPerf() {
   );
   return (
     <div>
+      {/* ?alert=<id>: the bot's alert posts land on their own alert, not on the list. */}
+      <AlertFocus />
       <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
         <h2 className="font-semibold flex items-center gap-2"><Cpu size={16} className="text-[var(--accent-ink)]" /> {t('sp.title', 'Server performance')}
           {health && <Badge tone={health === 'ok' ? 'green' : health === 'warn' ? 'amber' : 'red'}>{health === 'ok' ? <CheckCircle2 size={11} /> : <AlertTriangle size={11} />} {healthLabel}</Badge>}
@@ -7961,6 +7991,9 @@ function AdminMail() {
 
   return (
     <div className="space-y-4">
+      {/* What was actually sent lives under Accounts (manage_users reads it); from here it is
+          one click away rather than a screen you have to know exists. */}
+      <Link to="/admin?s=maillog" className="flex items-center gap-2 text-sm text-[var(--accent-ink)] hover:underline w-fit"><Send size={14} /> {t('ml.open', 'See every e-mail sent')}</Link>
       <MailGallery t={t} />
       <Card className="p-4">
         <div className="flex items-center gap-2 mb-1"><Mail size={15} className="text-[var(--accent-ink)]" /> <span className="font-semibold text-sm">{t('adm.mail.title', 'Email users')}</span></div>
@@ -10758,6 +10791,24 @@ function AdminKofiGoal() {
     setF({ title: '', targetAmount: '', currency: 'USD' });
     undoDel.del('goal', () => api.del('/admin/kofi/goal'), t('common.removed', 'Removed.'));
   };
+  // Restart the count: the goal keeps its title, target and currency, and only tips from now
+  // on are added up (the API moves the goal's `since` to now). The earlier start cannot be put
+  // back through the API, so the request waits for the undo window instead of being reversed.
+  const [resetting, setResetting] = useState(false);
+  const resetCount = () => {
+    const g = data?.goal; if (!g) return;
+    setResetting(true);
+    toast.action({
+      tone: 'success', duration: 6000, cancelLabel: t('common.undo', 'Undo'),
+      msg: t('kg.reset.done', 'The count restarts from zero.'),
+      onCommit: async () => {
+        try { await api.put('/admin/kofi/goal', { title: g.title || '', targetAmount: Number(g.targetAmount), currency: g.currency || 'USD', reset: true }); reload(); }
+        catch { toast.error(t('common.failed', 'Failed.')); }
+        finally { setResetting(false); }
+      },
+      onCancel: () => setResetting(false),
+    });
+  };
   if (loading) return <Loading />;
   const pct = data?.goal ? Math.min(100, Math.round((data.totalAmount / data.goal.targetAmount) * 100)) : 0;
   return (
@@ -10776,11 +10827,13 @@ function AdminKofiGoal() {
       {data?.goal && (
         <div className="mb-3">
           <div className="h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full rounded-full bg-gradient-to-r from-brand to-brand-2" style={{ width: `${pct}%` }} /></div>
-          <div className="text-xs text-[var(--faint)] mt-1">{t('kg.pct', '{p}% of {a} {c} goal, live on the homepage').replace('{p}', pct).replace('{a}', data.goal.targetAmount).replace('{c}', data.goal.currency)}</div>
+          <div className="text-xs text-[var(--faint)] mt-1">{t('kg.pct', '{p}% of {a} {c} goal, live on the homepage').replace('{p}', pct).replace('{a}', data.goal.targetAmount).replace('{c}', data.goal.currency)}
+            {data.goal.since && <> · {t('kg.since', 'counted since {d}').replace('{d}', new Date(data.goal.since).toLocaleDateString())}</>}</div>
         </div>
       )}
-      <div className="flex gap-2">
+      <div className="flex gap-2 flex-wrap">
         <Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : data?.goal ? t('kg.update', 'Update goal') : t('kg.publish', 'Publish goal')}</Button>
+        {data?.goal && <Button variant="ghost" disabled={resetting} onClick={resetCount} title={t('kg.reset.h', 'Keep the goal, count only the tips from now on')}><RotateCcw size={13} /> {t('kg.reset', 'Restart the count')}</Button>}
         {data?.goal && <Button variant="ghost" className="!text-error" onClick={clear}>{t('kg.remove', 'Remove')}</Button>}
       </div>
     </Card>
@@ -14405,267 +14458,6 @@ function BotDMCard() {
   );
 }
 
-// Admin: create & manage Discord giveaways — the bot posts an Enter button, collects
-// entries, and draws winners at the end (DMing a gift code to each if configured).
-/** A shut-by-default section with a one-line summary of what is inside it.
- *
- *  A form that shows every optional field at once is not "complete", it is a wall — and the
- *  summary is what keeps the fold honest: closed, it still tells you what it is holding, so
- *  nothing set in there is invisible. */
-/**
- * An optional block that collapses to a single hairline row.
- *
- * It used to draw itself as a rounded, bordered box. Inside a Card that is already a bordered
- * box, holding two MORE bordered boxes of its own, the giveaway block came out as four nested
- * frames — a card visibly chopped into pieces rather than one panel. A rule above the row does
- * the same separating job with none of the chopping.
- */
-function Fold({ title, summary, children, defaultOpen = false }) {
-  const [on, setOn] = useState(defaultOpen);
-  return (
-    <div className="border-t border-[var(--line)]">
-      <button type="button" onClick={() => setOn((v) => !v)}
-        className="w-full flex items-center gap-2 py-2.5 text-start group">
-        <ChevronDown size={14} className={`shrink-0 text-[var(--faint)] transition-transform ${on ? 'rotate-180' : ''}`} />
-        <span className="text-[12.5px] font-medium group-hover:text-[var(--text)] transition-colors">{title}</span>
-        {!on && summary ? <span className="ms-auto text-[11px] text-[var(--faint)] truncate max-w-[55%]" title={summary}>{summary}</span> : null}
-      </button>
-      {on && <div className="pb-3">{children}</div>}
-    </div>
-  );
-}
-
-/**
- * A titled region inside a panel. A label and a rule — not another card.
- * Used to tell "what is running" from "make a new one" without boxing either.
- */
-function PanelSection({ title, right, first = false, children }) {
-  return (
-    <div className={first ? '' : 'border-t border-[var(--line)] mt-3 pt-3'}>
-      <div className="flex items-center gap-2 mb-2">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)]">{title}</span>
-        {right ? <span className="ms-auto">{right}</span> : null}
-      </div>
-      {children}
-    </div>
-  );
-}
-
-// The prizes a giveaway actually runs, as one click each.
-//
-// Setting one up meant four nested decisions — prize kind, then gift kind, then which of
-// percentOff / freeMonths / storageGB / boostDays applies to that gift kind — inside a fold
-// that was shut by default. Every one of those is a real field, and none of them is a
-// DECISION: "one month of hosting free" is a single thing a person wants to give away.
-//
-// So the common ones are presets. Each fills the same state the fields do, and the fields stay
-// underneath for the giveaway that is not one of these.
-const GW_PRIZES = [
-  { id: 'discount20', label: '20% off', prize: '20% off hosting', prizeKind: 'promo', gift: { kind: 'discount', percentOff: 20, freeMonths: 0 } },
-  { id: 'discount50', label: '50% off', prize: '50% off hosting', prizeKind: 'promo', gift: { kind: 'discount', percentOff: 50, freeMonths: 0 } },
-  { id: 'month1', label: '1 month free', prize: '1 month of hosting', prizeKind: 'promo', gift: { kind: 'discount', percentOff: 0, freeMonths: 1 } },
-  { id: 'month3', label: '3 months free', prize: '3 months of hosting', prizeKind: 'promo', gift: { kind: 'discount', percentOff: 0, freeMonths: 3 } },
-  { id: 'hosting10', label: 'A free repo (10 GB)', prize: 'A hosted Server-Repo, 10 GB', prizeKind: 'promo', gift: { kind: 'free_hosting', storageGB: 10 } },
-  { id: 'pool50', label: 'A 50 GB pool', prize: 'A 50 GB storage pool', prizeKind: 'promo', gift: { kind: 'free_pool', storageGB: 50 } },
-  { id: 'boost7', label: 'A 7-day boost', prize: '7 days of boost', prizeKind: 'promo', gift: { kind: 'free_boost', boostDays: 7 } },
-  { id: 'custom', label: 'Something I type in', prizeKind: 'custom' },
-  { id: 'none', label: 'Bragging rights', prize: 'Bragging rights', prizeKind: 'none' },
-];
-// Durations people actually pick. It was a raw minutes box, so "one week" meant knowing that
-// a week is 10080 minutes — and a typo there is a giveaway that ends in seven hours or seventy
-// days, which nothing on screen would have questioned.
-const GW_DURATIONS = [
-  [60, '1 hour'], [360, '6 hours'], [720, '12 hours'], [1440, '1 day'],
-  [4320, '3 days'], [10080, '1 week'], [20160, '2 weeks'], [43200, '30 days'],
-];
-function BotGiveawaysCard() {
-  const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
-  const [open, setOpen] = useState(false);
-  const { data, loading, reload } = useAsync(() => api.get('/admin/bot/giveaways'), []);
-  const [f, setF] = useState({ prize: '', channelId: '', durationMinutes: 60, winnersCount: 1, reqLinked: false, reqCreator: false, audience: 'discord', prizeKind: 'promo', prizeContent: '', winnerMessage: 'Congrats {user}, you won {prize}! 🎉 Thanks for entering.', gift: { kind: 'discount', percentOff: 20, freeMonths: 0, storageGB: 10, boostDays: 7 } });
-  const [busy, setBusy] = useState(false);
-  const undo = useUndoableDelete(reload);
-  const giveaways = (data?.giveaways || []).filter((g) => !undo.pending.has(g.id));
-  // What the shut fold says it is holding. Named settings only — "promo · linked required"
-  // beats a chevron that could be hiding anything.
-  const prizeSummary = [
-    f.prizeKind === 'promo' ? t('gw.pk.promo2', 'promo code') : f.prizeKind === 'custom' ? t('gw.pk.custom2', 'custom content') : t('gw.pk.none2', 'no prize'),
-    f.reqCreator ? t('gw.badge.creator', 'creator id') : f.reqLinked ? t('gw.badge.linked', 'linked') : null,
-  ].filter(Boolean).join(' · ');
-  // A preset writes the same state the fields do, so it is a starting point and not a mode:
-  // everything it set stays editable underneath.
-  const applyPrize = (p) => setF((cur) => ({
-    ...cur,
-    prizeKind: p.prizeKind,
-    // The prize NAME is what entrants read on the Discord post; a preset fills it only when
-    // the field is still empty or still holds another preset's text, so a name somebody wrote
-    // themselves is never overwritten.
-    prize: p.prize && (!cur.prize.trim() || GW_PRIZES.some((x) => x.prize === cur.prize)) ? p.prize : cur.prize,
-    gift: p.gift ? { ...cur.gift, ...p.gift } : cur.gift,
-  }));
-
-  // What the winner ends up with, in one line, from whatever the fields say right now. The
-  // prize payload lives in a fold that is shut by default, so without this the card can show
-  // "20% off" as the title while the gift underneath is a 10 GB pool.
-  const winnerGets = (() => {
-    if (f.prizeKind === 'none') return t('gw.gets.none', 'nothing to claim, the title only');
-    if (f.prizeKind === 'custom') return f.prizeContent.trim()
-      ? t('gw.gets.custom', 'the text you typed, sealed until they reveal it')
-      : t('gw.gets.custom.empty', 'custom content, but you have not typed any yet');
-    const g = f.gift;
-    if (g.kind === 'discount') {
-      const bits = [Number(g.percentOff) ? `${Number(g.percentOff)}%` : null, Number(g.freeMonths) ? t('gw.gets.months', '{n} month(s) free').replace('{n}', Number(g.freeMonths)) : null].filter(Boolean);
-      return bits.length ? t('gw.gets.promo', 'a promo code: {x}').replace('{x}', bits.join(' + ')) : t('gw.gets.empty', 'a promo code worth nothing yet, set a discount below');
-    }
-    if (g.kind === 'free_hosting') return t('gw.gets.hosting', 'a free hosted repo, {n} GB').replace('{n}', Number(g.storageGB) || 0);
-    if (g.kind === 'free_pool') return t('gw.gets.pool', 'a free storage pool, {n} GB').replace('{n}', Number(g.storageGB) || 0);
-    if (g.kind === 'free_boost') return t('gw.gets.boost', '{n} day(s) of boost').replace('{n}', Number(g.boostDays) || 0);
-    return t('gw.gets.promo.plain', 'a promo code');
-  })();
-
-  const create = async () => {
-    const needChannel = f.audience !== 'site';
-    if (!f.prize.trim() || (needChannel && !f.channelId.trim())) return toast.error(t('gw.needfields', 'Prize and channel id are required.'));
-    if (f.prizeKind === 'custom' && !f.prizeContent.trim()) return toast.error(t('gw.needcontent', 'Custom prizes need the content to reveal to the winner.'));
-    setBusy(true);
-    try {
-      const body = { prize: f.prize.trim(), durationMinutes: Number(f.durationMinutes) || 60, winnersCount: Number(f.winnersCount) || 1, audience: f.audience, prizeKind: f.prizeKind };
-      if (needChannel) body.channelId = f.channelId.trim();
-      if (f.prizeKind === 'custom') body.prizeContent = f.prizeContent.trim();
-      if (f.winnerMessage.trim()) body.winnerMessage = f.winnerMessage.trim();
-      if (f.reqLinked || f.reqCreator) body.requirements = { linked: !!(f.reqLinked || f.reqCreator), creator: !!f.reqCreator };
-      if (f.prizeKind === 'promo') { const g = { kind: f.gift.kind }; if (f.gift.kind === 'discount') { if (Number(f.gift.percentOff)) g.percentOff = Number(f.gift.percentOff); if (Number(f.gift.freeMonths)) g.freeMonths = Number(f.gift.freeMonths); } if (f.gift.kind === 'free_hosting' || f.gift.kind === 'free_pool') g.storageGB = Number(f.gift.storageGB); if (f.gift.kind === 'free_boost') g.boostDays = Number(f.gift.boostDays); body.gift = g; }
-      await api.post('/admin/bot/giveaways', body);
-      toast.success(t('gw.created', 'Giveaway created, the bot posts it within ~30s.')); setF({ ...f, prize: '' }); reload();
-    } catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); }
-  };
-  const end = async (g) => { if (!(await dialog.confirm({ title: t('gw.end.t', 'Draw now?'), message: t('gw.end.m', 'End this giveaway now and draw the winners?'), okLabel: t('gw.end.ok', 'Draw now') }))) return; try { await api.post(`/admin/bot/giveaways/${g.id}/end`); toast.success(t('gw.ending', 'Drawing, winners announced within ~30s.')); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
-  const del = (g) => undo.del(g.id, () => api.del(`/admin/bot/giveaways/${g.id}`), t('common.deleted', 'Deleted.'));
-  return (
-    <Card className="p-4 mb-4">
-      <button onClick={() => setOpen((v) => !v)} className="w-full flex items-center justify-between gap-2 text-start">
-        <span className="font-medium text-sm flex items-center gap-2"><Gift size={14} className="text-[var(--accent-ink)]" /> {t('gw.title', 'Giveaways')}{giveaways.some((g) => g.status === 'active') && <Badge tone="green">{giveaways.filter((g) => g.status === 'active').length}</Badge>}</span>
-        <ChevronDown size={16} className={`text-[var(--faint)] transition-transform ${open ? 'rotate-180' : ''}`} />
-      </button>
-      {open && (
-        <div className="mt-3">
-          <p className="text-[11px] text-[var(--faint)]">{t('gw.note2', 'Members can also start their own with /giveaway (Discord-only, max 5 per server). Staff giveaways here can run on Discord, on the site, and hand the winner a prize into their BCWEB inventory.')}</p>
-
-          {/* What is running comes FIRST. This is a management panel: the reason to open it is
-              usually to check or end a giveaway, and that list used to sit underneath the whole
-              creation form — past four fields, a fold and a Create button. */}
-          <PanelSection title={t('gw.sec.running', 'Running')}>
-            {loading ? <Loading /> : giveaways.length ? <div className="space-y-2">
-              {giveaways.map((g) => (
-                <div key={g.id} className="flex items-center gap-3 text-sm rounded-lg bg-[var(--surface-2)] px-3 py-2.5">
-                  <Gift size={14} className={g.status === 'active' ? 'text-success shrink-0' : 'text-[var(--faint)] shrink-0'} />
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium truncate">{g.prize} {g.hasGift && <Badge tone="primary"><Gift size={9} /> {t('gw.gift', 'gift')}</Badge>} {g.requirements?.creator ? <Badge tone="amber"><Lock size={9} /> {t('gw.badge.creator', 'creator id')}</Badge> : g.requirements?.linked ? <Badge tone="amber"><Lock size={9} /> {t('gw.badge.linked', 'linked')}</Badge> : null}</div>
-                    <div className="text-[11px] text-[var(--faint)]">{g.status === 'active' ? t('gw.endsat', 'ends {d}').replace('{d}', new Date(g.endsAt).toLocaleString()) : t('gw.ended', 'ended · {n} winner(s)').replace('{n}', g.winnerIds?.length || 0)} · {t('gw.entries', '{n} entries').replace('{n}', g.entryCount)}</div>
-                  </div>
-                  {g.status === 'active' && <Button size="sm" variant="ghost" onClick={() => end(g)}>{t('gw.drawbtn', 'Draw now')}</Button>}
-                  <Button size="sm" variant="ghost" className="!text-error" onClick={() => del(g)}><Trash2 size={13} /></Button>
-                </div>
-              ))}
-            </div> : <div className="text-xs text-[var(--faint)]">{t('gw.none', 'No giveaways yet.')}</div>}
-          </PanelSection>
-
-          <PanelSection title={t('gw.sec.new', 'New giveaway')}>
-          {/* Four short fields across the row on a wide screen. A giveaway is prize + where +
-              how long + how many winners; as two columns they wrapped into four rows of
-              half-empty inputs. */}
-          {/* Pick the prize first, in one click. The fields below stay editable — a preset is a
-              starting point, not a mode. */}
-          <div className="flex flex-wrap items-center gap-1.5 mb-3">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] me-1">{t('gw.presets', 'Prize')}</span>
-            {GW_PRIZES.map((p) => {
-              const on = f.prizeKind === p.prizeKind
-                && (!p.gift || (f.gift.kind === p.gift.kind
-                  && (p.gift.percentOff === undefined || Number(f.gift.percentOff) === p.gift.percentOff)
-                  && (p.gift.freeMonths === undefined || Number(f.gift.freeMonths) === p.gift.freeMonths)
-                  && (p.gift.storageGB === undefined || Number(f.gift.storageGB) === p.gift.storageGB)
-                  && (p.gift.boostDays === undefined || Number(f.gift.boostDays) === p.gift.boostDays)));
-              return (
-                <button key={p.id} type="button" onClick={() => applyPrize(p)}
-                  className={`text-xs px-2.5 py-1 rounded-lg border transition-colors ${on ? 'border-[var(--primary)] tint-primary text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)] hover:border-[var(--line-strong)]'}`}>
-                  {t(`gw.p.${p.id}`, p.label)}
-                </button>
-              );
-            })}
-          </div>
-          {/* What the winner ends up with, from the fields as they stand. The payload lives in a
-              fold that is shut by default, so without this the title can say one thing and the
-              gift underneath be another. */}
-          <div className="text-[11px] text-[var(--muted)] mb-3">
-            <span className="text-[var(--faint)]">{t('gw.gets', 'The winner gets')}: </span>{winnerGets}
-          </div>
-          <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-3">
-            <Field label={t('gw.prize', 'Prize')} hint={t('gw.prize.h', 'What entrants read on the post. The preset fills it; change it to whatever reads best.')}><Input value={f.prize} onChange={(e) => setF({ ...f, prize: e.target.value })} placeholder={t('gw.prize.ph', 'e.g. 1 month of hosting')} /></Field>
-            <Field label={t('gw.audience', 'Where to enter')}><Dropdown className="w-full" value={f.audience} onChange={(v) => setF({ ...f, audience: v })} options={[{ value: 'discord', label: t('gw.aud.discord', 'Discord') }, { value: 'site', label: t('gw.aud.site', 'The site (bettercommunity.ch/giveaways)') }, { value: 'both', label: t('gw.aud.both', 'Both') }]} /></Field>
-            {f.audience !== 'site' && <Field label={t('gw.channel', 'Channel id')}><Input value={f.channelId} onChange={(e) => setF({ ...f, channelId: e.target.value })} placeholder="123456789012345678" /></Field>}
-            <Field label={t('gw.duration2', 'Runs for')}>
-              {GW_DURATIONS.some(([m]) => m === Number(f.durationMinutes))
-                ? <Dropdown className="w-full" value={String(f.durationMinutes)}
-                  onChange={(v) => setF({ ...f, durationMinutes: v === 'custom' ? '' : Number(v) })}
-                  options={[...GW_DURATIONS.map(([m, label]) => ({ value: String(m), label: t(`gw.d.${m}`, label) })), { value: 'custom', label: t('gw.d.custom', 'Custom…') }]} />
-                /* The escape hatch stays a plain minutes box, and says its unit — the field
-                   used to be only this, which is how "one week" became a question about how
-                   many minutes are in a week. */
-                : <div className="flex items-center gap-2">
-                  <Input type="number" value={f.durationMinutes} onChange={(e) => setF({ ...f, durationMinutes: e.target.value })} placeholder="90" />
-                  <span className="text-xs text-[var(--faint)] shrink-0">{t('gw.d.min', 'min')}</span>
-                  <Button size="sm" variant="ghost" onClick={() => setF({ ...f, durationMinutes: 1440 })}>{t('common.reset', 'Reset')}</Button>
-                </div>}
-            </Field>
-            <Field label={t('gw.winners', 'Winners')}><Input type="number" value={f.winnersCount} onChange={(e) => setF({ ...f, winnersCount: e.target.value })} /></Field>
-          </div>
-          {/* Everything past the four fields above is optional, and having it all on screen at
-              once is what made this card exhausting: a giveaway is usually prize + channel +
-              duration + winners, and those were buried under the promo-gift editor, the entry
-              requirements, the winner DM and its live preview — most of which do not even apply
-              to the prize kind chosen. One fold, shut by default, holding the prize payload and
-              the entry rules; its header still says what is inside, so nothing set in there is
-              invisible. */}
-          <Fold title={t('gw.fold.prize', 'Prize & delivery')} summary={prizeSummary}>
-            <div className="space-y-3">
-              <Field label={t('gw.prizekind', 'Prize kind')} hint={t('gw.prizekind.h', 'What the winner claims from their inventory')}><Dropdown className="w-full" value={f.prizeKind} onChange={(v) => setF({ ...f, prizeKind: v })} options={[{ value: 'promo', label: t('gw.pk.promo', 'Promo code (generated on reveal)') }, { value: 'custom', label: t('gw.pk.custom', 'Custom (you type the content)') }, { value: 'none', label: t('gw.pk.none', 'None (bragging rights)') }]} /></Field>
-          {f.prizeKind === 'custom' && (
-                <Field label={t('gw.prizecontent', 'Prize content (revealed to the winner)')} hint={t('gw.prizecontent.h', 'A code, a link, instructions, kept sealed in the winner’s inventory until they reveal it.')}>
-                  <Textarea rows={3} value={f.prizeContent} onChange={(e) => setF({ ...f, prizeContent: e.target.value })} placeholder={t('gw.prizecontent.ph', 'e.g. STEAM-KEY-XXXX-YYYY, or a private download link…')} />
-                </Field>
-              )}
-              {/* Entry requirements — gate who can enter (enforced server-side on Enter).
-                  A label and a rule, not a fourth nested frame. */}
-              <div className="border-t border-[var(--line)] pt-3 space-y-2">
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Lock size={11} /> {t('gw.reqs', 'Entry requirements')}</div>
-                <label className="flex items-center gap-2 text-sm text-[var(--muted)] cursor-pointer w-fit"><input type="checkbox" checked={f.reqLinked || f.reqCreator} disabled={f.reqCreator} onChange={(e) => setF({ ...f, reqLinked: e.target.checked })} /> {t('gw.req.linked', 'Require a linked BetterCommunity account (Discord ⇄ BCWEB)')}</label>
-                <label className="flex items-center gap-2 text-sm text-[var(--muted)] cursor-pointer w-fit"><input type="checkbox" checked={f.reqCreator} onChange={(e) => setF({ ...f, reqCreator: e.target.checked, reqLinked: e.target.checked ? true : f.reqLinked })} /> {t('gw.req.creator', 'Require a linked BMM creator id')}</label>
-                <div className="text-[11px] text-[var(--faint)]">{t('gw.req.note', 'Entrants without the required link get a helpful DM/notice pointing them to link, they can enter once linked.')}</div>
-              </div>
-              {/* Winner DM — customizable, English by default, with insert-at-cursor variables
-                  + a live preview. The bot substitutes {user}/{prize}/{code} when it sends. */}
-              <MessageField label={t('gw.winnermsg', 'Winner DM message')} hint={t('gw.winnermsg.h', 'DMed to each winner when the giveaway ends.')}
-                value={f.winnerMessage} onChange={(v) => setF({ ...f, winnerMessage: v })} vars={GIVEAWAY_VARS}
-                placeholder={t('gw.winnermsg.ph', 'Congrats {user}, you won {prize}! 🎉')} giftCode={f.prizeKind === 'promo' ? '' : undefined} />
-              {f.prizeKind === 'promo' && (
-                <div className="border-t border-[var(--line)] pt-3 grid sm:grid-cols-2 gap-3">
-                  <div className="sm:col-span-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Gift size={11} className="text-[var(--accent-ink)]" /> {t('gw.promoprize', 'Promo prize, the code is generated when the winner reveals it')}</div>
-                  <Field label={t('pc.f.type', 'Type')}><Dropdown className="w-full" value={f.gift.kind} onChange={(v) => setF({ ...f, gift: { ...f.gift, kind: v } })} options={[{ value: 'discount', label: t('pc.t.discount', 'Discount (% off / months free)') }, { value: 'free_hosting', label: t('pc.t.hosting', 'Free hosting (one repo)') }, { value: 'free_pool', label: t('pc.t.pool', 'Free storage pool') }, { value: 'free_boost', label: t('pc.t.boost', 'Free boost') }]} /></Field>
-                  {f.gift.kind === 'discount' && <><Field label={t('pc.f.pctoff', '% off')}><Input type="number" value={f.gift.percentOff} onChange={(e) => setF({ ...f, gift: { ...f.gift, percentOff: e.target.value } })} /></Field><Field label={t('pc.f.freemonths', 'First months free')}><Input type="number" value={f.gift.freeMonths} onChange={(e) => setF({ ...f, gift: { ...f.gift, freeMonths: e.target.value } })} /></Field></>}
-                  {(f.gift.kind === 'free_hosting' || f.gift.kind === 'free_pool') && <Field label={t('pc.f.storage', 'Storage GB')}><Input type="number" value={f.gift.storageGB} onChange={(e) => setF({ ...f, gift: { ...f.gift, storageGB: e.target.value } })} /></Field>}
-                  {f.gift.kind === 'free_boost' && <Field label={t('pc.f.boostdays', 'Boost days')}><Input type="number" value={f.gift.boostDays} onChange={(e) => setF({ ...f, gift: { ...f.gift, boostDays: e.target.value } })} /></Field>}
-                </div>
-              )}
-            </div>
-          </Fold>
-          <div className="flex justify-end pt-1"><Button variant="primary" disabled={busy} onClick={create}>{busy ? <Spinner /> : <><Plus size={14} /> {t('gw.create', 'Create giveaway')}</>}</Button></div>
-          </PanelSection>
-        </div>
-      )}
-    </Card>
-  );
-}
-
 // Diagnostic under the Payments module: shows whether Payment rows even exist, so
 // "the bot doesn't post real payments" can be told apart from "no payments recorded
 // at all" (= the Stripe webhook isn't reaching the API).
@@ -15000,6 +14792,9 @@ function AdminBot() {
         )}
       </div>
 
+      <ModuleCard id="sec-presence" icon={Activity} title={t('db.presence', 'Discord status')} desc={t('db.presence.d', 'The dot and the line under the bot’s name.')} onToggle={null}>
+        <BotPresencePanel value={cfg.presence} onChange={(v) => set('presence', v)} status={status} />
+      </ModuleCard>
       <MemberDatabaseCard cfg={cfg} set={set} />
       <BotLogsCard />
       <BotDMCard />
@@ -15153,7 +14948,7 @@ function AdminBot() {
         {/* Giveaways — an engagement tool aimed at the community, not a health metric, so it
             lives here rather than on the Overview; beside the composer, the two short cards
             share the row the tall editor takes alone above. */}
-        <BotGiveawaysCard />
+        <BotGiveawaysCardNew currencyName={g('economy.currencyName') || 'points'} renderWinnerMessage={(p) => <MessageField {...p} vars={GIVEAWAY_VARS} />} />
       </div>
       </>)}
 
@@ -15307,6 +15102,7 @@ function AdminBot() {
         {/* Button icons — a row of its own: twenty-six rows with a preview, a glyph, a colour
             and a mapping each do not fit a third of the page. */}
         <BotIconsCard icons={eco.icons || {}} iconStyle={eco.iconStyle || {}} onChange={(k, v) => set(`economy.icons.${k}`, v)} onStyle={(path, v) => set(`economy.iconStyle.${path}`, v)} />
+        <BotEmojiSyncCard icons={eco.icons || {}} onChange={(k, v) => set(`economy.icons.${k}`, v)} />
 
         {/* Shop */}
         {(() => {
@@ -20836,6 +20632,7 @@ export function OwnerCatalogs() {
   const { data, loading, reload } = useAsync(() => api.get('/me/catalogs'), []);
   const [openId, setOpenId] = useState(null);
   const [accessId, setAccessId] = useState(null);
+  const [trafficId, setTrafficId] = useState(null); // the catalogue whose live traffic is open
   const [hidden, setHidden] = useState(() => new Set()); // optimistically-removed during the undo window
   const cats = (data?.catalogs || []).filter((c) => !hidden.has(c.id));
   const patch = async (c, body) => { try { await api.patch(`/me/catalogs/${c.id}`, body); reload(); } catch (x) { toast.error(x.data?.error || t('acc.failed', 'Failed.')); } };
@@ -20884,6 +20681,7 @@ export function OwnerCatalogs() {
                 { key: 'feed', label: t('oc.feed', 'Feed URL'), icon: Copy, onClick: () => copyFeed(c) },
                 c.mode === 'managed' && { key: 'items', label: t('oc.items', 'Items'), icon: Package, onClick: () => setOpenId(openId === c.id ? null : c.id) },
                 { key: 'access', label: t('oc.access', 'Access'), icon: ShieldCheck, onClick: () => setAccessId(accessId === c.id ? null : c.id) },
+                { key: 'traffic', label: t('oc.traffic', 'Live traffic'), icon: Activity, onClick: () => setTrafficId(trafficId === c.id ? null : c.id) },
                 { key: 'del', label: t('common.delete', 'Delete'), icon: Trash2, danger: true, onClick: () => del(c) },
               ].filter(Boolean)} />
             </div>
@@ -20909,6 +20707,9 @@ export function OwnerCatalogs() {
             </div>
             {openId === c.id && <OwnerCatalogItems catalog={c} onChange={reload} />}
             {accessId === c.id && <OwnerCatalogAccess catalog={c} onChange={reload} />}
+            {/* Feed fetches and item downloads, private share-link hits included (marked with a
+                key): the owner route, never the staff one. */}
+            {trafficId === c.id && <LiveTraffic bare url={`/me/catalogs/${c.id}/traffic`} />}
           </Card>
         ))}
       </div> : <EmptyState icon={Boxes} title={t('mycat.none.t', 'No catalogs yet')} sub={t('mycat.none.s', 'Host your own catalog of plugins, themes or apps.')}
@@ -21034,6 +20835,7 @@ function AdminCatalogs() {
   const roleTone = (r) => r === 'SUPERADMIN' || r === 'ADMIN' ? 'red' : r === 'MOD' ? 'amber' : '';
   return (
     <div className="space-y-4">
+      <AdminCatalogTraffic />
       <div>
         <h2 className="font-semibold mb-1 flex items-center gap-2"><Layers size={16} className="text-[var(--accent-ink)]" /> {t('cc.admin.title', 'Community catalogs')}</h2>
         <SettingsPointer className="mb-1" keys={['catalog.freeTierCapEnabled', 'catalog.freeTierCapMB']}>{t('cc.admin.ptr.pool', 'The free upload pool and its cap')}</SettingsPointer>
@@ -21889,7 +21691,7 @@ const NEEDS_QUEUES = [
   { key: 'myo', to: '/admin?s=myo', icon: Wand2, label: (t) => t('nq.myo', 'Commissions awaiting a reply'), chip: (t) => t('nq.k.myo', 'Commission') },
 ];
 
-function AdminNeedsAttention({ data, loading, onReload }) {
+function AdminNeedsAttention({ data, loading, onReload, isAdmin }) {
   const { t } = useI18n(); const toast = useToast();
   const counts = data?.counts || {};
   // Rows on their way out are gone from the list already — that IS the undo affordance.
@@ -21943,10 +21745,10 @@ function AdminNeedsAttention({ data, loading, onReload }) {
             })}
           </div>
 
-          {items.length === 0 ? (
+          {items.length === 0 ? (data?.dismissed ? (
             <EmptyState icon={CheckCircle2} title={t('nq.clear.t', 'Nothing waiting')}
-              sub={data?.dismissed ? t('nq.clear.s2', 'Everything left has been ticked off this list. The queues themselves still hold {n} item(s), clearing a row here never closes the work.').replace('{n}', String(data.total || 0)) : t('nq.clear.s', 'Every queue you can act on is empty.')} />
-          ) : (
+              sub={t('nq.clear.s2', 'Everything left has been ticked off this list. The queues themselves still hold {n} item(s), clearing a row here never closes the work.').replace('{n}', String(data.total || 0))} />
+          ) : <AdminFirstRun isAdmin={isAdmin} />) : (
             <Card className="divide-y divide-[var(--line)] overflow-hidden">
               {items.map((it) => (
                 <div key={`${it.queue}-${it.id}`} className="flex items-start gap-3 p-3 hover:bg-[var(--surface-2)] group">
