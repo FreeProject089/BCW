@@ -858,3 +858,461 @@ harness is the exception and cleans up after itself. BMM was not launched (no Ta
 half is `tsc` + the gates + reading. The Discord bot was never driven (prod-linked), per the
 plan's rule 3. Cards 10 (BetterInstaller) and 11 (infra) were not re-run: nothing in them
 changed since the first pass, and re-reading unchanged files is not a second opinion.
+
+---
+
+# Pentest 2026-09-22 — Card 10, supply chain and configuration
+
+Plan: `.Assets/.md/PLAN-PENTEST-SEPT22-2026.md`, card 10 (N). Scope: dependency advisories and
+their REACHABILITY, lockfile integrity, container and edge configuration, CI workflows, and the
+env surface. BMM/BetterInstaller findings from the same card are in
+`.Assets/.md/CWE_REMEDIATION_PLAN.md`; this file holds BCWEB, the bot and the telemetry
+dashboard. Nothing was committed. The Discord bot was never started.
+
+## Measured first — the audit sweep
+
+`npm audit --omit=dev`, then again with dev, in every JS workspace. `packages/bmd` and
+`packages/bmd-editor` declare only `peerDependencies` and have no lockfile, so there is nothing
+to audit in them — not an omission.
+
+| Workspace | prod before | prod after | dev before | dev after |
+|---|---|---|---|---|
+| `apps/api` | 1 high | **0** | 1 high | **0** |
+| `apps/web` | 1 critical | 1 critical | 4 | 4 |
+| `apps/bot` | 0 | 0 | 0 | 0 |
+| `loadtest` | 0 | 0 | 0 | 0 |
+| BMM root | 0 | 0 | 0 | 0 |
+| `bmm/telemetry-dashboard/web` | 6 | **4** | 10 | **6** |
+| `bmm/telemetry-dashboard` (root) | 2 | 2 | 2 | 2 |
+| `native` | 0 | 0 | 0 | 0 |
+
+`cargo audit` was run on `native/` and `native/core/` (clean, no output) and on the telemetry
+server (below). The Rust crates of BMM and BetterInstaller are in the other sink.
+
+---
+
+## Findings, most severe first
+
+### F10-1 — A zip from a stranger's server is downloaded and inflated with no bound (FIXED)
+
+**CWE-409 / CWE-789 / CWE-400.** CVSS 3.1 **7.5 high** —
+`AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:N/A:H` (PR:L because the submitting path needs an account; the
+admin inspect routes need MOD/ADMIN, but the *bytes* are chosen by whoever submitted the item).
+
+This is where the `adm-zip` advisory actually lands, and it is worse than the advisory.
+
+`fetchPluginBytes` (`apps/api/src/lib/plugin.mjs`) did `Buffer.from(await res.arrayBuffer())` on
+a **submitted item's `download_url`**. `safeFetch` decides *where* we may connect (SSRF); it does
+not decide *how much* we may read, and the 15 s timeout is no bound either — a host on a fast
+link delivers gigabytes inside it. `zipReadAll` (`apps/api/src/lib/native.mjs`) then materialised
+**every** entry in memory with no budget. Callers: `validatePlugin`, `/admin/catalog/:id/inspect`,
+`/admin/catalog/:id/plugin-content`, `/admin/catalog/:id/entry`, the community-catalogue twins in
+`catalogs.mjs`, `content-backup.mjs`, `projects.mjs`.
+
+The API container is `mem_limit` 512 MB with `--max-old-space-size=384` (apps/api/Dockerfile), so
+this is not an exception a route can catch — it is the container being OOM-killed, taking every
+in-flight request with it.
+
+*Trigger, measured.* A zip holding 8 MB of zeros is **8 273 bytes** on the wire and the
+pre-fix `zipReadAll` returned **8 388 608 bytes** from it — a measured **1014:1** ratio. Scale the
+same archive to a 256 MB upload and it is ~250 GB of Buffer.
+
+*Refuted along the way.* npm audit's headline for `adm-zip` GHSA-7q85-xj36-vmfc reads as if the
+upgrade closes this. It does not. Reading `node_modules/adm-zip/methods/inflater.js` at both
+versions: 0.6.0 passed `maxOutputLength: expectedLength` — the cap **is** the attacker's declared
+size — and 0.6.1 only adds a 1-byte floor so an entry declaring **zero** cannot escape the cap.
+An entry that honestly declares four gigabytes is still inflated in full by every adm-zip version.
+The native Rust path is worse still: `native/core/src/lib.rs` does
+`Vec::with_capacity(size as usize)` from the same declared size, so merely *claiming* 100 GB is
+an immediate 100 GB reservation, and a Rust allocation failure aborts the process rather than
+unwinding.
+
+*Fix.* Two bounds, both in files this card owns:
+
+- `fetchPluginBytes` now reads `res.body` chunk by chunk against `PLUGIN_FETCH_MAX_BYTES`
+  (256 MB) and throws `too_large`. `content-length` is checked first as a cheap refusal but is
+  treated as a hint, not a bound — a hostile server can omit or lie about it.
+- `zipReadAll(buf, { maxTotalBytes = ZIP_INFLATE_BUDGET })`, 1 GiB, summed over the entries'
+  **declared** sizes from the header-only `zipEntries`, refused with `zip_too_large` **before**
+  anything is inflated. Header-only on both the native and the JS path, so a refusal costs a
+  central-directory parse, not a gigabyte.
+
+*Why the fix holds.* Declared-large is now refused before any allocation, on both paths, which
+also removes the `with_capacity` hazard. Declared-small-but-actually-large is capped by zlib on
+the JS path (`maxOutputLength` = the small declared size). And the budget cannot regress a path
+that works today: a `zipReadAll` materialising more than a gigabyte of buffers is already
+OOM-killed inside a 512 MB container, so the only behaviour that changes is a crash becoming a
+catchable error.
+
+*Residual (owner).* On the **native** path a lying-small declaration is still inflated without a
+limit — `native/core/src/lib.rs` uses `read_to_end` with no `take()`. It is now bounded to
+~1000 x the compressed input, and the compressed input is bounded to 256 MB by the fetch cap, so
+the worst case is no longer unbounded but is still large. The Rust fix is a `.take(limit)` on the
+entry reader; it needs a napi rebuild to verify, which is why it is not in this run.
+
+*Tests.* `apps/api/test/native.test.mjs` +2: a real bomb-shaped archive refused with
+`zip_too_large` and the same bytes read back in full when the budget is raised (proving the
+refusal is the pre-check, not a failed inflate), and a sum-over-entries case with the exact
+boundary (2999 refused, 3000 allowed). Suite: **1771 -> 1773 tests, 1731 pass, 0 fail, 42
+skipped** — the same 42 as the baseline, skipped for want of a `DATABASE_URL`, per the
+`bcweb` skill's note on running the suite as CI runs it.
+
+### F10-2 — `adm-zip` 0.6.0 (GHSA-7q85-xj36-vmfc, GHSA-xcpc-8h2w-3j85, GHSA-vwc7-r8mq-g2x9) (FIXED)
+
+**CWE-789 / CWE-59.** High (7.5) for the allocation pair; the symlink one is moderate (6.5) and
+**not reachable** — `grep` for `extractAllTo` / `extractEntryTo` / `.extract(` across
+`apps/api/src` returns nothing, so nothing here ever writes an adm-zip entry to disk.
+
+Bumped `apps/api` to **0.6.1** — a patch release, already inside the declared `^0.6.0` range.
+`npm install adm-zip@0.6.1` also tightened `package.json` to `^0.6.1`, which is the right floor.
+`npm audit --omit=dev` in `apps/api`: **1 high -> 0**. The test suite is byte-identical before and
+after (1771 tests, 1729 pass, 0 fail, 42 skipped, both runs). The allocation half of this
+advisory is only really closed by F10-1 — see the refutation there.
+
+### F10-3 — The `.dockerignore` that was never read: 471 MB of context, including `.env` (FIXED)
+
+**CWE-200 / CWE-538.** CVSS 3.1 **4.0 low** — `AV:L/AC:L/PR:L/UI:N/S:U/C:L/I:N/A:L`. Local
+exposure to the Docker daemon and to build layers, not a remote path.
+
+`apps/web/.dockerignore` exists and lists `node_modules`, `dist`, `.vite`, `*.log`. Docker reads
+`.dockerignore` at the **context root**, and `infra/compose` sets `context: ../..` — the BCWEB
+root. So that file has never applied to any build, and there was no file at the root.
+
+*Refuted first, and this mattered.* The tidy fix looked like renaming it to
+`apps/web/Dockerfile.dockerignore`, the per-Dockerfile convention. Measured on the Docker running
+this machine (29.6.1) with a throwaway three-file context: with `Dockerfile.dockerignore` beside
+the Dockerfile, `.env` and `node_modules` were **still copied** — it did nothing. Only a file at
+the context root worked. Shipping the rename would have been a fix that fixes nothing and reads
+in review as if it did.
+
+*Measured before and after*, listing what `COPY apps/web/ ./` actually receives:
+
+| | context transferred | `node_modules` entries in the build stage | `.env*` |
+|---|---|---|---|
+| before | **471.26 MB** | **533** | present |
+| after | **36.04 MB** | none | none |
+
+Note what was in that context: `infra/compose/.env`, which holds the real secrets, was scanned
+and offered to the daemon on every build of three images.
+
+*Fix.* New `BCWEB/.dockerignore` excluding `**/node_modules`, `**/.env*` (keeping
+`!**/.env.example`), `**/dist`, `**/target`, `**/.vite`, `**/build`, `.git`, `.github`,
+`.claude`, logs. Every path the three Dockerfiles COPY is listed in the file's own comment and
+was verified present afterwards: `apps/web/package.json`, `apps/web/vite.config.js`,
+`packages/bmd/package.json`, `packages/bmd/src/index.jsx`.
+
+*Verified by build,* not by reading: `apps/web` builds green end to end with it
+(`npm ci` -> 652 packages -> `built in 55.18s` -> image named), and `apps/provisioner` builds
+green. A first attempt failed on `Could not resolve "./studio-tour.jsx"` — that was a stale
+cached COPY layer from before a parallel agent added the file, not this change; `--no-cache`
+is green.
+
+### F10-4 — No CI `permissions:` block: GITHUB_TOKEN ran at the repository default (FIXED)
+
+**CWE-732 / CWE-250.** CVSS 3.1 **6.6 medium** — `AV:N/AC:H/PR:N/UI:N/S:C/C:L/I:H/A:L`
+(AC:H, S:C: it takes a compromised third-party action to use the token, and the impact lands on
+the repository, a different component).
+
+`BCW/.github/workflows/ci.yml` declared no `permissions:` at all, so `GITHUB_TOKEN` carried
+whatever the repository default is — write-all on a repository created before GitHub changed the
+default — and that token was in the environment of every step, including third-party actions
+pinned to **moving refs** (F10-5). Nothing in the file writes anything: it checks out, installs,
+builds, `docker run ... caddy validate`, and `git grep`.
+
+Added `permissions: { contents: read }` at the top. The same block was added to BMM's and
+BetterInstaller's CI (recorded in the other sink). `release.yml` is untouched on this point: its
+job already declares `contents: write` for `gh release create`, and a job-level block replaces
+the top-level one. All four files re-parsed with `js-yaml` afterwards.
+
+### F10-5 — Third-party CI actions pinned to moving refs, in the job that holds the update-signing key (OWNER)
+
+**CWE-829.** CVSS 3.1 **8.1 high** — `AV:N/AC:H/PR:N/UI:N/S:C/C:H/I:H/A:N`. The severity is
+the *consequence*, not the likelihood.
+
+Every workflow in all three repositories uses:
+
+| Action | Pinned to | What that is |
+|---|---|---|
+| `dtolnay/rust-toolchain@stable` | a **branch** | moves on every release of the action |
+| `Swatinem/rust-cache@v2` | a tag | maintainer can repoint it |
+| `actions/checkout@v4`, `actions/setup-node@v4` | tags | GitHub-owned; same class, lower risk |
+
+BMM's `release.yml` is the one that matters: it writes the **Ed25519 private key that signs every
+BMM update** to `betterinstaller-src/examples/bmm/keys/private.key`, and `Swatinem/rust-cache@v2`
+runs a post step in that same job, after the key is on disk. An installed BMM accepts an update
+*because* it verifies against the public half baked into `installer.toml`, so theft of that key
+is not a leak, it is a supply-chain compromise of every installed copy.
+
+*Refuted:* rust-cache does **not** capture the key — it saves `~/.cargo` and `<workspace>/target`,
+and the key is at `examples/bmm/keys`. The exposure is the arbitrary JS an action's post step can
+run in a job where the file exists, not the cache.
+
+*Not applied, deliberately.* `dtolnay/rust-toolchain` derives the toolchain **from the ref**, so
+pinning it to a SHA requires also adding `with: { toolchain: stable }`. That is a CI change that
+cannot be verified from here, and an unverified CI edit is how a fix becomes an outage. SHAs
+resolved for the owner (`git ls-remote`, 2026-09-22):
+
+```
+dtolnay/rust-toolchain  refs/heads/stable  6bed0761d98439e5a578e2877258200ad565ba87
+Swatinem/rust-cache     refs/tags/v2       49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c
+actions/checkout        refs/tags/v4       11d5960a326750d5838078e36cf38b85af677262
+actions/setup-node      refs/tags/v4       49933ea5288caeca8642d1e84afbd3f7d6820020
+```
+
+### F10-6 — The telemetry dashboard origin had no security headers at all (FIXED)
+
+**CWE-1021 / CWE-319.** CVSS 3.1 **5.4 medium** — `AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N`.
+
+`{$TELEMETRY_DOMAIN}` in `infra/caddy/Caddyfile` served the dashboard with `encode` and nothing
+else: no `X-Frame-Options`, no `frame-ancestors`, no `nosniff`, no `Referrer-Policy`, no HSTS.
+It is the most privileged surface on the platform — every installation's telemetry behind a
+session cookie and `canViewTelemetry` — and any page on the internet could frame it and drive an
+authenticated admin's clicks.
+
+Added `nosniff`, `X-Frame-Options DENY` (verified nothing frames it: no iframe in `apps/web`
+points at the dashboard), `Referrer-Policy no-referrer`, `Permissions-Policy`, HSTS, `-Server`.
+
+A CSP is **written into the file but left commented**, with the reason. The dashboard is not
+self-contained: `MapPage.tsx` pulls raster tiles from `tile.openstreetmap.org` and
+`basemaps.cartocdn.com` and glyphs from `fonts.openmaptiles.org`, `visuals.tsx` pulls flags from
+`flagcdn.com`, and `index.html` loads Inter from `rsms.me`. The first draft of this fix shipped
+`default-src 'self'; connect-src 'self'` — reading those five files is what refuted it. A CSP one
+host short white-pages an admin surface, and that has to be confirmed in a browser against the
+running stack. **Owner: enable the commented line after that check.**
+
+### F10-7 — No HSTS anywhere (FIXED for our own origins)
+
+**CWE-319.** CVSS 3.1 **5.9 medium** — `AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:N/A:N`.
+
+Caddy does not send HSTS on its own. Without it the *first* request a visitor makes to the bare
+domain is plain HTTP and can be intercepted before the redirect to HTTPS is ever seen; the
+session cookie is `Secure`, but the login page and every link on it are not protected on that
+first hop.
+
+Added `Strict-Transport-Security "max-age=31536000; includeSubDomains"` to the site block and the
+telemetry block. `includeSubDomains` because the dashboard and the S3 origin are subdomains of
+the same zone and share the session cookie. **No `preload`** — that is a one-way submission to a
+browser-vendor list and is the owner's call. Sent unconditionally: a browser ignores the header
+when it arrives over plain HTTP, so the local `http://localhost:5176` default is unaffected.
+
+**Not** added to the customer-domain block, on purpose: pinning a year of HTTPS-only onto a
+domain the *customer* owns follows them if they later point it at a plain-HTTP host. That
+commitment belongs in the custom-domain terms, not in a config default. The reasoning is written
+into the Caddyfile beside the commented directive.
+
+### F10-8 — The customer-domain and S3 origins were missing framing and sniffing protection (PARTLY FIXED)
+
+**CWE-1021 / CWE-430.** CVSS 3.1 **4.3 medium** — `AV:N/AC:L/PR:N/UI:R/S:U/C:L/I:L/A:N`.
+
+The customer-domain catch-all carried only `nosniff` and `Referrer-Policy`, and the MinIO origin
+carried **nothing** although it serves user-uploaded bytes.
+
+Added: `X-Frame-Options SAMEORIGIN` + `Permissions-Policy` on customer domains;
+`nosniff` + `X-Frame-Options SAMEORIGIN` + `Referrer-Policy no-referrer` + `-Server` on the S3
+origin. `nosniff` is safe there *specifically* because `storage.mjs` signs an explicit
+`ContentType` into every presigned PUT (lines 40/45), so an object's declared type is the one the
+API chose — nosniff cannot break an asset by refusing a merely-guessed type.
+
+**Open, owner:** nothing sets `Content-Disposition` on the S3 origin, so an object stored as
+`text/html` **renders as a page** on a sub-domain of the brand. That is an upload-policy question
+(which content types may be presigned at all), not an edge one, and belongs to the file-upload
+card rather than this one. A `CSP: sandbox` for customer domains is written into the Caddyfile as
+a comment with the same treatment — it would stop an uploaded page scripting, and it would also
+stop a legitimate repo index that uses JavaScript, which is a product decision.
+
+**Validated:** `caddy validate --config Caddyfile --adapter caddyfile` against `caddy:2-alpine`
+— the same image compose runs, which is the CI step — green before and after. `caddy adapt` then
+confirms the headers reached the JSON and reached the right sites: HSTS x2 (site, telemetry),
+`X-Frame-Options` x4, `X-Content-Type-Options` x4.
+
+### F10-9 — The site CSP allows `'unsafe-inline'` scripts and `connect-src https:` (OWNER)
+
+**CWE-1021 / CWE-79 (mitigation gap).** No CVSS: this is a missing mitigation, not a
+vulnerability, and the plan's own rule excludes hardening with no path. Saying it out loud
+because card 10 asks for it explicitly.
+
+```
+script-src 'self' 'unsafe-inline' https://www.googletagmanager.com ...
+connect-src 'self' https: http://localhost:9000 ws: wss:
+```
+
+`'unsafe-inline'` in `script-src` means the CSP stops **no** injected script, and
+`connect-src https:` means it stops **no** exfiltration either — the two things a CSP is for.
+`frame-ancestors 'self'` and `base-uri 'self'` do work; there is no `'unsafe-eval'`. Closing this
+is a nonce or hash pass over the inline theme bootstrap and the GTM snippet in `apps/web`, which
+belongs to the agent that owns that directory. Left as an owner item.
+
+### F10-10 — `DOMAIN_ASK_KEY` and `CUSTOM_DOMAIN_MATCHER` are documented but reach no container (OWNER)
+
+**CWE-1188.** CVSS 3.1 **3.7 low** — `AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:N/A:N`.
+
+`scripts/check-env-documented.mjs` reports seven variables `.env.example` documents that compose
+no longer reads, and two of them are load-bearing in the Caddyfile:
+
+- `CUSTOM_DOMAIN_MATCHER` — the caddy service does not pass it, so the block always falls back
+  to `http://custom-domains.invalid`. An owner who sets it in `.env` as `.env.example:307` tells
+  them to gets no custom domains and no error. Fails **closed**, so it is a functional gap, not
+  a hole.
+- `DOMAIN_ASK_KEY` — same, so `on_demand_tls { ask ...?key= }` always sends an empty key, and
+  `domains.mjs:172` treats an empty `DOMAIN_ASK_KEY` as "no guard". The `/domains/ask` oracle
+  (200 = that hostname is hosted here, for any name a stranger tries, CWE-200) therefore rests
+  on a single layer: the edge's `handle /api/domains/ask* { respond 404 }`. That layer is real
+  and correctly ordered before `handle_path /api/*` — I checked the block order — but the key
+  exists precisely to be the half that survives the API being reachable some other way, and as
+  shipped it cannot be switched on. Setting it in `.env` today changes nothing at all, because
+  neither service reads it.
+
+Not fixed here: `infra/compose/docker-compose.yml` carries the owner's uncommitted edit and is
+out of bounds for this run. It needs `DOMAIN_ASK_KEY` and `CUSTOM_DOMAIN_MATCHER` added to the
+`caddy` (and, for the key, `api`) service environment.
+
+### F10-11 — `apps/api` and `apps/provisioner` build from `npm install` with no lockfile in the image (api FIXED, provisioner OWNER)
+
+**CWE-1357 / CWE-494.** CVSS 3.1 **5.6 medium** —
+`AV:N/AC:H/PR:N/UI:N/S:C/C:H/I:H/A:H` (it takes a compromised upstream patch release; the
+impact is a production image).
+
+`apps/bot/Dockerfile` carries a comment explaining exactly why `npm ci` and not `npm install` —
+and `apps/api`, `apps/web`, `apps/provisioner` and `bmm/telemetry-dashboard` all did the
+opposite, copying only `package.json`. Every `^` range was re-resolved at **build** time, so two
+builds of one commit could ship different trees and a compromised patch release of any transitive
+package reached production with no lockfile diff to review.
+
+- **`apps/api` — fixed.** Now `COPY apps/api/package.json apps/api/package-lock.json ./` +
+  `npm ci` (not `--omit=dev`: the `prisma` CLI is needed by `generate` at build and by
+  `boot-migrate.mjs` at runtime). Verified with a real `node:22-alpine` build of exactly that
+  step: `added 265 packages` including the native `argon2`.
+- **`bmm/telemetry-dashboard` — fixed** the same way for its `web/` stage.
+- **`apps/web` — NOT applied.** The change is written and was verified green
+  (`npm ci` -> 652 packages, `built in 55.18s`), then **reverted**, because a parallel agent
+  owns `apps/web` for this run and the rule is not to edit any file there. The two-line patch is
+  in the report from this card; it is worth applying.
+- **`apps/provisioner` — cannot be fixed.** It has **no `package-lock.json` at all**
+  (`npm ci` there exits 1). Its tree is decided fresh on every image build. Generating a lockfile
+  is a dependency-resolution act with an owner decision attached, so it is not in this run.
+
+### F10-12 — Every service container runs as root (OWNER)
+
+**CWE-250.** CVSS 3.1 **4.6 medium** — `AV:N/AC:H/PR:H/UI:N/S:C/C:L/I:L/A:L`. It is a
+blast-radius multiplier on some other bug, not a way in.
+
+None of `apps/api`, `apps/bot`, `apps/provisioner` or `bmm/telemetry-dashboard` sets `USER`.
+`node:*-alpine` and `gcr.io/distroless/cc-debian12` both default to root, so an RCE in the API
+is root in the container. (`apps/web` is `nginx:alpine`, whose workers already drop to `nginx`.)
+
+Not applied: `USER node` interacts with volume ownership — the api writes git backups through
+`gitbackup.mjs` and `npm ci`/`prisma generate` ran as root, so the fix is `chown` plus
+`USER` plus a stack run to prove it, and the stack cannot be brought up under this card's rules
+(compose is off-limits). For the telemetry image the fix is smaller:
+`gcr.io/distroless/cc-debian12:nonroot`.
+
+### F10-13 — Base images pinned by tag, not digest (OWNER, accepted risk)
+
+**CWE-1357.** Informational. `node:22-alpine`, `node:24-alpine`, `nginx:alpine`, `rust:1-alpine`,
+`rust:1.93-slim`, `gcr.io/distroless/cc-debian12`, `postgres:16-alpine`, `redis:7-alpine`,
+`caddy:2-alpine`, `minio/minio:latest`, `edoburu/pgbouncer:latest`. Digest pinning trades
+"the same image every time" against "you must bump it to get security patches". Three of the four
+Dockerfiles mitigate the second half with `apk upgrade --no-cache`; `minio/minio:latest` and
+`edoburu/pgbouncer:latest` are the two worth naming, because `:latest` is neither reproducible
+nor patched on a schedule.
+
+**Fixed in passing:** `apps/provisioner/Dockerfile` was the only one of the four missing
+`apk upgrade` — it did `apk add --no-cache openssl` alone, so it shipped whatever openssl the
+base tag was built with. Now `apk upgrade --no-cache && apk add --no-cache openssl`; the image
+rebuilds green (`Generated Prisma Client (v5.22.0)`).
+
+### F10-14 — `maplibre-gl` GHSA-jrc7-96c5-q579 (critical) is NOT reachable (NO ACTION)
+
+**CWE-79.** Critical by CVSS; **not reachable here**, and the fix is a major bump, so it is
+proposed, not applied (the card's rule).
+
+The bypass is in `DOM.sanitize()`, which maplibre applies to **attribution HTML and popup
+content**. Both consumers feed it constants:
+
+- `apps/web/src/pages/admin.jsx:17109` — `attribution: '(c) OpenStreetMap (c) CARTO'`, a literal,
+  and the map is built with `attributionControl: false`.
+- `bmm/telemetry-dashboard/web/src/pages/MapPage.tsx:18-19` — two literal attribution strings.
+
+Neither file contains `Popup`, `setHTML` or `innerHTML` on the map. Markers are built from
+`p.lng`/`p.lat` numbers with a custom element. So no attacker-controlled HTML reaches the
+sanitizer, on either surface, and both surfaces are admin-only anyway.
+
+**Proposed, not applied:** `maplibre-gl` 5.x -> **6.10.0** is semver-major in both apps. Worth
+scheduling; not worth a blind bump in a security run.
+
+### F10-15 — Remaining telemetry-dashboard advisories (PARTLY FIXED)
+
+`npm audit fix` **without** `--force` on `bmm/telemetry-dashboard/web`: prod **6 -> 4**, dev
+**10 -> 6**, `package.json` **unchanged** (lockfile-only, transitive: `nanoid`, `postcss`,
+`browserslist`, `baseline-browser-mapping`). Verified by rebuilding: `npm ci` -> 183 packages,
+`built in 13.27s`.
+
+Left, all requiring a major bump — **proposed, not applied**:
+
+- `maplibre-gl` critical — see F10-14, not reachable.
+- `echarts` < 6.1.0, moderate XSS. Reachability not proven either way: echarts XSS is normally a
+  rich-text/formatter path, and the dashboard does render fleet-supplied strings in tooltips. It
+  is an admin-only surface behind `canViewTelemetry`. Bump to 6.1.0 and re-check the charts.
+- `react-router-dom` 7.17 -> 7.18.4, moderate open redirect via a backslash in `<Link>`/
+  `useNavigate`. Reachable only where a route target comes from data; admin-only.
+
+### F10-16 — `bmm/telemetry-dashboard` root: two advisories in code that is not deployed (OWNER)
+
+`adm-zip` <= 0.6.0 and `qs` in `bmm/telemetry-dashboard/package.json` (express + better-sqlite3 +
+adm-zip, entry `server.mjs`). That is the **old Node/SQLite collector**, superseded by the
+Rust/Axum/Postgres server: the Dockerfile builds `server/` and `web/` and never copies
+`server.mjs`, and compose runs that image. So neither advisory is reachable in anything deployed.
+
+It is still two permanent red lines in `npm audit` over code nothing runs. **Owner decision:**
+delete `server.mjs`, `db.mjs`, `stats.mjs` and that `package.json`, or mark them archived — an
+audit finding nobody can act on is how real ones start being skipped.
+
+---
+
+## Checked and clean — stated so it is not re-checked
+
+- **Lockfile integrity.** `npm ci --dry-run` in every workspace that has a lockfile: `apps/api`,
+  `apps/web`, `apps/bot`, `loadtest`, BMM root, `telemetry-dashboard`, `telemetry-dashboard/web`,
+  `native` — none reported a `package.json` / lockfile disagreement (`npm ci` fails loudly on
+  that, and did not). Two reported node_modules drift against the lockfile (BMM root has two
+  extra packages incl. `lucide`; `telemetry-dashboard` is missing `accepts`), which is a local
+  `node_modules` state, not lockfile drift. `apps/provisioner` has no lockfile — F10-11.
+- **No dependency resolved from outside the registry.** All eight lockfiles are
+  `lockfileVersion 3`; every `resolved` is `https://registry.npmjs.org/`; **zero** entries lack
+  an `integrity` hash. No git or http-tarball dependencies.
+- **Install scripts.** `@prisma/client`, `@prisma/engines`, `prisma`, `argon2`, `better-sqlite3`,
+  `esbuild`, `fsevents` — all expected (native compilation, engine fetch), none unexplained.
+  Worth one line: `@prisma/engines`' postinstall **downloads binaries at install time**, and
+  those bytes are not covered by any lockfile `integrity` hash. It is how Prisma works; it is
+  also the one unpinned artefact in the tree (CWE-494).
+- **`pull_request_target`:** none, in any workflow, in any of the three repositories. No secret
+  is echoed; the BCW CI workflow uses no secrets at all.
+- **Env surface, all three checkers green:**
+  `infra/check-env-spec.mjs` -> `.env wizard spec OK — 38 questions, every key real, both
+  scripts read it`; `apps/api/scripts/check-env-documented.mjs` -> `env documented — 63 compose
+  variable(s): 67 in .env.example, 16 internal` (plus the seven-unread note behind F10-10);
+  `guides/check-claims.mjs` -> `checked 63 guides against 18 services, 36 scripts, 321 env vars —
+  every service, script, variable and path a guide names exists`.
+- **The leaked Discord token is gone.** `bcweb-leaked-discord-token` recorded a real bot token
+  committed in `.env.example`. `infra/compose/.env.example:157` is now `DISCORD_TOKEN=` (empty)
+  and `infra/env-spec.txt:70` describes it as a secret with no value. The CI secret-scan job
+  excludes `*.example`, so it would never have caught it — the exclusion is still there, which is
+  correct for placeholders but means this file needs a human, not the gate.
+- **Build-arg secrets:** `apps/web/Dockerfile` takes `VITE_GTM_ID` and
+  `GOOGLE_SITE_VERIFICATION` as `ARG`s and they do land in a layer — neither is a secret. The GTM
+  id is public in the bundle by design and the Search Console token is public in the served
+  `<head>` by design. Not a finding.
+- **`native` and `native/core`:** `cargo audit` clean, no output.
+
+## What was NOT checked
+
+- **No CSP was enforced on the telemetry origin**, so the commented policy in F10-6 is unproven
+  in a browser. It needs the stack up and a look at the network panel on `/map`.
+- **The `apps/web` Dockerfile fix was built green and then reverted**, because that directory
+  belongs to another agent this run. It is not in the tree.
+- **`apps/provisioner` has no lockfile**, so nothing about its dependency tree could be audited
+  at all — `npm audit` there has nothing to read.
+- **The API suite ran without Postgres** (42 tests skipped, identically before and after). None
+  of the skipped tests touch the zip path; the two new ones do not need a DB.
+- **No container was run as a non-root user** to see whether `USER node` breaks the api's git
+  backup volume (F10-12) — that needs the stack, and compose is off-limits under this card.

@@ -11,6 +11,15 @@ on:
   pull_request:
     paths: ['BCWEB/**']
 
+# Least privilege for GITHUB_TOKEN. With no block at all the token gets whatever the
+# repository's default is, and that default is write-all on an older repository — so every
+# step here, including third-party actions pinned to MOVING tags (see below), ran with a
+# token that could push to the repository. Nothing in this file writes anything: the jobs
+# check out, install, build and grep. `contents: read` is the whole requirement, and it also
+# means a compromised action gets a token that cannot change the repository.
+permissions:
+  contents: read
+
 jobs:
   web-build:
     name: Web build (vite)

@@ -25,8 +25,13 @@ RUN apk upgrade --no-cache && apk add --no-cache openssl fontconfig font-dejavu 
 
 # Full install (incl. the `prisma` CLI) — needed for `generate` at build and for
 # `migrate deploy` at runtime (boot-migrate.mjs shells out to the CLI).
-COPY apps/api/package.json ./package.json
-RUN npm install
+# `npm ci`, not `npm install`, and the lockfile is COPYed so it means something: with only
+# package.json in the image every `^` range was re-resolved at BUILD time, so a compromised
+# patch release of any transitive package shipped to production without a lockfile diff to
+# review (CWE-1357), and two builds of one commit could differ. Not `--omit=dev`: the
+# `prisma` CLI is needed by `generate` below and by boot-migrate.mjs at runtime.
+COPY apps/api/package.json apps/api/package-lock.json ./
+RUN npm ci
 
 # Schema at the conventional ./prisma so the CLI finds it + this project's package.json.
 COPY packages/db ./prisma

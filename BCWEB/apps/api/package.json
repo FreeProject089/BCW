@@ -37,7 +37,7 @@
     "@napi-rs/canvas": "^0.1.58",
     "@phosphor-icons/core": "^2.1.1",
     "@prisma/client": "^5.18.0",
-    "adm-zip": "^0.6.0",
+    "adm-zip": "^0.6.1",
     "archiver": "^7.0.1",
     "argon2": "^0.40.3",
     "boring-avatars": "^1.11.2",

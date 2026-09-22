@@ -105,3 +105,52 @@ test('blake3Hex: 64-hex + deterministic when the addon is built, null otherwise'
     assert.equal(h, null, 'native-only: null when the addon is not built');
   }
 });
+
+// ── The inflate budget (CWE-409 / CWE-789) ───────────────────────────────────────────────
+//
+// zipReadAll materialises EVERY entry in memory. Every caller feeds it bytes from outside:
+// a submitted catalogue item's download_url, an uploaded payload, a restored backup. Deflate
+// reaches ~1000:1 on repetitive input, so a few kilobytes on the wire is gigabytes of Buffer
+// in a container limited to 512 MB — and that is not an exception a route can catch, it is
+// the process being OOM-killed with every other request in flight.
+//
+// npm audit's adm-zip finding (GHSA-7q85-xj36-vmfc) is the same class, and upgrading to
+// 0.6.1 does NOT close it: that fix only stops an entry DECLARING zero from escaping zlib's
+// cap. An entry that honestly declares four gigabytes is still inflated in full — by adm-zip
+// and by the native Rust path, which is worse there because it reserves the declared size up
+// front (`Vec::with_capacity(size)` in native/core), so merely CLAIMING 100 GB is enough.
+//
+// Hence the budget in lib/native.mjs. These prove it is real, that it is checked before any
+// inflation, and that it does not refuse ordinary archives.
+
+test('zipReadAll refuses a zip that DECLARES more than the budget, before inflating', async () => {
+  // A real bomb shape, scaled down: 8 MB of zeros deflates to a few kilobytes.
+  const z = new AdmZip();
+  z.addFile('zeros.bin', Buffer.alloc(8 * 1024 * 1024));
+  const buf = z.toBuffer();
+  assert.ok(buf.length < 256 * 1024, `the archive is small on the wire (${buf.length} bytes) — that is the attack`);
+
+  await assert.rejects(
+    () => zipReadAll(buf, { maxTotalBytes: 1024 * 1024 }),
+    (e) => e.code === 'zip_too_large',
+    'a declared 8 MB against a 1 MB budget must be refused with zip_too_large',
+  );
+
+  // The refusal is the PRE-CHECK, not a failed inflate: raise the budget over the declared
+  // total and the very same bytes read back in full.
+  const ok = await zipReadAll(buf, { maxTotalBytes: 16 * 1024 * 1024 });
+  assert.equal(ok.length, 1);
+  assert.equal(Buffer.from(ok[0].data).length, 8 * 1024 * 1024);
+});
+
+test('the budget is a sum over entries, and ordinary archives pass the default', async () => {
+  const z = new AdmZip();
+  z.addFile('a', Buffer.alloc(1000, 0x41));
+  z.addFile('b', Buffer.alloc(1000, 0x42));
+  z.addFile('c', Buffer.alloc(1000, 0x43));
+  const buf = z.toBuffer();
+  await assert.rejects(() => zipReadAll(buf, { maxTotalBytes: 2999 }), (e) => e.code === 'zip_too_large',
+    'no single entry exceeds the budget — only their sum does, and that is what counts');
+  assert.equal((await zipReadAll(buf, { maxTotalBytes: 3000 })).length, 3, 'exactly at the budget is allowed');
+  assert.equal((await zipReadAll(buf)).length, 3, 'and the shipped default lets a normal archive through');
+});

@@ -1,8 +1,11 @@
 # ── Build the React dashboard ───────────────────────────────────────────────
 FROM node:24-alpine AS web
 WORKDIR /web
-COPY web/package.json ./
-RUN npm install
+# `npm ci` + the lockfile: `npm install` with no lockfile in the image re-resolves every
+# `^` range at build time, so the dashboard's dependency tree was decided by whatever npm
+# answered that day rather than by the reviewed lockfile (CWE-1357).
+COPY web/package.json web/package-lock.json ./
+RUN npm ci
 COPY web/ .
 RUN npm run build
 

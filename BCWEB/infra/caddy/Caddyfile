@@ -92,6 +92,16 @@
 		X-Frame-Options SAMEORIGIN
 		Referrer-Policy strict-origin-when-cross-origin
 		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		# HSTS. Without it, the FIRST request a visitor makes to `example.com` is plain HTTP
+		# and can be intercepted before Caddy's redirect to HTTPS is ever seen — the session
+		# cookie is Secure, but the login page itself, and every link on it, are not protected
+		# on that first hop. One year, subdomains included, because the telemetry dashboard and
+		# the S3 origin are subdomains of the same zone and share the session cookie.
+		# No `preload`: that is a one-way submission to a browser-vendor list and belongs to an
+		# owner decision, not to a config change.
+		# Sent unconditionally: a browser IGNORES this header when it arrives over plain HTTP,
+		# so the local `http://localhost:5176` default is unaffected.
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
 		# Permissive-but-real CSP (allows the app's github/minio fetches, youtube
 		# embeds, rrweb blob iframes, inline theme bootstrap + React inline styles).
 		# script-src also allows Google Tag Manager / Analytics so a consent-gated
@@ -253,6 +263,32 @@
 {$TELEMETRY_DOMAIN:http://telemetry.localhost}, {$TELEMETRY_TUNNEL_DOMAIN:http://telemetry-tunnel.invalid} {
 	encode gzip zstd
 
+	# -- Security headers --
+	# This origin had NONE. It is the most privileged surface on the platform — every
+	# installation's telemetry, behind nothing but a session cookie and `canViewTelemetry` —
+	# and without `frame-ancestors`/X-Frame-Options any page on the internet could frame it
+	# and drive an authenticated admin's clicks (CWE-1021). `deny`, not SAMEORIGIN: nothing
+	# on this origin ever frames the dashboard — grep for an iframe pointing at it in
+	# apps/web returns nothing — so there is no legitimate framing to keep.
+	#
+	# A CSP is NOT set here yet, and that is deliberate rather than forgotten. The dashboard
+	# is not self-contained: MapPage.tsx pulls raster tiles from tile.openstreetmap.org and
+	# basemaps.cartocdn.com, glyphs from fonts.openmaptiles.org, visuals.tsx pulls flags from
+	# flagcdn.com, and index.html loads the Inter stylesheet from rsms.me. The policy that
+	# actually fits is the line below; it has not been switched on because a CSP that is one
+	# host short white-pages an admin surface, and that has to be confirmed in a browser
+	# against the running stack, not reasoned about. Owner: enable it after that check.
+	#
+	#	Content-Security-Policy "default-src 'self'; img-src 'self' data: blob: https://tile.openstreetmap.org https://basemaps.cartocdn.com https://flagcdn.com; style-src 'self' 'unsafe-inline' https://rsms.me; font-src 'self' data: https://rsms.me; script-src 'self'; worker-src 'self' blob:; connect-src 'self' https://fonts.openmaptiles.org; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy no-referrer
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+
 	# Public ingest + client-facing helpers. BMM posts telemetry batches with an
 	# api_key (NOT a login session), so these MUST bypass the dashboard's
 	# forward_auth gate below — otherwise the app's telemetry is blocked at the edge.
@@ -306,6 +342,19 @@
 # Caddy v2 forwards the incoming Host header unchanged by default, which is what makes the
 # signature match; do not add `header_up Host {upstream_hostport}` here.
 {$S3_DOMAIN:http://s3.invalid} {
+	# This origin serves USER-UPLOADED bytes and had no headers at all. `nosniff` is safe to
+	# add here specifically because storage.mjs signs an explicit ContentType into every
+	# presigned PUT (lines 40/45), so an object's declared type is the one the API chose —
+	# nosniff cannot break an asset by refusing a type that was merely guessed.
+	# NOT solved here: nothing sets Content-Disposition, so an object stored as text/html
+	# RENDERS as a page on this sub-domain of the brand. That is an upload-policy question
+	# (which content types may be presigned at all), not an edge one — see SECURITY_AUDIT.md.
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options SAMEORIGIN
+		Referrer-Policy no-referrer
+		-Server
+	}
 	reverse_proxy minio:9000
 }
 
@@ -335,7 +384,30 @@
 	header {
 		X-Content-Type-Options nosniff
 		Referrer-Policy strict-origin-when-cross-origin
+		# A customer domain serves an owner's repo manifest and their UPLOADED files. Two
+		# headers were missing that the site block has had all along, and the content here is
+		# less trusted than the content there, not more:
+		#   - framing: without it a stranger frames a paid owner's download page and drives
+		#     clicks on it (CWE-1021). SAMEORIGIN, matching the site block, so an owner can
+		#     still frame their own pages on their own name.
+		X-Frame-Options SAMEORIGIN
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
 		-Server
+		#
+		# Two more belong here and are NOT set, because both act on a name that is not ours:
+		#
+		#   Content-Security-Policy "sandbox allow-downloads; frame-ancestors 'self'"
+		#     An .html a customer uploads is served from THEIR origin, so it can already only
+		#     attack their own visitors — but it runs with nothing stopping it. `sandbox` is
+		#     the right shape here rather than a source allowlist, since this block serves no
+		#     application of ours. It is off because a repo index that legitimately uses
+		#     JavaScript would stop working (an nginx-style index counts as a repo here), and
+		#     that is a product decision about what a paid customer is allowed to host.
+		#
+		#   Strict-Transport-Security "max-age=31536000"
+		#     Pinning a YEAR of HTTPS-only onto a domain the customer owns follows them if
+		#     they later point it somewhere that serves plain HTTP. That commitment is the
+		#     owner's to make (and belongs in the custom-domain terms), not a config default.
 	}
 	tls {
 		on_demand

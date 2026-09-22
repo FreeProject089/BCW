@@ -48,7 +48,13 @@ export async function validatePlugin(buf, expectedSha) {
 }
 
 // Read a .bmmplug's bytes from our storage (key) or an external URL (self-hosted).
-export async function fetchPluginBytes({ url, key, getObject }) {
+// The most this will read from a remote `download_url`. A payload we hold ourselves (`key`,
+// from object storage) is not subject to it: those bytes were already accepted by an upload
+// path that has its own limits, and re-refusing them here would only break reading back
+// something we chose to store.
+export const PLUGIN_FETCH_MAX_BYTES = 256 * 1024 * 1024;
+
+export async function fetchPluginBytes({ url, key, getObject, maxBytes = PLUGIN_FETCH_MAX_BYTES }) {
   if (key && getObject) {
     const { body } = await getObject(key);
     const chunks = [];
@@ -58,7 +64,24 @@ export async function fetchPluginBytes({ url, key, getObject }) {
   if (url) {
     const res = await safeFetch(url, { signal: AbortSignal.timeout(15000) });
     if (!res.ok) throw new Error(`http_${res.status}`);
-    return Buffer.from(await res.arrayBuffer());
+    // `res.arrayBuffer()` buffers whatever the remote chooses to send, and `url` here is a
+    // SUBMITTED item's download_url — a stranger's server. safeFetch decides WHERE we may
+    // connect (SSRF); it does not decide how much we may read, and the 15 s timeout is no
+    // bound either: a host on a fast link delivers gigabytes inside it. In a 512 MB
+    // container that is an OOM kill, which takes every other in-flight request with it
+    // (CWE-400). So read the stream and stop at the cap instead of trusting the sender.
+    // Content-Length is checked first as a cheap early refusal, but it is only a HINT — a
+    // hostile server can omit it or lie — so the counter below is the real bound.
+    const hinted = Number(res.headers.get('content-length'));
+    if (Number.isFinite(hinted) && hinted > maxBytes) throw new Error('too_large');
+    const chunks = []; let total = 0;
+    for await (const chunk of res.body) {
+      const b = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      total += b.length;
+      if (total > maxBytes) throw new Error('too_large');
+      chunks.push(b);
+    }
+    return Buffer.concat(chunks, total);
   }
   throw new Error('no_source');
 }

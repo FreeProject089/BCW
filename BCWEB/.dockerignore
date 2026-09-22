@@ -1,0 +1,42 @@
+# Build-context exclusions for the three images built from THIS directory
+# (infra/compose sets `context: ../..` for api, provisioner and web).
+#
+# There was no such file, and the one that exists — apps/web/.dockerignore — never applied:
+# Docker reads `.dockerignore` at the CONTEXT ROOT, and the context root is here, not
+# apps/web. Measured rather than assumed, with a throwaway build in a scratch directory on
+# the Docker running this machine (29.6.1): a `.dockerignore` beside the Dockerfile is
+# ignored, and so is the `<Dockerfile>.dockerignore` convention; only a file at the context
+# root changed what `COPY` picked up.
+#
+# So `COPY apps/web/ ./` in apps/web/Dockerfile was copying apps/web/node_modules — on top of
+# the `npm install` the stage had just run — and any apps/web/.env with it, and the whole tree
+# below (including infra/compose/.env, which holds the real secrets) was being scanned and
+# offered to the daemon on every build.
+#
+# Every path a Dockerfile here COPYs is deliberately still included:
+#   api          native/{package.json,package-lock.json,Cargo.toml,Cargo.lock,build.rs,src,core},
+#                apps/api/{package.json,src}, packages/db
+#   provisioner  apps/provisioner/{package.json,src}, packages/db
+#   web          apps/web/ (whole), packages/bmd, packages/bmd-editor
+
+# Installed dependencies — re-installed inside every image from the lockfile.
+**/node_modules
+
+# Secrets. Nothing here is COPYed by any Dockerfile; they were only ever exposure.
+**/.env
+**/.env.*
+!**/.env.example
+
+# Build output. Every image builds its own; a stale host copy would only shadow it.
+**/dist
+**/target
+**/.vite
+**/build
+
+# History, tooling and local state.
+.git
+.gitignore
+.github
+.claude
+**/*.log
+**/.DS_Store

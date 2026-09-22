@@ -38,10 +38,48 @@ export async function zipEntries(buf) {
   return zip.getEntries().map((e) => ({ name: e.entryName, size: e.header.size }));
 }
 
+// The most a zip is allowed to claim it will inflate to, summed over its entries, before
+// this module will inflate any of it.
+//
+// Why there has to be a number here at all: every caller of zipReadAll below hands it bytes
+// that came from somewhere outside — a submitted catalogue item's `download_url`, an
+// uploaded payload, a restored backup — and inflating a zip materialises EVERY entry in
+// memory at once. Deflate reaches roughly 1000:1 on repetitive input, so a few megabytes of
+// zeros is a few gigabytes of Buffer, and the API container is capped at 512 MB with a
+// 384 MB JS heap (apps/api/Dockerfile). The failure is not an exception, it is the container
+// being OOM-killed: every other request in flight dies with it. Classic CWE-409/CWE-789, and
+// the reason npm audit flagged adm-zip GHSA-7q85-xj36-vmfc — except that advisory's fix
+// (0.6.1, now installed) only stops an entry that declares a size of ZERO from escaping the
+// cap. An entry that honestly declares its four gigabytes is still inflated in full by any
+// adm-zip version, and by the native path too. So the bound belongs here.
+//
+// 1 GiB is deliberately far above anything this stack can legitimately produce and still
+// far below a bomb. It cannot break a path that works today: a zipReadAll that materialised
+// more than a gigabyte of buffers would already be OOM-killed inside a 512 MB container, so
+// the only behaviour this changes is a crash becoming a catchable error. A caller with a
+// genuine reason may pass its own budget (or Infinity).
+export const ZIP_INFLATE_BUDGET = 1024 * 1024 * 1024;
+
 // Read a zip's non-directory entries WITH their bytes as [{ name, data: Buffer }]. Native
 // parses + inflates on a worker thread; the fallback is adm-zip's synchronous read. Same
 // shape both ways — verified by test/native.test.mjs. Replaces `new AdmZip(buf)` + getData().
-export async function zipReadAll(buf) {
+//
+// Throws `zip_too_large` BEFORE inflating anything if the declared total exceeds the budget.
+// The check reads the central directory only (zipEntries above), which is cheap and, on both
+// paths, does not allocate the entry bodies — so the refusal costs a header parse, not a
+// gigabyte.
+export async function zipReadAll(buf, { maxTotalBytes = ZIP_INFLATE_BUDGET } = {}) {
+  if (Number.isFinite(maxTotalBytes)) {
+    let declared = 0;
+    for (const e of await zipEntries(buf)) {
+      declared += Number(e.size) || 0;
+      if (declared > maxTotalBytes) {
+        const err = new Error('zip_too_large');
+        err.code = 'zip_too_large';
+        throw err;
+      }
+    }
+  }
   if (native && native.zipReadAll) return native.zipReadAll(buf);
   const zip = new AdmZip(buf);
   return zip.getEntries().filter((e) => !e.isDirectory).map((e) => ({ name: e.entryName, data: e.getData() }));
