@@ -46,6 +46,9 @@ import { useAuth } from './auth.jsx';
 import { effectiveCaps } from '../lib/roles.js';
 import { readLayout } from '../lib/navLayout.js';
 import { homeVariantList } from '../lib/home-variants-meta.js';
+// One member search for the whole admin, over GET /admin/users — the search this screen used
+// to ask people to paste the result of.
+import { AccountPicker } from './admin-people-picker.jsx';
 import { SCENE_DEFAULTS, SCENE_BOUNDS, detailMaxFor, clampSetting } from '../hero/scene-config.js';
 import { featureNameFor } from '../lib/geo-names.js';
 import { listZip, readZipEntry, hashEntries } from '../lib/zip-read.js';
@@ -15226,6 +15229,7 @@ function AdminBot() {
           <EconomySeasonCard />
           <EconomyLedger currency={cur} />
           <PendingDeliveries currency={cur} />
+          <EconomyHistoryRetentionCard />
           <EconomyHistoryCard currency={cur} />
           <EcoResetControl />
         </>)}
@@ -15688,6 +15692,119 @@ function BotIconsCard({ icons, iconStyle, onChange, onStyle }) {
   );
 }
 
+/**
+ * How much of the point history is kept, and emptying it.
+ *
+ * The one thing this card exists to make impossible to misread: the ledger is HISTORY, not
+ * money. A balance lives in its own column and every read of "what does this member have"
+ * reads that column — nothing anywhere sums the ledger. So clearing it deletes the RECORD of
+ * how people got where they are, and changes nobody's points by one. That sentence is on the
+ * card, not in a tooltip, and it is repeated inside the confirmation.
+ *
+ * Retention is two independent limits, and 0 means "no limit of that kind" here exactly as it
+ * does everywhere else in this config — never "keep nothing". The sweeper applies them once a
+ * day; "Run it now" calls the same function it does, so what an admin sees here is what will
+ * happen tonight on its own.
+ */
+function EconomyHistoryRetentionCard() {
+  const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
+  const { data, loading, reload } = useAsync(() => api.get('/admin/economy/history/retention'), []);
+  const [form, setForm] = useState(null);
+  const [busy, setBusy] = useState('');
+  // Scope of a clear: everybody or one member, and optionally only rows older than N days.
+  const [who, setWho] = useState(null);
+  const [olderDays, setOlderDays] = useState('');
+  const cfg = form || { historyDays: data?.historyDays ?? 180, historyMax: data?.historyMax ?? 0 };
+  const set = (k, v) => setForm({ ...cfg, [k]: v });
+  const num = (v) => Math.max(0, Math.round(Number(v) || 0));
+
+  const save = async () => {
+    setBusy('save');
+    try { await api.put('/admin/economy/history/retention', { historyDays: num(cfg.historyDays), historyMax: num(cfg.historyMax) }); setForm(null); await reload(true); toast.success(t('common.saved', 'Saved.')); }
+    catch { toast.error(t('common.failed', 'Failed.')); }
+    finally { setBusy(''); }
+  };
+  const sweep = async () => {
+    setBusy('sweep');
+    try { const r = await api.post('/admin/economy/history/sweep'); await reload(true); toast.success(t('db.eco.ret.swept', '{a} line(s) removed for age, {c} over the row cap.').replace('{a}', r.aged ?? 0).replace('{c}', r.capped ?? 0)); }
+    catch { toast.error(t('common.failed', 'Failed.')); }
+    finally { setBusy(''); }
+  };
+  const clear = async () => {
+    const days = olderDays.trim() ? num(olderDays) : 0;
+    const scope = who
+      ? (days ? t('db.eco.ret.sc.userdays', 'every line older than {d} days for {n}') : t('db.eco.ret.sc.user', 'every line for {n}'))
+      : (days ? t('db.eco.ret.sc.alldays', 'every line older than {d} days, for every member') : t('db.eco.ret.sc.all', 'every line, for every member'));
+    const ok = await dialog.confirm({
+      title: t('db.eco.ret.clear.t', 'Empty the point history?'),
+      message: `${scope.replace('{d}', String(days)).replace('{n}', who?.displayName || '')}. ${t('db.eco.ret.clear.m', 'This deletes the HISTORY only. Not one balance changes: what each member has is stored on their account, and nothing in this site adds the history up to find it. The lines themselves cannot be brought back, and the clear is written to the staff audit log with your name on it before it runs.')}`,
+      confirmLabel: t('db.eco.ret.clear.ok', 'Delete the history'),
+      danger: true,
+    });
+    if (!ok) return;
+    // undo: impossible by design. The rows are deleted server-side in one statement and there
+    // is nowhere to hold them; the endpoint writes the audit line BEFORE the delete for that
+    // exact reason. The confirmation above is the guard, and it names the scope it will use.
+    setBusy('clear');
+    try {
+      const r = await api.post('/admin/economy/history/clear', { ...(who ? { userId: who.id } : {}), ...(days ? { olderThanDays: days } : {}) });
+      await reload(true);
+      toast.success(t('db.eco.ret.cleared', '{n} line(s) deleted. Balances untouched.').replace('{n}', r.removed ?? 0));
+    } catch { toast.error(t('common.failed', 'Failed.')); }
+    finally { setBusy(''); }
+  };
+
+  return (
+    <ModuleCard id="sec-eco-retention" icon={History} title={t('db.eco.ret.title', 'Point history: what is kept')}
+      desc={t('db.eco.ret.desc', 'How long the point ledger is kept and how large it may grow, plus emptying it by hand. This is the record of movements, never a balance.')} onToggle={null}>
+      {loading && !data ? <Spinner /> : (<>
+        {/* Said first, before any control. */}
+        <div className="rounded-xl border b-primary tint-primary-soft p-3 text-[12px] text-[var(--muted)] flex items-start gap-2 mb-3">
+          <Info size={14} className="mt-0.5 shrink-0 text-[var(--accent-ink)]" />
+          <span>{t('db.eco.ret.safe', 'Deleting history never changes anybody’s points. A balance is stored on the account itself and nothing here adds the ledger up to work it out. What you lose is the answer to “where did this come from”, and it does not come back.')}</span>
+        </div>
+
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-[var(--faint)] tabular-nums mb-3">
+          <span>{t('db.eco.ret.rows', '{n} line(s) stored').replace('{n}', (data?.rows ?? 0).toLocaleString())}</span>
+          {data?.oldestAt && <span>· {t('db.eco.ret.oldest', 'oldest: {d}').replace('{d}', new Date(data.oldestAt).toLocaleDateString())}</span>}
+        </div>
+
+        <div className="grid sm:grid-cols-2 gap-3 items-end">
+          <Field label={t('db.eco.ret.days', 'Delete lines older than (days)')} hint={t('db.eco.ret.days.h', '0 keeps them for ever.')} className="!mb-0">
+            <Input type="number" min={0} max={3650} value={cfg.historyDays} onChange={(e) => set('historyDays', e.target.value)} />
+          </Field>
+          <Field label={t('db.eco.ret.max', 'Keep at most (lines)')} hint={t('db.eco.ret.max.h', '0 means no cap. Over the cap, the oldest go first.')} className="!mb-0">
+            <Input type="number" min={0} value={cfg.historyMax} onChange={(e) => set('historyMax', e.target.value)} />
+          </Field>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap mt-3">
+          <Button size="sm" variant="primary" disabled={!form || !!busy} loading={busy === 'save'} onClick={save}>{t('common.save', 'Save')}</Button>
+          <Button size="sm" variant="ghost" disabled={!!busy} loading={busy === 'sweep'} onClick={sweep}><RefreshCw size={13} /> {t('db.eco.ret.sweep', 'Apply the clean-up now')}</Button>
+          <span className="text-[11px] text-[var(--faint)]">{t('db.eco.ret.sweep.h', 'The same clean-up the nightly sweeper runs.')}</span>
+        </div>
+
+        {/* By hand, and scoped. Kept visually apart from the two numbers above: one is a rule
+            that runs itself, the other is a deletion happening now. */}
+        <div className="mt-4 rounded-xl border border-dashed b-error p-3 space-y-2.5">
+          <div className="text-[12px] font-semibold text-error flex items-center gap-1.5"><Trash2 size={13} /> {t('db.eco.ret.clear.h', 'Empty the history now')}</div>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <Field label={t('db.eco.ret.who', 'Whose lines')} hint={who ? null : t('db.eco.ret.who.h', 'Nobody chosen: every member.')} className="!mb-0">
+              <AccountPicker value={who} onChange={setWho} placeholder={t('db.eco.ret.who.ph', 'Everybody, or search one member…')} />
+            </Field>
+            <Field label={t('db.eco.ret.older', 'Only lines older than (days)')} hint={t('db.eco.ret.older.h', 'Empty deletes everything in scope.')} className="!mb-0">
+              <Input type="number" min={0} max={3650} value={olderDays} onChange={(e) => setOlderDays(e.target.value)} placeholder={t('db.eco.ret.older.ph', 'everything')} />
+            </Field>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button size="sm" variant="danger" disabled={!!busy} loading={busy === 'clear'} onClick={clear}><Trash2 size={13} /> {t('db.eco.ret.clear.btn', 'Delete the history in this scope')}</Button>
+            <span className="text-[11px] text-[var(--faint)]">{t('db.eco.ret.audit', 'Audited: your name, the scope and the time are recorded before anything is deleted.')}</span>
+          </div>
+        </div>
+      </>)}
+    </ModuleCard>
+  );
+}
+
 // Admin: the whole point ledger — purchases, casino, gifts, grants — searchable by member.
 const LEDGER_KIND = { levelup: 'Level-up', grant: 'Staff grant', purchase: 'Purchase', casino: 'Casino', gift_out: 'Gift sent', gift_in: 'Gift received', gift_item_out: 'Item given', gift_item_in: 'Item received', refund: 'Refund' };
 function EconomyHistoryCard({ currency }) {
@@ -15697,7 +15814,7 @@ function EconomyHistoryCard({ currency }) {
   const rows = data?.history || [];
   const label = (k) => t(`db.eco.lk.${k}`, LEDGER_KIND[k] || k);
   return (
-    <ModuleCard id="sec-eco-history" icon={History} title={t('db.eco.histcard', 'Point history')} desc={t('db.eco.histcard.d2', 'Every movement: purchases, casino plays, gifts between members, level-ups and staff grants. Retention is set in the History card above.')} onToggle={null}>
+    <ModuleCard id="sec-eco-history" icon={History} title={t('db.eco.histcard', 'Point history')} desc={t('db.eco.histcard.d3', 'Every movement: purchases, casino plays, gifts between members, level-ups and staff grants. How much of it is kept, and emptying it, are in the card just above.')} onToggle={null}>
       <div className="flex gap-2 flex-wrap">
         <div className="relative flex-1 min-w-[160px]"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" /><Input className="!ps-9 !py-1.5 !text-sm" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && reload()} placeholder={t('db.eco.search', 'Search a member…')} /></div>
         <Select className="!w-auto !py-1.5 !text-sm" value={kind} onChange={(e) => setKind(e.target.value)}><option value="">{t('db.eco.lk.all', 'Everything')}</option>{Object.keys(LEDGER_KIND).map((k) => <option key={k} value={k}>{label(k)}</option>)}</Select>
@@ -16018,19 +16135,126 @@ function AdminBotMembers() {
 // What members bought with points that a PERSON still has to hand out (a Discord role, a
 // custom reward), and the button that says it was done. Delivered rows stay listed a while
 // as the record; the count on the site's dashboard follows this status.
+// The order the server will sort in, by the key it accepts. The list of keys comes back on
+// the wire (`sorts`) so a key added there is not silently missing here; this map only names
+// them. A key the server does not offer is dropped rather than sent and refused.
+const PURCHASE_SORT_LABEL = (t) => ({
+  recent: t('db.eco.deliv.s.recent', 'Newest first'),
+  oldest: t('db.eco.deliv.s.oldest', 'Oldest first'),
+  status: t('db.eco.deliv.s.status', 'To hand out first'),
+  member: t('db.eco.deliv.s.member', 'By member'),
+  item: t('db.eco.deliv.s.item', 'By item'),
+  cost: t('db.eco.deliv.s.cost', 'Dearest first'),
+});
+const PURCHASE_KINDS = ['badge', 'pool', 'boost', 'hosting', 'promo', 'role', 'custom'];
+const PURCHASE_TAKE = 25;
+
 function PendingDeliveries({ currency }) {
   const { t } = useI18n(); const toast = useToast();
-  const { data, loading, reload } = useAsync(() => api.get('/admin/economy/purchases'), []);
+  // Every one of these is a server parameter, not a filter over a page: a purchase that did
+  // not make it into the page cannot be brought back by sorting in the browser.
+  const [sort, setSort] = useState('status');
+  const [status, setStatus] = useState('');
+  const [kindF, setKindF] = useState('');
+  const [via, setVia] = useState('');
+  const [itemId, setItemId] = useState('');    // typed
+  const [itemQ, setItemQ] = useState('');      // submitted — a request per keystroke on an id nobody types from memory is a request per keystroke for nothing
+  const [q, setQ] = useState('');          // typed
+  const [term, setTerm] = useState('');    // submitted
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [skip, setSkip] = useState(0);
+  const [more, setMore] = useState(false); // the rarely-used half of the filter row
+  const qs = new URLSearchParams({ sort, take: String(PURCHASE_TAKE), skip: String(skip) });
+  if (status) qs.set('status', status);
+  if (kindF) qs.set('kind', kindF);
+  if (via) qs.set('via', via);
+  if (itemQ.trim()) qs.set('itemId', itemQ.trim());
+  if (term.trim()) qs.set('q', term.trim());
+  if (from) qs.set('from', from);
+  // `to` is a DAY, and the server reads [from, to) — so the day the admin picked is included
+  // by sending the day after it, not by hoping a date compares as a whole day.
+  if (to) qs.set('to', new Date(new Date(`${to}T00:00:00`).getTime() + 86400000).toISOString().slice(0, 10));
+  const { data, loading, reload } = useAsync(() => api.get(`/admin/economy/purchases?${qs.toString()}`), [sort, status, kindF, via, itemQ, term, from, to, skip]);
   const rows = data?.purchases || [];
-  const pending = rows.filter((r) => r.status === 'pending');
-  const deliver = async (r) => { try { await api.post(`/admin/economy/purchases/${r.id}/deliver`); toast.success(t('db.eco.delivered', 'Marked as handed out.')); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
+  const total = data?.total ?? 0;
+  // The badge counts what is waiting on the WHOLE shop, not on this page: a filter that hides
+  // nineteen pending deliveries must not make the counter read zero.
+  const pendingAll = data?.pending ?? 0;
+  const sorts = Array.isArray(data?.sorts) && data.sorts.length ? data.sorts : Object.keys(PURCHASE_SORT_LABEL(t));
+  const sortLabel = PURCHASE_SORT_LABEL(t);
+  const filtered = !!(status || kindF || via || itemQ.trim() || term.trim() || from || to);
+  const reset = () => { setStatus(''); setKindF(''); setVia(''); setItemId(''); setItemQ(''); setQ(''); setTerm(''); setFrom(''); setTo(''); setSkip(0); };
+  const onFilter = (fn) => (v) => { fn(v); setSkip(0); };
+  const deliver = async (r) => { try { await api.post(`/admin/economy/purchases/${r.id}/deliver`); toast.success(t('db.eco.delivered', 'Marked as handed out.')); reload(true); } catch { toast.error(t('common.failed', 'Failed.')); } };
   const kind = (k) => ({ badge: t('eco.k.badge', 'Profile badge'), pool: t('eco.k.pool', 'Storage pool'), boost: t('eco.k.boost', 'Catalog boost'), hosting: t('eco.k.hosting', 'Free hosting'), promo: t('eco.k.promo', 'Promo code'), role: t('eco.k.role', 'Discord role'), custom: t('eco.k.custom', 'Reward') })[k] || k;
   return (
     <ModuleCard id="sec-eco-deliveries" icon={Gift} title={t('db.eco.deliv', 'Purchases to hand out')} desc={t('db.eco.deliv.d', 'Roles and custom rewards bought with points are yours to deliver, mark each one once it is done. Badges and site perks deliver themselves.')} onToggle={null}
-      action={pending.length ? <Badge tone="amber">{pending.length}</Badge> : null}>
-      {loading ? <Spinner /> : !rows.length ? <div className="text-xs text-[var(--faint)]">{t('db.eco.deliv.none', 'Nobody has bought anything yet.')}</div> : (
+      action={pendingAll ? <Badge tone="amber">{pendingAll}</Badge> : null}>
+      <div className="space-y-2 mb-2">
+        <div className="flex gap-2 flex-wrap">
+          <div className="relative flex-1 min-w-[150px]">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" />
+            <Input className="!ps-9 !py-1.5 !text-sm" value={q} onChange={(e) => setQ(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { setTerm(q); setSkip(0); } }}
+              onBlur={() => { if (q !== term) { setTerm(q); setSkip(0); } }}
+              placeholder={t('db.eco.deliv.q', 'A member, by name or id…')} aria-label={t('db.eco.deliv.q', 'A member, by name or id…')} />
+          </div>
+          <Select className="!w-auto !py-1.5 !text-sm" value={status} onChange={(e) => onFilter(setStatus)(e.target.value)} aria-label={t('db.eco.deliv.f.status', 'State')}>
+            <option value="">{t('db.eco.deliv.f.any', 'Any state')}</option>
+            <option value="pending">{t('db.eco.deliv.f.pending', 'To hand out')}</option>
+            <option value="delivered">{t('db.eco.deliv.f.done', 'Handed out')}</option>
+          </Select>
+          <Select className="!w-auto !py-1.5 !text-sm" value={sort} onChange={(e) => { setSort(e.target.value); setSkip(0); }} aria-label={t('db.eco.deliv.sort', 'Order')}>
+            {sorts.map((k) => <option key={k} value={k}>{sortLabel[k] || k}</option>)}
+          </Select>
+          <Button size="sm" variant="ghost" onClick={() => setMore((v) => !v)} aria-expanded={more}><Sliders size={13} /> {t('db.eco.deliv.more', 'More')}</Button>
+          <Button size="sm" variant="ghost" onClick={() => reload(true)} title={t('common.refresh', 'Refresh')}><RefreshCw size={13} /></Button>
+        </div>
+        {more && (
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-2 rounded-xl border border-[var(--line)] p-2.5 panel">
+            <Field label={t('db.eco.deliv.f.kind', 'Kind')} className="!mb-0">
+              <Select className="!py-1.5 !text-sm" value={kindF} onChange={(e) => onFilter(setKindF)(e.target.value)}>
+                <option value="">{t('db.eco.deliv.f.anykind', 'Every kind')}</option>
+                {PURCHASE_KINDS.map((k) => <option key={k} value={k}>{kind(k)}</option>)}
+              </Select>
+            </Field>
+            <Field label={t('db.eco.deliv.f.via', 'Bought from')} className="!mb-0">
+              <Select className="!py-1.5 !text-sm" value={via} onChange={(e) => onFilter(setVia)(e.target.value)}>
+                <option value="">{t('db.eco.deliv.f.anyvia', 'Either')}</option>
+                <option value="site">{t('eco.inv.site', 'site')}</option>
+                <option value="discord">Discord</option>
+              </Select>
+            </Field>
+            <Field label={t('db.eco.deliv.f.from', 'Bought from (date)')} className="!mb-0">
+              <Input type="date" className="!py-1.5 !text-sm" value={from} onChange={(e) => onFilter(setFrom)(e.target.value)} />
+            </Field>
+            <Field label={t('db.eco.deliv.f.to', 'Bought up to (date)')} hint={t('db.eco.deliv.f.to.h', 'That day included.')} className="!mb-0">
+              <Input type="date" className="!py-1.5 !text-sm" value={to} onChange={(e) => onFilter(setTo)(e.target.value)} />
+            </Field>
+            <Field label={t('db.eco.deliv.f.item', 'One shop item (its id)')} className="!mb-0 sm:col-span-2">
+              <Input className="!py-1.5 !text-sm font-mono" value={itemId} onChange={(e) => setItemId(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { setItemQ(itemId); setSkip(0); } }}
+                onBlur={() => { if (itemId !== itemQ) { setItemQ(itemId); setSkip(0); } }}
+                placeholder={t('db.eco.deliv.f.item.ph', 'Leave empty for every item')} />
+            </Field>
+          </div>
+        )}
+        {filtered && (
+          <div className="flex items-center gap-2 text-[11px] text-[var(--muted)] flex-wrap">
+            <span>{t('db.eco.deliv.count', '{n} purchase(s) match.').replace('{n}', String(total))}</span>
+            <button type="button" onClick={reset} className="text-[var(--accent-ink)] hover:underline">{t('db.eco.deliv.clear', 'Clear the filters')}</button>
+            {pendingAll > 0 && <span className="text-[var(--faint)]">· {t('db.eco.deliv.pendall', '{n} waiting in total, filters aside.').replace('{n}', String(pendingAll))}</span>}
+          </div>
+        )}
+      </div>
+      {loading && !data ? <Spinner /> : !rows.length ? (
+        <div className="text-xs text-[var(--faint)]">
+          {filtered ? t('db.eco.deliv.nomatch', 'No purchase matches these filters.') : t('db.eco.deliv.none', 'Nobody has bought anything yet.')}
+        </div>
+      ) : (<>
         <div className="space-y-1.5 max-h-[40vh] overflow-auto pe-1">
-          {rows.slice(0, 40).map((r) => (
+          {rows.map((r) => (
             <div key={r.id} className={`flex items-center gap-3 rounded-lg border border-[var(--line)] px-3 py-2 ${r.status === 'pending' ? '' : 'opacity-70'}`}>
               <span className={`grid place-items-center w-8 h-8 rounded-lg shrink-0 ${r.status === 'pending' ? 'tint-warning text-warning' : 'tint-success text-success'}`}>{r.status === 'pending' ? <Clock size={14} /> : <CheckCircle2 size={14} />}</span>
               <div className="flex-1 min-w-0">
@@ -16041,7 +16265,12 @@ function PendingDeliveries({ currency }) {
             </div>
           ))}
         </div>
-      )}
+        <div className="mt-2 flex items-center gap-2 flex-wrap">
+          <Button size="sm" variant="ghost" disabled={skip === 0} onClick={() => setSkip((s) => Math.max(0, s - PURCHASE_TAKE))}><ChevronRight size={13} className="rotate-180" /> {t('common.prev', 'Previous')}</Button>
+          <span className="text-[11px] text-[var(--faint)] tabular-nums">{t('common.range', '{a}–{b} of {n}').replace('{a}', String(total ? skip + 1 : 0)).replace('{b}', String(Math.min(total, skip + PURCHASE_TAKE))).replace('{n}', String(total))}</span>
+          <Button size="sm" variant="ghost" disabled={skip + PURCHASE_TAKE >= total} onClick={() => setSkip((s) => s + PURCHASE_TAKE)}>{t('common.next', 'Next')} <ChevronRight size={13} /></Button>
+        </div>
+      </>)}
     </ModuleCard>
   );
 }
@@ -20028,7 +20257,10 @@ const pvViewer = (who, t) => (who === 'out' ? null : {
   id: 'preview-' + who, displayName: who === 'admin' ? t('nav.pv.v.admin', 'Admin') : t('nav.pv.v.member', 'Member'),
   role: who === 'admin' ? 'ADMIN' : 'USER', permissions: [], effectivePermissions: [],
 });
-function LiveNavPreview({ cfg, device, theme, onTheme, viewer, onEdit }) {
+// `tall` asks for more of the page under the bar. Short is the default because the subject is
+// the bar; tall is for judging the phone menu and the bottom bar together, which do not both
+// fit in 700px of viewport once the menu sheet is open.
+function LiveNavPreview({ cfg, device, theme, onTheme, viewer, onEdit, tall = false }) {
   const { t, lang } = useI18n();
   // Measured on mount as well as on resize: a ResizeObserver alone starts from a guess, and
   // in a tab that is not painting it never corrects it, which left a 900px preview in a
@@ -20061,7 +20293,8 @@ function LiveNavPreview({ cfg, device, theme, onTheme, viewer, onEdit }) {
     if (Number.isInteger(idx) && onEdit) onEdit(idx);
   }, [onEdit]);
   const phone = device === 'mobile';
-  const dim = phone ? PV_PHONE : PV_DESKTOP;
+  const base = phone ? PV_PHONE : PV_DESKTOP;
+  const dim = useMemo(() => ({ w: base.w, h: tall ? Math.round(base.h * (phone ? 1.18 : 1.65)) : base.h }), [base.w, base.h, tall, phone]);
   // Fitted to the column, then the zoom multiplies it. On a phone-width admin screen the fitted
   // desktop bar is a sliver, which is what the zoom is for; past the fit the row pans.
   const bezel = phone ? 20 : 0;
@@ -20132,6 +20365,20 @@ function AdminNav() {
   const [mobileMenu, setMobileMenu] = useState(readMobileMenu(null));
   const [busy, setBusy] = useState(false);
   const [device, setDevice] = useState('desktop'); // preview device
+  // How the preview is presented, and it is remembered.
+  //
+  // The complaint this answers: "changing something means scroll, check, scroll back, change,
+  // re-scroll". The preview sat in the flow above six panels, so every edit was a round trip
+  // past it. `side` parks it in its own sticky column beside the editor on a wide screen, so
+  // it never leaves the viewport; `top` is the old behaviour, kept because on a laptop at
+  // 1280 the column costs the editor half its width and some people would rather have it.
+  // Below the two-column breakpoint neither helps, which is what the docked sheet is for.
+  const [pvDock, setPvDock] = useState(() => { try { return localStorage.getItem('bcw.nav.pv.dock') === 'top' ? 'top' : 'side'; } catch { return 'side'; } });
+  const [pvTall, setPvTall] = useState(() => { try { return localStorage.getItem('bcw.nav.pv.tall') === '1'; } catch { return false; } });
+  // The reachable preview: pinned to the bottom of the screen, over the editor, at any width.
+  const [pvSheet, setPvSheet] = useState(false);
+  const dockTo = (v) => { setPvDock(v); try { localStorage.setItem('bcw.nav.pv.dock', v); } catch { /* private mode */ } };
+  const tallTo = (v) => { setPvTall(v); try { localStorage.setItem('bcw.nav.pv.tall', v ? '1' : '0'); } catch { /* private mode */ } };
   // The preview's scheme and viewer. Its own, not the admin's: per-theme icons and the
   // signed-out bar are exactly the two things an admin cannot see from their own session.
   const { theme: pageTheme } = useTheme() || {};
@@ -20351,6 +20598,44 @@ function AdminNav() {
   const pvDraft = buildClean(true);
   const pvCfg = { ...pvDraft, items: pvDraft.enabled ? pvDraft.items : [] };
 
+  // The preview, built once and placed wherever the dock says. Built ONCE on purpose: a second
+  // copy for the mobile sheet would be a second iframe rendering the real topbar, and the two
+  // would disagree about scroll, open menus and theme the moment either was touched.
+  const previewCard = (
+    <Card className="p-4">
+      <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+        <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Eye size={13} className="text-[var(--accent-ink)]" /> {t('nav.pv.title', 'Live preview')} <span className="normal-case font-normal text-[var(--faint)]">({lang.toUpperCase()})</span></div>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {(() => {
+            const seg = (value, set, opts) => (
+              <div className="flex rounded-lg border border-[var(--line)] overflow-hidden">
+                {opts.map(([v, I, label]) => (
+                  <button key={v} type="button" onClick={() => set(v)} aria-pressed={value === v} title={label}
+                    className={`px-2.5 py-1 text-xs flex items-center gap-1.5 ${value === v ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>
+                    <I size={13} /> <span className={pvDock === 'side' ? 'hidden 2xl:inline' : ''}>{label}</span>
+                  </button>
+                ))}
+              </div>
+            );
+            return <>
+              {seg(pvViewer, setPvViewer, [['out', LogIn, t('nav.pv.v.out', 'Signed out')], ['member', UserIcon, t('nav.pv.v.member', 'Member')], ['admin', Shield, t('nav.pv.v.admin', 'Admin')]])}
+              {seg(pvTheme, setPvTheme, [['light', Sun, t('nav.pv.light', 'Light')], ['dark', Moon, t('nav.pv.dark', 'Dark')]])}
+              {seg(device, setDevice, [['desktop', MonitorIcon, t('nav.pv.desktop', 'Desktop')], ['mobile', Smartphone, t('nav.pv.mobile', 'Mobile')]])}
+              {/* Where the preview lives, and how much of the page it shows. Both are
+                  remembered, so the screen opens the way it was left. */}
+              {!pvSheet && <div className="hidden xl:flex">{seg(pvDock, dockTo, [['side', PanelTop, t('nav.pv.dock.side', 'Beside the editor')], ['top', LayoutGrid, t('nav.pv.dock.top', 'Above the editor')]])}</div>}
+              {seg(pvTall ? 'tall' : 'short', (v) => tallTo(v === 'tall'), [['short', Minus, t('nav.pv.short', 'Just the bar')], ['tall', ChevronsUp, t('nav.pv.tall', 'More of the page')]])}
+            </>;
+          })()}
+        </div>
+      </div>
+      {!enabled && <div className="text-[11px] text-warning mb-2">{t('nav.pv.off', 'Custom navigation is off, so this is the built-in menu visitors get. Turn it on above to preview your items.')}</div>}
+      <LiveNavPreview cfg={pvCfg} device={device} theme={pvTheme} onTheme={setPvTheme} viewer={pvViewer} onEdit={editItem} tall={pvTall} />
+      <div className="text-[11px] text-[var(--faint)] mt-2 flex items-center gap-1"><MousePointerClick size={11} /> {device === 'desktop' ? t('nav.pv.edithint', 'Click any item in the preview to jump to its settings below.') : t('nav.pv.tapmenu', 'Tap the menu button to open the phone menu. Links jump to their settings instead of navigating.')}</div>
+    </Card>
+  );
+  const side = pvDock === 'side' && !pvSheet;
+
   if (loaded.loading) return <Loading />;
   return (
     <div className="space-y-5">
@@ -20389,34 +20674,18 @@ function AdminNav() {
         ))}
       </div>
 
-      {/* Live preview of the real topbar built from the items below. */}
-      <Card className="p-4">
-        <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
-          <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Eye size={13} className="text-[var(--accent-ink)]" /> {t('nav.pv.title', 'Live preview')} <span className="normal-case font-normal text-[var(--faint)]">({lang.toUpperCase()})</span></div>
-          <div className="flex items-center gap-1.5 flex-wrap">
-            {(() => {
-              const seg = (value, set, opts) => (
-                <div className="flex rounded-lg border border-[var(--line)] overflow-hidden">
-                  {opts.map(([v, I, label]) => (
-                    <button key={v} type="button" onClick={() => set(v)} aria-pressed={value === v}
-                      className={`px-2.5 py-1 text-xs flex items-center gap-1.5 ${value === v ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>
-                      <I size={13} /> {label}
-                    </button>
-                  ))}
-                </div>
-              );
-              return <>
-                {seg(pvViewer, setPvViewer, [['out', LogIn, t('nav.pv.v.out', 'Signed out')], ['member', UserIcon, t('nav.pv.v.member', 'Member')], ['admin', Shield, t('nav.pv.v.admin', 'Admin')]])}
-                {seg(pvTheme, setPvTheme, [['light', Sun, t('nav.pv.light', 'Light')], ['dark', Moon, t('nav.pv.dark', 'Dark')]])}
-                {seg(device, setDevice, [['desktop', MonitorIcon, t('nav.pv.desktop', 'Desktop')], ['mobile', Smartphone, t('nav.pv.mobile', 'Mobile')]])}
-              </>;
-            })()}
-          </div>
+      {/* Editor and preview, side by side.
+          `xl:` and explicit row/column starts rather than `order`: the preview is FIRST in the
+          DOM so that on a narrow screen — where there is only one column — it is still above
+          the panels, exactly as it was, while on a wide one it sits in the right-hand column
+          and stays there, stuck to the top of the viewport while the editor scrolls under it.
+          When the docked sheet is open the flow slot renders nothing: there is one preview on
+          the page at all times, never two. */}
+      <div className={side ? 'xl:grid xl:grid-cols-[minmax(0,1fr)_minmax(21rem,26rem)] xl:gap-5 xl:items-start' : ''}>
+        <div className={side ? 'xl:col-start-2 xl:row-start-1 xl:sticky xl:top-3 mb-5 xl:mb-0' : 'mb-5'}>
+          {!pvSheet && previewCard}
         </div>
-        {!enabled && <div className="text-[11px] text-warning mb-2">{t('nav.pv.off', 'Custom navigation is off, so this is the built-in menu visitors get. Turn it on above to preview your items.')}</div>}
-        <LiveNavPreview cfg={pvCfg} device={device} theme={pvTheme} onTheme={setPvTheme} viewer={pvViewer} onEdit={editItem} />
-        <div className="text-[11px] text-[var(--faint)] mt-2 flex items-center gap-1"><MousePointerClick size={11} /> {device === 'desktop' ? t('nav.pv.edithint', 'Click any item in the preview to jump to its settings below.') : t('nav.pv.tapmenu', 'Tap the menu button to open the phone menu. Links jump to their settings instead of navigating.')}</div>
-      </Card>
+        <div className={`min-w-0 space-y-5 ${side ? 'xl:col-start-1 xl:row-start-1' : ''}`}>
 
       {/* Pinned projects display + mobile bottom bar. */}
       {panel === 'layout' && (
@@ -20719,6 +20988,36 @@ function AdminNav() {
               different names, on the same screen. */}
           <Button size="sm" variant="ghost" onClick={resetDefault}><Layers size={14} /> {t('nav.seed', 'Start from the built-in nav')}</Button>
         </div>
+      )}
+        </div>
+      </div>
+
+      {/* The reachable preview.
+          On a phone, and on any screen too narrow for the second column, a preview that lives
+          in the page is a preview you scroll away from. This one is pinned to the bottom of
+          the SCREEN: open it, keep editing, and it stays there. Opaque (`--bg-solid`), because
+          it floats over the form it is judging and a translucent panel would read the form
+          through the bar it is showing. Its own scroller, capped at 80vh, so a tall phone
+          preview never pushes the close button off the screen. */}
+      {pvSheet && (
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-[var(--line)] shadow-2xl" style={{ background: 'var(--bg-solid)' }}>
+          <div className="max-h-[80vh] overflow-y-auto scroll-thin p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Eye size={12} className="text-[var(--accent-ink)]" /> {t('nav.pv.docked', 'Preview, docked')}</span>
+              <Button size="sm" variant="ghost" className="ms-auto" onClick={() => setPvSheet(false)}><X size={14} /> {t('nav.pv.close', 'Close the preview')}</Button>
+            </div>
+            {previewCard}
+          </div>
+        </div>
+      )}
+      {!pvSheet && (
+        // Above the save dock, never over it: the two are the only floating things on this
+        // screen and one hiding the other is how a Save button goes missing.
+        <button type="button" onClick={() => setPvSheet(true)}
+          className="fixed z-30 end-3 bottom-24 xl:hidden inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-[var(--primary)] text-xs shadow-lg"
+          style={{ background: 'var(--bg-solid)' }}>
+          <Eye size={13} className="text-[var(--accent-ink)]" /> {t('nav.pv.open', 'Preview')}
+        </button>
       )}
 
       {/* Save follows you down the page. It used to be the last thing after six cards, so
@@ -23323,15 +23622,83 @@ function EconomySeasonCard() {
           </div>
         </div>
       )}
-      {data?.state?.history?.length > 0 && (
-        <details className="mt-3 text-[12px]">
-          <summary className="cursor-pointer text-[var(--muted)]">{t('db.eco.season.history', 'Past seasons')}</summary>
-          <ul className="mt-1.5 space-y-1 tabular-nums">
-            {data.state.history.map((h) => <li key={h.at} className="text-[var(--muted)]"><b className="text-[var(--text)]">#{h.seasonNo}</b> · {when(h.at)} · {h.affected} {t('db.eco.season.members', 'members')} · {h.points} pts{h.resetXp ? ' · XP' : ''} · {h.by === 'schedule' ? t('db.eco.season.bySchedule', 'schedule') : t('db.eco.season.byHand', 'by hand')}</li>)}
-          </ul>
-        </details>
-      )}
+      <EconomySeasonsHistory />
     </Card>
+  );
+}
+
+/**
+ * The seasons that have already ended.
+ *
+ * It used to be a <details> over `state.history` — the fragment the season row happens to
+ * carry — which meant the admin who ended a season was an id, and there was no page two.
+ * This reads GET /admin/economy/seasons: it resolves the name behind `endedBy`, says whether
+ * the reset was the schedule's or somebody's, and pages.
+ *
+ * The line that matters is the last one. That history is an array inside ONE setting value
+ * and it is capped: past the cap the oldest seasons are dropped for good. So the count is
+ * "seasons still kept", never "seasons that ever ran", and the card says so rather than
+ * letting a short list be read as a complete one.
+ */
+function EconomySeasonsHistory() {
+  const { t } = useI18n();
+  const TAKE = 8;
+  const [skip, setSkip] = useState(0);
+  const { data, loading } = useAsync(() => api.get(`/admin/economy/seasons?take=${TAKE}&skip=${skip}`), [skip]);
+  const rows = data?.seasons || [];
+  const total = data?.total ?? 0;
+  const cap = data?.cap ?? 0;
+  const when = (iso) => (iso ? new Date(iso).toLocaleString() : '—');
+  if (!loading && !total) return null;
+  return (
+    <details className="mt-3 text-[12px]">
+      <summary className="cursor-pointer text-[var(--muted)]">
+        {t('db.eco.season.history', 'Past seasons')}
+        {total ? <span className="text-[var(--faint)]"> · {t('db.eco.season.kept', '{n} kept').replace('{n}', String(total))}</span> : null}
+      </summary>
+      {loading && !data ? <div className="mt-2"><Spinner /></div> : (<>
+        <div className="mt-2 overflow-x-auto">
+          <table className="w-full text-[12px]">
+            <thead className="text-[10px] uppercase tracking-wider text-[var(--faint)]">
+              <tr>
+                <th className="font-normal py-1 text-start">{t('db.eco.season.h.no', 'Season')}</th>
+                <th className="font-normal py-1 text-start">{t('db.eco.season.h.when', 'Ended')}</th>
+                <th className="font-normal py-1 text-start">{t('db.eco.season.h.by', 'Ended by')}</th>
+                <th className="font-normal py-1 text-end">{t('db.eco.season.h.members', 'Members')}</th>
+                <th className="font-normal py-1 text-end">{t('db.eco.season.h.points', 'Points retired')}</th>
+                <th className="font-normal py-1 text-start">XP</th>
+              </tr>
+            </thead>
+            <tbody className="tabular-nums">
+              {rows.map((h) => (
+                <tr key={`${h.seasonNo}-${h.at}`} className="border-t border-[var(--line)]">
+                  <td className="py-1 font-semibold">#{h.seasonNo}</td>
+                  <td className="py-1 text-[var(--muted)] whitespace-nowrap">{when(h.at)}</td>
+                  <td className="py-1 text-[var(--muted)]">
+                    {h.scheduled
+                      ? t('db.eco.season.bySchedule', 'schedule')
+                      // A deleted admin resolves to nothing server-side and comes back as the
+                      // raw id, which is still the truthful answer — never a blank cell.
+                      : (h.endedByName || t('db.eco.season.byHand', 'by hand'))}
+                  </td>
+                  <td className="py-1 text-end">{(h.affected ?? 0).toLocaleString()}</td>
+                  <td className="py-1 text-end">{(h.points ?? 0).toLocaleString()}</td>
+                  <td className="py-1 text-[var(--faint)]">{h.resetXp ? t('common.yes', 'Yes') : t('common.no', 'No')}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="mt-2 flex items-center gap-2 flex-wrap">
+          <Button size="sm" variant="ghost" disabled={skip === 0} onClick={() => setSkip((s) => Math.max(0, s - TAKE))}><ChevronRight size={13} className="rotate-180" /> {t('common.prev', 'Previous')}</Button>
+          <span className="text-[11px] text-[var(--faint)] tabular-nums">{t('common.range', '{a}–{b} of {n}').replace('{a}', String(total ? skip + 1 : 0)).replace('{b}', String(Math.min(total, skip + TAKE))).replace('{n}', String(total))}</span>
+          <Button size="sm" variant="ghost" disabled={skip + TAKE >= total} onClick={() => setSkip((s) => s + TAKE)}>{t('common.next', 'Next')} <ChevronRight size={13} /></Button>
+        </div>
+        <p className="mt-2 text-[11px] text-[var(--faint)]">
+          {t('db.eco.season.cap', 'These are the seasons still kept, not every season that ever ran: the site keeps the last {c} and drops the older ones for good. The season running now is not in this list, it has not ended.').replace('{c}', String(cap || 24))}
+        </p>
+      </>)}
+    </details>
   );
 }
 

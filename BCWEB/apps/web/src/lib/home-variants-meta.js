@@ -27,16 +27,16 @@ export const homeVariantList = (t) => [
   {
     v: 'v1',
     name: t('hp.v1', 'The long one'),
-    sub: t('hp.v1.s', 'Hero, why, how it works, the dev hub, commissions, reviews, news. For somebody who has never heard of this.'),
+    sub: t('hp.v1.s2', 'Pick this when most arrivals are strangers. It argues: hero, why, how it works, the dev hub, commissions, reviews, news, in that order, and it takes a full scroll to read.'),
   },
   {
     v: 'v2',
     name: t('hp.v2', 'One screen'),
-    sub: t('hp.v2.s', 'No story and no scroll before the answer: the products as a list, the media beside them, news at the end. For somebody who came to get something.'),
+    sub: t('hp.v2.s2', 'Pick this when people arrive knowing what they want. It answers: the four products as a list with the media beside them, the headlines, the ask. No story, nothing below the fold that has to be read.'),
   },
   {
     v: 'v3',
     name: t('hp.v3', 'What’s happening'),
-    sub: t('hp.v3.s', 'A feed, posts, the open poll, what people said, what is on offer. No hero. For somebody who already uses this.'),
+    sub: t('hp.v3.s2', 'Pick this when most arrivals have been here before. It reports: the posts as a feed, with the open poll, the reviews, what is on offer and the showcase beside them. No hero, because they know what the site is.'),
   },
 ];

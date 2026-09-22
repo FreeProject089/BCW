@@ -18,6 +18,8 @@ import { Suspense, lazy } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, Sparkles, MessageSquareQuote, Wand2 } from 'lucide-react';
 import { Button, Card, Badge } from '../ui/ui.jsx';
+import { KofiIcon, DiscordIcon } from '../ui/brand.jsx';
+import { closingCta } from '../lib/home-ctas.js';
 import { thumb } from '../lib/img.js';
 import { AppLogo } from '../ui/brand.jsx';
 import { PollTeaser } from './polls.jsx';
@@ -68,6 +70,50 @@ export function ProductRows({ products = [], style = 'rows' }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+/**
+ * A small label over a band, so a page is a sequence of named things rather than a stack.
+ *
+ * v1 has had these ("01 · THE SUITE") since it was written; v2 and v3 had none, which is one
+ * of the reasons they read as drafts of v1 rather than as pages. Numberless here on purpose:
+ * v2 is one screen and v3 is a feed — neither is a journey with stages, and a "01" on a page
+ * with two bands promises a story the page does not tell.
+ */
+export function Kicker({ label, children }) {
+  return (
+    <div className="flex items-center gap-3 mb-3">
+      <span className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--faint)]">{label}</span>
+      <span className="flex-1 h-px bg-gradient-to-r from-[var(--line-strong)] to-transparent" />
+      {children}
+    </div>
+  );
+}
+
+/**
+ * The closing ask, on every landing page.
+ *
+ * v1 ends on it; v2 ended on a news strip and v3 on a sidebar, so two of the three landing
+ * pages a site can choose finished without ever asking the reader to do anything. The heading,
+ * the sentence and the button come from `closingCta` — the same call v1 makes — so a site that
+ * switches variant gets the same ask, worded for the same visitor, rather than a second
+ * version of it written here that would drift the first time either was edited.
+ */
+export function ClosingBand({ user, t }) {
+  const cta = closingCta(user, t);
+  return (
+    <section>
+      <Card className="p-8 md:p-12 text-center">
+        <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight">{cta.title}</h2>
+        <p className="text-[var(--muted)] mt-3 max-w-lg mx-auto leading-relaxed">{cta.sub}</p>
+        <div className="flex flex-wrap gap-3 justify-center mt-6">
+          <Link to={cta.action.to}><Button variant="primary" className="!px-6 !py-3">{cta.action.label} <ArrowRight size={16} /></Button></Link>
+          <a href="https://discord.com/invite/CTaaEF9R75" target="_blank" rel="noreferrer"><Button className="!px-6 !py-3"><DiscordIcon size={16} className="text-[#5865F2]" /> {t('home.cta2.discord', 'Join the Discord')}</Button></a>
+          <a href="https://ko-fi.com/bettercommunity" target="_blank" rel="noreferrer"><Button className="!px-6 !py-3"><KofiIcon size={16} className="text-orange-400" /> {t('home.cta2.kofi', 'Support on Ko-fi')}</Button></a>
+        </div>
+      </Card>
+    </section>
   );
 }
 

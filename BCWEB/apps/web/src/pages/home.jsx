@@ -417,6 +417,14 @@ export function Home({ draft = null }) {
         <HomeCustomSections cfg={homeCfg} position="top" />
         <Variant {...ctx} />
         <HomeCustomSections cfg={homeCfg} position="bottom" />
+        {/* These two belong to the SITE, not to a layout, and both draw nothing at all until
+            an admin turns them on. They were rendered only by v1, so choosing another landing
+            page silently took a live charity programme and a running funding goal off the
+            front page — a setting on a different screen disappearing because of one on this
+            one. Placed out here rather than inside each variant for the same reason the custom
+            sections are: one placement covers both. */}
+        <CharityWidget />
+        <KofiGoalWidget />
       </div>
     );
   }
