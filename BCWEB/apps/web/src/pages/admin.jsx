@@ -19052,56 +19052,125 @@ const OGP_PAGE_TYPES = [
 // The SEO health card — what a search engine actually gets from this site, checked live:
 // the files (sitemap, robots), the ownership tokens, and for every key page the title /
 // description / image the resolver serves (the same the SPA writes into <head> and the unfurl
-// shell serves crawlers). A page that falls back to the site-wide text is flagged, with the
-// fix one card lower (add a row in "Link previews, per page"). No new configuration: it reads.
+// shell serves crawlers). A page that falls back to the site-wide text is flagged, and its
+// custom text can be set right on its row (it writes the same `seo.pages` list the "Link
+// previews, per page" card edits, so there is one store, not two).
 const SEO_KEY_PAGES = ['/', '/catalog', '/blog', '/docs', '/hosting', '/repos', '/projects', '/faq', '/dev', '/charity', '/myo', '/users'];
+// A FRESH read, for the checker only. `/api/seo` and `/api/seo/meta` are served
+// `public, max-age=300`, which is right for visitors — and was the whole "No token" bug: the
+// app had already fetched /api/seo on page load, so the check got the browser's cached copy
+// from BEFORE the save, and kept getting it for five minutes, Re-check included. The
+// query-string busts any shared cache in front of the API as well as the browser's.
+const seoFresh = (u) => fetch(`${u}${u.includes('?') ? '&' : '?'}_=${Date.now()}`, { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+// The same reduction the API applies (misc.mjs seoToken): the consoles hand out the WHOLE
+// `<meta name="google-site-verification" content="…" />` tag with a copy button, so that is
+// what gets pasted. Keep the content.
+const seoTokenOf = (v) => { const s = String(v || '').trim(); const m = /\bcontent\s*=\s*["']([^"']*)["']/i.exec(s); return (m ? m[1] : s).trim(); };
+const SEO_GTM_RE = /^(GTM-[A-Z0-9]{4,12}|G-[A-Z0-9]{6,14})$/i;
+const seoPathKey = (x) => String(x || '').replace(/\/$/, '').toLowerCase() || '/';
 function SeoHealthCard() {
   const { t, lang } = useI18n();
+  const toast = useToast();
   const [state, setState] = useState(null);
   const [busy, setBusy] = useState(false);
   const [probe, setProbe] = useState('');
   const [probeRes, setProbeRes] = useState(null);
   const [probeBusy, setProbeBusy] = useState(false);
+  const [edit, setEdit] = useState(null); // { path, title, titleFr, description, descriptionFr }
+  const [editBusy, setEditBusy] = useState(false);
   const run = async () => {
     setBusy(true);
-    const out = { checks: [], pages: [] };
+    const out = { checks: [], pages: [], cfg: null };
     const text = (u) => fetch(u, { cache: 'no-store' }).then((r) => r.ok ? r.text().then((b) => ({ ok: true, body: b, type: r.headers.get('content-type') || '' })) : { ok: false, status: r.status }).catch(() => ({ ok: false }));
-    const [sm, rb, cfg] = await Promise.all([text('/sitemap.xml'), text('/robots.txt'), fetch('/api/seo').then((r) => r.ok ? r.json() : null).catch(() => null)]);
+    // Two reads of the tokens, on purpose: /api/seo is what the site SERVES (env or saved,
+    // whichever wins), /admin/settings is what is SAVED. Only both together can say "saved,
+    // but switched off" or "saved, but the environment overrides it".
+    const [sm, rb, cfg, saved] = await Promise.all([text('/sitemap.xml'), text('/robots.txt'), seoFresh('/api/seo'), api.get('/admin/settings').then((r) => r?.settings || {}).catch(() => ({}))]);
+    out.cfg = cfg;
     const smXml = sm.ok && /xml/i.test(sm.type);
     const urls = smXml ? (sm.body.match(/<loc>/g) || []).length : 0;
     out.checks.push({ ok: smXml, label: t('seoh.sitemap', 'Sitemap'), detail: smXml ? t('seoh.sitemap.ok', '{n} URLs listed').replace('{n}', urls) : sm.ok ? t('seoh.sitemap.html', 'The app shell answered instead of XML, in production Caddy routes /sitemap.xml to the API; in dev this is expected.') : t('seoh.sitemap.no', 'Not reachable') });
     const rbOk = rb.ok && /Sitemap:/i.test(rb.body || '') && !/text\/html/i.test(rb.type || '');
     out.checks.push({ ok: rbOk, label: t('seoh.robots', 'robots.txt'), detail: rbOk ? t('seoh.robots.ok', 'Points at the sitemap; private screens disallowed') : t('seoh.robots.no', 'Not served by the API (dev) or missing the Sitemap line') });
-    // The tag: the env value is baked at build time; the saved one is what the site loads once
-    // analytics consent is given. Either counts, but the screen says which.
+    // The tag: the env value is baked at build time and wins; the saved one is what the site
+    // loads once analytics consent is given, and only while its switch is on.
     const envGtm = import.meta.env.VITE_GTM_ID || '';
-    out.checks.push({ ok: !!(envGtm || cfg?.gtmId), label: t('seoh.gtm', 'Google Tag Manager'), detail: envGtm ? t('seoh.gtm.env', 'From the build (VITE_GTM_ID)') : cfg?.gtmId ? t('seoh.gtm.saved', 'Saved here, loads after consent') : t('seoh.gtm.no', 'No container id, set it below'), soft: true });
-    out.checks.push({ ok: !!cfg?.googleVerify, label: t('seoh.gsc', 'Google Search Console'), detail: cfg?.googleVerify ? t('seoh.gsc.ok', 'Verification token set') : t('seoh.gsc.no', 'No token, set it in Site settings to verify the property and submit the sitemap') });
+    const savedGtm = typeof saved['seo.gtmId'] === 'string' ? saved['seo.gtmId'] : '';
+    out.checks.push({
+      ok: !!(envGtm || cfg?.gtmId), soft: true, label: t('seoh.gtm', 'Google Tag Manager'),
+      detail: envGtm ? `${t('seoh.gtm.env', 'From the build (VITE_GTM_ID)')}: ${envGtm}${savedGtm && savedGtm !== envGtm ? ` · ${t('seoh.gtm.envwins', 'it wins over the id saved below')}` : ''}`
+        : cfg?.gtmId ? `${t('seoh.gtm.saved', 'Saved here, loads after consent')}: ${cfg.gtmId}`
+          : savedGtm ? t('seoh.gtm.off', 'Saved but switched off: tick Load the tag below')
+            : t('seoh.gtm.no', 'No container id, set it below'),
+    });
+    const gSrc = cfg?.sources?.googleVerify || (cfg?.googleVerify ? 'saved' : '');
+    const savedG = typeof saved['seo.googleVerify'] === 'string' ? saved['seo.googleVerify'].trim() : '';
+    out.checks.push({
+      ok: !!cfg?.googleVerify, label: t('seoh.gsc', 'Google Search Console'),
+      detail: !cfg ? t('seoh.api.no', 'Could not read /api/seo, is the API running?')
+        : gSrc === 'env' ? `${t('seoh.gsc.env', 'From the environment (GOOGLE_SITE_VERIFICATION), it wins over the field below')}: ${cfg.googleVerify.slice(0, 10)}…`
+          : gSrc === 'saved' ? `${t('seoh.gsc.saved', 'Saved here, served as the google-site-verification tag')}: ${cfg.googleVerify.slice(0, 10)}…`
+            : savedG ? t('seoh.gsc.bad', 'A value is saved but it is not a token: paste the whole meta tag or only its content')
+              : t('seoh.gsc.no2', 'No token: paste it below, or set GOOGLE_SITE_VERIFICATION in .env'),
+    });
     out.checks.push({ ok: !!cfg?.bingVerify, label: t('seoh.bing', 'Bing Webmaster'), detail: cfg?.bingVerify ? t('seoh.gsc.ok', 'Verification token set') : t('seoh.bing.no', 'No token (optional)'), soft: true });
     out.checks.push({ ok: !!cfg?.description, label: t('seoh.desc', 'Site description'), detail: cfg?.description ? `${cfg.description.length} ${t('seoh.chars', 'chars')}${cfg.descriptionFr ? ' · FR ✓' : ` · ${t('seoh.nofr', 'no FR')}`}` : t('seoh.desc.no', 'Empty, the built-in one is used') });
     let ogOk = false;
     if (cfg?.ogImage) { ogOk = await new Promise((res) => { const im = new Image(); im.onload = () => res(im.naturalWidth >= 600); im.onerror = () => res(false); im.src = cfg.ogImage; }); }
     out.checks.push({ ok: cfg?.ogImage ? ogOk : true, label: t('seoh.og', 'Share image'), detail: cfg?.ogImage ? (ogOk ? t('seoh.og.ok', 'Loads, ≥ 600 px wide') : t('seoh.og.bad', 'Does not load or is too small (1200 × 630 recommended)')) : t('seoh.og.default', 'Built-in card (og-card.png)'), soft: true });
-    const metas = await Promise.all(SEO_KEY_PAGES.map((p) => fetch(`/api/seo/meta?path=${encodeURIComponent(p)}&lang=${lang}`).then((r) => r.ok ? r.json() : null).catch(() => null)));
+    const overrides = Array.isArray(saved['seo.pages']) ? saved['seo.pages'] : [];
+    const metas = await Promise.all(SEO_KEY_PAGES.map((p) => seoFresh(`/api/seo/meta?path=${encodeURIComponent(p)}&lang=${lang}`)));
     const home = metas[0];
     out.pages = SEO_KEY_PAGES.map((p, i) => {
       const m = metas[i];
-      if (!m) return { path: p, missing: true };
+      const override = overrides.find((x) => seoPathKey(x?.path) === seoPathKey(p)) || null;
+      if (!m) return { path: p, missing: true, override };
       const generic = p !== '/' && home && m.description === home.description;
       const issues = [];
       if (generic) issues.push(t('seoh.i.generic', 'uses the site-wide description'));
       if ((m.title || '').length > 65) issues.push(t('seoh.i.title', 'title over 65 chars'));
       if ((m.description || '').length > 165) issues.push(t('seoh.i.desc', 'description over 165 chars'));
       if ((m.description || '').length < 50) issues.push(t('seoh.i.short', 'description under 50 chars'));
-      return { path: p, title: m.title, description: m.description, image: m.image, noindex: m.noindex, issues };
+      return { path: p, title: m.title, description: m.description, image: m.image, noindex: m.noindex, issues, override };
     });
     setState(out); setBusy(false);
   };
   useEffect(() => { run(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [lang]);
+  // A save in "Link previews, per page" changes what these rows show: re-check then too.
+  useEffect(() => {
+    const on = () => run();
+    window.addEventListener('bcw:seo-pages', on);
+    return () => window.removeEventListener('bcw:seo-pages', on);
+    /* eslint-disable-next-line react-hooks/exhaustive-deps */
+  }, [lang]);
+  const openEdit = (p) => {
+    const o = p.override || {};
+    setEdit({ path: p.path, title: o.title || '', titleFr: o.titleFr || '', description: o.description || '', descriptionFr: o.descriptionFr || '' });
+  };
+  // Writes ONE row of seo.pages. The list is re-read first, so a row saved elsewhere since this
+  // card loaded is kept, and the row's image (edited only in the per-page card) is carried over.
+  const savePage = async (clear = false) => {
+    if (!edit) return;
+    setEditBusy(true);
+    try {
+      const r = await api.get('/admin/settings');
+      const list = Array.isArray(r?.settings?.['seo.pages']) ? r.settings['seo.pages'] : [];
+      const idx = list.findIndex((x) => seoPathKey(x?.path) === seoPathKey(edit.path));
+      const prev = idx >= 0 ? list[idx] : {};
+      const f = (k) => (clear ? '' : String(edit[k] || '').trim());
+      const row = { path: prev.path || edit.path, title: f('title'), titleFr: f('titleFr'), description: f('description'), descriptionFr: f('descriptionFr'), image: typeof prev.image === 'string' ? prev.image : '' };
+      const empty = !row.title && !row.titleFr && !row.description && !row.descriptionFr && !row.image;
+      const next = empty ? list.filter((_, i) => i !== idx) : idx >= 0 ? list.map((x, i) => (i === idx ? row : x)) : [...list, row];
+      await api.put('/admin/settings/seo.pages', { value: next });
+      toast.success(t('common.saved', 'Saved.'));
+      setEdit(null);
+      window.dispatchEvent(new CustomEvent('bcw:seo-pages'));
+    } catch (e) { toast.error(`${t('common.failed', 'Failed.')}${e?.data?.error ? ` (${e.data.error})` : ''}`); } finally { setEditBusy(false); }
+  };
   const runProbe = async () => {
     const p = probe.trim(); if (!p.startsWith('/')) return;
     setProbeBusy(true);
-    const [en, fr] = await Promise.all(['en', 'fr'].map((l) => fetch(`/api/seo/meta?path=${encodeURIComponent(p)}&lang=${l}`).then((r) => r.ok ? r.json() : null).catch(() => null)));
+    const [en, fr] = await Promise.all(['en', 'fr'].map((l) => seoFresh(`/api/seo/meta?path=${encodeURIComponent(p)}&lang=${l}`)));
     setProbeRes({ en, fr }); setProbeBusy(false);
   };
   const Snippet = ({ m }) => m ? (
@@ -19113,6 +19182,7 @@ function SeoHealthCard() {
     </div>
   ) : <div className="text-xs text-[var(--faint)]">—</div>;
   const problems = state ? state.checks.filter((c) => !c.ok && !c.soft).length + state.pages.filter((p) => p.missing || p.issues?.length).length : 0;
+  const len = (s, max) => <span className={(s || '').length > max ? 'text-warning' : ''}>{(s || '').length}/{max}</span>;
   return (
     <Card className="p-4 mb-4">
       <div className="flex items-center gap-2 flex-wrap mb-1">
@@ -19122,34 +19192,64 @@ function SeoHealthCard() {
         </div>
         <Button size="sm" variant="ghost" disabled={busy} onClick={run}><RefreshCw size={13} className={busy ? 'animate-spin' : ''} /> {busy ? t('seoh.checking', 'Checking…') : t('seoh.recheck', 'Re-check')}</Button>
       </div>
-      <Explain className="text-[11px] mb-3">{t('seoh.sub', 'What search engines get from this site, checked live: the sitemap and robots files, the ownership tokens, and — per key page — the title, description and image the resolver serves. The same text feeds the tab title, the <head> tags and the pasted-link card, so a fix in “Link previews, per page” below repairs all three at once.')}</Explain>
+      <Explain className="text-[11px] mb-3">
+        <p>{t('seoh.sub', 'What search engines get from this site, checked live: the sitemap and robots files, the ownership tokens, and — per key page — the title, description and image the resolver serves. The same text feeds the tab title, the <head> tags and the pasted-link card, so a fix in “Link previews, per page” below repairs all three at once.')}</p>
+        <p className="mt-1.5">{t('seoh.more.src', 'Where each value comes from: the Tag Manager id from VITE_GTM_ID when the site was built with it, otherwise from the field below (and only while its switch is on). The Search Console token from GOOGLE_SITE_VERIFICATION in the API environment when set, otherwise from the field below. The environment always wins, and each check says which one is live.')}</p>
+        <p className="mt-1.5">{t('seoh.more.pages', 'A key page flagged as using the site-wide description is one a search result describes with the home page text. The pencil on its row sets a title and description for that page only; leave a field empty to keep what the page builds by itself.')}</p>
+      </Explain>
       {!state ? <Spinner /> : (
         <>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2 mb-3">
             {state.checks.map((c) => (
               <div key={c.label} className={`rounded-lg border px-3 py-2 flex items-start gap-2 ${c.ok ? 'border-[var(--line)]' : c.soft ? 'border-[var(--line)]' : 'border-warning-border bg-warning-bg/40'}`}>
                 {c.ok ? <CheckCircle2 size={15} className="text-success shrink-0 mt-0.5" /> : <AlertTriangle size={15} className={`${c.soft ? 'text-[var(--faint)]' : 'text-warning'} shrink-0 mt-0.5`} />}
-                <div className="min-w-0"><div className="text-xs font-medium">{c.label}</div><div className="text-[11px] text-[var(--muted)] leading-snug">{c.detail}</div></div>
+                <div className="min-w-0"><div className="text-xs font-medium">{c.label}</div><div className="text-[11px] text-[var(--muted)] leading-snug break-words">{c.detail}</div></div>
               </div>
             ))}
           </div>
           <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1.5">{t('seoh.pages', 'Key pages, what a search result shows ({l})').replace('{l}', lang.toUpperCase())}</div>
           <div className="rounded-lg border border-[var(--line)] divide-y divide-[var(--line)] overflow-hidden">
             {state.pages.map((p) => (
-              <div key={p.path} className="px-3 py-2 text-xs flex items-start gap-3">
-                <code className="shrink-0 w-24 text-[var(--accent-ink)] truncate" title={p.path}>{p.path}</code>
-                {p.missing ? <span className="text-error">{t('seoh.unreach', 'resolver unreachable')}</span> : (
-                  <div className="min-w-0 flex-1">
-                    <div className="font-medium truncate" title={p.title}>{p.title}</div>
-                    <div className="text-[var(--muted)] line-clamp-1">{p.description}</div>
-                    {p.issues.length ? <div className="text-[11px] text-warning mt-0.5">⚠ {p.issues.join(' · ')}</div> : null}
+              <div key={p.path} className="px-3 py-2 text-xs">
+                <div className="flex items-start gap-3">
+                  <code className="shrink-0 w-24 text-[var(--accent-ink)] truncate" title={p.path}>{p.path}</code>
+                  {p.missing ? <span className="text-error flex-1">{t('seoh.unreach', 'resolver unreachable')}</span> : (
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium truncate flex items-center gap-1.5" title={p.title}>
+                        <span className="truncate" title={p.title}>{p.title}</span>
+                        {p.override && (p.override.title || p.override.titleFr || p.override.description || p.override.descriptionFr) ? <Badge>{t('seoh.custom', 'custom')}</Badge> : null}
+                      </div>
+                      <div className="text-[var(--muted)] line-clamp-1">{p.description}</div>
+                      {p.issues.length ? <div className="text-[11px] text-warning mt-0.5">⚠ {p.issues.join(' · ')}</div> : null}
+                    </div>
+                  )}
+                  {!p.missing && (p.issues.length ? <AlertTriangle size={14} className="text-warning shrink-0 mt-0.5" /> : <CheckCircle2 size={14} className="text-success shrink-0 mt-0.5" />)}
+                  <button type="button" onClick={() => (edit?.path === p.path ? setEdit(null) : openEdit(p))}
+                    className="p-1 rounded text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)] shrink-0"
+                    title={t('seoh.edit', 'Custom title and description for this page')} aria-label={t('seoh.edit', 'Custom title and description for this page')} aria-expanded={edit?.path === p.path}>
+                    {edit?.path === p.path ? <X size={13} /> : <Pencil size={13} />}
+                  </button>
+                </div>
+                {edit?.path === p.path && (
+                  <div className="mt-2 sm:ml-[6.75rem] rounded-lg border border-[var(--line)] p-2.5 tint-primary-soft">
+                    <div className="grid sm:grid-cols-2 gap-2">
+                      <Field label={<>{t('ogp.titleEn', 'Title (EN)')} <span className="text-[var(--faint)] font-normal">{len(edit.title, 65)}</span></>} className="!mb-0"><Input className="!text-xs" maxLength={160} value={edit.title} placeholder={lang === 'en' ? p.title : ''} onChange={(e) => setEdit({ ...edit, title: e.target.value })} /></Field>
+                      <Field label={<>{t('ogp.titleFr', 'Title (FR)')} <span className="text-[var(--faint)] font-normal">{len(edit.titleFr, 65)}</span></>} className="!mb-0"><Input className="!text-xs" maxLength={160} value={edit.titleFr} placeholder={lang === 'fr' ? p.title : ''} onChange={(e) => setEdit({ ...edit, titleFr: e.target.value })} /></Field>
+                      <Field label={<>{t('ogp.descEn', 'Description (EN)')} <span className="text-[var(--faint)] font-normal">{len(edit.description, 160)}</span></>} className="!mb-0"><Textarea className="!text-xs" rows={2} maxLength={320} value={edit.description} placeholder={lang === 'en' ? p.description : ''} onChange={(e) => setEdit({ ...edit, description: e.target.value })} /></Field>
+                      <Field label={<>{t('ogp.descFr', 'Description (FR)')} <span className="text-[var(--faint)] font-normal">{len(edit.descriptionFr, 160)}</span></>} className="!mb-0"><Textarea className="!text-xs" rows={2} maxLength={320} value={edit.descriptionFr} placeholder={lang === 'fr' ? p.description : ''} onChange={(e) => setEdit({ ...edit, descriptionFr: e.target.value })} /></Field>
+                    </div>
+                    <p className="text-[10px] text-[var(--faint)] mt-1.5">{t('seoh.edit.d', 'Empty keeps what the page builds by itself; an empty FR falls back to the EN. Saved to the same list as “Link previews, per page” below, where the image can be set too.')}</p>
+                    <div className="flex items-center gap-2 mt-2 flex-wrap">
+                      <Button size="sm" variant="primary" disabled={editBusy} onClick={() => savePage(false)}>{editBusy ? <Spinner /> : t('common.save', 'Save')}</Button>
+                      <Button size="sm" variant="ghost" disabled={editBusy} onClick={() => setEdit(null)}>{t('common.cancel', 'Cancel')}</Button>
+                      {p.override && <Button size="sm" variant="ghost" disabled={editBusy} onClick={() => savePage(true)}><RotateCcw size={13} /> {t('seoh.edit.reset', 'Back to the built-in text')}</Button>}
+                    </div>
                   </div>
                 )}
-                {!p.missing && (p.issues.length ? <AlertTriangle size={14} className="text-warning shrink-0 mt-0.5" /> : <CheckCircle2 size={14} className="text-success shrink-0 mt-0.5" />)}
               </div>
             ))}
           </div>
-          <SeoTagsInline />
+          <SeoTagsInline cfg={state.cfg} onSaved={run} />
           <div className="mt-3 flex flex-wrap items-end gap-2">
             <Field label={t('seoh.probe', 'Check any path')} className="!mb-0 flex-1 min-w-[14rem]"><Input placeholder="/blog/my-post" value={probe} onChange={(e) => setProbe(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') runProbe(); }} /></Field>
             <Button size="sm" disabled={probeBusy || !probe.trim().startsWith('/')} onClick={runProbe}>{probeBusy ? <Spinner /> : <><Search size={13} /> {t('seoh.probe.go', 'Show snippet')}</>}</Button>
@@ -19161,21 +19261,36 @@ function SeoHealthCard() {
   );
 }
 
-/* The three ids the health check looks for, editable where the check is — not in a file. */
-function SeoTagsInline() {
+/* The three ids the health check looks for, editable where the check is — not in a file.
+   `onSaved` re-runs the check: before, a save left the card red until a manual Re-check, and
+   that Re-check read a cached /api/seo anyway (see seoFresh). */
+function SeoTagsInline({ cfg, onSaved }) {
   const { t } = useI18n(); const toast = useToast();
   const [v, setV] = useState(null); const [busy, setBusy] = useState(false);
   useEffect(() => { api.get('/admin/settings').then((r) => { const st = r.settings || {}; setV({ gtmOn: st['seo.gtmOn'] === true, gtmId: st['seo.gtmId'] || '', googleVerify: st['seo.googleVerify'] || '', bingVerify: st['seo.bingVerify'] || '' }); }).catch(() => setV({ gtmOn: false, gtmId: '', googleVerify: '', bingVerify: '' })); }, []);
   if (!v) return null;
+  const envGtm = import.meta.env.VITE_GTM_ID || '';
+  const envGoogle = cfg?.sources?.googleVerify === 'env';
   const save = async () => {
+    // Everything is checked BEFORE the first write. The four PUTs run in sequence, and the id
+    // used to go first: a refused id threw, and the tokens after it were never written, so a
+    // typo in one field silently threw away the token in the next one.
+    const gtm = v.gtmId.trim();
+    if (gtm && !SEO_GTM_RE.test(gtm)) return toast.error(t('seoh.gtm.bad', 'That is not a Tag Manager id (GTM-XXXXXXX) or a GA4 id (G-XXXXXXXXXX). Nothing was saved.'));
+    const g = seoTokenOf(v.googleVerify); const b = seoTokenOf(v.bingVerify);
     setBusy(true);
     try {
-      await api.put('/admin/settings/seo.gtmId', { value: v.gtmId.trim() });
-      await api.put('/admin/settings/seo.gtmOn', { value: !!v.gtmOn && !!v.gtmId.trim() });
-      await api.put('/admin/settings/seo.googleVerify', { value: v.googleVerify.trim() });
-      await api.put('/admin/settings/seo.bingVerify', { value: v.bingVerify.trim() });
+      const rg = await api.put('/admin/settings/seo.googleVerify', { value: g });
+      const rb = await api.put('/admin/settings/seo.bingVerify', { value: b });
+      await api.put('/admin/settings/seo.gtmId', { value: gtm });
+      await api.put('/admin/settings/seo.gtmOn', { value: !!v.gtmOn && !!gtm });
+      setV({ ...v, gtmId: gtm, gtmOn: !!v.gtmOn && !!gtm, googleVerify: rg?.value ?? g, bingVerify: rb?.value ?? b });
       toast.success(t('common.saved', 'Saved.'));
-    } catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); }
+      onSaved?.();
+    } catch (e) {
+      const code = e?.data?.error;
+      toast.error(code === 'bad_verify_token' ? t('seoh.tok.bad', 'That token has characters a verification token never has. Paste the whole meta tag or only its content.') : `${t('common.failed', 'Failed.')}${code ? ` (${code})` : ''}`);
+    } finally { setBusy(false); }
   };
   return (
     <details className="mt-3 rounded-lg border border-[var(--line)] p-3">
@@ -19183,10 +19298,19 @@ function SeoTagsInline() {
       <div className="grid sm:grid-cols-2 gap-2 mt-2">
         <Field label="GTM container id" className="!mb-0"><Input placeholder="GTM-XXXXXXX" value={v.gtmId} onChange={(e) => setV({ ...v, gtmId: e.target.value })} /></Field>
         <label className="flex items-center gap-2 text-sm self-end pb-2"><input type="checkbox" checked={v.gtmOn} onChange={(e) => setV({ ...v, gtmOn: e.target.checked })} /> {t('seoh.gtm.on', 'Load the tag (after analytics consent)')}</label>
-        <Field label="google-site-verification" className="!mb-0"><Input value={v.googleVerify} onChange={(e) => setV({ ...v, googleVerify: e.target.value })} /></Field>
-        <Field label="msvalidate.01 (Bing)" className="!mb-0"><Input value={v.bingVerify} onChange={(e) => setV({ ...v, bingVerify: e.target.value })} /></Field>
+        <Field label="google-site-verification" className="!mb-0"><Input value={v.googleVerify} placeholder='<meta name="google-site-verification" content="…" />' onChange={(e) => setV({ ...v, googleVerify: e.target.value })} onBlur={() => setV((s) => ({ ...s, googleVerify: seoTokenOf(s.googleVerify) }))} /></Field>
+        <Field label="msvalidate.01 (Bing)" className="!mb-0"><Input value={v.bingVerify} onChange={(e) => setV({ ...v, bingVerify: e.target.value })} onBlur={() => setV((s) => ({ ...s, bingVerify: seoTokenOf(s.bingVerify) }))} /></Field>
       </div>
-      <p className="text-[11px] text-[var(--faint)] mt-2">{t('seoh.tags.d', 'The env value VITE_GTM_ID, when set at build time, wins over the id saved here. Tokens are the content of the meta tag the console asks for, not the whole tag.')}</p>
+      {(envGtm || envGoogle) && (
+        <div className="text-[11px] mt-2 rounded-md border b-primary tint-primary-soft px-2 py-1.5">
+          {envGtm ? <div>{t('seoh.env.gtm', 'VITE_GTM_ID is set in the build ({v}): it is the id the site loads, whatever is saved here.').replace('{v}', envGtm)}</div> : null}
+          {envGoogle ? <div>{t('seoh.env.gsc', 'GOOGLE_SITE_VERIFICATION is set on the API: it is the token the site serves, whatever is saved here.')}</div> : null}
+        </div>
+      )}
+      <p className="text-[11px] text-[var(--faint)] mt-2">{t('seoh.tags.d2', 'Paste the whole meta tag the console gives you, or only its content: the token is taken out of it. An environment value (VITE_GTM_ID at build time, GOOGLE_SITE_VERIFICATION on the API) wins over what is saved here.')}</p>
+      <Explain className="text-[11px] mt-1">
+        <p>{t('seoh.tags.more', 'Tag Manager loads only after a visitor accepts the Analytics cookie category, whichever way the id is set. The verification tokens are public by design: they sit in every page head, which is how Google and Bing check that the site is yours. Once Google shows the property as verified, submit /sitemap.xml in Search Console.')}</p>
+      </Explain>
       <Button size="sm" variant="primary" className="mt-2" disabled={busy} onClick={save}>{busy ? <Spinner /> : t('common.save', 'Save')}</Button>
     </details>
   );
@@ -19280,6 +19404,9 @@ function SitemapCard() {
         <Button size="sm" variant="ghost" onClick={refresh}><RefreshCw size={13} /></Button>
       </div>
       <p className="text-[11px] text-[var(--faint)] mb-3">{t('sm.sub2', 'Rebuilt from the database on every request — publish a post and it is listed, there is nothing to regenerate. Add a path the router serves that this list cannot know, or leave one out. One per line.')}</p>
+      <Explain className="text-[11px] -mt-2 mb-3">
+        <p>{t('sm.more', 'The sitemap is the list of pages a search engine is invited to crawl. It does not make a page rank, and leaving a page out does not hide it: private screens are kept out of results by noindex and robots.txt instead. Submit /sitemap.xml once in Google Search Console, after the property is verified; Google then re-reads it by itself.')}</p>
+      </Explain>
 
       {/* What reading the file cannot tell you.
           An exclusion matches by EXACT path, so "/legal/refund" hides nothing while
@@ -19425,9 +19552,14 @@ function SeoPagesCard() {
   const setPlatOf = (k) => (v) => setPlats((m) => ({ ...m, [k]: v }));
 
   useEffect(() => {
-    api.get('/admin/settings')
+    const load = () => api.get('/admin/settings')
       .then((d) => { setSettings(d?.settings || {}); setRows(Array.isArray(d?.settings?.['seo.pages']) ? d.settings['seo.pages'] : []); })
       .catch(() => { setSettings({}); setRows([]); });
+    load();
+    // SEO health edits the SAME list from a key-page row. Reloaded when it does, or this
+    // card's next Save would write back the list as it was before that edit.
+    window.addEventListener('bcw:seo-pages', load);
+    return () => window.removeEventListener('bcw:seo-pages', load);
   }, []);
 
   const set = (i, patch) => setRows(rows.map((r, n) => (n === i ? { ...r, ...patch } : r)));
@@ -19441,6 +19573,7 @@ function SeoPagesCard() {
     try {
       await api.put('/admin/settings/seo.pages', { value: rows });
       toast.success(t('hs.saved', 'Saved.'));
+      window.dispatchEvent(new CustomEvent('bcw:seo-pages'));
     } catch { toast.error(t('hs.savefail', 'Save failed.')); }
     finally { setBusy(false); }
   };
@@ -19461,6 +19594,9 @@ function SeoPagesCard() {
       <p className="text-[11px] text-[var(--faint)] mb-3">
         {t('ogp.sub', 'What Discord, X and Slack show when a link is pasted. Every page already has a card built from what it is — a blog post uses its own title and cover — so leave a field empty to keep that. Exact paths only: no wildcards, so nothing is covered that you did not list.')}
       </p>
+      <Explain className="text-[11px] -mt-2 mb-3">
+        <p>{t('ogp.more', 'A row here is not only the pasted-link card: the same title and description become the tab title, the description meta tag a search result shows, and the og and twitter tags. SEO health above reads them back per key page, and its pencil edits this same list. After a change, a search engine shows it on its next crawl; Discord and X keep their own cache of a card for a while.')}</p>
+      </Explain>
 
       {/* The whole-site default is the FIRST row — same shape as an override, its own
           platform switcher — so there is one kind of preview on this screen, not two. */}

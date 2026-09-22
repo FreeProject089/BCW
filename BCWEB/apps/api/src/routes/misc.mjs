@@ -43,6 +43,19 @@ function clientIp(req) {
 
 const GiB = 1024 ** 3;
 
+// A site-verification token, as the consoles hand it out. Google and Bing both show the WHOLE
+// tag (`<meta name="google-site-verification" content="…" />`) with a copy button, so that is
+// what gets pasted; stored as-is it would end up as the content of a second meta tag and the
+// property would never verify. Keep the content, drop the rest. The result reaches the DOM
+// through setAttribute (seo.js), and is held to the token alphabet so it stays inert anyway.
+function seoToken(v) {
+  const s = String(v ?? '').trim();
+  if (!s) return '';
+  const m = /\bcontent\s*=\s*["']([^"']*)["']/i.exec(s);
+  const tok = (m ? m[1] : s).trim();
+  return /^[A-Za-z0-9_\-.=+/]{1,200}$/.test(tok) ? tok : '';
+}
+
 // Forward a contact message to Discord if DISCORD_CONTACT_WEBHOOK is set. The future
 // Discord bot can also read these from the DB; the webhook is the immediate path.
 async function forwardContactToDiscord(msg) {
@@ -1359,6 +1372,12 @@ export default async function miscRoutes(app) {
     const c = Object.fromEntries(rows.map((r) => [r.key, r.value]));
     const str = (k) => (typeof c[k] === 'string' ? c[k] : '');
     reply.header('Cache-Control', 'public, max-age=300');
+    // The Search Console token can also come from the environment (GOOGLE_SITE_VERIFICATION),
+    // and like VITE_GTM_ID for the tag, the env value WINS over the saved one: an operator who
+    // pinned it in .env keeps it through any dashboard edit. `sources` says which one is live,
+    // so the admin health card can show it instead of leaving the admin to guess.
+    const envGoogle = seoToken(process.env.GOOGLE_SITE_VERIFICATION);
+    const savedGoogle = seoToken(str('seo.googleVerify'));
     // An ALLOWLIST, not the stored object. Returning everything under `seo.` would mean a key
     // added here later becomes public the moment somebody sets it, without anyone deciding
     // that it should be.
@@ -1366,8 +1385,9 @@ export default async function miscRoutes(app) {
       // Omitted entirely when the toggle is off, so the page has nothing to load even if its
       // own check were wrong one day.
       gtmId: c['seo.gtmOn'] === true ? str('seo.gtmId') : '',
-      googleVerify: str('seo.googleVerify'),
-      bingVerify: str('seo.bingVerify'),
+      googleVerify: envGoogle || savedGoogle,
+      sources: { googleVerify: envGoogle ? 'env' : savedGoogle ? 'saved' : '' },
+      bingVerify: seoToken(str('seo.bingVerify')),
       description: str('seo.description'),
       descriptionFr: str('seo.descriptionFr'),
       ogImage: str('seo.ogImage'),
@@ -3827,6 +3847,14 @@ export default async function miscRoutes(app) {
       if (!/^(GTM-[A-Z0-9]{4,12}|G-[A-Z0-9]{6,14})$/i.test(String(value).trim())) {
         return reply.code(400).send({ error: 'bad_gtm_id' });
       }
+    }
+    // Ownership tokens: a pasted whole <meta> tag is reduced to its content (seoToken), and
+    // anything that is not a token after that is refused rather than stored and served.
+    if ((req.params.key === 'seo.googleVerify' || req.params.key === 'seo.bingVerify') && String(value ?? '').trim()) {
+      const tok = seoToken(value);
+      if (!tok) return reply.code(400).send({ error: 'bad_verify_token' });
+      await p.adminSetting.upsert({ where: { key: req.params.key }, create: { key: req.params.key, value: tok }, update: { value: tok } });
+      return { ok: true, value: tok };
     }
     await p.adminSetting.upsert({ where: { key: req.params.key }, create: { key: req.params.key, value }, update: { value } });
     return { ok: true };

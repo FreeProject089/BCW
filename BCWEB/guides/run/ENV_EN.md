@@ -113,7 +113,8 @@ Callback to register at each provider: `<SITE_URL>/api/auth/oauth/<provider>/cal
 ## 12. Misc
 | Variable | Purpose |
 |---|---|
-| `VITE_GTM_ID` | Google Tag / GA4 id. **Prefer the dashboard** (Hosting settings → Search & discoverability): no rebuild. This one is baked in at build time and overrides it. Consent-gated either way. |
+| `VITE_GTM_ID` | Google Tag / GA4 id (`GTM-XXXXXXX` or `G-XXXXXXXXXX`). Can also be set in the dashboard (Hosting settings → Search & discoverability → SEO health → "Tag Manager & ownership tokens") with no rebuild. This one is baked in at build time (a compose build arg) and **wins** over the dashboard; the SEO health card shows "From the build" when it does. Consent-gated either way. Public, not a secret. |
+| `GOOGLE_SITE_VERIFICATION` | Google Search Console ownership token (the `content` of its `google-site-verification` meta tag; the whole tag is accepted and reduced to its content). Read by the **API at runtime** and served in that meta tag, so a change needs an API restart, not a rebuild. **Wins** over the token saved in the dashboard; the SEO health card shows "From the environment" when it does. Public, not a secret. |
 | `NODE_OPTIONS` | V8 flags for the API. The image already sets `--max-old-space-size=384`: V8 sizes its heap from the **host's** RAM and does *not* read the cgroup limit, so in a memory-limited container an unbounded heap grows past the limit and gets OOM-killed instead of collecting. Raise it in tandem with the container's memory limit. |
 | `KOFI_WEBHOOK_TOKEN` | Ko-fi webhook verification token. Set here, it **wins over** the admin-set token and locks it in the dashboard (same pattern as `DISCORD_TOKEN`). Blank = manage it from the admin UI. |
 | `TWITCH_CLIENT_ID` / `TWITCH_CLIENT_SECRET` | Twitch **profile connection** (not login). Register `<SITE_URL>/api/auth/connect/twitch/callback`. |
