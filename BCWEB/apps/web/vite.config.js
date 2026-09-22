@@ -40,9 +40,38 @@ async function findApi() {
   return 'http://localhost:3000';
 }
 
+/**
+ * Google's ownership tag, written into the HTML the server sends.
+ *
+ * The site also sets it from JavaScript (lib/seo.js, from /api/seo), which is enough for a
+ * visitor and for the SEO health card, but Search Console's HTML-tag check reads the page
+ * as served: a tag that only exists after the bundle runs is a tag it may never see, and
+ * then verification fails with "tag not found" while the admin screen shows it set.
+ *
+ * So when the token is known at BUILD time it goes straight into <head> here, without
+ * touching index.html (which is the owner's file). The runtime copy in lib/seo.js still
+ * runs; setMeta() updates an existing tag rather than adding a second one.
+ *
+ * Only a token is accepted, not markup: the value lands inside an HTML attribute, so
+ * anything outside the token alphabet is dropped rather than escaped. The API's seoToken()
+ * uses the same alphabet, so a value accepted there is accepted here.
+ */
+function verificationTag() {
+  const raw = String(process.env.VITE_GOOGLE_SITE_VERIFICATION || process.env.GOOGLE_SITE_VERIFICATION || '').trim();
+  const m = /content\s*=\s*["']([^"']*)["']/i.exec(raw);
+  const tok = (m ? m[1] : raw).trim();
+  const ok = /^[A-Za-z0-9_\-.=+/]{1,200}$/.test(tok);
+  return {
+    name: 'bcweb-google-verification',
+    transformIndexHtml() {
+      return ok ? [{ tag: 'meta', attrs: { name: 'google-site-verification', content: tok }, injectTo: 'head-prepend' }] : [];
+    },
+  };
+}
+
 // Dev proxies /api -> the API container so the SPA + API share an origin.
 export default defineConfig(async () => ({
-  plugins: [react()],
+  plugins: [react(), verificationTag()],
   resolve: {
     alias: [
       { find: /^@bettercommunity\/bmd$/, replacement: `${BMD}/index.jsx` },

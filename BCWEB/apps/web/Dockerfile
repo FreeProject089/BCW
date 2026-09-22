@@ -13,6 +13,10 @@ COPY apps/web/ ./
 # so the Google Tag id has to come in as a build arg, not a container env var.
 ARG VITE_GTM_ID
 ENV VITE_GTM_ID=$VITE_GTM_ID
+# Search Console's ownership token, written into the served <head> by vite.config.js
+# (verificationTag): Google's HTML-tag check reads the page as served, before any JS runs.
+ARG GOOGLE_SITE_VERIFICATION
+ENV GOOGLE_SITE_VERIFICATION=$GOOGLE_SITE_VERIFICATION
 RUN npm run build
 
 FROM nginx:alpine
