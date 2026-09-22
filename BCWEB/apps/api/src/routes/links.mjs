@@ -4,6 +4,8 @@ import { db, requireRole, notify, hashApiKey, safeEqual, ownedContent } from '..
 import { mergeShadowEconomy } from '../lib/economy-curve.mjs';
 import { genKey, prefixOf } from './api-keys.mjs';
 import { grantAutoBadges } from './social.mjs';
+import { expectedProofAudience } from '../lib/creator-proof.mjs';
+import { acceptCreatorProof, creatorProofGate } from '../lib/creator-identity.mjs';
 
 // Human-friendly pairing code (no ambiguous chars): e.g. "K7P3-9QMX".
 function genCode() {
@@ -18,9 +20,14 @@ export default async function linkRoutes(app) {
   // ── BMM side (no website login): request a pairing code for a creator id ──
   // Rate-limited so a code can't be brute-forced or spammed.
   app.post('/link/request', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => {
-    const b = z.object({ creatorId: z.string().min(1).max(120), creatorName: z.string().max(120).optional() }).safeParse(req.body);
+    const b = z.object({ creatorId: z.string().min(1).max(120), creatorName: z.string().max(120).optional(), proof: z.string().max(8192).optional() }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
+    // Whoever requests the code for an id is whoever sees the code, so an id that has been
+    // seen with a v5 key must PROVE it here (lib/creator-identity.mjs). A v4 client sends no
+    // proof and is answered exactly as before.
+    const gate = await creatorProofGate(p, b.data.creatorId, b.data.proof, expectedProofAudience());
+    if (!gate.ok) return reply.code(gate.error === 'unavailable' ? 503 : 403).send({ error: gate.error });
     // Already linked? Tell BMM so it can show "already linked" instead of a code.
     const existing = await p.creatorLink.findUnique({ where: { creatorId: b.data.creatorId } });
     if (existing) return { linked: true };
@@ -30,6 +37,22 @@ export default async function linkRoutes(app) {
     const expiresAt = new Date(Date.now() + 15 * 60e3); // 15 min
     await p.linkCode.create({ data: { code, creatorId: b.data.creatorId, displayName: b.data.creatorName || null, expiresAt } });
     return { code, expiresAt, linked: false };
+  });
+
+  // ── BMM side: register this creator id's v5 key (creator key v5) ──
+  // BMM sends one proof once per active key, for a LINKED install. Accepting it pins the id
+  // to its key: from then on a bare v4 proof for the id, or a v5 chain that forks from this
+  // one, is refused. Nothing about the id itself changes: links, claims and bans are keyed on
+  // the Creator ID, which v5 keeps, so they apply to the upgraded client as they are.
+  app.post('/link/upgrade', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => {
+    const b = z.object({ proof: z.string().min(10).max(8192) }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    if (!b.data.proof.startsWith('bmmc5.')) return reply.code(400).send({ error: 'v5_proof_required' });
+    const p = await db();
+    const r = await acceptCreatorProof(p, b.data.proof, expectedProofAudience());
+    if (!r.ok) return reply.code(r.error === 'unavailable' ? 503 : 403).send({ error: r.error });
+    const linked = !!(await p.creatorLink.findUnique({ where: { creatorId: r.cid }, select: { id: true } }).catch(() => null));
+    return { ok: true, cid: r.cid, kid: r.kid, seq: r.seq, linked };
   });
 
   // ── BMM side: is this creator id currently linked? (drives unlink detection) ──
@@ -235,6 +258,18 @@ export default async function linkRoutes(app) {
     } });
     // Shown once; the hash is all that is kept.
     return { secret };
+  });
+
+  // The owner of a linked id forgets its v5 key pin, after losing the key store (a wiped
+  // data folder AND registry). The next v5 proof pins the new key. Owner-only: the pin is
+  // what stops somebody who re-derived the v4 key from starting a chain of their own.
+  app.delete('/me/creator-links/:id/key-pin', { preHandler: requireRole(), config: { rateLimit: { max: 10, timeWindow: '1 hour' } } }, async (req, reply) => {
+    const p = await db();
+    const link = await p.creatorLink.findUnique({ where: { id: req.params.id } });
+    if (!link || link.userId !== req.user.uid) return reply.code(404).send({ error: 'not_found' });
+    const n = (await p.creatorKeyPin.deleteMany({ where: { creatorId: link.creatorId.toLowerCase() } })).count;
+    if (n) await notify(p, req.user.uid, 'creator_key_reset', `The key pin of creator id "${link.creatorId}" was reset. The next BMM that proves this id sets a new one.`);
+    return { ok: true, reset: n > 0 };
   });
 
   app.delete('/me/creator-links/:id', { preHandler: requireRole() }, async (req, reply) => {

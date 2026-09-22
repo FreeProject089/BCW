@@ -894,6 +894,9 @@ export function startSweeper(app) {
       await rollupAnalyticsDaily(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'analytics rollup failed'));
       await sweepHostingWaitlist(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'hosting waitlist sweep failed'));
       await sweepReports(p).catch((e) => app.log.warn({ e: String(e) }, 'report sweep failed'));
+      // Creator key v5: spent proof nonces, and fingerprint hashes past their retention.
+      await import('./creator-identity.mjs').then(({ pruneCreatorIdentity }) => pruneCreatorIdentity(p))
+        .catch((e) => app.log.warn({ e: String(e) }, 'creator identity prune failed'));
       // A season ends on its schedule, not when somebody remembers the button.
       await runSeasonIfDue(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'season reset failed'));
       await sweepStaleMyoRequests(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'MYO auto-archive sweep failed'));

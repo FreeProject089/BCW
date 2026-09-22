@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import { db, requireCap, optionalAuth, notify } from '../lib/lib.mjs';
 import { findUserIdByBcId, looksLikeBcId } from '../lib/repofingerprint.mjs';
 import { verifyCreatorProof, expectedProofAudience } from '../lib/creator-proof.mjs';
+import { acceptCreatorProof } from '../lib/creator-identity.mjs';
 import { putObject, getObject, deleteObject, prefixUsage } from '../lib/storage.mjs';
 import { sendMail, mailShell, emailEnabled } from '../lib/mail.mjs';
 import { deleteSubmission } from '../lib/feedback-thread.mjs';
@@ -319,10 +320,12 @@ const pub = (f) => ({
  * The lookups are arguments so the rule can be checked without a database; the route passes
  * the real ones.
  */
-export async function senderIdFrom({ sessionUid = null, headers = {}, aud, now, byCreatorId, byBcId }) {
+export async function senderIdFrom({ sessionUid = null, headers = {}, aud, now, byCreatorId, byBcId, verify = verifyCreatorProof }) {
   if (sessionUid) return sessionUid;
   const claimed = String(headers['x-creator-id'] || '').slice(0, 200).toLowerCase();
-  const proven = verifyCreatorProof(headers['x-creator-proof'], aud, now);
+  // `verify` returns the proven id or null. The route passes the creator key v5 check (v1 or
+  // v5, with replay and key-pin memory); the default is the stateless v1 check.
+  const proven = await verify(headers['x-creator-proof'], aud, now);
   // The proof carries its own id; the header is consulted only to notice a DISAGREEMENT,
   // which means a misconfigured client rather than an attack — either way, not this account.
   if (proven) {
@@ -402,6 +405,7 @@ export default async function feedbackRoutes(app) {
       sessionUid: req.user?.uid || null,
       headers: req.headers,
       aud: expectedProofAudience(),
+      verify: (tok, aud) => (tok ? acceptCreatorProof(p, tok, aud).then((r) => (r.ok ? r.cid : null)) : null),
       byCreatorId: (cid) => p.creatorLink.findUnique({ where: { creatorId: cid }, select: { userId: true } }).then((r) => r?.userId || null).catch(() => null),
       byBcId: (code) => findUserIdByBcId(p, code).catch(() => null),
     });

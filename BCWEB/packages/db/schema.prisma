@@ -455,6 +455,53 @@ model CreatorLink {
   @@index([userId])
 }
 
+// Creator key v5 (BMM src-tauri/src/commands/creator_v5.rs, API lib/creator-identity.mjs).
+//
+// The Creator ID never changes between v4 and v5 — the key that proves it does. This pins
+// the key: the first verified v5 proof for a creator id records which key it was signed by
+// and where that key sits in the rotation chain. From then on:
+//   · a bare v4 proof (bmmc1) for this id is refused — the v4 key is derivable from the
+//     PC's serials, so after an upgrade it must not be able to speak for the id alone;
+//   · a v5 chain that does not pass through the pinned key is a FORK and is refused.
+// No relation to User, like FreeTierClaim: a creator id need not be linked to anybody.
+// Reset by the linked account's owner or by staff (manage_sanctions) after a lost key store.
+model CreatorKeyPin {
+  creatorId   String   @id
+  kid         String // the active key last seen
+  seq         Int // its position in the chain (0 = the root signs for itself)
+  firstSeenAt DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+}
+
+// The hashed fingerprint components a v5 proof carried, one row per (id, component, hash).
+// BMM salts every hash with this server's origin, so none of them is a serial number and
+// none can be matched against another service. Kept to answer two staff questions: how
+// stable is this id's machine (a changing hash per component), and does another id share
+// its hardware (ban evasion). Pruned FINGERPRINT_RETENTION_DAYS after it was last seen.
+model CreatorFingerprint {
+  id          String   @id @default(cuid())
+  creatorId   String
+  component   String // "board" | "os" | "disk" | "canvas"
+  hash        String // 32 hex
+  count       Int      @default(1)
+  firstSeenAt DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+
+  @@unique([creatorId, component, hash])
+  @@index([component, hash])
+  @@index([lastSeenAt])
+}
+
+// A v5 proof's nonce, kept until the proof would have expired anyway. Inserting a nonce
+// that is already here is a replay, and the unique key is what refuses it — across API
+// processes, which an in-memory set would not.
+model CreatorProofNonce {
+  nonce     String   @id
+  expiresAt DateTime
+
+  @@index([expiresAt])
+}
+
 // Permanent record that a creator id (or, absent one, an account) has already
 // claimed its ONE free hosted repo / free catalog upload. Deliberately never
 // deleted — unlike CreatorLink, which a user CAN delete by unlinking — so

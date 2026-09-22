@@ -83,6 +83,7 @@ import projectContactRoutes from './routes/project-contact.mjs';
 import entityHostingRoutes from './routes/entity-hosting.mjs';
 import botEmojiRoutes from './routes/bot-emoji.mjs';
 import mediaFlagRoutes from './routes/media-flags.mjs';
+import adminFingerprintRoutes from './routes/admin-fingerprint.mjs';
 import adminSearchRoutes from './routes/admin-search.mjs';
 import demoRoutes from './routes/demo.mjs';
 import mailLogRoutes from './routes/mail-log.mjs';
@@ -440,6 +441,7 @@ await app.register(projectContactRoutes); // a project's own contact inbox, its 
 await app.register(entityHostingRoutes); // hosting settings per blog and per contact inbox: own caps, none, or a pool
 await app.register(botEmojiRoutes); // the bot fetches its icon set and uploads it as application emojis
 await app.register(mediaFlagRoutes); // perceptual-hash flags: pictures that look like another account's
+await app.register(adminFingerprintRoutes); // creator key v5: decode an id or proof, its hashed fingerprints, ids sharing them
 await app.register(adminSearchRoutes); // the dashboard's one search box over every table it holds
 await app.register(demoRoutes); // admin-only demo mode: an overlay served to admins, never rows in real tables (lib/demo.mjs)
 await app.register(mailLogRoutes); // the sent-mail log: recipient masked in lists, never a body (lib/mail-log.mjs)
