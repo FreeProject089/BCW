@@ -1583,3 +1583,28 @@ html[data-studio-open="1"], html[data-studio-open="1"] body { overflow: hidden; 
     background: color-mix(in srgb, var(--primary) 13%, transparent) !important;
   }
 }
+
+/* ── Home: the build / have-it-built tabs (home.jsx BuildTabs) ──
+   Both panels share one grid cell, so the block keeps the taller one's height; the hidden
+   one is only invisible, which also takes it out of the tab order and the accessibility tree. */
+.build-panel { visibility: hidden; opacity: 0; transition: opacity .25s ease, visibility 0s linear .25s; }
+.build-panel.is-on { visibility: visible; opacity: 1; transition: opacity .25s ease, visibility 0s; }
+@media (prefers-reduced-motion: reduce) { .build-panel, .build-panel.is-on { transition: none; } }
+
+/* ── Blog listing (blog.jsx BlogList) ──
+   `.blog-art` is the drawn cover for a post that has none: the page's own tokens, a primary
+   wash, and one of three patterns picked from the slug. `.blog-edit` is the editor's pencil:
+   revealed on hover and on keyboard focus, and always shown where there is no hover. */
+.blog-art {
+  background-color: var(--surface-2);
+  background-image: radial-gradient(120% 90% at 100% 0%, color-mix(in srgb, var(--primary) 18%, transparent) 0%, transparent 60%);
+}
+.blog-art-0 { background-image: radial-gradient(120% 90% at 100% 0%, color-mix(in srgb, var(--primary) 18%, transparent) 0%, transparent 60%),
+  repeating-linear-gradient(135deg, var(--line) 0 1px, transparent 1px 14px); }
+.blog-art-1 { background-image: radial-gradient(120% 90% at 0% 100%, color-mix(in srgb, var(--primary) 18%, transparent) 0%, transparent 60%),
+  radial-gradient(var(--line-strong) 1px, transparent 1.5px); background-size: auto, 16px 16px; }
+.blog-art-2 { background-image: radial-gradient(90% 90% at 50% 50%, color-mix(in srgb, var(--primary) 16%, transparent) 0%, transparent 65%),
+  linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px); background-size: auto, 24px 24px, 24px 24px; }
+.blog-edit { opacity: 0; }
+.blog-pin-host:hover .blog-edit, .blog-edit:focus-visible { opacity: 1; }
+@media (hover: none) { .blog-edit { opacity: 1; } }

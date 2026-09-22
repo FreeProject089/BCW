@@ -28,7 +28,7 @@ import { merge3, hasConflictMarkers } from '../lib/merge3.js';
 import HistoryModal from '../editor/history-modal.jsx';
 import DiffMergeModal from '../editor/diff-merge-modal.jsx';
 import CommentsModal from '../editor/comments-modal.jsx';
-import { useToast, useDialog, Button, Card, Badge, Input, Textarea, Select, Field, PageHeader, EmptyState, Spinner, SkeletonGrid, ColorInput, Explain } from '../ui/ui.jsx';
+import { useToast, useDialog, Button, Card, Badge, Input, Textarea, Select, Field, PageHeader, EmptyState, Spinner, Skeleton, SkeletonText, ColorInput, Explain } from '../ui/ui.jsx';
 import { EntryModal, EntryActions, EntrySection, EntryField, FieldError, LangTabs, MergeBanner, useDirtyForm } from '../ui/entry-modal.jsx';
 import BmdEditor from '@bettercommunity/bmd-editor';
 
@@ -72,8 +72,167 @@ function TypeTag({ post, className = '' }) {
   );
 }
 
-/* ── Blog list ── */
+/* ── Blog list ──
+   An edition, not a grid. The newest post leads, the next two sit under it as the "also new"
+   pair, and everything older is an archive grouped by month: a date, a title, a line of
+   summary, a small picture. Three shapes because the posts are not equal: the one that just
+   landed is news, the one from March is a reference.
+
+   Every picture has its box reserved by an aspect ratio before it loads, so nothing moves when
+   a cover arrives. A post with no cover gets drawn art (its project's mark on one of three
+   patterns, taken in turn down the page so two neighbours never match), so a cover-less post
+   looks chosen rather than missing. */
 const BLOG_PAGE = 12; // posts fetched per "load more"
+
+function PostMark({ post, size }) {
+  if (post.showcaseProject?.icon) return <img src={post.showcaseProject.icon} alt="" width={size} height={size} className="rounded-xl object-contain" style={{ width: size, height: size }} />;
+  if (post.showcaseProject) return <Sparkles size={Math.round(size * 0.8)} className="text-[var(--accent-ink)]" />;
+  const m = TYPE_TAG[post.project?.key] || TYPE_TAG.community;
+  return <img src={m.img} alt="" width={size} height={size} className="logo-plate rounded-xl object-contain" style={{ width: size, height: size }} />;
+}
+
+// The picture box for every shape on the page. `ratio` is a Tailwind aspect class, set on the
+// box itself, so its height is known before the image (or the art) exists.
+function PostCover({ post, ratio, width, art = 0, markSize = 44, eager = false, className = '' }) {
+  return (
+    <div className={`relative overflow-hidden ${ratio} ${className}`}>
+      {post.cover ? (
+        <img src={thumb(post.cover, width)} alt="" loading={eager ? 'eager' : 'lazy'} decoding="async"
+          {...(eager ? { fetchpriority: 'high' } : {})}
+          className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.03]" />
+      ) : (
+        <div className={`blog-art blog-art-${art % 3} absolute inset-0 grid place-items-center`} aria-hidden="true">
+          <PostMark post={post} size={markSize} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PostMeta({ post, v, lang, t }) {
+  return (
+    <div className="text-xs text-[var(--faint)] flex flex-wrap items-center gap-x-2 gap-y-1">
+      <time dateTime={post.publishedAt || undefined}>{post.publishedAt ? new Date(post.publishedAt).toLocaleDateString(lang, { year: 'numeric', month: 'short', day: 'numeric' }) : ''}</time>
+      {post.status && post.status !== 'PUBLISHED' && <span className="px-1.5 py-px rounded tint-warning text-[var(--warning)] font-medium">{t('de.draft', 'Draft')}</span>}
+      {!v.translated && <span className="inline-flex items-center gap-1"><Languages size={11} /> {t('blog.untranslated', 'not translated')}</span>}
+    </div>
+  );
+}
+
+// The pencil for somebody who may edit the post. Visible on hover AND on keyboard focus, and
+// always on a touch screen, where there is no hover to reveal it.
+function EditPin({ onClick, t }) {
+  return (
+    <button type="button" onClick={onClick} aria-label={t('be.editpost', 'Edit post')} title={t('be.editpost', 'Edit post')}
+      className="blog-edit absolute top-3 right-3 z-10 btn btn-sm transition">
+      <Pencil size={13} />
+    </button>
+  );
+}
+
+function LeadPost({ post, lang, t }) {
+  const v = pickLang(post, lang);
+  return (
+    <Link to={`/blog/${post.slug}`} className="group block">
+      <Card hover className="overflow-hidden grid lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+        <PostCover post={post} ratio="aspect-[16/9] lg:aspect-auto lg:min-h-[340px]" width={768} markSize={72} eager className="border-b lg:border-b-0 lg:border-e border-[var(--line)]" />
+        <div className="p-6 sm:p-8 flex flex-col min-w-0">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+            <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--accent-ink)]">{t('blog.latest', 'Latest')}</span>
+            <TypeTag post={post} />
+          </div>
+          <h2 className="text-2xl sm:text-3xl font-extrabold leading-tight tracking-tight mt-3 break-words group-hover:text-[var(--accent-ink)] transition-colors">{v.title}</h2>
+          {v.excerpt && <p className="text-[15px] text-[var(--muted)] mt-3 leading-relaxed line-clamp-4">{v.excerpt}</p>}
+          <div className="mt-auto pt-6 flex items-center justify-between gap-3">
+            <PostMeta post={post} v={v} lang={lang} t={t} />
+            <AuthorsRow authors={post.authors} />
+          </div>
+        </div>
+      </Card>
+    </Link>
+  );
+}
+
+function SecondPost({ post, art, lang, t }) {
+  const v = pickLang(post, lang);
+  return (
+    <Link to={`/blog/${post.slug}`} className="group block h-full">
+      <Card hover className="overflow-hidden h-full flex flex-col">
+        <PostCover post={post} art={art} ratio="aspect-[2/1]" width={768} markSize={52} className="border-b border-[var(--line)]" />
+        <div className="p-5 sm:p-6 flex-1 flex flex-col min-w-0">
+          <TypeTag post={post} />
+          <h3 className="text-lg sm:text-xl font-bold leading-snug mt-2 break-words group-hover:text-[var(--accent-ink)] transition-colors">{v.title}</h3>
+          {v.excerpt && <p className="text-sm text-[var(--muted)] mt-2 leading-relaxed line-clamp-2">{v.excerpt}</p>}
+          <div className="mt-auto pt-4 flex items-center justify-between gap-3">
+            <PostMeta post={post} v={v} lang={lang} t={t} />
+            <AuthorsRow authors={post.authors} />
+          </div>
+        </div>
+      </Card>
+    </Link>
+  );
+}
+
+function ArchiveRow({ post, art, lang, t }) {
+  const v = pickLang(post, lang);
+  const d = post.publishedAt ? new Date(post.publishedAt) : null;
+  return (
+    <Link to={`/blog/${post.slug}`} className="group flex items-start gap-4 sm:gap-6 py-5 min-w-0">
+      {/* The day, set like a dateline. Hidden on a phone, where the meta line carries it. */}
+      <div className="hidden sm:block w-12 shrink-0 text-center pt-0.5" aria-hidden="true">
+        <div className="text-2xl font-extrabold leading-none tabular-nums">{d ? d.getDate() : ''}</div>
+        <div className="text-[11px] uppercase tracking-wide text-[var(--faint)] mt-1">{d ? d.toLocaleDateString(lang, { weekday: 'short' }) : ''}</div>
+      </div>
+      <div className="min-w-0 flex-1">
+        <TypeTag post={post} />
+        <h3 className="font-bold text-base sm:text-lg leading-snug mt-1.5 break-words group-hover:text-[var(--accent-ink)] transition-colors">{v.title}</h3>
+        {v.excerpt && <p className="text-sm text-[var(--muted)] mt-1 leading-relaxed line-clamp-2">{v.excerpt}</p>}
+        <div className="mt-2.5 flex items-center gap-3 flex-wrap">
+          <PostMeta post={post} v={v} lang={lang} t={t} />
+          <AuthorsRow authors={post.authors} size={18} />
+        </div>
+      </div>
+      <PostCover post={post} art={art} ratio="aspect-[4/3]" width={256} markSize={30} className="w-24 sm:w-40 shrink-0 rounded-xl border border-[var(--line)]" />
+    </Link>
+  );
+}
+
+// Month headings for the archive, in the reader's language. A post with no date (a draft only
+// staff can see) files under its own heading instead of inventing one.
+function byMonth(list, lang, t) {
+  const groups = [];
+  for (const p of list) {
+    const d = p.publishedAt ? new Date(p.publishedAt) : null;
+    const key = d ? `${d.getFullYear()}-${d.getMonth()}` : 'none';
+    let g = groups[groups.length - 1];
+    if (!g || g.key !== key) {
+      g = { key, label: d ? d.toLocaleDateString(lang, { month: 'long', year: 'numeric' }) : t('blog.undated', 'Not dated'), posts: [] };
+      groups.push(g);
+    }
+    g.posts.push(p);
+  }
+  return groups;
+}
+
+function BlogListSkeleton() {
+  return (
+    <div aria-hidden="true">
+      <div className="rounded-2xl border border-[var(--line)] overflow-hidden grid lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+        <Skeleton className="!rounded-none aspect-[16/9] lg:aspect-auto lg:min-h-[340px]" />
+        <div className="p-6 sm:p-8 space-y-4"><Skeleton className="h-3 w-24" /><Skeleton className="h-8 w-4/5" /><SkeletonText lines={3} /></div>
+      </div>
+      <div className="grid md:grid-cols-2 gap-5 mt-5">
+        {[0, 1].map((i) => (
+          <div key={i} className="rounded-2xl border border-[var(--line)] overflow-hidden">
+            <Skeleton className="!rounded-none aspect-[2/1]" />
+            <div className="p-5 space-y-3"><Skeleton className="h-5 w-3/4" /><SkeletonText lines={2} /></div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function BlogList() {
   const { user } = useAuth(); const { lang, t } = useI18n();
   // Paginated load: keep a growing list of posts + a "load more" button rather than
@@ -98,31 +257,36 @@ export function BlogList() {
   // staff's or another grantee's.
   const canWrite = isStaff || !!scopeData;
   const canEdit = (p) => isStaff || p.authorId === user?.id || (p.coAuthorIds || []).includes(user?.id);
+  const pin = (p) => canWrite && canEdit(p) && <EditPin t={t} onClick={() => setEditing(p)} />;
+  const [lead, ...rest] = posts;
+  const pair = rest.slice(0, 2);
+  const archive = byMonth(rest.slice(2), lang, t);
   return (
     <div>
       <PageHeader icon={Newspaper} title={t('blog.title', 'Blog')} subtitle={t('blog.sub', 'News and updates across every project.')}
         actions={canWrite && <Button variant="primary" onClick={() => setEditing({})}><PenSquare size={16} /> {t('blog.write', 'Write a post')}</Button>} />
-      {loading ? <SkeletonGrid count={6} className="grid md:grid-cols-2 lg:grid-cols-3 gap-5" />
+      {loading ? <BlogListSkeleton />
         : posts.length ? (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {posts.map((p) => { const v = pickLang(p, lang); return (
-              <div key={p.id} className="group relative">
-                <Link to={`/blog/${p.slug}`}><Card hover className="overflow-hidden h-full flex flex-col">
-                  {p.cover ? <img src={thumb(p.cover, 512)} alt="" className="w-full h-44 object-cover" />
-                    : <div className="w-full h-44 bg-[var(--surface-2)] border-b border-[var(--line)] grid place-items-center">{p.showcaseProject?.icon ? <img src={p.showcaseProject.icon} alt="" className="w-14 h-14 rounded-xl object-contain opacity-90" /> : p.showcaseProject ? <Sparkles size={40} className="text-[var(--accent-ink)] opacity-90" /> : <img src={(TYPE_TAG[p.project?.key] || TYPE_TAG.community).img} alt="" className="logo-plate w-12 h-12 rounded-xl object-contain opacity-90" />}</div>}
-                  <div className="p-5 flex-1 flex flex-col">
-                    <div className="text-xs text-[var(--faint)] flex items-center gap-2">{fmtDate(p.publishedAt)}{!v.translated && <span className="inline-flex items-center gap-1 text-[var(--faint)]"><Languages size={11} /> {t('blog.untranslated', 'not translated')}</span>}</div>
-                    <div className="font-bold mt-1.5 text-lg leading-snug">{v.title}</div>
-                    {v.excerpt && <div className="text-sm text-[var(--muted)] mt-1.5 line-clamp-2 flex-1">{v.excerpt}</div>}
-                    <div className="mt-4 pt-3 border-t border-[var(--line)] flex items-center justify-between">
-                      <TypeTag post={p} />
-                      <AuthorsRow authors={p.authors} />
-                    </div>
-                  </div>
-                </Card></Link>
-                {canWrite && canEdit(p) && <button onClick={() => setEditing(p)} className="absolute top-3 right-3 btn btn-sm opacity-0 group-hover:opacity-100 transition"><Pencil size={13} /></button>}
+          <div>
+            <div className="relative blog-pin-host"><LeadPost post={lead} lang={lang} t={t} />{pin(lead)}</div>
+            {pair.length > 0 && (
+              <div className={`grid gap-5 mt-5 ${pair.length > 1 ? 'md:grid-cols-2' : ''}`}>
+                {pair.map((p) => <div key={p.id} className="relative blog-pin-host"><SecondPost post={p} art={posts.indexOf(p)} lang={lang} t={t} />{pin(p)}</div>)}
               </div>
-            ); })}
+            )}
+            {archive.length > 0 && (
+              <div className="mt-12">
+                <h2 className="text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--faint)] mb-2">{t('blog.archive', 'Earlier')}</h2>
+                {archive.map((g) => (
+                  <section key={g.key} aria-label={g.label} className="mt-6 first-of-type:mt-0">
+                    <h3 className="text-lg font-extrabold tracking-tight pb-2 border-b-2 border-[var(--text)] first-letter:uppercase">{g.label}</h3>
+                    <ul className="divide-y divide-[var(--line)]">
+                      {g.posts.map((p) => <li key={p.id} className="relative blog-pin-host"><ArchiveRow post={p} art={posts.indexOf(p)} lang={lang} t={t} />{pin(p)}</li>)}
+                    </ul>
+                  </section>
+                ))}
+              </div>
+            )}
           </div>
         ) : <EmptyState icon={Newspaper} title={t('blog.empty', 'No posts yet')}
           sub={canWrite

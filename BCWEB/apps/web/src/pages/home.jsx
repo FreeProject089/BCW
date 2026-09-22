@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, lazy, Suspense } from 'react';
+import { useEffect, useState, useRef, useId, lazy, Suspense } from 'react';
 // Lazily: the showcase pulls in rrweb the moment a `.bmmreplay` panel is shown, and a
 // visitor to a site with no showcase configured must not pay for any of it.
 const ProjectShowcase = lazy(() => import('../hero/ProjectShowcase.jsx'));
@@ -8,7 +8,7 @@ const CanvasView = lazy(() => import('../ui/canvas-view.jsx'));
 import { ErrorBoundary } from '../ui/ErrorBoundary.jsx';
 import { Link } from 'react-router-dom';
 import {
-  Server, Rocket, ArrowRight, Upload, CheckCircle2, ShieldCheck, Inbox, Eye, Lock, Zap, Users, Newspaper, LayoutDashboard, Star, Link2, Code2, Wand2, AppWindow, Globe, Sparkles, Clock, ChevronLeft, ChevronRight, BadgeCheck, AlertTriangle, Ban, MessageSquare, Plus,
+  Server, Rocket, ArrowRight, Upload, CheckCircle2, ShieldCheck, Inbox, Eye, Lock, Zap, Users, Newspaper, LayoutDashboard, Star, Link2, Code2, Wand2, AppWindow, Globe, Sparkles, Clock, ChevronLeft, ChevronRight, BadgeCheck, AlertTriangle, Ban, MessageSquare, Plus, KeyRound, LogIn, Webhook, FlaskConical, HeartHandshake,
 } from 'lucide-react';
 import { Button, Card, Badge, Explain } from '../ui/ui.jsx';
 import { api } from '../lib/api.js';
@@ -740,101 +740,12 @@ export function Home({ draft = null }) {
       </section>
       )}
 
-      {/* Developers.
-          A band, not a fifth product card: building on the platform is not another thing to
-          download, and putting it in that row would say it is. It sits here because the
-          person who has read this far is the one who might. */}
-      <section>
-        <div className="reveal-on-scroll">
-          <Card className="p-8 sm:p-10 relative overflow-hidden">
-            <div className="absolute inset-0 pointer-events-none opacity-[0.07]"
-              style={{ background: 'radial-gradient(60% 120% at 85% 0%, var(--primary) 0%, transparent 70%)' }} />
-            {/* One column and one message. The live API call that sat on the right belongs
-                on /dev, where it still is: a developer weighing the platform will click
-                through, and one that will not is not going to be won by a JSON body on a
-                landing page. Here it made the band twice as tall as its sentence and put a
-                second network request on a page that already makes eight. */}
-            <div className="relative max-w-3xl">
-              <h3 className="text-2xl sm:text-3xl font-extrabold leading-tight">{t('home.dev.t', 'Build on BetterCommunity')}</h3>
-              {/* One line, then a fold. The paragraph that used to sit here was four
-                  clauses of API shopping-list, which is the right information for somebody
-                  already interested and pure height for everybody else. */}
-              <p className="text-[var(--muted)] mt-3 leading-relaxed">
-                {t('home.dev.d', 'Sign people in with their BetterCommunity account, read their content with their permission, and get told when it changes.')}
-              </p>
-              <Explain className="mt-2 text-sm">
-                {t('home.dev.d2', 'A REST API, OpenID Connect and webhooks. No SDK to install, and a key takes about a minute.')}
-              </Explain>
-              <div className="flex flex-wrap gap-2 mt-6">
-                <Link to="/dev"><Button variant="primary" className="!px-5 !py-2.5"><Code2 size={15} /> {t('home.dev.cta', 'Open the developer area')}</Button></Link>
-                <Link to="/docs/bcweb-api"><Button className="!px-5 !py-2.5">{t('home.dev.cta2', 'API reference')}</Button></Link>
-              </div>
-            </div>
-          </Card>
-        </div>
-      </section>
-
-      {/* Make Your Own.
-          Beside the developer band and not inside it: those are the two halves of the same
-          answer to "what if the thing I want does not exist" — build it yourself with the
-          API, or have it built. Somebody who has read this far has already decided the
-          catalogue does not have their thing.
-
-          HIDDEN when the service is off, and it says so when the queue is full: a landing
-          page that keeps advertising commissions after the team is full sells a promise
-          nobody can keep, and the flag that decides it is the same one /myo and the intake
-          form read. */}
-      {show('myo') && myo?.enabled !== false && (
-        <section>
-          <div className="reveal-on-scroll">
-            <Card className="p-8 sm:p-10 relative overflow-hidden">
-              <div className="absolute inset-0 pointer-events-none opacity-[0.07]"
-                style={{ background: 'radial-gradient(60% 120% at 15% 0%, var(--primary) 0%, transparent 70%)' }} />
-              {/* One column, like its neighbour, and for the same reason. What can be
-                  commissioned is a LIST, so it is written as one — no border, no surface, no
-                  padding, nothing that invites a click. The only control in the section is
-                  the one that works. The payment rail that used to sit on the right is on
-                  /myo, next to the form it describes, which is where somebody reads it. */}
-              <div className="relative max-w-3xl">
-                <h3 className="text-2xl sm:text-3xl font-extrabold leading-tight">{t('home.myo.t', 'Have it built for you')}</h3>
-                <p className="text-[var(--muted)] mt-3 leading-relaxed">
-                  {t('home.myo.d', 'A Discord bot, an app, a website, or something nobody has made yet.')}
-                </p>
-                {/* How the money works is the question that stops somebody clicking, so it
-                    stays on the page — folded, not cut, and not in front of the list of
-                    what can be commissioned. */}
-                <Explain className="mt-2 text-sm">
-                  {t('home.myo.d2', 'It starts with a paid consultation: advice and a quote. Building begins only once you have approved that quote, and nothing is charged for the work before you agree to it.')}
-                </Explain>
-                <ul className="flex flex-wrap items-center gap-x-5 gap-y-2 mt-5 text-[13px] text-[var(--muted)]">
-                  {/* The Discord mark, not lucide's generic robot: it is the only one of the
-                      four that IS a brand, and the logo is already inline in this bundle. */}
-                  {[[DiscordIcon, t('home.myo.f1', 'Discord bots')],
-                    [AppWindow, t('home.myo.f2', 'Apps')],
-                    [Globe, t('home.myo.f3', 'Websites')],
-                    [Sparkles, t('home.myo.f4', 'Something else')]].map(([I, label]) => (
-                    <li key={label} className="inline-flex items-center gap-2">
-                      <I size={15} className="text-[var(--accent-ink)] shrink-0" aria-hidden="true" />
-                      <span>{label}</span>
-                    </li>
-                  ))}
-                </ul>
-                <div className="flex flex-wrap gap-2 mt-6">
-                  <Link to="/myo"><Button variant="primary" className="!px-5 !py-2.5"><Wand2 size={15} /> {t('home.myo.cta', 'Start a commission')}</Button></Link>
-                </div>
-                {/* A real state, and the one thing here that can change between two visits.
-                    It stays: a page still inviting commissions while the team is full sells a
-                    promise nobody can keep. */}
-                {myo?.queueFull && (
-                  <p className="text-[12px] text-[var(--warning)] mt-3 inline-flex items-center gap-1.5">
-                    <Clock size={12} /> {t('home.myo.full', 'The queue is full right now, new commissions are paused.')}
-                  </p>
-                )}
-              </div>
-            </Card>
-          </div>
-        </section>
-      )}
+      {/* Build it yourself, or have it built.
+          One block with two tabs, where there used to be two bands one under the other: they
+          are the two halves of the same answer to "what if the thing I want does not exist",
+          and a reader picks one. The commission tab is left OUT (not greyed) when the service
+          is off, the same flag /myo and the intake form read. */}
+      <BuildTabs myoOn={show('myo') && myo?.enabled !== false} queueFull={!!myo?.queueFull} />
 
       {/* community reviews / testimonials — admin-curated, hidden when off or empty */}
       {show('reviews') && reviewsData?.enabled && reviewsData.reviews?.length > 0 && (
@@ -991,6 +902,130 @@ export function Home({ draft = null }) {
   );
 }
 
+// "Build on BetterCommunity" and "Have it built for you", as the two tabs of one block.
+//
+// Both panels are always rendered, stacked in ONE grid cell, and the hidden one is only
+// `visibility: hidden`: the cell is as tall as the taller panel, so switching never moves the
+// page under the reader. The tabs follow the WAI-ARIA pattern: one tab in the tab order
+// (roving tabindex), arrows / Home / End move and select, the panel is labelled by its tab.
+function BuildTabs({ myoOn, queueFull }) {
+  const { t } = useI18n();
+  const uid = useId();
+  const refs = useRef({});
+  const tabs = [
+    { id: 'dev', I: Code2, label: t('home.dev.t', 'Build on BetterCommunity') },
+    ...(myoOn ? [{ id: 'myo', I: Wand2, label: t('home.myo.t', 'Have it built for you') }] : []),
+  ];
+  const [picked, setPicked] = useState('dev');
+  // The commission tab can disappear after a pick (the service is switched off, the config
+  // lands late); the block then falls back to the tab that still exists.
+  const tab = tabs.some((x) => x.id === picked) ? picked : 'dev';
+  const onKey = (e, i) => {
+    const last = tabs.length - 1;
+    const n = { ArrowRight: i === last ? 0 : i + 1, ArrowLeft: i === 0 ? last : i - 1, Home: 0, End: last }[e.key];
+    if (n == null) return;
+    e.preventDefault();
+    setPicked(tabs[n].id);
+    refs.current[tabs[n].id]?.focus();
+  };
+  const panel = (id, children) => (
+    <div key={id} id={`${uid}-p-${id}`} role={tabs.length > 1 ? 'tabpanel' : undefined}
+      aria-labelledby={tabs.length > 1 ? `${uid}-t-${id}` : undefined} tabIndex={tabs.length > 1 && tab === id ? 0 : undefined}
+      aria-hidden={tab === id ? undefined : true}
+      className={`build-panel min-w-0 ${tab === id ? 'is-on' : ''}`} style={{ gridArea: '1 / 1' }}>
+      {children}
+    </div>
+  );
+  return (
+    <section>
+      <div className="reveal-on-scroll">
+        <Card className="p-6 sm:p-10 relative overflow-hidden">
+          <div className="absolute inset-0 pointer-events-none opacity-[0.07]"
+            style={{ background: `radial-gradient(60% 120% at ${tab === 'dev' ? '85%' : '15%'} 0%, var(--primary) 0%, transparent 70%)`, transition: 'background .4s' }} />
+          <div className="relative max-w-3xl">
+            {tabs.length > 1 ? (
+              <div role="tablist" aria-label={t('home.build.tabs', 'Build it or have it built')}
+                className="flex gap-4 sm:gap-8 border-b border-[var(--line)]">
+                {tabs.map(({ id, I, label }, i) => {
+                  const on = tab === id;
+                  return (
+                    <button key={id} ref={(el) => { refs.current[id] = el; }} type="button" role="tab"
+                      id={`${uid}-t-${id}`} aria-selected={on} aria-controls={`${uid}-p-${id}`} tabIndex={on ? 0 : -1}
+                      onClick={() => setPicked(id)} onKeyDown={(e) => onKey(e, i)}
+                      className={`flex-1 sm:flex-none min-w-0 -mb-px pb-3 border-b-2 text-left inline-flex items-start gap-2.5 text-base sm:text-2xl font-extrabold leading-tight transition-colors ${
+                        on ? 'border-[var(--primary)] text-[var(--text)]' : 'border-transparent text-[var(--muted)] hover:text-[var(--text)]'}`}>
+                      <I size={20} className={`hidden sm:block shrink-0 mt-1 ${on ? 'text-[var(--accent-ink)]' : ''}`} aria-hidden="true" />
+                      <span className="min-w-0 break-words">{label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <h3 className="text-2xl sm:text-3xl font-extrabold leading-tight">{tabs[0].label}</h3>
+            )}
+            <div className="grid mt-5">
+              {panel('dev', (<>
+                <p className="text-[var(--muted)] leading-relaxed">
+                  {t('home.dev.d', 'Sign people in with their BetterCommunity account, read their content with their permission, and get told when it changes.')}
+                </p>
+                <Explain className="mt-2 text-sm">
+                  {t('home.dev.d2', 'A REST API, OpenID Connect and webhooks. No SDK to install, and a key takes about a minute.')}
+                </Explain>
+                <ul className="flex flex-wrap items-center gap-x-5 gap-y-2 mt-5 text-[13px] text-[var(--muted)]">
+                  {[[KeyRound, t('home.dev.f1', 'API keys')],
+                    [LogIn, t('home.dev.f2', 'Sign-in (OIDC)')],
+                    [Webhook, t('home.dev.f3', 'Webhooks')],
+                    [FlaskConical, t('home.dev.f4', 'Sandbox')]].map(([I, label]) => (
+                    <li key={label} className="inline-flex items-center gap-2">
+                      <I size={15} className="text-[var(--accent-ink)] shrink-0" aria-hidden="true" />
+                      <span>{label}</span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="flex flex-wrap gap-2 mt-6">
+                  <Link to="/dev"><Button variant="primary" className="!px-5 !py-2.5"><Code2 size={15} /> {t('home.dev.cta', 'Open the developer area')}</Button></Link>
+                  <Link to="/docs/bcweb-api"><Button className="!px-5 !py-2.5">{t('home.dev.cta2', 'API reference')}</Button></Link>
+                </div>
+              </>))}
+              {myoOn && panel('myo', (<>
+                <p className="text-[var(--muted)] leading-relaxed">
+                  {t('home.myo.d', 'A Discord bot, an app, a website, or something nobody has made yet.')}
+                </p>
+                {/* How the money works is the question that stops somebody clicking, so it
+                    stays on the page: folded, not cut. */}
+                <Explain className="mt-2 text-sm">
+                  {t('home.myo.d2', 'It starts with a paid consultation: advice and a quote. Building begins only once you have approved that quote, and nothing is charged for the work before you agree to it.')}
+                </Explain>
+                <ul className="flex flex-wrap items-center gap-x-5 gap-y-2 mt-5 text-[13px] text-[var(--muted)]">
+                  {[[DiscordIcon, t('home.myo.f1', 'Discord bots')],
+                    [AppWindow, t('home.myo.f2', 'Apps')],
+                    [Globe, t('home.myo.f3', 'Websites')],
+                    [Sparkles, t('home.myo.f4', 'Something else')]].map(([I, label]) => (
+                    <li key={label} className="inline-flex items-center gap-2">
+                      <I size={15} className="text-[var(--accent-ink)] shrink-0" aria-hidden="true" />
+                      <span>{label}</span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="flex flex-wrap gap-2 mt-6">
+                  <Link to="/myo"><Button variant="primary" className="!px-5 !py-2.5"><Wand2 size={15} /> {t('home.myo.cta', 'Start a commission')}</Button></Link>
+                </div>
+                {/* A page still inviting commissions while the team is full sells a promise
+                    nobody can keep. */}
+                {queueFull && (
+                  <p className="text-[12px] text-[var(--warning)] mt-3 inline-flex items-center gap-1.5">
+                    <Clock size={12} /> {t('home.myo.full', 'The queue is full right now, new commissions are paused.')}
+                  </p>
+                )}
+              </>))}
+            </div>
+          </div>
+        </Card>
+      </div>
+    </section>
+  );
+}
+
 // Admin-authored Markdown blocks, drawn in addition to the built-in sections. Shared by all
 // three home variants (each calls it with the same config), so a custom section an admin
 // writes appears wherever they've placed it regardless of which landing page is live.
@@ -1045,36 +1080,74 @@ export function BotInviteButton({ className = '' }) {
   );
 }
 
-// Public funding-goal progress bar — only renders once an admin has set a
-// target via the admin dashboard (see AdminKofiGoal); shows the running total
-// + tip count sourced from logged Ko-fi webhook events.
+// The support card at the bottom of the page: Ko-fi, and the funding goal when an admin has
+// set one (AdminKofiGoal). Without a goal it is a plain invitation and shows NO numbers: the
+// total is summed across every tip ever logged, and a figure with nothing to measure it
+// against says nothing true.
+//
+// The percentage is floored, never rounded: 99.6% of a goal is not "100%", and a bar that
+// says the goal is met before it is would be the one lie on this card.
 function KofiGoalWidget() {
   const { t, lang } = useI18n();
   const { data } = useAsync(() => api.get('/kofi/stats').catch(() => null), []);
-  // Always render a support section at the bottom of the page — the progress bar
-  // appears only once an admin has set a goal (data.goal); otherwise it's a
-  // simple "support us on Ko-fi" card so the section is never empty.
   const goal = data?.goal;
-  const pct = goal ? Math.min(100, Math.round((data.totalAmount / goal.targetAmount) * 100)) : 0;
+  const total = Number(data?.totalAmount) || 0;
+  const target = Number(goal?.targetAmount) || 0;
+  const ratio = target > 0 ? total / target : 0;
+  const reached = target > 0 && total >= target;
+  const pct = Math.min(100, Math.floor(ratio * 100));
+  const pctLabel = total > 0 && pct === 0 ? '<1%' : `${pct}%`;
+  const tips = Number(data?.tipCount) || 0;
+  const cur = goal?.currency || data?.currency || '';
+  // A goal with no title of its own is "Funding goal"; no goal at all is not a goal. An
+  // emoji typed into the admin title is dropped: this card uses the site's icons, not glyphs
+  // that render differently on every platform.
+  const own = String(goal?.title || '').replace(/[\p{Extended_Pictographic}\u{FE0F}\u{200D}]/gu, '').replace(/\s+/g, ' ').trim();
+  const heading = goal ? (own || t('home.kofi.goal.title', 'Funding goal')) : t('home.kofi.support', 'Support BetterCommunity');
   return (
     <section className="reveal-on-scroll">
-      <Card className="p-6 md:p-8 max-w-xl mx-auto text-center relative overflow-hidden">
-        <div className="absolute -bottom-16 left-1/2 -translate-x-1/2 w-96 h-96 rounded-full opacity-30 pointer-events-none" style={{ background: 'radial-gradient(circle, var(--primary-glow), transparent 62%)' }} />
-        <div className="relative reveal-stagger">
-          <div className="inline-flex items-center gap-2 text-base font-bold mb-1"><KofiIcon size={18} className="text-orange-400" /> {goal?.title || t('home.kofi.goal.title', 'Support BetterCommunity')}</div>
-          <p className="text-xs text-[var(--muted)] mb-4">{t('home.kofi.goal.help', 'Help keep the servers running, every tip counts.')}</p>
-          {goal && (<>
-            <div className="h-3 rounded-full bg-[var(--surface-2)] overflow-hidden">
-              <div className="h-full rounded-full bg-gradient-to-r from-brand to-brand-2 transition-all duration-700" style={{ width: `${pct}%` }} />
+      <Card className="p-6 sm:p-8 max-w-4xl mx-auto">
+        <div className={`grid gap-6 items-center ${goal ? 'md:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]' : 'sm:grid-cols-[minmax(0,1fr)_auto]'}`}>
+          <div className="min-w-0 flex items-start gap-4">
+            <span className="grid place-items-center w-11 h-11 rounded-xl tint-primary shrink-0" aria-hidden="true">
+              <HeartHandshake size={20} className="text-[var(--accent-ink)]" />
+            </span>
+            <div className="min-w-0">
+              <h2 className="text-lg sm:text-xl font-bold leading-snug break-words">{heading}</h2>
+              <p className="text-sm text-[var(--muted)] mt-1 leading-relaxed">{t('home.kofi.goal.help', 'Help keep the servers running, every tip counts.')}</p>
             </div>
-            <div className="flex items-center justify-between mt-2.5 mb-4 text-sm">
-              <span className="font-semibold tabular-nums">{fmtInt(data.totalAmount, lang)} / {fmtInt(goal.targetAmount, lang)} {goal.currency}</span>
-              <span className="text-[var(--muted)]">{pct}% · {t('home.kofi.goal.tips', '{n} tips').replace('{n}', fmtNum(data.tipCount, lang))}</span>
+          </div>
+          {goal ? (
+            <div className="min-w-0">
+              <div className="flex items-baseline justify-between gap-3 flex-wrap">
+                <div className="tabular-nums">
+                  <span className="text-2xl sm:text-3xl font-extrabold tracking-tight">{fmtInt(Math.floor(total), lang)}</span>
+                  <span className="text-sm text-[var(--muted)]"> / {fmtInt(target, lang)} {cur}</span>
+                </div>
+                <span className={`text-sm font-semibold tabular-nums ${reached ? 'text-success' : 'text-[var(--muted)]'}`}>
+                  {reached ? t('home.kofi.goal.reached', 'Goal reached') : pctLabel}
+                </span>
+              </div>
+              <div className="mt-3 h-2 rounded-full panel overflow-hidden" role="progressbar"
+                aria-label={heading}
+                aria-valuemin={0} aria-valuemax={target} aria-valuenow={Math.min(total, target)}
+                aria-valuetext={`${fmtInt(Math.floor(total), lang)} / ${fmtInt(target, lang)} ${cur}`}>
+                <div className={`h-full rounded-full transition-[width] duration-700 ${reached ? 'bg-success' : 'bg-gradient-to-r from-brand to-brand-2'}`} style={{ width: `${pct}%` }} />
+              </div>
+              <div className="mt-4 flex items-center justify-between gap-3 flex-wrap">
+                <span className="text-[13px] text-[var(--muted)] tabular-nums">
+                  {tips === 1 ? t('home.kofi.goal.tip1', '1 tip') : t('home.kofi.goal.tips', '{n} tips').replace('{n}', fmtNum(tips, lang))}
+                </span>
+                <a href="https://ko-fi.com/bettercommunity" target="_blank" rel="noreferrer">
+                  <Button variant="primary" className="!px-5"><KofiIcon size={16} /> {t('home.cta2.kofi', 'Support on Ko-fi')}</Button>
+                </a>
+              </div>
             </div>
-          </>)}
-          <a href="https://ko-fi.com/bettercommunity" target="_blank" rel="noreferrer">
-            <Button variant="primary" className="!px-6"><KofiIcon size={16} className="text-white" /> {t('home.cta2.kofi', 'Support on Ko-fi')}</Button>
-          </a>
+          ) : (
+            <a href="https://ko-fi.com/bettercommunity" target="_blank" rel="noreferrer" className="justify-self-start sm:justify-self-end">
+              <Button variant="primary" className="!px-6"><KofiIcon size={16} /> {t('home.cta2.kofi', 'Support on Ko-fi')}</Button>
+            </a>
+          )}
         </div>
       </Card>
     </section>
