@@ -11,6 +11,8 @@
 // One key per button the bot draws. `fallback` is the unicode emoji used until an admin maps
 // a custom one; `label` is what the dashboard shows; `icon` the default glyph; `color` the
 // default tile.
+import crypto from 'node:crypto';
+
 export const ICONS = Object.freeze({
   level: { fallback: '⭐', label: 'My level', color: '#f59e0b', icon: 'star' },
   shop: { fallback: '🛒', label: 'Shop', color: '#3b82f6', icon: 'shopping-cart' },
@@ -234,4 +236,59 @@ export async function renderEmojiPack(iconStyle = {}) {
   zip.finalize();
   await done;
   return Buffer.concat(chunks);
+}
+
+// ── The set as APPLICATION emojis: names, versions, and what is on Discord ───────────────────
+// The bot uploads each key as `bc_<key>_<version>` (apps/bot/src/features/icons.mjs), where
+// the version is a fingerprint of how the key draws right now, so a restyled icon gets a new
+// name and the old one is recognisably stale. The same rule is needed here twice: by the
+// owner's upload script (apps/bot/scripts/sync-app-emojis.mjs, which asks /bot/emoji/keys) and
+// by the dashboard's per-icon status, which compares the map the script produced against the
+// current versions. One copy, here.
+
+/** A short fingerprint of how a key currently draws. The bot re-uploads when it changes. */
+export function iconVersion(key, iconStyle = {}) {
+  const st = iconStyleFor(key, iconStyle) || {};
+  return crypto.createHash('sha1').update(JSON.stringify([st.icon, st.color, st.fg, st.shape, st.scale])).digest('hex').slice(0, 8);
+}
+export const iconEmojiName = (key, version) => `bc_${key}_${version}`;
+/** `bc_casino_a1b2c3d4` → { key, version }, or null for an emoji that is not one of ours. */
+export function parseIconEmojiName(name) {
+  const m = /^bc_([a-z0-9_]+?)_([0-9a-f]{8})$/.exec(String(name || ''));
+  return m ? { key: m[1], version: m[2] } : null;
+}
+
+/**
+ * Per key: `present` (an emoji with the current version exists), `outdated` (only an older
+ * drawing exists: the bot or the script replaces it), `missing` (nothing).
+ * `keys` = [{ key, version }], `emojis` = { name: id } (the imported map).
+ */
+export function iconEmojiStatus(keys, emojis = {}) {
+  const byKey = new Map();
+  for (const [name, id] of Object.entries(emojis || {})) {
+    const p = parseIconEmojiName(name);
+    if (!p) continue;
+    if (!byKey.has(p.key)) byKey.set(p.key, []);
+    byKey.get(p.key).push({ name, id, version: p.version });
+  }
+  return keys.map(({ key, version }) => {
+    const have = byKey.get(key) || [];
+    const cur = have.find((e) => e.version === version);
+    const old = have.find((e) => e.version !== version);
+    return {
+      key, version, want: iconEmojiName(key, version),
+      status: cur ? 'present' : old ? 'outdated' : 'missing',
+      emoji: cur ? { name: cur.name, id: cur.id } : old ? { name: old.name, id: old.id } : null,
+    };
+  });
+}
+
+/** `{ key: '<:bc_key_ver:id>' }` for every key whose CURRENT drawing is in the map. */
+export function appIconTokens(keys, emojis = {}, animated = []) {
+  const anim = new Set(animated || []);
+  const out = {};
+  for (const s of iconEmojiStatus(keys, emojis)) {
+    if (s.status === 'present') out[s.key] = `<${anim.has(s.emoji.name) ? 'a' : ''}:${s.emoji.name}:${s.emoji.id}>`;
+  }
+  return out;
 }

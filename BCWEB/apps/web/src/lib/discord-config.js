@@ -11,7 +11,11 @@
 // caller keeps one address for the whole vocabulary.
 
 // ── The vocabulary (mirrors the bot) ──────────────────────────────────────────────────────
-export const AUTOMOD_ACTIONS = ['log', 'delete', 'warn', 'timeout', 'kick', 'ban'];
+// addRole / removeRole: give the member a role the server set up (a muted or read-only one) for
+// `roleMin` minutes, or take one away. Message rules only; the join rules keep their own lists.
+export const AUTOMOD_ACTIONS = ['log', 'delete', 'warn', 'timeout', 'kick', 'ban', 'addRole', 'removeRole'];
+/** The actions that need a `roleId` to mean anything. Without one the bot deletes instead. */
+export const ROLE_ACTIONS = ['addRole', 'removeRole'];
 export const JOIN_ACTIONS = ['log', 'kick', 'ban', 'quarantine', 'timeout'];
 export const RAID_ACTIONS = ['log', 'timeout', 'kick', 'ban'];
 export const AUTOMOD_RULES = ['spam', 'mentions', 'invites', 'links', 'words', 'caps', 'zalgo', 'attachments', 'accountAge', 'selfbot', 'raid'];
@@ -23,7 +27,10 @@ export const LADDER_ACTIONS = ['log', 'delete', 'warn', 'timeout', 'kick', 'ban'
 const LADDER_TIMED = ['timeout', 'quarantine'];
 
 // DEFAULT_AUTOMOD in the bot, copied. If the bot's defaults move, move these.
-const MSG_PARAMS = { deleteMessage: true, dm: false, logOnly: false };
+// countsAsWarn / warnEvery / warnWindowMin: a hit also counts toward the shared warn ladder,
+// from the Nth hit of this rule by this member within warnWindowMin minutes (the bot's
+// warnPolicy). roleId / roleMin: the role the addRole / removeRole actions give or take.
+const MSG_PARAMS = { deleteMessage: true, dm: false, logOnly: false, countsAsWarn: false, warnEvery: 1, warnWindowMin: 60, roleId: '', roleMin: 0 };
 const JOIN_PARAMS = { dm: false, logOnly: false };
 export const AUTOMOD_DEFAULTS = {
   enabled: true,
@@ -69,6 +76,16 @@ export const RULE_FIELDS = {
   raid: [N('timeoutMin', 1, 40320), N('joins', 2, 1000), N('windowSec', 1, 3600), N('lockdownMin', 1, 1440), B('raiseVerification'), B('alert')],
 };
 const FIELD = (rule, k) => RULE_FIELDS[rule].find((f) => f.k === k);
+// The per-rule parameters every MESSAGE rule carries, with the bounds MSG_RULE_PARAMS in the
+// API's routes/bot.mjs enforces. Not in RULE_FIELDS because they are not thresholds: they say
+// what a hit costs, not what counts as one.
+export const MSG_PARAM_FIELDS = {
+  warnEvery: { k: 'warnEvery', kind: 'num', min: 1, max: 50, int: true },
+  warnWindowMin: { k: 'warnWindowMin', kind: 'num', min: 0, max: 43200, int: true },
+  roleMin: { k: 'roleMin', kind: 'num', min: 0, max: 40320, int: true },
+};
+/** A Discord snowflake, or '' — the bot drops anything else (automod.mjs normalizeAutomod). */
+const snowflake = (v) => { const s = String(v ?? '').trim(); return /^\d{5,32}$/.test(s) ? s : ''; };
 export const actionsFor = (rule) => (rule === 'accountAge' ? JOIN_ACTIONS : rule === 'raid' ? RAID_ACTIONS : AUTOMOD_ACTIONS);
 
 // CATEGORIES / GROUPS in the bot's logs.mjs, copied — the routing keys the dashboard renders.
@@ -125,6 +142,12 @@ export function normAutomod(raw) {
       out.deleteMessage = typeof s.deleteMessage === 'boolean' ? s.deleteMessage : d.deleteMessage;
       const re = s.exempt && typeof s.exempt === 'object' ? s.exempt : {};
       out.exempt = { roles: idList(re.roles), channels: idList(re.channels) };
+      // Progressive warnings and the role actions. These must survive the round trip: this
+      // function is also what the dashboard SENDS, so a field it does not copy here is a field
+      // every save silently deletes (test/discord-automod.test.mjs pins that).
+      out.countsAsWarn = typeof s.countsAsWarn === 'boolean' ? s.countsAsWarn : d.countsAsWarn;
+      for (const k of ['warnEvery', 'warnWindowMin', 'roleMin']) out[k] = clamp(s[k] ?? d[k], MSG_PARAM_FIELDS[k], d[k]);
+      out.roleId = snowflake(s.roleId);
     }
     rules[name] = out;
   }

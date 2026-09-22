@@ -32,15 +32,15 @@
 // controls — which channel receives what. `byDestination` inverts the resolved routes, so the
 // top of the screen is that map, and the table below is where you edit it.
 import { useMemo, useState } from 'react';
-import { ChevronDown, Plus, Trash2, Send, ArrowRight, ShieldOff, Mail, Eye, Ban, Clock, UserMinus, ScrollText, FileX, MessageSquareOff } from 'lucide-react';
+import { ChevronDown, Plus, Trash2, Send, ArrowRight, ShieldOff, Mail, Eye, Ban, Clock, UserMinus, ScrollText, FileX, MessageSquareOff, BadgePlus, BadgeMinus, AlertTriangle, ListOrdered } from 'lucide-react';
 import { useI18n } from '../i18n.jsx';
 import { Input, Select, Field, Button, Explain } from '../ui/ui.jsx';
 import { SP, Panel, Rows, Eyebrow, Check, ToggleChip, Dot, NumField, Chips } from '../ui/discord-kit.jsx';
-import { ChannelPicker, PickerList, ChannelTag, CHANNEL_TYPES, channelOf } from './discord-pickers.jsx';
+import { ChannelPicker, RolePicker, PickerList, ChannelTag, CHANNEL_TYPES, channelOf } from './discord-pickers.jsx';
 
 // The vocabulary and the pure rules live in lib/discord-config.js (testable without a DOM);
 // they are re-exported here so every importer keeps one address for them.
-import { clamp, actionsFor, AUTOMOD_ACTIONS, JOIN_ACTIONS, RAID_ACTIONS, AUTOMOD_RULES, JOIN_RULES, LADDER_ACTIONS, AUTOMOD_DEFAULTS, LADDER_DEFAULTS, RULE_FIELDS, LOG_GROUPS, LOG_CATEGORIES, LOG_CATEGORY_KEYS, LOG_GROUP_TAG, LOGS_DEFAULTS, normAutomod, normLadder, ladderForSave, normLogs, logsForSave, resolveLogRoute } from '../lib/discord-config.js';
+import { clamp, actionsFor, ROLE_ACTIONS, MSG_PARAM_FIELDS, AUTOMOD_ACTIONS, JOIN_ACTIONS, RAID_ACTIONS, AUTOMOD_RULES, JOIN_RULES, LADDER_ACTIONS, AUTOMOD_DEFAULTS, LADDER_DEFAULTS, RULE_FIELDS, LOG_GROUPS, LOG_CATEGORIES, LOG_CATEGORY_KEYS, LOG_GROUP_TAG, LOGS_DEFAULTS, normAutomod, normLadder, ladderForSave, normLogs, logsForSave, resolveLogRoute } from '../lib/discord-config.js';
 
 export { AUTOMOD_ACTIONS, JOIN_ACTIONS, RAID_ACTIONS, AUTOMOD_RULES, JOIN_RULES, LADDER_ACTIONS, AUTOMOD_DEFAULTS, LADDER_DEFAULTS, RULE_FIELDS, LOG_GROUPS, LOG_CATEGORIES, LOG_CATEGORY_KEYS, LOG_GROUP_TAG, LOGS_DEFAULTS, normAutomod, normLadder, ladderForSave, normLogs, logsForSave, resolveLogRoute };
 
@@ -52,7 +52,7 @@ const LADDER_TIMED = ['timeout', 'quarantine'];
 // shown as one list.
 const MESSAGE_RULES = AUTOMOD_RULES.filter((r) => !JOIN_RULES.includes(r));
 // One glyph per action, so the list column says what a rule costs without a sentence.
-const ACTION_ICON = { log: ScrollText, delete: MessageSquareOff, warn: FileX, timeout: Clock, kick: UserMinus, ban: Ban, quarantine: Clock };
+const ACTION_ICON = { log: ScrollText, delete: MessageSquareOff, warn: FileX, timeout: Clock, kick: UserMinus, ban: Ban, quarantine: Clock, addRole: BadgePlus, removeRole: BadgeMinus };
 const SEVERE = ['kick', 'ban'];
 
 const num = (name, r, setRule, k, extra) => (
@@ -72,6 +72,7 @@ function useAutomodLabels() {
     action: {
       log: t('amod.a.log', 'Log only'), delete: t('amod.a.delete', 'Delete'), warn: t('amod.a.warn', 'Warn'),
       timeout: t('amod.a.timeout', 'Time out'), kick: t('amod.a.kick', 'Kick'), ban: t('amod.a.ban', 'Ban'), quarantine: t('amod.a.quarantine', 'Quarantine'),
+      addRole: t('amod.a.addRole', 'Give a role'), removeRole: t('amod.a.removeRole', 'Take a role away'),
     },
     field: {
       allowGuilds: t('amod.f.allowGuilds', 'Allowed server ids'), allowCodes: t('amod.f.allowCodes', 'Allowed invite codes'),
@@ -227,7 +228,7 @@ function CatchSentence({ name, r, setRule, LB }) {
 }
 
 /** What the rule does once it fires, in one sentence, from the action and its parameters. */
-function EffectSentence({ name, r, setRule }) {
+function EffectSentence({ name, r, setRule, roles }) {
   const { t } = useI18n();
   const join = JOIN_RULES.includes(name);
   const act = r.logOnly ? 'log' : r.action;
@@ -239,20 +240,73 @@ function EffectSentence({ name, r, setRule }) {
     if (act === 'warn') return t('amod.e.warn', 'a warning goes on their record, and the warn ladder below decides the rest.');
     if (act === 'kick') return t('amod.e.kick', 'they are removed from the server.');
     if (act === 'ban') return t('amod.e.ban', 'they are banned.');
-    return null; // timeout / quarantine carry a number, handled inline below
+    return null; // timeout / quarantine / the role actions carry a field, handled inline below
   };
   const timed = act === 'timeout' || act === 'quarantine';
+  const roleAct = ROLE_ACTIONS.includes(act);
+  const picker = (
+    <span className="inline-block w-44 max-w-full align-middle">
+      <RolePicker roles={roles} value={r.roleId} onChange={(id) => setRule({ roleId: id })} placeholder={t('amod.e.role.ph', 'Pick the role')} />
+    </span>
+  );
+  const roleMin = <NumField value={r.roleMin} f={MSG_PARAM_FIELDS.roleMin} clamp={clamp} ariaLabel={t('amod.f.roleMin', 'For how many minutes (0 = until removed)')} onCommit={(n) => setRule({ roleMin: n })} />;
   return (
     <Sentence className="!text-[var(--text)]">
       <ArrowRight size={11} className="text-[var(--faint)] shrink-0" />
       {del && <span>{t('amod.e.del', 'The message is removed and')}</span>}
       {timed ? <>{del ? t('amod.e.timed2', 'they cannot post for') : t('amod.e.timed', 'They cannot post for')} {mins} {t('amod.e.min', 'minutes.')}</>
+        : act === 'addRole' ? <>{del ? t('amod.e.add2', 'they are given the role') : t('amod.e.add', 'They are given the role')} {picker} {t('amod.e.addfor', 'for')} {roleMin} {r.roleMin ? t('amod.e.min', 'minutes.') : t('amod.e.add0', 'minutes: 0 keeps it until a moderator removes it.')}</>
+        : act === 'removeRole' ? <>{del ? t('amod.e.rm2', 'the role') : t('amod.e.rm', 'The role')} {picker} {t('amod.e.rm3', 'is taken from them.')}</>
         : <span>{del ? what() : `${what().charAt(0).toUpperCase()}${what().slice(1)}`}</span>}
+      {roleAct && !r.logOnly && !r.roleId && (
+        <span className="text-warning inline-flex items-center gap-1"><AlertTriangle size={11} className="shrink-0" /> {t('amod.e.norole', 'No role picked yet: until you pick one, the bot only deletes the message.')}</span>
+      )}
       {r.logOnly && r.action !== 'log' && (
         <span className="text-warning">{t('amod.e.watch', 'Watch-only is on, so the action below is written down and not carried out.')}</span>
       )}
       {!r.logOnly && r.dm && <span>{t('amod.e.dm', 'They are told by DM.')}</span>}
     </Sentence>
+  );
+}
+
+/**
+ * Whether a hit of this rule also counts toward the shared warn ladder, and from which hit.
+ *
+ * Said the way the owner asked for it: the first N-1 hits do not count, the Nth does (then the
+ * 2Nth, and so on), all within a window of minutes. The `warn` action always counts, so there
+ * the box is ticked and locked rather than offering a choice the bot would ignore. What is
+ * STORED stays the owner's own choice: switching back from `warn` restores it.
+ */
+function WarnCount({ r, setRule }) {
+  const { t } = useI18n();
+  const act = r.logOnly ? 'log' : r.action;
+  const forced = r.action === 'warn';
+  const on = forced || r.countsAsWarn;
+  const n = r.warnEvery;
+  const first = n - 1;
+  const rule = () => {
+    if (n <= 1) return t('amod.w.every', 'Every hit counts as a warning, and the warn ladder decides the rest.');
+    const tail = t('amod.w.nth', 'hit {n} does, then hit {m}, and so on.').replace('{n}', n).replace('{m}', n * 2);
+    return `${first === 1 ? t('amod.w.first1', 'The first hit does not count as a warning;') : t('amod.w.firstn', 'The first {a} hits do not count as a warning;').replace('{a}', first)} ${tail}`;
+  };
+  return (
+    <div className={SP.tight}>
+      <Check checked={on} disabled={forced} onChange={(v) => setRule({ countsAsWarn: v })}>
+        <span className="inline-flex items-center gap-1.5"><ListOrdered size={12} className="shrink-0 text-[var(--faint)]" /> {t('amod.w.counts', 'Counts as a warning')}</span>
+        {forced && <span className="text-[var(--faint)]">{t('amod.w.forced', '(always, for the Warn action)')}</span>}
+      </Check>
+      {on && (<>
+        <Sentence>
+          {t('amod.w.from', 'From hit')}
+          <NumField value={r.warnEvery} f={MSG_PARAM_FIELDS.warnEvery} clamp={clamp} ariaLabel={t('amod.w.every.a', 'From which hit')} onCommit={(v) => setRule({ warnEvery: v })} />
+          {t('amod.w.within', 'within')}
+          <NumField value={r.warnWindowMin} f={MSG_PARAM_FIELDS.warnWindowMin} clamp={clamp} ariaLabel={t('amod.w.window.a', 'Within how many minutes')} className="!w-16" onCommit={(v) => setRule({ warnWindowMin: v })} />
+          {r.warnWindowMin ? t('amod.w.min', 'minutes.') : t('amod.w.min0', 'minutes: 0 counts every hit until the bot restarts.')}
+        </Sentence>
+        <p className="text-[11.5px] text-[var(--muted)] leading-relaxed">{rule()}</p>
+        {act === 'log' && <p className="text-[11.5px] text-warning">{t('amod.w.watch', 'While the rule only logs or watches, no hit counts as a warning.')}</p>}
+      </>)}
+    </div>
   );
 }
 
@@ -271,18 +325,26 @@ function RuleRow({ name, r, selected, onSelect, LB }) {
     !JOIN_RULES.includes(name) && act !== 'log' && r.deleteMessage && [MessageSquareOff, t('amod.p.del', 'Delete the message')],
     r.dm && [Mail, t('amod.p.dm', 'Tell the member by DM')],
     r.logOnly && [Eye, t('amod.p.watch', 'Watch only, carry nothing out')],
+    !JOIN_RULES.includes(name) && act !== 'log' && act !== 'warn' && r.countsAsWarn && [ListOrdered, t('amod.w.counts', 'Counts as a warning')],
   ].filter(Boolean);
   const exCount = JOIN_RULES.includes(name) ? 0 : r.exempt.roles.length + r.exempt.channels.length;
   return (
+    // flex-wrap, and nothing truncates: the name and the action tag are the two things this
+    // row exists to say. The tag used to be a fixed 10.5px chip that could not shrink, so the
+    // name was ellipsised to make room ("Mass me…") and a long action ("Supprimer + exclure
+    // temporairement") ran out of the column. Now a row that does not fit on one line puts the
+    // tag on a second one, pushed to the end, and a tag longer than the column wraps inside it.
     <button type="button" onClick={onSelect} aria-current={selected ? 'true' : undefined}
-      className={`w-full text-start ${SP.row} flex items-center gap-2 transition ${selected ? 'panel' : 'hover:bg-[var(--surface-2)]'}`}>
-      <Dot tone={!r.enabled ? 'off' : r.logOnly ? 'watch' : 'on'} />
-      <span className={`flex-1 min-w-0 truncate text-[12.5px] ${r.enabled ? 'font-medium text-[var(--text)]' : 'text-[var(--faint)]'}`} title={LB.name[name]}>{LB.name[name]}</span>
-      {exCount > 0 && <span className="text-[10px] text-[var(--faint)] shrink-0 tabular-nums" title={t('amod.p.exn', 'Exceptions ({n})').replace('{n}', exCount)}>-{exCount}</span>}
-      {badges.map(([B, label]) => <B key={label} size={11} className="text-[var(--faint)] shrink-0" aria-label={label} />)}
+      className={`w-full text-start ${SP.row} flex flex-wrap items-center gap-x-2 gap-y-1 transition ${selected ? 'panel' : 'hover:bg-[var(--surface-2)]'}`}>
+      <span className="flex items-center gap-2 min-w-0 max-w-full">
+        <Dot tone={!r.enabled ? 'off' : r.logOnly ? 'watch' : 'on'} />
+        <span className={`min-w-0 break-words text-[12.5px] ${r.enabled ? 'font-medium text-[var(--text)]' : 'text-[var(--faint)]'}`}>{LB.name[name]}</span>
+        {exCount > 0 && <span className="text-[11px] text-[var(--faint)] shrink-0 tabular-nums" title={t('amod.p.exn', 'Exceptions ({n})').replace('{n}', exCount)}>-{exCount}</span>}
+        {badges.map(([B, label]) => <B key={label} size={12} className="text-[var(--faint)] shrink-0" aria-label={label} />)}
+      </span>
       {r.enabled && (
-        <span className={`inline-flex items-center gap-1 text-[10.5px] px-1.5 py-0.5 rounded-md border shrink-0 ${SEVERE.includes(act) ? 'tint-error b-error text-error' : act === 'log' ? 'border-[var(--line)] text-[var(--muted)]' : 'tint-warning b-warning text-warning'}`}>
-          <I size={10} /> {LB.action[act]}
+        <span className={`ms-auto inline-flex items-center gap-1 text-xs leading-snug px-1.5 py-0.5 rounded-md border max-w-full ${SEVERE.includes(act) ? 'tint-error b-error text-error' : act === 'log' ? 'border-[var(--line)] text-[var(--muted)]' : 'tint-warning b-warning text-warning'}`}>
+          <I size={12} className="shrink-0" /> <span className="min-w-0 break-words">{LB.action[act]}</span>
         </span>
       )}
     </button>
@@ -314,7 +376,7 @@ function RuleDetail({ name, r, setRule, LB, roles, channels }) {
 
         <div className={SP.tight}>
           <Eyebrow>{t('amod.d.then', 'What happens then')}</Eyebrow>
-          <EffectSentence name={name} r={r} setRule={setRule} />
+          <EffectSentence name={name} r={r} setRule={setRule} roles={roles} />
           <div className="flex flex-wrap gap-1.5">
             {!join && (
               <ToggleChip on={r.deleteMessage} disabled={r.action === 'log'} onChange={(on) => setRule({ deleteMessage: on })} icon={MessageSquareOff}
@@ -324,6 +386,13 @@ function RuleDetail({ name, r, setRule, LB, roles, channels }) {
             <ToggleChip on={r.logOnly} onChange={(on) => setRule({ logOnly: on })} icon={Eye} tone="warning">{t('amod.p.watch', 'Watch only, carry nothing out')}</ToggleChip>
           </div>
         </div>
+
+        {!join && (
+          <div className={SP.tight}>
+            <Eyebrow>{t('amod.d.warn', 'Toward the warn ladder')}</Eyebrow>
+            <WarnCount r={r} setRule={setRule} />
+          </div>
+        )}
 
         {!join && (
           <div className={SP.tight}>
@@ -389,7 +458,7 @@ export function AutomodEditor({ value, onChange, roles, channels, memberSearch, 
       </div>
 
       {/* The rules: pick one on the left, decide it on the right. */}
-      <div className="grid md:grid-cols-[minmax(0,15rem)_minmax(0,1fr)] gap-3 md:gap-4 items-start">
+      <div className="grid md:grid-cols-[minmax(0,17rem)_minmax(0,1fr)] gap-3 md:gap-4 items-start">
         <Rows>
           <div className={`${SP.row} !py-1.5`}><Eyebrow>{t('amod.fam.msg', 'On every message')}</Eyebrow></div>
           {column(MESSAGE_RULES)}

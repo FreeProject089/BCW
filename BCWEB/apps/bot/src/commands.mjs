@@ -135,7 +135,9 @@ export async function handleInteraction(i) {
   // The icon set: the site's icons as application emojis (uploaded once, in the background —
   // never awaited, so a slow site cannot cost an interaction), then the admin's own mapping.
   void ensureAppIcons(i.client);
-  try { ui.setIcons((await config()).economy?.icons); } catch { /* defaults */ }
+  // `appIcons` is what the owner's scripts/sync-app-emojis.mjs uploaded and reported to the
+  // site (current versions only), so an icon it added works before the bot's own next sync.
+  try { const c = await config(); ui.setAutoIcons(c.appIcons); ui.setIcons(c.economy?.icons); } catch { /* defaults */ }
   if (i.isChatInputCommand()) {
     // A banned server: /appeal still answers (that is its whole point), everything else is
     // inert here. The ban is enforced regardless of a command's own permission gate.

@@ -51,7 +51,11 @@ export function Giveaways() {
   };
 
   const list = data?.giveaways || [];
-  const prizeLine = (g) => g.prizeKind === 'promo' ? t('gwp.pk.promo', 'Prize: a promo code') : g.prizeKind === 'custom' ? t('gwp.pk.custom', 'Prize: a custom reward') : t('gwp.pk.none', 'Bragging rights');
+  // An economy prize says what it pays, in the site's currency name (the API sends the label
+  // already worded, "500 coins + 200 XP"), and that it lands in the balance, not the inventory.
+  const prizeLine = (g) => g.prizeKind === 'economy'
+    ? (g.rewardLabel ? t('gwp.pk.economy', 'Prize: {x}, paid straight into your balance').replace('{x}', g.rewardLabel) : t('gwp.pk.economy0', 'Prize: points or XP, paid straight into your balance'))
+    : g.prizeKind === 'promo' ? t('gwp.pk.promo', 'Prize: a promo code') : g.prizeKind === 'custom' ? t('gwp.pk.custom', 'Prize: a custom reward') : t('gwp.pk.none', 'Bragging rights');
 
   return (
     <div>
@@ -76,7 +80,7 @@ export function Giveaways() {
                   </div>
                 </div>
                 <div className="mt-3 flex items-center justify-between gap-2">
-                  <span className="text-[11px] text-[var(--faint)]">{prizeLine(g)}</span>
+                  <span className="text-[11px] text-[var(--faint)] min-w-0 break-words">{prizeLine(g)}</span>
                   {g.entered ? (
                     <Badge tone="green"><CheckCircle2 size={11} /> {t('gwp.entered', 'Entered')}</Badge>
                   ) : g.requiresCreator && !g.meetsCreator ? (

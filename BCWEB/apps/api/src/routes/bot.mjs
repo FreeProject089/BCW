@@ -9,7 +9,8 @@ import { memberCapacity, capacityStatus, logModeration, memberPolicy, inactiveWh
 import { buyShopItem, listPurchases, visibleShopItems, SHOP_KINDS, soldCount, itemTag, revealPurchase, giftPurchase, giftPoints, listLedger, movePoints, ledger, resolveUser, deliverGiveawayPrize } from '../lib/economy-shop.mjs';
 import { looksLikeBcId, findUserIdByBcId } from '../lib/repofingerprint.mjs';
 import { betLimits, edgePctFor, payoutFor, edgeApplied, settleTable, CASINO_GAMES } from '../lib/casino-rules.mjs';
-import { ICONS as BOT_ICONS, ICON_STYLE_DEFAULTS, renderEmoji, renderEmojiPack } from '../lib/bot-emoji.mjs';
+import { ICONS as BOT_ICONS, ICON_STYLE_DEFAULTS, renderEmoji, renderEmojiPack, iconVersion, appIconTokens } from '../lib/bot-emoji.mjs';
+import { SETTING_KEY as APP_EMOJI_KEY } from '../lib/app-emoji-map.mjs';
 import { emitWebhook } from '../lib/webhooks.mjs';
 import { grantAutoBadges } from './social.mjs';
 import { economyLevelFor, economyXpForLevel, economyPointsEarned, economyView, mergeShadowEconomy } from '../lib/economy-curve.mjs';
@@ -585,13 +586,15 @@ export default async function botRoutes(app) {
     // here; the fix is to keep the field out of the object that round-trips.
     // The per-server language choices and the admin's string overrides ride beside the
     // config for the same reason restartAt does: the dashboard writes bot.config back whole.
-    const [langRows, logRows, i18nRow] = await Promise.all([
+    const [langRows, logRows, i18nRow, appEmojiRow] = await Promise.all([
       p.botGuild.findMany({ where: { language: { not: null } }, select: { guildId: true, language: true } }).catch(() => []),
       // The /config log channel of each guild — the legacy fallback the bot's log routing
       // uses when a guild has neither a forum nor a logs.channelId. Rides beside the config
       // for the same reason guildLanguages does: the dashboard writes bot.config back whole.
       p.botGuild.findMany({ where: { logChannelId: { not: null } }, select: { guildId: true, logChannelId: true } }).catch(() => []),
       p.adminSetting.findUnique({ where: { key: 'bot.i18n' } }).catch(() => null),
+      // The application emojis the owner's script uploaded (lib/app-emoji-map.mjs).
+      p.adminSetting.findUnique({ where: { key: APP_EMOJI_KEY } }).catch(() => null),
     ]);
     const guildLanguages = Object.fromEntries(langRows.map((r) => [r.guildId, r.language]));
     const guildLogChannels = Object.fromEntries(logRows.filter((r) => r.logChannelId).map((r) => [r.guildId, r.logChannelId]));
@@ -604,7 +607,14 @@ export default async function botRoutes(app) {
     if (cfg?.economy?.casino?.race?.circuits) {
       cfg.economy = { ...cfg.economy, casino: { ...cfg.economy.casino, race: { ...cfg.economy.casino.race, circuits: undefined, circuitCount: cfg.economy.casino.race.circuits.length } } };
     }
-    return { config: { ...cfg, guildLanguages, guildLogChannels, i18n }, restartAt: row?.value?.at || null };
+    // `appIcons`: { key: '<:bc_key_ver:id>' } for every icon whose CURRENT drawing the script
+    // reported on Discord. The bot merges it into the set it syncs itself, so an icon uploaded
+    // by the script is used within one config poll instead of at the bot's next boot. An
+    // outdated entry is left out: it would draw the old icon under the new style.
+    const style = cfg.economy?.iconStyle || {};
+    const appMap = appEmojiRow?.value && typeof appEmojiRow.value === 'object' ? appEmojiRow.value : null;
+    const appIcons = appMap?.emojis ? appIconTokens(Object.keys(BOT_ICONS).map((key) => ({ key, version: iconVersion(key, style) })), appMap.emojis, appMap.animated) : {};
+    return { config: { ...cfg, guildLanguages, guildLogChannels, i18n, appIcons }, restartAt: row?.value?.at || null };
   });
 
   // Public: the bot's invite URL, built from its own application id. A bot's client_id is not
@@ -1090,7 +1100,10 @@ export default async function botRoutes(app) {
   app.get('/admin/bot/giveaways', { preHandler: requireCap('manage_bot') }, async () => {
     const p = await db();
     const list = await p.giveaway.findMany({ orderBy: { createdAt: 'desc' }, take: 50 });
-    return { giveaways: list.map((g) => ({ id: g.id, prize: g.prize, channelId: g.channelId, endsAt: g.endsAt, winnersCount: g.winnersCount, status: g.status, entryCount: g.entries.length + g.siteEntrants.length, winnerIds: g.winnerIds, hasGift: !!g.giftConfig, requirements: g.requirements || null, kind: g.kind, audience: g.audience, prizeKind: g.prizeKind, reward: rewardOf(g), guildId: g.guildId || null, createdAt: g.createdAt })) };
+    // rewardLabel in the configured currency ("500 coins + 200 XP"), so the list says what an
+    // economy prize pays in the words the members read. Read only when one is listed.
+    const currency = list.some((g) => g.prizeKind === 'economy') ? ((await getBotConfig(p)).economy?.currencyName || 'points') : 'points';
+    return { giveaways: list.map((g) => { const reward = rewardOf(g); return { id: g.id, prize: g.prize, channelId: g.channelId, endsAt: g.endsAt, winnersCount: g.winnersCount, status: g.status, entryCount: g.entries.length + g.siteEntrants.length, winnerIds: g.winnerIds, hasGift: !!g.giftConfig, requirements: g.requirements || null, kind: g.kind, audience: g.audience, prizeKind: g.prizeKind, reward, rewardLabel: reward ? rewardLabel(reward, currency) : null, guildId: g.guildId || null, createdAt: g.createdAt }; }) };
   });
   app.post('/admin/bot/giveaways', { preHandler: requireCap('manage_bot') }, async (req, reply) => {
     const b = z.object({
@@ -1160,8 +1173,10 @@ export default async function botRoutes(app) {
     const list = await p.giveaway.findMany({ where: { status: 'active', audience: { in: ['site', 'both'] } }, orderBy: { endsAt: 'asc' }, take: 50 });
     const me = await p.user.findUnique({ where: { id: req.user.uid }, select: { _count: { select: { creatorLinks: true } } } });
     const meetsCreator = (me?._count?.creatorLinks || 0) > 0;
+    const currency = list.some((g) => g.prizeKind === 'economy') ? ((await getBotConfig(p)).economy?.currencyName || 'points') : 'points';
     return { giveaways: list.map((g) => ({
       id: g.id, prize: g.prize, endsAt: g.endsAt, winnersCount: g.winnersCount, prizeKind: g.prizeKind, reward: rewardOf(g),
+      rewardLabel: rewardOf(g) ? rewardLabel(rewardOf(g), currency) : null,
       entrantCount: g.siteEntrants.length + g.entries.length, entered: g.siteEntrants.includes(req.user.uid),
       requiresCreator: !!g.requirements?.creator, meetsCreator,
     })) };
