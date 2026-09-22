@@ -16,7 +16,7 @@ import {
   ArrowLeft, Save, Tablet, FileText, RotateCcw, Blocks, Puzzle, SlidersHorizontal, LayoutTemplate,
   Plus, RefreshCw, Unlink, ZoomIn, ZoomOut, Maximize,
   BringToFront, SendToBack, StretchHorizontal, StretchVertical, MoreHorizontal, Keyboard, PanelsTopLeft, X,
-  Hand, MonitorSmartphone,
+  Hand, MonitorSmartphone, GraduationCap,
 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { Button, Field, Input, Textarea, Select, Modal, useToast } from '../ui/ui.jsx';
@@ -44,8 +44,9 @@ import {
   emptyHistory, pushHistory, undo as undoHist, redo as redoHist,
   boundsOf, blocksInRect, moveMany, alignMany, distributeMany, phoneOrder, resolveBlock,
   phoneBoardBlocks, reorder, DESIGN_WIDTH, PHONE_WIDTH, GRID, HANDLES,
-  ANIM_KINDS, ANIM_TRIGGERS, BUTTON_VARIANTS, BUTTON_ACTIONS, SHADOWS, HOVER_EFFECTS, GRID_SIZES, TEXT_ALIGNS, SHAPES,
+  ANIM_KINDS, ANIM_TRIGGERS, ANIM_EASINGS, STAGGER_STEPS, BUTTON_VARIANTS, BUTTON_ACTIONS, SHADOWS, HOVER_EFFECTS, GRID_SIZES, TEXT_ALIGNS, SHAPES,
 } from '../lib/canvas.js';
+import StudioTour, { TourButton, useStudioTour } from './studio-tour.jsx';
 
 const uid = () => `b${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
 
@@ -198,6 +199,11 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
       .catch(() => { /* signed out, or offline: the panel simply starts empty */ });
     return () => { alive = false; };
   }, []);
+  /**
+   * The first-run tour. Page form only, and not on a window that is refusing to draw the
+   * studio at all — a tour of three panes that are not on screen names nothing.
+   */
+  const tour = useStudioTour(pageMode && !tooSmall);
   const persistComponents = useCallback(async (next) => {
     setComponents(next);
     try { await api.put('/me/studio/components', { components: next }); }
@@ -461,6 +467,32 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
     if (!selIds.length) return;
     const next = !canvas.blocks.find((b) => b.id === selIds[0])?.[flag];
     emit(canvas.blocks.map((b) => (selIds.includes(b.id) ? { ...b, [flag]: next } : b)));
+  };
+
+  /**
+   * Stagger the selection: the same animation, arriving one after the other.
+   *
+   * Six cards that all rise at once read as one slab moving; the same six 80ms apart read as
+   * a list being dealt. Doing it by hand was six visits to the inspector to type 0, 80, 160,
+   * 240, 320, 400 — which is why nobody did it.
+   *
+   * The order is the one a reader's eye takes (top to bottom, then left to right within a
+   * band), NOT the paint order, because the paint order is z and has nothing to do with where
+   * a block sits. A block with no animation yet gets the default entrance so the step has
+   * something to space out; one that already has an animation keeps its kind, curve and
+   * duration and only its delay is rewritten. Step 0 puts them all back together.
+   */
+  const stagger = (step) => {
+    if (selIds.length < 2) return;
+    const chosenNow = canvas.blocks.filter((b) => selIds.includes(b.id));
+    const band = 40;
+    const ordered = chosenNow.slice().sort((p, q) => (
+      (Math.floor(p.y / band) - Math.floor(q.y / band)) || (p.x - q.x) || (p.y - q.y)
+    ));
+    const delays = new Map(ordered.map((b, i) => [b.id, i * step]));
+    emit(canvas.blocks.map((b) => (delays.has(b.id)
+      ? { ...b, anim: { kind: 'rise', trigger: 'show', duration: 700, ...(b.anim || {}), delay: delays.get(b.id) } }
+      : b)));
   };
 
   // ── Components ────────────────────────────────────────────────────────────
@@ -733,7 +765,7 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
     t, preview, setPreview, snapOn, setSnapOn, add, addShape, sel, duplicate, remove, doUndo, doRedo, hist,
     selCount: selIds.length, doAlign, doDistribute, grid, setGrid, layersOpen, setLayersOpen, zoom, setZoom, pageOpen, setPageOpen,
     pageMode, showGrid, setShowGrid, zoomBy, fitScale, onSaveComponent: () => setCompOpen(true),
-    doZ, matchSize, toggleFlag, selBlocks: chosen, onKeys: () => setKeysOpen(true),
+    doZ, matchSize, toggleFlag, stagger, selBlocks: chosen, onKeys: () => setKeysOpen(true),
     panMode, setPanMode,
   };
   const modals = (<>
@@ -842,7 +874,7 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
    * any change.
    */
   const board = (
-    <div className="cst-board-region" data-sized={boardSize.w || boardSize.h ? '1' : '0'}
+    <div className="cst-board-region" data-tour="board" data-sized={boardSize.w || boardSize.h ? '1' : '0'}
       style={{
         '--cst-board-w': boardSize.w ? `${boardSize.w}px` : '100%',
         '--cst-board-h': boardSize.h ? `${boardSize.h}px` : 'auto',
@@ -856,7 +888,9 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
   );
   const stackList = <StackList {...{ t, canvas, emit, selIds, setSelId, setSelIds, remove, add }} />;
   const previewEl = preview ? (
-    <PreviewSurface key={previewKey} t={t} preview={preview} canvas={canvas} renderPage={renderPage} onReplay={() => setPreviewKey((k) => k + 1)} />
+    <PreviewSurface key={previewKey} t={t} preview={preview} canvas={canvas} renderPage={renderPage}
+      pageNote={t('cst.preview.page.none2', 'This document is not part of a page yet: it is being edited on its own, so there is no surrounding page to show it in. Add it to a page from the page settings and the page preview appears here.')}
+      onReplay={() => setPreviewKey((k) => k + 1)} />
   ) : null;
 
   // ── Page mode: the full-viewport studio ──────────────────────────────────
@@ -948,7 +982,7 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
         onPointerUp={dockDrag.drag ? dockDrag.end : undefined}
         onPointerCancel={dockDrag.drag ? dockDrag.end : undefined}>
         <PageTopBar {...{ t, chrome, hist, doUndo, doRedo, preview, setPreview, themeSwitch, hasPage: !!renderPage,
-          wide, onKeys: () => setKeysOpen(true), panelsMenu, setPanelsMenu, dock, panels, applyDock, resetDock,
+          wide, onKeys: () => setKeysOpen(true), onTour: tour.start, panelsMenu, setPanelsMenu, dock, panels, applyDock, resetDock,
           board: editTheme, title: canvas.title || '', onTitle: (v) => emit(canvas.blocks, { title: v }, 'title') }} />
         {preview ? (
           <div className="cst-page-body cst-preview-body">{previewEl}</div>
@@ -1003,6 +1037,7 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
           </nav>
         )}
         {modals}
+        {tour.open && <StudioTour t={t} onClose={tour.close} />}
       </div>
     );
     // No document (check-studio.mjs renders this to a string under node): render in place, so
@@ -1177,19 +1212,46 @@ function StackList({ t, canvas, emit, selIds, setSelId, setSelIds, remove, add }
  * public page renders — a preview drawn by anything else would be a second opinion.
  * `renderPage` (page mode) shows the whole project page with this canvas in its tab.
  */
-function PreviewSurface({ t, preview, canvas, renderPage, onReplay }) {
-  const frame = preview === 'phone' ? 390 : preview === 'tablet' ? 820 : null;
+const DEVICE_WIDTHS = { desktop: 1280, tablet: 820, phone: 390 };
+
+function PreviewSurface({ t, preview, canvas, renderPage, onReplay, pageNote = null }) {
+  /**
+   * Every mode is a device at a real width, including `desktop`.
+   *
+   * It used to be the odd one out: phone got 390 and tablet 820, and `desktop` got no frame
+   * at all — so what it showed was the pane it happened to be in. In the config editor's
+   * modal that pane is a settings column, which made "desktop preview" a 1200px page drawn
+   * inside about 600px of it. A named width, shown next to the name, is the only way the
+   * author can tell what they are being shown.
+   */
+  const frame = DEVICE_WIDTHS[preview] || null;
+  const onPage = preview === 'page';
+  const label = onPage
+    ? t('cst.preview.page', 'The whole project page, with this block in place')
+    : { desktop: t('cst.preview.desktop', 'Desktop preview'), tablet: t('cst.preview.tablet', 'Tablet preview'), phone: t('cst.phone.h', 'What a phone gets: the canvas stacks') }[preview] || '';
   return (
-    <div className="cst-preview">
+    <div className="cst-preview" data-preview-mode={preview}>
       <div className="flex items-center gap-2 flex-wrap mb-3 text-[11px] text-[var(--faint)]">
         <span className="inline-flex items-center gap-1"><Monitor size={12} /> {t('cst.previewing', 'Preview, editing is paused')}</span>
+        <span className="inline-flex items-center gap-1 text-[var(--muted)]">
+          {label}{frame ? ` · ${frame}px` : ''}
+        </span>
         <span className="flex-1" />
         <Button size="sm" variant="ghost" onClick={onReplay} title={t('cst.replay.anim.h', 'Mount the page again so every entrance animation plays from the start')}><RotateCcw size={13} /> {t('cst.replay.anim', 'Replay animations')}</Button>
       </div>
-      {preview === 'page' && renderPage ? (
+      {/* Nothing is silently missing: when this document belongs to no page, the reason is
+          said here rather than leaving the author to notice a button that is not there. */}
+      {onPage && !renderPage && (
+        <p className="mb-3 text-xs text-[var(--muted)] rounded-xl border border-dashed border-[var(--line)] p-3">{pageNote}</p>
+      )}
+      {onPage && renderPage ? (
+        /* `.cst-page-frame` is a containing block for `position: fixed` (see index.css): the
+           real page hands this preview its own fixed furniture — the 3D hero's backdrop, an
+           event effect — and without that, every one of them resolves against the VIEWPORT
+           and covers the studio instead of sitting in the preview. */
         <div className="cst-page-frame">{renderPage(canvas)}</div>
       ) : (
-        <div className={frame ? 'mx-auto border border-[var(--line)] rounded-2xl p-3 max-w-full' : ''} style={frame ? { width: frame } : undefined}>
+        <div className={frame ? 'cst-device mx-auto max-w-full' : ''} style={frame ? { width: frame } : undefined}>
           <CanvasView canvas={canvas} stackPreview={preview === 'phone'} />
         </div>
       )}
@@ -1216,7 +1278,7 @@ function PreviewSurface({ t, preview, canvas, renderPage, onReplay }) {
  * line. One row at every width, and nothing falls off the screen.
  */
 function PageTopBar({ t, chrome, hist, doUndo, doRedo, preview, setPreview, themeSwitch, hasPage,
-  wide = true, onKeys, panelsMenu, setPanelsMenu, dock, panels, applyDock, resetDock,
+  wide = true, onKeys, onTour, panelsMenu, setPanelsMenu, dock, panels, applyDock, resetDock,
   board = 'light', title = '', onTitle }) {
   const [more, setMore] = useState(false);
   const state = chrome?.state || 'saved';
@@ -1240,14 +1302,23 @@ function PageTopBar({ t, chrome, hist, doUndo, doRedo, preview, setPreview, them
    */
   const phoneTarget = board === 'phone';
   const previewGroup = (
-    <div className="inline-flex rounded-lg border border-[var(--line)] overflow-hidden" role="group" aria-label={t('cst.preview', 'Preview')}>
+    <div className="inline-flex rounded-lg border border-[var(--line)] overflow-hidden" data-tour="preview" role="group" aria-label={t('cst.preview', 'Preview')}>
       {[phoneTarget
         ? ['phone', Smartphone, t('cst.phone.h', 'What a phone gets: the canvas stacks')]
         : ['desktop', Monitor, t('cst.preview.desktop', 'Desktop preview')],
       ['tablet', Tablet, t('cst.preview.tablet', 'Tablet preview')],
-      ...(hasPage ? [['page', FileText, t('cst.preview.page', 'The whole project page, with this block in place')]] : [])].map(([k, Icon, label]) => (
+      /* The page button is ALWAYS here. It used to be dropped when the document belonged to
+         no page, which left the author with a preview group that quietly had one fewer
+         control than it does elsewhere and no way to find out why. Disabled, with the reason
+         on it, is the version that can be read. */
+      ['page', FileText,
+        hasPage
+          ? t('cst.preview.page', 'The whole project page, with this block in place')
+          : t('cst.preview.page.none', 'This document is not part of a page yet, so there is no page to show it in.'),
+        !hasPage]].map(([k, Icon, label, off]) => (
         <button key={k} type="button" onClick={() => tog(k)} title={label} aria-label={label} aria-pressed={preview === k}
-          className={`inline-flex items-center px-2 py-1 text-xs ${preview === k ? 'tint-primary text-[var(--text)]' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>
+          disabled={!!off} aria-disabled={off ? 'true' : undefined}
+          className={`inline-flex items-center px-2 py-1 text-xs ${off ? 'text-[var(--faint)] cursor-not-allowed' : preview === k ? 'tint-primary text-[var(--text)]' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>
           <Icon size={13} />
         </button>
       ))}
@@ -1256,6 +1327,9 @@ function PageTopBar({ t, chrome, hist, doUndo, doRedo, preview, setPreview, them
   const keysButton = (
     <Button size="sm" variant="ghost" className="!px-2" onClick={onKeys} title={t('cst.keys.h2', 'Keyboard shortcuts (?)')} aria-label={t('cst.keys', 'Keyboard shortcuts')}><Keyboard size={14} /></Button>
   );
+  // The way back into the tour. It runs itself once and is then never seen again, so without
+  // this the author who dismissed it on the first afternoon has no way to ask for it.
+  const tourButton = onTour ? <TourButton t={t} onClick={onTour} /> : null;
   return (
     <header className="cst-topbar">
       {/* The document. A real basis, so it takes part in the layout instead of being handed
@@ -1289,6 +1363,7 @@ function PageTopBar({ t, chrome, hist, doUndo, doRedo, preview, setPreview, them
           <span className="cst-topbar-sep" />
           {previewGroup}
           {keysButton}
+          {tourButton}
           <span className="cst-topbar-pop">
             <Button size="sm" variant={panelsMenu ? 'primary' : 'ghost'} className="!px-2" onClick={() => setPanelsMenu((v) => !v)}
               title={t('cst.dock.panels.h', 'Which panels are open, and where they sit')} aria-label={t('cst.dock.panels', 'Panels')} aria-expanded={!!panelsMenu}><PanelsTopLeft size={14} /></Button>
@@ -1314,6 +1389,11 @@ function PageTopBar({ t, chrome, hist, doUndo, doRedo, preview, setPreview, them
                 <button type="button" className="cst-menu-item" onClick={() => { setMore(false); onKeys?.(); }}>
                   <Keyboard size={12} /> {t('cst.keys', 'Keyboard shortcuts')}
                 </button>
+                {onTour && (
+                  <button type="button" className="cst-menu-item" onClick={() => { setMore(false); onTour(); }}>
+                    <GraduationCap size={12} /> {t('cst.tour.again', 'Take the tour of the studio')}
+                  </button>
+                )}
               </div>
             )}
           </span>
@@ -1329,7 +1409,10 @@ function PageTopBar({ t, chrome, hist, doUndo, doRedo, preview, setPreview, them
 function BlocksPanel({ t, add, addShape }) {
   const kinds = [['text', Type], ['image', ImageIcon], ['box', Square], ['button', MousePointerClick], ['video', Film], ['embed', Globe], ['replay', PlayCircle], ['svg', Sparkles]];
   return (
-    <div className="space-y-2">
+    // `data-tour` sits on the PANEL, not on the zone it happens to be docked in: the author
+    // can drag any panel to any side, and an anchor that named a zone would point at whatever
+    // they had moved there instead.
+    <div className="space-y-2" data-tour="blocks">
       <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t('cst.pane.blocks.h', 'Add to the page')}</div>
       <div className="grid grid-cols-2 gap-1.5">
         {kinds.map(([k, Icon]) => (
@@ -1349,7 +1432,7 @@ function BlocksPanel({ t, add, addShape }) {
 /** The saved components: a thumbnail, a name, insert and delete. */
 function ComponentsPanel({ t, components, insertComponent, deleteComponent }) {
   return (
-    <div className="space-y-2">
+    <div className="space-y-2" data-tour="components">
       <p className="text-[11px] text-[var(--muted)]">{t('cst.cmp.h', 'Select blocks on the board and choose “Save as component” to keep them here. Inserting places a copy; copies stay linked until you detach them.')}</p>
       {/* The action is a selection on the board, not a button that can live here — so the
           sentence names it rather than pretending there is something to press. */}
@@ -1564,6 +1647,14 @@ function AnimFields({ t, sel, patch }) {
           <Field label={t('cst.anim.delay', 'Delay (ms)')}><Input type="number" min="0" step="50" value={a.delay ?? 0} onChange={(e) => set('delay', Number(e.target.value) || 0)} /></Field>
           <Field label={t('cst.anim.duration', 'Duration (ms)')}><Input type="number" min="50" step="50" value={a.duration ?? 700} onChange={(e) => set('duration', Number(e.target.value) || 700)} /></Field>
         </div>
+        {/* The curve. A NAME, resolved to a bezier by lib/canvas.js at render time: the value
+            reaches a style attribute on a public page, so the author picks from a list rather
+            than typing CSS into it. */}
+        <Field label={t('cst.anim.easing', 'Curve')} hint={t('cst.anim.easing.h', 'How it moves through its duration. Spring overshoots a little at the end.')}>
+          <Select value={a.easing || 'smooth'} onChange={(e) => set('easing', e.target.value)}>
+            {ANIM_EASINGS.map((k) => <option key={k} value={k}>{t(`cst.anim.e.${k}`, k)}</option>)}
+          </Select>
+        </Field>
         <label className="flex items-center gap-1.5 text-xs cursor-pointer"><input type="checkbox" checked={!!a.loop} onChange={(e) => set('loop', e.target.checked)} /> {t('cst.anim.loop', 'Loop')}</label>
         {a.kind === 'custom' && (
           <Field label={t('cst.anim.custom', 'Keyframes (the body of an @keyframes rule)')} hint={t('cst.anim.custom.h', 'e.g.  from { opacity: 0; transform: rotate(-6deg) }  to { opacity: 1; transform: none }')}>
@@ -1756,7 +1847,7 @@ function CssFields({ t, p, setProp }) {
   );
 }
 
-function Toolbar({ t, preview, setPreview, snapOn, setSnapOn, add, addShape, sel, duplicate, remove, doUndo, doRedo, hist, selCount, doAlign, doDistribute, grid, setGrid, layersOpen, setLayersOpen, zoom, setZoom, pageOpen, setPageOpen,
+function Toolbar({ t, preview, setPreview, snapOn, setSnapOn, add, addShape, sel, duplicate, remove, doUndo, doRedo, hist, selCount, doAlign, doDistribute, stagger, grid, setGrid, layersOpen, setLayersOpen, zoom, setZoom, pageOpen, setPageOpen,
   pageMode = false, showGrid = true, setShowGrid, zoomBy, fitScale = 1, onSaveComponent,
   doZ, matchSize, toggleFlag, selBlocks = [], narrow = false, onKeys, panMode = false, setPanMode }) {
   const zoomPct = Math.round((zoom === 'fit' ? fitScale : Number(zoom)) * 100);
@@ -1840,6 +1931,20 @@ function Toolbar({ t, preview, setPreview, snapOn, setSnapOn, add, addShape, sel
           <Button size="sm" variant="ghost" onClick={() => doDistribute('x')} title={t('cst.dist.x', 'Even gaps across')}><AlignHorizontalSpaceAround size={14} /></Button>
           <Button size="sm" variant="ghost" onClick={() => doDistribute('y')} title={t('cst.dist.y', 'Even gaps down')}><AlignVerticalSpaceAround size={14} /></Button>
         </>)}
+        {/* Stagger. A select rather than a button because the useful part IS the number, and
+            the alternative was typing it into the inspector once per block. */}
+        {stagger && (
+          <span className="inline-flex items-center gap-1 rounded-lg border border-[var(--line)] px-1.5 py-0.5"
+            title={t('cst.anim.stagger.h', 'Give the selection the same entrance, each one starting a little after the one before, in reading order.')}>
+            <Sparkles size={13} className="text-[var(--muted)]" />
+            <select className="bg-transparent text-[var(--text)] text-xs" value="" aria-label={t('cst.anim.stagger', 'Stagger')}
+              onChange={(e) => { const v = e.target.value; e.target.value = ''; if (v !== '') stagger(Number(v)); }}>
+              <option value="">{t('cst.anim.stagger', 'Stagger')}</option>
+              {STAGGER_STEPS.map((n) => <option key={n} value={n}>{`${n} ms`}</option>)}
+              <option value="0">{t('cst.anim.stagger.off', 'All at once')}</option>
+            </select>
+          </span>
+        )}
       </>)}
       <span className="w-px h-5 bg-[var(--line)] mx-1" />
       <Button size="sm" variant={snapOn ? 'primary' : 'ghost'} onClick={() => setSnapOn((v) => !v)} title={t('cst.snap.h', 'Snap to the grid and to other blocks')}><Magnet size={14} /></Button>
@@ -1862,8 +1967,11 @@ function Toolbar({ t, preview, setPreview, snapOn, setSnapOn, add, addShape, sel
         <Button size="sm" variant={layersOpen ? 'primary' : 'ghost'} onClick={() => setLayersOpen((v) => !v)} title={t('cst.layers.h', 'Every block, top first, name, lock, hide, reorder')}><LayoutList size={14} /> {t('cst.layers', 'Layers')}</Button>
         {/* A desktop author cannot otherwise ever see the stacked version, and the stacked
             version is what most visitors get. */}
-        <Button size="sm" variant={preview === 'desktop' ? 'primary' : 'ghost'} onClick={() => setPreview((v) => (v === 'desktop' ? '' : 'desktop'))}><Eye size={14} /> {t('cst.preview', 'Preview')}</Button>
-        <Button size="sm" variant={preview === 'phone' ? 'primary' : 'ghost'} onClick={() => setPreview((v) => (v === 'phone' ? '' : 'phone'))} title={t('cst.phone.h', 'What a phone gets: the canvas stacks')}><Smartphone size={14} /></Button>
+        <Button size="sm" variant={preview === 'desktop' ? 'primary' : 'ghost'} onClick={() => setPreview((v) => (v === 'desktop' ? '' : 'desktop'))} title={t('cst.preview.desktop', 'Desktop preview')}><Eye size={14} /> {t('cst.preview', 'Preview')}</Button>
+        {/* The tablet was reachable in the page form and nowhere else, so the SAME document
+            offered two device widths in the config editor and three in the studio. */}
+        <Button size="sm" variant={preview === 'tablet' ? 'primary' : 'ghost'} className="!px-2" onClick={() => setPreview((v) => (v === 'tablet' ? '' : 'tablet'))} title={t('cst.preview.tablet', 'Tablet preview')} aria-label={t('cst.preview.tablet', 'Tablet preview')}><Tablet size={14} /></Button>
+        <Button size="sm" variant={preview === 'phone' ? 'primary' : 'ghost'} className="!px-2" onClick={() => setPreview((v) => (v === 'phone' ? '' : 'phone'))} title={t('cst.phone.h', 'What a phone gets: the canvas stacks')} aria-label={t('cst.phone.h', 'What a phone gets: the canvas stacks')}><Smartphone size={14} /></Button>
         {/* Page mode has this in its top bar; in the modal it would otherwise have no home,
             and a shortcut nobody can find is a shortcut nobody has. */}
         {onKeys && <Button size="sm" variant="ghost" className="!px-2" onClick={onKeys} title={t('cst.keys.h2', 'Keyboard shortcuts (?)')} aria-label={t('cst.keys', 'Keyboard shortcuts')}><Keyboard size={14} /></Button>}
@@ -1889,7 +1997,7 @@ function Inspector({ t, sel, patch, canvas, emit, setSelId, hasDark = false, onO
     <Field label={label}><Input type="number" value={sel[key]} onChange={(e) => patch(sel.id, { [key]: Number(e.target.value) || 0 })} /></Field>
   );
   return (
-    <div className="mt-4 lg:mt-0 rounded-xl border border-[var(--line)] p-3 space-y-3 lg:sticky lg:top-4">
+    <div className="mt-4 lg:mt-0 rounded-xl border border-[var(--line)] p-3 space-y-3 lg:sticky lg:top-4" data-tour="props">
       <div className="flex items-center gap-2">
         <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)]">{sel.kind}</span>
         {/* Whether THIS block says anything of its own on dark. Without it, an author on the

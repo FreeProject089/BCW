@@ -719,7 +719,7 @@ code, .break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
    (ui/canvas-view.jsx). An entrance runs once when `.in` lands; the ambient kinds keep going;
    `.cv-hover` waits for the pointer. Reduced motion: everything is simply there. */
 .cv-anim { opacity: 0; }
-.cv-anim.in { opacity: 1; animation-duration: var(--cv-dur, 700ms); animation-delay: var(--cv-delay, 0ms); animation-fill-mode: both; animation-timing-function: cubic-bezier(.2,.7,.2,1); }
+.cv-anim.in { opacity: 1; animation-duration: var(--cv-dur, 700ms); animation-delay: var(--cv-delay, 0ms); animation-fill-mode: both; animation-timing-function: var(--cv-ease, cubic-bezier(.2,.7,.2,1)); }
 .cv-anim.cv-loop.in { animation-iteration-count: infinite; }
 .cv-anim-fade.in { animation-name: cvFade; }
 .cv-anim-rise.in { animation-name: cvRise; }
@@ -727,8 +727,8 @@ code, .break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
 .cv-anim-slide-right.in { animation-name: cvSlideR; }
 .cv-anim-zoom.in { animation-name: cvZoom; }
 .cv-anim-pulse, .cv-anim-float { opacity: 1; }
-.cv-anim-pulse.in { animation-name: cvPulse; animation-iteration-count: infinite; animation-timing-function: ease-in-out; }
-.cv-anim-float.in { animation-name: cvFloat; animation-iteration-count: infinite; animation-timing-function: ease-in-out; }
+.cv-anim-pulse.in { animation-name: cvPulse; animation-iteration-count: infinite; animation-timing-function: var(--cv-ease, ease-in-out); }
+.cv-anim-float.in { animation-name: cvFloat; animation-iteration-count: infinite; animation-timing-function: var(--cv-ease, ease-in-out); }
 .cv-anim.cv-hover { opacity: 1; animation-duration: var(--cv-dur, 700ms); animation-fill-mode: both; }
 .cv-anim.cv-hover.cv-anim-fade:hover { animation-name: cvFade; }
 .cv-anim.cv-hover.cv-anim-rise:hover { animation-name: cvRise; }
@@ -1993,3 +1993,63 @@ body::before {
   opacity: var(--tex-page);
 }
 /* ════ END: text on the backdrop + page grain ══════════════════════════════════════════════ */
+
+/* ════ BEGIN: studio previews, device frames, and the first-run tour ════════════════════════
+   Appended as one block. Where a selector below repeats one from the studio block further up
+   it is deliberately the later, winning one. */
+
+/* The page preview is a CONTAINING BLOCK for `position: fixed`.
+
+   This is the bug behind "the previews do not work". The page preview renders the real public
+   page inside the studio — and the real public page carries fixed furniture of its own: the
+   3D hero's backdrop is `position: fixed; inset: 0; z-index: -10` (hero/Hero3D.jsx) and the
+   event effect is `fixed inset-0 z-[45]`. `.cst-page` is `position: fixed; z-index: 45` with
+   an opaque background, so it is a stacking context: a `-z-10` fixed child inside it resolved
+   against the VIEWPORT and painted UNDER that opaque background, which is to say it vanished,
+   while anything at a positive z-index covered the whole editor instead of sitting in the
+   preview. Either way the author saw something that was not the page.
+
+   A transform on the frame makes it the containing block for every fixed descendant, so they
+   resolve against the preview rather than the window. The frame paints no background of its
+   own, so a negative-z child inside it — which paints above its context's background and
+   below its content — is visible again. */
+.cst-page-frame {
+  max-width: 72rem; margin: 0 auto; padding: 0 16px;
+  transform: translateZ(0);
+  position: relative;
+  isolation: isolate;
+  min-height: 60vh;
+  overflow: clip;
+}
+
+/* A device preview is a device: a named width, a frame you can see the edge of, and the site
+   background inside it rather than the editor's. */
+.cst-device {
+  border: 1px solid var(--line-strong); border-radius: 18px; padding: 12px;
+  background: var(--bg-solid);
+  box-shadow: 0 18px 44px -24px rgba(0, 0, 0, 0.5);
+}
+
+/* ── The tour (editor/studio-tour.jsx) ──────────────────────────────────────────────────
+   Above the studio (z 45) and below modals (z 50), so a dialog opened during a step is still
+   in front of it. The ring never takes the pointer: the editor underneath stays usable while
+   the tour is up, which is what lets it be ignored rather than dismissed. */
+.cst-tour-ring {
+  position: fixed; z-index: 46; pointer-events: none;
+  border-radius: 14px;
+  outline: 2px solid var(--primary);
+  outline-offset: 0;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.28);
+}
+.cst-tour-card {
+  position: fixed; z-index: 47;
+  padding: 12px 12px 10px;
+  background: var(--bg-solid);
+  border: 1px solid var(--line-strong); border-radius: 14px;
+  box-shadow: 0 22px 50px -20px rgba(0, 0, 0, 0.55);
+  color: var(--text);
+}
+@media (prefers-reduced-motion: reduce) {
+  .cst-tour-ring { transition: none; }
+}
+/* ════ END: studio previews, device frames, and the first-run tour ══════════════════════════ */

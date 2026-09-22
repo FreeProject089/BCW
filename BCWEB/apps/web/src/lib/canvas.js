@@ -71,6 +71,28 @@ export const SHAPES = ['rect', 'rounded', 'ellipse', 'triangle', 'diamond', 'hex
 export const ANIM_KINDS = ['fade', 'rise', 'slide-left', 'slide-right', 'zoom', 'pulse', 'float', 'custom'];
 /** When it starts: as it scrolls into view, on page load, after a delay, or while hovered. */
 export const ANIM_TRIGGERS = ['show', 'load', 'delay', 'hover'];
+/**
+ * How it moves through its duration.
+ *
+ * A name, never a raw `cubic-bezier(...)` string from the author: the value is written into
+ * `animation-timing-function` on a PUBLIC page, and a free-text CSS value there is an
+ * injection point for the price of a comfort nobody asked for. The curve each name maps to
+ * lives once, in `EASING_CURVES`, and the renderer reads it from here.
+ */
+export const ANIM_EASINGS = ['smooth', 'linear', 'ease-in', 'ease-out', 'ease-in-out', 'spring', 'snap'];
+/** The one place a name becomes a curve. `smooth` is what every animation used before easing
+ *  was a setting, so a page saved without one keeps moving exactly as it did. */
+export const EASING_CURVES = {
+  smooth: 'cubic-bezier(.2,.7,.2,1)',
+  linear: 'linear',
+  'ease-in': 'cubic-bezier(.4,0,1,1)',
+  'ease-out': 'cubic-bezier(0,0,.2,1)',
+  'ease-in-out': 'cubic-bezier(.4,0,.2,1)',
+  spring: 'cubic-bezier(.34,1.56,.64,1)',
+  snap: 'cubic-bezier(.85,0,.15,1)',
+};
+/** The steps a "stagger the selection" offers, in ms between one block and the next. */
+export const STAGGER_STEPS = [40, 60, 80, 120, 200];
 /** What a button block can look like. */
 export const BUTTON_VARIANTS = ['button', 'card', 'dropdown-down', 'dropdown-up'];
 /** What pressing it does. */
@@ -204,6 +226,9 @@ function animOverlay(raw) {
   out.trigger = ANIM_TRIGGERS.includes(o.trigger) ? o.trigger : 'show';
   out.delay = clamp(Math.round(num(o.delay, 0)), 0, 60_000);
   out.duration = clamp(Math.round(num(o.duration, 700)), 50, 20_000);
+  // Absent means `smooth`, which is the curve every animation ran on before this was a
+  // setting — so the field stays out of the stored shape until somebody changes it.
+  if (ANIM_EASINGS.includes(o.easing) && o.easing !== 'smooth') out.easing = o.easing;
   // The ambient kinds loop by nature; an entrance loops only if asked.
   out.loop = o.kind === 'pulse' || o.kind === 'float' ? o.loop !== false : o.loop === true;
   if (o.kind === 'custom') out.custom = typeof o.custom === 'string' ? o.custom.slice(0, 4000) : '';

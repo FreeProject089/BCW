@@ -9,7 +9,7 @@
 // B.MD later shows up here without this file changing.
 import { useEffect, useRef, useState } from 'react';
 import Markdown from './md.jsx';
-import { normalizeCanvas, layoutFor, phoneOrder, paintOrder, resolveBlock, keepsHeightStacked, phoneBoardBlocks, DESIGN_WIDTH, PHONE_WIDTH } from '../lib/canvas.js';
+import { normalizeCanvas, layoutFor, phoneOrder, paintOrder, resolveBlock, keepsHeightStacked, phoneBoardBlocks, EASING_CURVES, DESIGN_WIDTH, PHONE_WIDTH } from '../lib/canvas.js';
 import { api } from '../lib/api.js';
 import { markdownConfig } from '@bettercommunity/bmd/config';
 import { sanitizeSvg } from '../lib/svg-safe.js';
@@ -66,7 +66,17 @@ function Animated({ anim, id, style, className, children }) {
     return () => io.disconnect();
   }, [anim, trigger]);
   if (!anim) return <div style={style} className={className}>{children}</div>;
-  const vars = { '--cv-dur': `${anim.duration || 700}ms`, '--cv-delay': trigger === 'show' || trigger === 'load' ? `${anim.delay || 0}ms` : '0ms' };
+  // The curve comes from the NAME the author picked, resolved through the one table in
+  // lib/canvas.js — never from a string they typed, because this lands in a style attribute
+  // on a public page.
+  const vars = {
+    '--cv-dur': `${anim.duration || 700}ms`,
+    '--cv-delay': trigger === 'show' || trigger === 'load' ? `${anim.delay || 0}ms` : '0ms',
+    // Set ONLY when the author picked one, so the stylesheet's own fallbacks still decide for
+    // every page saved before easing existed — including the ambient kinds, whose default is
+    // `ease-in-out` rather than the entrance curve.
+    ...(EASING_CURVES[anim.easing] ? { '--cv-ease': EASING_CURVES[anim.easing] } : null),
+  };
   const cls = `${className || ''} cv-anim cv-anim-${anim.kind}${on ? ' in' : ''}${anim.loop ? ' cv-loop' : ''}${trigger === 'hover' ? ' cv-hover' : ''}`;
   const custom = anim.kind === 'custom' && anim.custom
     ? `@keyframes cv-${id}{${keyframeBody(anim.custom)}}[data-anim="${id}"].in,[data-anim="${id}"].cv-hover:hover{animation-name:cv-${id}}`

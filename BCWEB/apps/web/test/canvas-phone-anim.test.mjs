@@ -8,6 +8,7 @@ import {
   normalizeCanvas, layoutFor, phoneBoardBlocks, phoneContentHeight, dragTo, resizeTo, moveMany,
   PHONE_WIDTH, DESIGN_WIDTH, STACK_BELOW, BLOCK_KINDS, ANIM_KINDS, GRID,
   reorder, paintOrder, safeLink, presetBlocks, CANVAS_PRESETS, SHADOWS, HOVER_EFFECTS, GRID_SIZES,
+  ANIM_EASINGS, EASING_CURVES, STAGGER_STEPS,
 } from '../src/lib/canvas.js';
 
 const B = (id, x, y, w, h, extra = {}) => ({ id, kind: 'text', x, y, w, h, props: { md: id }, ...extra });
@@ -108,6 +109,40 @@ describe('animations', () => {
     assert.equal(anim({ kind: 'fade', delay: -5, duration: 1 }).duration, 50);
     assert.equal(anim({ kind: 'fade', custom: 'x' }).custom, undefined);
     assert.equal(anim({ kind: 'custom', custom: 'from{opacity:0}' }).custom, 'from{opacity:0}');
+  });
+
+  // ── The curve ──────────────────────────────────────────────────────────────────────
+  // The author picks a NAME; the renderer turns it into a bezier. Nothing they typed may
+  // reach `animation-timing-function` on a public page, and a page saved before easing was a
+  // setting must come back with no easing at all so the stylesheet's own default still wins.
+  test('the easing is one of the names, or it is absent', () => {
+    const anim = (o) => normalizeCanvas({ blocks: [B('a', 0, 0, 100, 100, { anim: o })] }).blocks[0].anim;
+    for (const e of ANIM_EASINGS) {
+      const got = anim({ kind: 'fade', easing: e }).easing;
+      // `smooth` IS the stylesheet default, so it is stored as nothing rather than as itself.
+      assert.equal(got, e === 'smooth' ? undefined : e, `easing ${e}`);
+    }
+    assert.equal(anim({ kind: 'fade' }).easing, undefined);
+    assert.equal(anim({ kind: 'fade', easing: 'cubic-bezier(9,9,9,9)' }).easing, undefined);
+    assert.equal(anim({ kind: 'fade', easing: 'steal(); color: red' }).easing, undefined);
+    assert.equal(anim({ kind: 'fade', easing: { toString: () => 'spring' } }).easing, undefined);
+  });
+
+  test('every name has a curve, and every curve is a CSS timing function', () => {
+    for (const e of ANIM_EASINGS) {
+      const curve = EASING_CURVES[e];
+      assert.ok(curve, `no curve for ${e}`);
+      assert.match(curve, /^(?:linear|cubic-bezier\((?:-?\d*\.?\d+,){3}-?\d*\.?\d+\))$/, `${e} -> ${curve}`);
+    }
+    // No spare curves either: a name in the table that the list does not offer is a value the
+    // normaliser would refuse and the renderer would happily emit.
+    assert.deepEqual(Object.keys(EASING_CURVES).sort(), [...ANIM_EASINGS].sort());
+  });
+
+  test('the stagger steps are whole ascending milliseconds', () => {
+    assert.ok(STAGGER_STEPS.length >= 3);
+    for (const n of STAGGER_STEPS) assert.ok(Number.isInteger(n) && n > 0, `${n}`);
+    assert.deepEqual(STAGGER_STEPS, [...STAGGER_STEPS].sort((a, b) => a - b));
   });
 });
 

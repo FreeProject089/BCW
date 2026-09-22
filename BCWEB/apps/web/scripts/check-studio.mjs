@@ -46,6 +46,11 @@ try {
     'export const renderPage = (value) => renderToStaticMarkup(',
     '  <I18nProvider><CanvasStudio layout="page" value={value} onChange={() => {}} renderPage={() => null}',
     '    chrome={{ title: "Doc", state: "dirty", canSave: true, onSave() {}, onBack() {} }} /></I18nProvider>);',
+    // The SAME surface with no page renderer: a document being edited on its own. What is
+    // asserted on it is that the page preview is still OFFERED and says why it cannot run.
+    'export const renderLoose = (value) => renderToStaticMarkup(',
+    '  <I18nProvider><CanvasStudio layout="page" value={value} onChange={() => {}}',
+    '    chrome={{ title: "Doc", state: "dirty", canSave: true, onSave() {}, onBack() {} }} /></I18nProvider>);',
   ].join('\n'));
   await esbuild.build({
     nodePaths: [join(process.cwd(), 'node_modules')],
@@ -71,8 +76,8 @@ try {
   cleanup(); process.exit(2);
 }
 
-let render; let page; let renderPage;
-try { ({ render, page, renderPage } = await import(pathToFileURL(bundle).href)); }
+let render; let page; let renderPage; let renderLoose;
+try { ({ render, page, renderPage, renderLoose } = await import(pathToFileURL(bundle).href)); }
 catch (e) { console.error(`✗ the studio would not load: ${e?.message || e}`); cleanup(); process.exit(1); }
 
 const problems = [];
@@ -181,6 +186,33 @@ if (wideHtml) {
   must(/(?:Save as component|Enregistrer comme composant)/.test(wideHtml), 'the page toolbar cannot save the selection as a component');
   must(/(?:Components|Composants)/.test(wideHtml), 'the left pane has no Components tab');
   must(/title="(?:The whole project page, with this block in place|La page projet entière, avec ce bloc en place)"/.test(wideHtml), 'the page preview button is missing although a page renderer was given');
+  // The tour is OFFERED but never auto-runs here: under node there is no localStorage, and
+  // `readSeen` answers "seen" on any store it cannot read rather than starting itself over an
+  // editor. Both halves matter: a tour that opened on every render would be a card over the
+  // studio for everyone, and one with no way back would be unreachable after one dismissal.
+  must(/aria-label="(?:Take the tour of the studio|Suivre la visite du studio)"/.test(wideHtml),
+    'the studio offers no way to (re)start its guided tour');
+  must(!/class="cst-tour-card"/.test(wideHtml),
+    'the tour opened itself although nothing could say whether this viewer had seen it');
+}
+
+// -- A document that belongs to NO page. ----------------------------------------------
+// The page preview used to be dropped from the group entirely when there was no page to show,
+// which left an author looking at a preview group with one fewer control than the one their
+// colleague describes, and nothing to read about why.
+let looseHtml = '';
+try { looseHtml = withWindow(mq(true, false), () => renderLoose(CANVAS)); }
+catch (e) { problems.push(`the studio page threw with no page renderer: ${e?.message || e}`); }
+if (looseHtml) {
+  must(/(?:This document is not part of a page yet|Ce document ne fait pas encore partie)/.test(looseHtml),
+    'with no page to preview, the page button is silently missing instead of saying why');
+  // Scoped to THAT button. A bare /disabled=""/ over the whole page passes on undo and redo,
+  // which are disabled on a fresh document anyway: it was green with the page button fully
+  // enabled, which is the failure this file exists to refuse.
+  const pageBtn = /<button[^>]*title="(?:This document is not part of a page yet|Ce document ne fait pas encore partie)[^"]*"[^>]*>/.exec(looseHtml);
+  must(!!pageBtn, 'the page preview button carries no explanation of why it cannot run');
+  must(!!pageBtn && /disabled=""/.test(pageBtn[0]),
+    'the page preview button is offered as though it worked although there is no page to show');
 }
 let narrowHtml = '';
 try { narrowHtml = withWindow(mq(false, false), () => renderPage(CANVAS)); }
@@ -237,6 +269,22 @@ if (served) {
   must(!/allow-same-origin/.test(served), 'the iframe sandbox allows same-origin, so a framed page can reach back into this one');
 }
 
+// The animation curve reaches the reader as a CSS custom property, and ONLY as one of the
+// named curves: the author picks a name, lib/canvas.js maps it to a bezier, and nothing they
+// typed is ever written into `animation-timing-function` on a public page. A page saved before
+// easing existed must carry no variable at all, so the stylesheet's own default still decides.
+try {
+  const eased = page({ id: 'c6', title: '', height: 400, blocks: [
+    { id: 'e1', kind: 'box', x: 0, y: 0, w: 200, h: 100, props: { bg: '#eee' }, anim: { kind: 'rise', trigger: 'show', easing: 'spring' } },
+    { id: 'e2', kind: 'box', x: 0, y: 120, w: 200, h: 100, props: { bg: '#eee' }, anim: { kind: 'rise', trigger: 'show' } },
+    { id: 'e3', kind: 'box', x: 0, y: 240, w: 200, h: 100, props: { bg: '#eee' }, anim: { kind: 'rise', trigger: 'show', easing: 'steal(); --x' } },
+  ] }, 'light');
+  must(/--cv-ease:\s*cubic-bezier\(\.34,1\.56,\.64,1\)/.test(eased), 'a named easing did not reach the page as a curve');
+  must((eased.match(/--cv-ease/g) || []).length === 1,
+    'a block with no easing of its own was given one, so the stylesheet default no longer decides');
+  must(!/steal/.test(eased), 'an easing that was not one of the names reached the page');
+} catch (e) { problems.push(`the easing render threw: ${e?.message || e}`); }
+
 // A dark overlay that touches ONE field must leave the others alone.
 const OVERLAID = {
   id: 'c5', title: '', height: 400,
@@ -261,6 +309,22 @@ must(readFileSync(REL, 'utf8').includes('cst-handle'), 'the resize handles no lo
 const css = readFileSync('src/index.css', 'utf8');
 must(/\.cst-handle[^{]*\{/.test(css), 'index.css has no .cst-handle rule — the touch hit area is gone');
 must(/@media\s*\(pointer:\s*coarse\)/.test(css), 'the .cst-handle rule is not behind a coarse-pointer query, so it would grow the handle for a mouse too');
+// The page preview must be a containing block for `position: fixed`, or the real page's own
+// fixed furniture (the 3D hero backdrop at z-index -10, an event effect at z-45) resolves
+// against the VIEWPORT: under an opaque .cst-page it disappears, over it it covers the whole
+// editor. A transform on the frame is what makes those fixed children resolve against the
+// preview instead. Asserted on the LAST .cst-page-frame rule, which is the one that wins.
+const frameRules = [...css.matchAll(/\.cst-page-frame\s*\{([^}]*)\}/g)].map((m) => m[1]);
+must(frameRules.length > 0, 'index.css has no .cst-page-frame rule, so the page preview has no frame');
+// Read the VALUE and compare it, rather than writing a lookahead after `\s*`: `\s*` backtracks
+// to zero width, the lookahead then reads a space instead of the value, and the assertion
+// passes on `transform: none` -- a gate that is green whatever the file says.
+const frameTransform = (/transform:\s*([^;}]*)/.exec(frameRules[frameRules.length - 1] || '') || [])[1];
+must(!!frameTransform && frameTransform.trim() !== 'none',
+  `the page preview frame's transform is "${frameTransform || 'absent'}", so the previewed page's fixed elements resolve against the viewport and cover the studio`);
+must(/\.cst-tour-card[^{]*\{/.test(css) && /\.cst-tour-ring[^{]*\{/.test(css), 'the tour has no card or no ring rule in index.css');
+must(/\.cst-tour-ring[^{]*\{[^}]*pointer-events:\s*none/.test(css),
+  'the tour ring takes the pointer, so the editor it is describing cannot be used while it is up');
 
 if (problems.length) {
   console.error('✗ the studio is not usable as it stands:');
