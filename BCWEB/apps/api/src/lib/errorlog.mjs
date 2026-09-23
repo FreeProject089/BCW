@@ -38,6 +38,34 @@ const PATH_MAX = 300;
 export const errorGroupId = (source, message) => createHash('sha1').update(`${source}\n${String(message || '')}`).digest('hex').slice(0, 24);
 export const pathOnly = (url) => String(url || '').split('?')[0].slice(0, PATH_MAX);
 
+/** Prefixes whose NEXT path segment is a bearer credential, not an identifier.
+ *
+ *  Stripping the query string is half the rule. On these routes the secret is in the PATH:
+ *  `/threads/t/<accessToken>` is the whole of an anonymous sender's access to a private
+ *  conversation (read it, answer in their name, download the signed copy, make the server
+ *  mail it), `/f/<token>` is a file link, `/auth/oauth/link/<token>` binds a provider to an
+ *  account. Every one of those was written whole into stdout on EVERY request by the `req`
+ *  serialiser, and into `ErrorEvent.path` — a table `manage_analytics` reads, a capability
+ *  that grants no access to any of those conversations or files (CWE-532).
+ *
+ *  Prefix-matched on purpose: a new route under `/threads/t/` is covered the day it is
+ *  added, and a route that merely LOOKS similar (`/me/threads/<id>`) is not, because an id
+ *  is not a credential and a log with no identifier in it is a log nobody can read. */
+const SECRET_PATH_PREFIXES = ['/threads/t/', '/f/', '/auth/oauth/link/'];
+
+/** A request URL with its query string removed AND any credential-bearing path segment
+ *  replaced. This is what may be logged or stored; `pathOnly` is what it is built from. */
+export function redactPath(url) {
+  const path = pathOnly(url);
+  for (const pre of SECRET_PATH_PREFIXES) {
+    if (!path.startsWith(pre)) continue;
+    const rest = path.slice(pre.length);
+    const cut = rest.indexOf('/');
+    return `${pre}…${cut === -1 ? '' : rest.slice(cut)}`;
+  }
+  return path;
+}
+
 // A broken endpoint fails on EVERY request. Without a throttle, one outage writes a row per
 // hit: it buries the page under thousands of identical rows and grows a table the retention
 // sweeper only recently learned to purge. Collapse identical (path, message) to one row per
@@ -62,7 +90,7 @@ export function getRecentServerErrors() {
 export function recordServerError(req, err) {
   try {
     const message = String(err?.message || 'internal_error').slice(0, MSG_MAX);
-    const path = pathOnly(req?.url);
+    const path = redactPath(req?.url);
     const now = Date.now();
 
     // The ring records EVERY server error, unthrottled: it's the only trace when the DB is

@@ -11,7 +11,7 @@ import { startFlagRefresh } from './lib/flags.mjs';
 import { getRedis } from './lib/redis.mjs';
 import { ensureBucket } from './lib/storage.mjs';
 import { startSweeper } from './lib/sweeper.mjs';
-import { recordServerError, pathOnly } from './lib/errorlog.mjs';
+import { recordServerError, redactPath } from './lib/errorlog.mjs';
 import authRoutes from './routes/auth.mjs';
 import catalogRoutes from './routes/catalog.mjs';
 import communityCatalogRoutes from './routes/catalogs.mjs';
@@ -169,11 +169,13 @@ const app = Fastify({
       req(req) {
         const raw = String(req.url || '');
         const q = raw.indexOf('?');
-        const path = q === -1 ? raw : raw.slice(0, q);
         const keys = q === -1 ? null : [...new URLSearchParams(raw.slice(q + 1)).keys()];
         return {
           method: req.method,
-          url: path,
+          // Not just the path: on a handful of routes the path segment IS the credential
+          // (`/threads/t/<accessToken>`, `/f/<token>`). One rule, in errorlog.mjs, so the
+          // log line and the ErrorEvent row cannot disagree about what a secret is.
+          url: redactPath(raw),
           ...(keys && keys.length ? { queryKeys: keys } : {}),
           host: req.headers?.host,
           remoteAddress: req.ip,
@@ -326,7 +328,7 @@ app.setErrorHandler((err, req, reply) => {
   // sync. A 500 on either wrote a live credential into stdout — and stdout is what gets
   // shipped to a log pipeline (CWE-532). The ErrorEvent row was already sanitised; only the
   // log line was not.
-  req.log.error({ err: { message: err.message, stack: err.stack }, path: pathOnly(req.url) }, 'request error');
+  req.log.error({ err: { message: err.message, stack: err.stack }, path: redactPath(req.url) }, 'request error');
   // …and record it, so the admin Errors page shows API failures too. It only ever held
   // browser-reported errors (POST /analytics/error, which is consent-gated), so a 500 was
   // invisible to anyone not tailing stdout — the client saw {error:'internal_error'} and

@@ -630,7 +630,13 @@ const lockBody = (lock) => ({ error: `account_${lock.status}`, status: lock.stat
 
 // Require 2FA once we know the caller is on the admin surface (admin-tier role OR any
 // granted capability) — a helper shared by requireRole/requireCap.
-async function ensure2fa(uid, reply) {
+/** Exported because a staff POWER is not always reached through a route named `/admin/*`.
+ *  A contact thread is the case that found it: an ADMIN sees every conversation on the site
+ *  through `GET /me/threads/:id`, which is `requireRole()` with no roles and therefore no
+ *  2FA wall, while `GET /admin/threads/:id` refuses the same account without TOTP. Two doors
+ *  to one room, one of them unlocked. The gate belongs wherever the power is, so the door
+ *  that grants it calls this. */
+export async function ensure2fa(uid, reply) {
   const p = await db();
   const u = await p.user.findUnique({ where: { id: uid }, select: { totpEnabled: true } });
   if (!u?.totpEnabled) { reply.code(403).send({ error: '2fa_required' }); return false; }

@@ -18,7 +18,7 @@
 // restart does not reset them. A blocked e-mail or account cannot open or answer anything.
 import crypto from 'node:crypto';
 import { z } from 'zod';
-import { db, requireRole, requireCap, optionalAuth, notify, logAudit, clientIp } from '../lib/lib.mjs';
+import { db, requireRole, requireCap, optionalAuth, notify, logAudit, clientIp, ensure2fa } from '../lib/lib.mjs';
 import { sendMail, mailShell, emailEnabled, escapeHtml } from '../lib/mail.mjs';
 import { powVerify } from './auth.mjs';
 import { managerIdsOf, isStaff } from '../lib/teams.mjs';
@@ -317,6 +317,44 @@ export async function copyOf(p, threadId, side, recipient = '') {
   return { t, signed, zip: await buildCopyZip(p, signed, { site: site() }) };
 }
 
+/**
+ * A conversation closing mails ONE copy per side, not one per close.
+ *
+ * Closing and reopening are both ordinary participant moves with no cost attached, and
+ * `mailCopiesOnClose` fired on every close — so `close, reopen, close, reopen, …` was an
+ * unbounded mail sender with a zip attached, pointed at whatever address the thread carries.
+ * On an ANONYMOUS thread that address is typed by whoever opened it and is never confirmed,
+ * so the loop reaches a third party who asked for nothing: opening an anonymous thread to a
+ * repo you own, with the victim's address in the form, was enough. Measured before fixing:
+ * six close/reopen pairs, twelve mails, six of them to the chosen address, 2.8 kB attached
+ * to each.
+ *
+ * The record is a ConversationCursor row under its own `kind`, so it is in the database (a
+ * restart must not reopen the tap) and next to the other per-conversation-per-side
+ * timestamps, without borrowing `mailedAt` from the anonymous-unread rule — that field
+ * answers a different question and a field answering two diverges.
+ *
+ * A cooldown rather than a one-shot flag: a conversation genuinely reopened weeks later and
+ * closed again is a second conversation in every way that matters, and its copy should be
+ * sent. A day is far longer than any loop is worth and far shorter than that.
+ */
+const COPY_CURSOR_KIND = 'thread-copy';
+const COPY_COOLDOWN_MS = 24 * 3600e3;
+/** Claim the right to mail this side's copy. False when one went out recently. */
+async function claimCopyMail(p, threadId, side, now = new Date()) {
+  const where = { kind_conversationId_side: { kind: COPY_CURSOR_KIND, conversationId: threadId, side } };
+  const cur = await p.conversationCursor.findUnique({ where }).catch(() => null);
+  if (cur?.mailedAt && now.getTime() - new Date(cur.mailedAt).getTime() < COPY_COOLDOWN_MS) return false;
+  // Claim by the value we read: two closes racing each other both find no row, and the one
+  // that loses the unique constraint is told so rather than sending a second mail.
+  if (!cur) {
+    const made = await p.conversationCursor.create({ data: { kind: COPY_CURSOR_KIND, conversationId: threadId, side, mailedAt: now } }).catch(() => null);
+    return !!made;
+  }
+  const claimed = await p.conversationCursor.updateMany({ where: { id: cur.id, mailedAt: cur.mailedAt }, data: { mailedAt: now } });
+  return claimed.count > 0;
+}
+
 /** Mail one side's copy: the readable conversation as the body, the archive attached. */
 async function mailCopy(p, threadId, side, to, recipient = '') {
   if (!to) return false;
@@ -343,11 +381,14 @@ export async function mailCopiesOnClose(p, threadId) {
   if (!t) return 0;
   let n = 0;
   const senderTo = t.sender?.email || t.senderEmail;
-  if (senderTo && await mailCopy(p, t.id, 'sender', senderTo, t.sender?.displayName || t.senderName)) n += 1;
+  // Claimed per SIDE, once, before anything is sent: see claimCopyMail. The answering side
+  // may be several people, so the claim covers the side rather than each address.
+  if (senderTo && await claimCopyMail(p, t.id, 'sender')
+    && await mailCopy(p, t.id, 'sender', senderTo, t.sender?.displayName || t.senderName)) n += 1;
   const ownerIds = new Set(t.messages.filter((m) => m.side === 'owner' && m.authorId).map((m) => m.authorId));
   if (t.ownerUserId) ownerIds.add(t.ownerUserId);
   ownerIds.delete(t.senderId);
-  if (ownerIds.size) {
+  if (ownerIds.size && await claimCopyMail(p, t.id, 'owner')) {
     const users = await p.user.findMany({ where: { id: { in: [...ownerIds] } }, select: { email: true, displayName: true } });
     for (const u of users) if (await mailCopy(p, t.id, 'owner', u.email, u.displayName)) n += 1;
   }
@@ -454,6 +495,14 @@ export default async function threadRoutes(app) {
     }
     const sender = t.senderId === req.user.uid;
     if (!owner && !sender && !isStaff(req.user)) { reply.code(404).send({ error: 'not_found' }); return null; }
+    // Reading somebody else's conversation because you are staff is an ADMIN power, and on
+    // this site every admin power is behind the 2FA wall: `GET /admin/threads/:id` refuses
+    // an admin without TOTP. These routes are `requireRole()` with no roles, which does not
+    // call the wall at all — so the same account was refused by the admin door and let in
+    // by the member one, with no audit line either. Measured before fixing: 403 on
+    // /admin/threads/<id>, 200 on /me/threads/<id>, and 200 application/zip on its /copy.
+    // Participants are untouched: this only ever runs for somebody who is in neither side.
+    if (!owner && !sender) { if (!(await ensure2fa(req.user.uid, reply))) return null; }
     return { t, side: owner ? 'owner' : sender ? 'sender' : 'staff' };
   };
 
@@ -535,13 +584,18 @@ export default async function threadRoutes(app) {
     if (verb === 'close' && got.t.status !== 'closed' && (await config(p)).copyOnClose !== false) mailCopiesOnClose(p, got.t.id).catch(() => {});
     return { ok: true };
   };
-  app.post('/me/threads/:id/close', { preHandler: requireRole() }, setState('close', { status: 'closed' }));
-  app.post('/me/threads/:id/reopen', { preHandler: requireRole() }, setState('reopen', { status: 'open' }));
+  // A tap on the state changes as well as the copy rule above. Nobody closes a conversation
+  // thirty times an hour; a script driving the close/reopen loop does, and defence at one
+  // layer only is how the next amplifier is found. Deliberately loose enough that a person
+  // tidying an inbox never meets it.
+  const STATE_RL = { preHandler: requireRole(), config: { rateLimit: { max: 30, timeWindow: '1 hour' } } };
+  app.post('/me/threads/:id/close', STATE_RL, setState('close', { status: 'closed' }));
+  app.post('/me/threads/:id/reopen', STATE_RL, setState('reopen', { status: 'open' }));
   app.post('/me/threads/:id/flag', { preHandler: requireRole() }, setState('flag', { staffFlag: 'flagged' }));
   // Archived is a fourth status alongside open / closed / blocked, and the difference from
   // closed is who chose it: closed is a decision, archived is the passage of time. Reopen
   // takes both back to open, so nothing here is one-way.
-  app.post('/me/threads/:id/archive', { preHandler: requireRole() }, setState('archive', { status: 'archived' }));
+  app.post('/me/threads/:id/archive', STATE_RL, setState('archive', { status: 'archived' }));
 
   // ── files, read back by a participant ──────────────────────────────────────────────────
   //
@@ -600,8 +654,13 @@ export default async function threadRoutes(app) {
   });
   app.post('/threads/t/:token/copy/mail', { config: { rateLimit: { max: 5, timeWindow: '1 hour' } } }, async (req, reply) => {
     const p = await db();
-    const t = await p.contactThread.findUnique({ where: { accessToken: req.params.token }, select: { id: true, senderEmail: true, senderName: true } });
+    const t = await p.contactThread.findUnique({ where: { accessToken: req.params.token }, select: { id: true, status: true, senderEmail: true, senderName: true } });
     if (!t) return reply.code(404).send({ error: 'not_found' });
+    // A sender staff BLOCKED keeps the link — the conversation stays readable, which is the
+    // rule everywhere here — but does not keep a button that makes the server send them mail.
+    // Blocking is what stops a sender costing us something; this route was the one place it
+    // did not. (The unread-mail flush already skipped a blocked thread; this did not.)
+    if (t.status === 'blocked') return reply.code(403).send({ error: 'blocked' });
     // Only ever to the address the thread already has: this route takes no address.
     await mailCopy(p, t.id, 'sender', t.senderEmail, t.senderName || '');
     return { ok: true, sent: emailEnabled() };
@@ -615,7 +674,18 @@ export default async function threadRoutes(app) {
     const r = await verifyCopy(p, doc);
     if (!r.valid) return { valid: false, reason: r.reason };
     const c = doc.payload.conversation;
-    return { valid: true, reason: 'ok', conversation: { subject: c.subject, about: c.about, with: c.with, messages: doc.payload.messages.length, issuedAt: doc.payload.issuedAt, recipient: doc.payload.recipient?.side } };
+    // The messages, from the bytes the signature covers.
+    //
+    // Without them this route answered "valid" and showed a subject and a count — which is
+    // not enough to contradict the thing it exists to contradict. The archive carries a
+    // readable `conversation.html` beside the signed payload, and nothing signs the HTML:
+    // edit one sentence of it, hand somebody the whole archive, and the site they are told
+    // to check it on agrees the copy is genuine while they read the altered text. Returning
+    // what was actually signed is what makes the check a comparison instead of a badge.
+    // Not a disclosure: the caller already holds the signed document these came from.
+    const messages = (Array.isArray(doc.payload.messages) ? doc.payload.messages : []).slice(0, 2000)
+      .map((m) => ({ at: m?.at ?? null, side: m?.side ?? '', from: m?.from ?? '', body: String(m?.body ?? ''), files: Array.isArray(m?.files) ? m.files.map((f) => ({ name: f?.name ?? '', size: f?.size ?? 0 })) : [] }));
+    return { valid: true, reason: 'ok', conversation: { subject: c.subject, about: c.about, with: c.with, messages: doc.payload.messages.length, issuedAt: doc.payload.issuedAt, recipient: doc.payload.recipient?.side }, messages };
   });
   app.get('/conversation-copy/key', async () => {
     const info = await publicVerifyInfo(await db());
@@ -743,6 +813,11 @@ export default async function threadRoutes(app) {
     const t = await p.contactThread.findUnique({ where: { id: req.params.id }, select: { id: true, kind: true, targetId: true, senderId: true, senderEmail: true, _count: { select: { messages: true } } } });
     if (!t) return reply.code(404).send({ error: 'not_found' });
     await deleteThreadFiles(p, t.id);
+    // ConversationCursor names its conversation by a plain string, so nothing cascades: the
+    // read receipts, the pending "you have unread messages" clock and the copy claims all
+    // outlived the conversation they described. "What is kept is the audit line" was not
+    // true of them.
+    await p.conversationCursor.deleteMany({ where: { conversationId: t.id } }).catch(() => {});
     await p.contactThread.delete({ where: { id: t.id } });
     await logAudit(p, req.user.uid, 'thread.delete', `thread=${t.id} kind=${t.kind} target=${t.targetId} messages=${t._count.messages}`).catch(() => {});
     return { ok: true };

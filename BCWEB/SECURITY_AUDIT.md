@@ -1683,10 +1683,14 @@ value or a counted side effect BEFORE the fix and again after; every one carries
 was red first. Several leads that a reading suggested were dropped because the request refused
 them — they are in "Angles that found nothing".
 
-Tests: `apps/api/test/thread-copy-abuse.test.mjs` (5 new), `apps/api/test/repo-credentials.test.mjs`
+Tests: `apps/api/test/thread-copy-abuse.test.mjs` (6 new), `apps/api/test/repo-credentials.test.mjs`
 (2 new), one rewritten assertion in `apps/api/test/conversation-copy.test.mjs`. Suite run as
-CI runs it (`DATABASE_URL` set, `REDIS_URL` unset): **1925 / 1925, 0 skipped** — 1916 before
-this work, green then too.
+CI runs it (`DATABASE_URL` set, `REDIS_URL` unset): **1926 tests, 0 skipped, 1925 pass** —
+1916 before this work, green then. The one failure is `legal-freshness` /
+"says a date that its own history agrees with", which reads the real
+`apps/web/src/pages/legal.jsx`; that file is being edited by another agent in this shared tree
+right now and is not touched by anything here. It was green on the first run of this session
+and went red between two runs with none of my files changed in between.
 
 ## Findings, most severe first
 
@@ -1897,8 +1901,18 @@ a doctored readable copy is contradicted".
 `DELETE /admin/threads/:id` deleted the thread, its messages (cascade) and its files, under a
 comment saying "what is kept is the audit line" — and left the read receipts, the pending
 "you have unread messages" clock and (now) the copy claims pointing at a conversation that no
-longer exists. Fixed in the same route. Not a vulnerability; a promise the code did not keep,
-and a row that would have let a later reader tell that a deleted conversation had existed.
+longer exists. Fixed in the same route — and, because that route is only one of four places a
+conversation dies (the staff delete, a team being dissolved, account erasure, the demo clear),
+`pruneOrphanCursors()` in `lib/receipts.mjs` is the backstop: run each sweeper tick, bounded
+per pass like every other retention step, covering all four cursor kinds.
+
+Not a vulnerability; a promise the code did not keep, and a row that would have let a later
+reader tell that a conversation had existed, and name its id, after somebody was told it was
+gone. Run once against the dev database while writing this: **5 orphan cursors**, all debris
+from conversations already deleted.
+
+**Test (red first).** `thread-copy-abuse.test.mjs`, "a cursor whose conversation is gone is
+swept, and a live one is left alone".
 
 ## Open — documented, not changed
 

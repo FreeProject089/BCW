@@ -7,6 +7,7 @@ import { db, notify, catalogLog, clearAccountLockCache, hostingGrace, humanHours
 import { progressKey as onboardingKey } from './onboarding.mjs';
 import { sweepMediaHashes } from './media-hash.mjs';
 import { sweepExpiringFiles } from './expiring-files.mjs';
+import { pruneOrphanCursors } from './receipts.mjs';
 import { sweepAutoBadges } from '../routes/social.mjs';
 import { sweepEconomyHistory, drawDueSiteGiveaways } from './economy-shop.mjs';
 import { sweepAttention } from './attention.mjs';
@@ -919,6 +920,7 @@ export function startSweeper(app) {
       await sweepMediaHashes(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'media hash sweep failed'));
       // Links past their date lose their object a week later; the row stays as the proof.
       await sweepExpiringFiles(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'expiring files sweep failed'));
+      await pruneOrphanCursors(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'conversation cursor sweep failed'));
       await sampleAndAlert(p, app.log);
       await runEventScheduler(p).catch((e) => app.log.warn({ e: String(e) }, 'event scheduler failed'));
       // Threshold badges ("30 days old", "level 10") once a day: the rule may have been created

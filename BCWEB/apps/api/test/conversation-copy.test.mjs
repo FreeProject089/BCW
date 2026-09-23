@@ -31,9 +31,14 @@ before(async () => {
 after(async () => {
   if (!RUN) return;
   threads?.setCopyMailer(null);
-  await p.contactThread.deleteMany({ where: { id: { in: made } } });
   const ids = (await p.user.findMany({ where: { email: { endsWith: MAIL } }, select: { id: true } })).map((u) => u.id);
-  await p.contactThread.deleteMany({ where: { OR: [{ senderId: { in: ids } }, { ownerUserId: { in: ids } }] } });
+  const ours = await p.contactThread.findMany({ where: { OR: [{ id: { in: made } }, { senderId: { in: ids } }, { ownerUserId: { in: ids } }] }, select: { id: true } });
+  // ConversationCursor points at a conversation by a plain string, so nothing cascades:
+  // receipts and copy claims have to be swept by hand or they outlive their conversation.
+  // AFTER the threads, not before: closing is fire-and-forget, so a claim can still be
+  // written while this hook runs, and a cursor swept first comes straight back as an orphan.
+  await p.contactThread.deleteMany({ where: { id: { in: ours.map((t) => t.id) } } });
+  await p.conversationCursor.deleteMany({ where: { conversationId: { in: ours.map((t) => t.id) } } }).catch(() => {});
   await p.notification.deleteMany({ where: { userId: { in: ids } } });
   await p.session.deleteMany({ where: { userId: { in: ids } } });
   await p.user.deleteMany({ where: { id: { in: ids } } });
@@ -130,9 +135,16 @@ describe('copies against the database', { skip }, () => {
       assert.ok(m.html.includes('First, from the sender.'));
       assert.ok(!m.html.includes('Something staff hid.'));
     }
-    // And through the route: closing triggers it.
+    // Closing the SAME conversation again sends nothing: a copy per side goes out once, not
+    // once per close. Without that, close/reopen was an unbounded mail sender aimed at
+    // whatever address the thread carries (test/thread-copy-abuse.test.mjs).
     sent.length = 0;
-    const r = await app.inject({ method: 'POST', url: `/me/threads/${t.id}/close`, headers: { cookie: await cookieFor(owner) } });
+    assert.equal(await threads.mailCopiesOnClose(p, t.id), 0, 'a second close re-sent the copies');
+
+    // And through the route: closing triggers it — on a conversation whose copies have not
+    // gone out yet, which is what a real close is.
+    const t2 = await mkThread({ owner, sender });
+    const r = await app.inject({ method: 'POST', url: `/me/threads/${t2.id}/close`, headers: { cookie: await cookieFor(owner) } });
     assert.equal(r.statusCode, 200);
     for (let i = 0; i < 50 && sent.length < 2; i += 1) await new Promise((res) => setTimeout(res, 20));
     assert.equal(sent.length, 2, 'the close route mailed both participants');

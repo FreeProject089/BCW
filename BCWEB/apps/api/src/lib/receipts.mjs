@@ -73,6 +73,50 @@ export async function markDelivered(p, kind, ids, side, at = new Date()) {
   await p.conversationCursor.updateMany({ where: { kind, side, conversationId: { in: list } }, data: { deliveredAt: at } }).catch(() => {});
 }
 
+/**
+ * Cursors whose conversation is gone.
+ *
+ * `conversationId` is a plain string, not a relation, so a deleted conversation leaves its
+ * receipts behind — the delivered/read timestamps, the pending "you have unread messages"
+ * clock and the copy claims. Four places delete a conversation (the staff delete, a team
+ * being dissolved, account erasure, the demo clear) and none of them cascades, because there
+ * is nothing to cascade. A row that outlives its subject is not only clutter: it is a record
+ * that a conversation existed, and its id, after somebody was told it had been removed.
+ *
+ * The staff delete route cleans up its own; this is the backstop for the rest and for
+ * anything written between a deletion and its cleanup. Bounded per sweep, like every other
+ * retention step here.
+ */
+const ORPHAN_CURSOR_BATCH = 2000;
+export async function pruneOrphanCursors(p, log) {
+  const tableOf = { thread: p.contactThread, report: p.report, myo: p.myoRequest };
+  let removed = 0;
+  for (const kind of Object.keys(SIDES)) {
+    const model = tableOf[kind];
+    if (!model) continue;
+    try {
+      const rows = await p.conversationCursor.findMany({ where: { kind }, select: { id: true, conversationId: true }, take: ORPHAN_CURSOR_BATCH });
+      if (!rows.length) continue;
+      const ids = [...new Set(rows.map((r) => r.conversationId))];
+      const live = new Set((await model.findMany({ where: { id: { in: ids } }, select: { id: true } })).map((x) => x.id));
+      const dead = rows.filter((r) => !live.has(r.conversationId)).map((r) => r.id);
+      if (dead.length) removed += (await p.conversationCursor.deleteMany({ where: { id: { in: dead } } })).count;
+    } catch { /* a retention step must never be the thing that fails the sweep */ }
+  }
+  // The copy claims (threads.mjs COPY_CURSOR_KIND) hang off a thread too, under their own
+  // kind, which SIDES does not name because they are not a read receipt.
+  try {
+    const rows = await p.conversationCursor.findMany({ where: { kind: 'thread-copy' }, select: { id: true, conversationId: true }, take: ORPHAN_CURSOR_BATCH });
+    if (rows.length) {
+      const live = new Set((await p.contactThread.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.conversationId))] } }, select: { id: true } })).map((x) => x.id));
+      const dead = rows.filter((r) => !live.has(r.conversationId)).map((r) => r.id);
+      if (dead.length) removed += (await p.conversationCursor.deleteMany({ where: { id: { in: dead } } })).count;
+    }
+  } catch { /* as above */ }
+  if (removed) log?.info?.(`[sweeper] pruned ${removed} conversation cursor(s) whose conversation is gone`);
+  return removed;
+}
+
 /** Every cursor of one conversation, by side. */
 export async function cursorsOf(p, kind, conversationId) {
   const rows = await p.conversationCursor.findMany({ where: { kind, conversationId } }).catch(() => []);

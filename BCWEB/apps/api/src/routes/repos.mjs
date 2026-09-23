@@ -94,17 +94,61 @@ export function effUpload(repo) {
   return Math.min(req, cap);               // never exceeds the sandbox cap
 }
 const serGroup = (g) => (g ? { ...g, poolBytes: Number(g.poolBytes) } : g);
-// BigInt fields -> numbers for JSON; add sandbox-derived fields. NOTE: dashPassword
-// (the dashboard password hash) is stripped here so it can never leak to a client.
+// BigInt fields -> numbers for JSON; add sandbox-derived fields.
+//
+// A ServerRepo row carries FIVE secrets, not one. This used to strip `dashPassword` alone,
+// with a comment saying it is removed "so it can never leak to a client" — and shipped the
+// four sitting next to it: `syncPasswordHash` (argon2, the download password), `shareKey`
+// (the whole of `/r/<id>?k=…`, which IS access to a private repo), `accessEmails` and
+// `settings.access.keys` (the sandbox keys a whitelisted client presents). Measured with
+// canary values before fixing: `GET /admin/repos` handed all four of every repo on the site
+// to a MOD, a tier that cannot otherwise open any of them.
+//
+// A password HASH never has a reader. Neither the web bundle nor BMM reads
+// `syncPasswordHash` — the sibling model already answers this question the right way
+// (`hasPassword: !!c.syncPasswordHash` in catalogs.mjs, `hasSyncPassword` in
+// repo-dashboard.mjs) — so it leaves for everybody and the FACT goes in its place.
+//
+// The rest is the owner's own and stays for them; `serStaff` below is what a third party
+// gets. Still a spread rather than an allowlist, because this row's non-secret columns are
+// the whole of the hosting UI and an allowlist here fails silently (a new field that "won't
+// show"). test/repo-credentials.test.mjs is the allowlist, written as canaries: it fails the
+// day a new secret-shaped column rides out.
 const ser = (r) => {
-  const { dashPassword, ...rest } = r;
+  const { dashPassword, syncPasswordHash, ...rest } = r;
   return {
     ...rest,
     storageQuotaBytes: Number(r.storageQuotaBytes), storageUsedBytes: Number(r.storageUsedBytes),
     settings: r.settings || DEFAULT_SETTINGS,
     effectiveUploadKbps: effUpload(r),
     hasDashPassword: !!dashPassword,
+    hasSyncPassword: !!(syncPasswordHash || '').trim(),
+    hasShareKey: !!(r.shareKey || '').trim(),
     ...(r.group !== undefined ? { group: serGroup(r.group) } : {}),
+  };
+};
+
+/**
+ * The same repo as somebody who does NOT own it sees it: staff.
+ *
+ * What a moderator needs is the state of a repo — its plan, its size, whether it is
+ * published, verified, suspended, whether it has a password at all. What they do not need,
+ * and must not be handed, is the means to walk into it: the share link's key, the sandbox
+ * access keys, the whitelisted addresses, the collaborators' e-mail addresses. `manage_repos`
+ * and `MOD` are moderation grants; they are not "read every private repo on the site".
+ * The booleans above say everything a screen needs to say.
+ */
+const serStaff = (r) => {
+  const { shareKey, accessEmails, settings, ...rest } = ser(r);
+  const s = settings || DEFAULT_SETTINGS;
+  return {
+    ...rest,
+    accessEmailCount: (accessEmails || []).length,
+    settings: {
+      ...s,
+      access: { ...(s.access || {}), ips: undefined, keys: undefined, ipCount: (s.access?.ips || []).length, keyCount: (s.access?.keys || []).length },
+      bans: { ...(s.bans || {}), ips: undefined, keys: undefined, ipCount: (s.bans?.ips || []).length, keyCount: (s.bans?.keys || []).length },
+    },
   };
 };
 
@@ -1331,7 +1375,7 @@ export default async function repoRoutes(app) {
       uploadLimitKbps: uploadKbps, cpuShare, listed: !!b.data.listed,
     } });
     await notify(p, ownerId, 'hosting_started', `A hosted repo "${repo.name}" was provisioned for you (free host).`);
-    return reply.code(201).send({ repo: ser(repo) });
+    return reply.code(201).send({ repo: serStaff(repo) });
   });
 
   // The ed25519 public key a self-hosted repo server needs in order to verify the
@@ -1374,7 +1418,7 @@ export default async function repoRoutes(app) {
         subscription: { select: { currentPeriodEnd: true, status: true } },
       },
     });
-    return { repos: repos.map((r) => ({ ...ser(r), ownerId: r.ownerId, ownerBcId: userBcId(r.ownerId) })) };
+    return { repos: repos.map((r) => ({ ...serStaff(r), ownerId: r.ownerId, ownerBcId: userBcId(r.ownerId) })) };
   });
 
   // Admin: resolve a Repo ID fingerprint (BCR-XXXX-XXXX) back to the owning repo
@@ -1520,7 +1564,7 @@ export default async function repoRoutes(app) {
     if (b.data.cpuShare != null) data.cpuShare = b.data.cpuShare;
     const repo = await p.serverRepo.update({ where: { id: req.params.id }, data });
     if (b.data.category) await notify(p, repo.ownerId, 'repo_verified', b.data.category === 'community' ? `"${repo.name}" is now a community repo.` : `"${repo.name}" was designated ${b.data.category === 'official' ? 'an OFFICIAL' : 'a PARTNER'} repo by the team.`).catch(() => {});
-    return { repo: ser(repo) };
+    return { repo: serStaff(repo) };
   });
 
   // Admin easy-boost: grant (or extend) a free featured boost for N days — no payment.
@@ -1536,6 +1580,6 @@ export default async function repoRoutes(app) {
     const featuredUntil = b.data.days === 0 ? null : new Date(base.getTime() + b.data.days * 864e5);
     const out = await p.serverRepo.update({ where: { id: repo.id }, data: { featuredUntil } });
     if (featuredUntil) await notify(p, repo.ownerId, 'feature_active', `"${repo.name}" was boosted by the team — featured until ${featuredUntil.toDateString()} (free).`).catch(() => {});
-    return { repo: ser(out) };
+    return { repo: serStaff(out) };
   });
 }
