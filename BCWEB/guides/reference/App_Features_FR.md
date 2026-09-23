@@ -57,6 +57,11 @@
   owner + catalogue). Chaque catalogue a une page `/c/:slug` avec des deep-links **« Ajouter
   à BMM »** par type + une URL de flux copiable. Les admins les modèrent (suspendre /
   délister) dans l'onglet *Catalogues communautaires*.
+  L'onglet **Mes catalogues** (tableau de bord) est un petit tableau de bord : les totaux
+  d'abord (catalogues, éléments, téléchargements, vues), une barre de part du pool par
+  catalogue géré, et **Gérer** ouvre un seul catalogue sur un seul onglet (Éléments,
+  Réglages, Accès, Trafic en direct, Domaine personnalisé), gardé dans l'URL (`?cat=&ctab=`) :
+  un rechargement ou un lien partagé rouvre le même onglet.
 - **Item privé par défaut** (comme les Server-Repos) : un item n'apparaît dans le catalogue
   public + le flux `catalog.json` qu'une fois validé par un admin. Avant ça il reste
   **privé** mais accessible via son **lien de partage** (`?k=…`) ; ce lien marche aussi
@@ -203,6 +208,11 @@
   sondages plutôt qu'en collant un id, et un don crédite la cagnotte **net des frais de carte**
   (le montant exact des frais lu depuis Stripe) ; le donateur voit les frais et est prévenu que
   les dons sont définitifs avant de payer.
+  La fenêtre de don suit l'ordre des questions d'un donateur : l'association du mois, la
+  cagnotte et la part de la communauté, le fonctionnement en trois étapes, le montant, puis ce
+  qui arrive dans la cagnotte après les frais ; le bouton porte le montant. La carte de
+  l'accueil existe en **styles** tout faits (Classique, Minimal, Bandeau, Verre, Manuscrit),
+  choisis dans l'admin sur des aperçus en direct, ou Personnalisé.
 - **Ko-fi** — un widget d'objectif de financement épinglé en bas de la home, discount
   d'hébergement de 25% lié aux dons.
 
@@ -244,7 +254,11 @@
   hébergement gratuit, codes promo (discount / hébergement gratuit / boost gratuit),
   stockage (tous les consommateurs).
 - **Contenu** — catalogues, config projets, other projects, **avis** (témoignages
-  d'accueil gérés par l'admin : texte EN + FR, note, bascule par avis + section entière),
+  d'accueil : texte EN + FR, note, bascule par avis + section entière ; **les membres postent
+  le leur** depuis le tableau de bord, un par compte, et rien de ce qu'un membre écrit
+  n'arrive sur l'accueil avant qu'un modérateur l'approuve : la file passe en tête avec
+  Approuver / Refuser, modifier un avis approuvé le renvoie en attente, les liens sont refusés
+  et le compte doit avoir un jour),
   **events** (Nouvel An / fête nationale / custom : **aperçu** des feux d'artifice à la
   demande, **quantité + taille + taux d'apparition du drapeau** configurables, feux calmes
   cantonnés au ciel, badge fête nationale avec le drapeau du pays et un lien cliquable au
@@ -373,6 +387,19 @@
   retour elle-même n'accorde rien.
 
 ## Aspect & ressenti
+- **Mode OS des tableaux de bord** (au choix, `/admin` et `/dashboard`, jamais sur
+  téléphone) : chaque section s'ouvre en fenêtre (déplacer, redimensionner, ancrer à un bord,
+  réduire, agrandir), avec une barre des tâches, un menu Démarrer qui est la recherche
+  globale, des icônes de bureau et un fond au choix. Les liens `?s=` marchent toujours et l'URL
+  suit la fenêtre au premier plan ; la disposition est gardée par compte dans le navigateur.
+  Il reprend la même liste d'onglets que la barre latérale classique : les permissions ne sont
+  jamais calculées deux fois. Interrupteur dans l'en-tête de chaque tableau de bord ou dans
+  Réglages.
+- **Préréglages d'accueil** : dont **Le chemin** (v4), un court en-tête puis des étapes
+  numérotées reliées par une ligne qui serpente, chacune cochée d'après ce que le visiteur a
+  vraiment fait. Des notes manuscrites (Caveat, hébergée sur le site) et un surligneur
+  marquent quelques mots sur l'accueil, /hosting, /myo et /charity ; le grain est léger et
+  seulement sur quelques cartes.
 - **Orbe héro Three.js** — se construit à partir de ses éclats à l'intro, spirale au
   scroll (voyage proportionnel à la longueur de page), particules en orbite,
   survol/clic éclate & recompose, plongée de transition de page optionnelle (off par

@@ -48,6 +48,10 @@
   Server-Repos), plus **bans** across the site + owner + catalog layers. Each catalog has a
   `/c/:slug` page with one-click **"Add to BMM"** deep-links per kind + a copyable feed URL.
   Admins moderate them (suspend / unlist) under the *Community catalogs* tab.
+  The owner's **My catalogs** tab (dashboard) is a small dashboard: totals first (catalogs,
+  items, downloads, views), a pool-share bar per managed catalog, and **Manage** opens one
+  catalog on one tab (Items, Settings, Access, Live traffic, Custom domain) kept in the URL
+  (`?cat=&ctab=`), so a reload or a shared link reopens the same tab.
 - **Private-by-default item visibility** (like Server-Repos): an item appears in the public
   catalog + `catalog.json` feed only once an admin validates it. Before then it stays
   **private** but reachable via its own **share link** (`?k=…`) — the owner can share/test
@@ -178,6 +182,11 @@
   `/charity/contribute`, `/v1/charity`) answers 404 `charity_disabled`. The month's vote is picked from the poll list rather than a
   pasted id, and a gift credits the pot **net of the card-processing fee** (the exact fee read
   from Stripe); the giver is shown the fee and told donations are final before paying.
+  The contribution modal reads in the order a donor asks: this month's association, the pot
+  and the community's share, how it works in three steps, the amount, then what reaches the
+  pot after fees; the button carries the amount. The homepage card comes in ready-made
+  **styles** (Classic, Minimal, Band, Glass, Handwritten) picked in the admin from live
+  previews, or Custom.
 - **Ko-fi** — a funding-goal widget pinned at the bottom of the homepage, donor-linked
   25% hosting discount.
 
@@ -218,8 +227,11 @@
   status, cancellation), free hosting, promo codes (discount / free hosting / free boost),
   storage — a **grand total across all tiers** (object storage, database, backups,
   telemetry) each labelled **local or remote** so a backend on another server is clear.
-- **Content** — catalogs, projects config, other projects, **reviews** (admin-curated
-  landing testimonials: EN + FR text, rating, per-review + whole-section toggle),
+- **Content** — catalogs, projects config, other projects, **reviews** (landing
+  testimonials: EN + FR text, rating, per-review + whole-section toggle; **members post their
+  own** from the dashboard, one per account, and nothing a member wrote reaches the landing
+  before a moderator approves it: the queue sorts first with Approve / Reject, editing an
+  approved review sends it back, links are refused and the account must be a day old),
   **events** (New Year / national holiday / custom: on-demand fireworks **preview**,
   configurable **amount + size + flag-drop rate**, calm sky-confined bursts, national-day
   badge shows the country flag and can link to a URL you choose; users can turn the
@@ -335,6 +347,16 @@
   the key / content / link right there. The return URL itself grants nothing.
 
 ## Look & feel
+- **OS mode for the dashboards** (opt-in, `/admin` and `/dashboard`, never on phones): each
+  section opens as a window (move, resize, snap to an edge, minimise, maximise), with a
+  taskbar, a Start menu that is the global search, desktop icons and a choice of background.
+  `?s=` deep links still work and the URL follows the focused window; the layout is saved per
+  account in the browser. It uses the same tab list as the classic sidebar, so permissions are
+  never computed twice. Switch in each dashboard's header or in Settings.
+- **Homepage presets** include **The path** (v4): a short hero, then numbered stops joined by
+  a line that snakes down the page, each checked from what the visitor really did. Handwritten
+  notes (Caveat, self-hosted) and a highlighter mark a few words on the landing, /hosting,
+  /myo and /charity; the grain is light and only on a few cards.
 - **Three.js hero orb** — builds itself from shards on intro, spirals as you scroll
   (journey scales with page length), particles orbit it, hover/click shatters &
   recomposes, optional page-transition dive (off by default).

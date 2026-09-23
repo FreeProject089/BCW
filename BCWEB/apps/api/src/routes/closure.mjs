@@ -531,6 +531,9 @@ export async function anonymiseAccount(p, user) {
     // The first-run marker (lib/onboarding.mjs): a settings row keyed by the id, which no
     // relation-driven erasure walks.
     p.adminSetting.deleteMany({ where: { key: onboardingKey(user.id) } }).catch(() => {}),
+    // A landing review (M11) carries a COPY of the display name in `author` and is public once
+    // approved: anonymising the user row would leave it on the home page under the old name.
+    p.review.deleteMany({ where: { userId: user.id } }).catch(() => {}),
   ]);
 }
 

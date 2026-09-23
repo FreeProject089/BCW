@@ -21,7 +21,7 @@ process.env.JWT_SECRET ||= 'member-reviews-test-secret';
 
 const TAG = `m11rev-${Date.now()}-`;
 const DAY = 24 * 60 * 60 * 1000;
-let p, app, member, fresh, admin, cMember, cFresh, cAdmin;
+let p, app, member, fresh, admin, closer, cMember, cFresh, cAdmin, cCloser;
 
 async function login(user) {
   const sess = await p.session.create({ data: { userId: user.id }, select: { id: true } });
@@ -34,7 +34,8 @@ before(async () => {
   member = await p.user.create({ data: { email: `${TAG}member@test.local`, displayName: 'Review Member', emailVerified: true, createdAt: new Date(Date.now() - 10 * DAY) } });
   fresh = await p.user.create({ data: { email: `${TAG}fresh@test.local`, displayName: 'Fresh Account', emailVerified: true } });
   admin = await p.user.create({ data: { email: `${TAG}admin@test.local`, displayName: 'Review Admin', role: 'SUPERADMIN', totpEnabled: true, emailVerified: true } });
-  [cMember, cFresh, cAdmin] = await Promise.all([login(member), login(fresh), login(admin)]);
+  closer = await p.user.create({ data: { email: `${TAG}closer@test.local`, displayName: 'Leaving Member', emailVerified: true, createdAt: new Date(Date.now() - 10 * DAY) } });
+  [cMember, cFresh, cAdmin, cCloser] = await Promise.all([login(member), login(fresh), login(admin), login(closer)]);
   const Fastify = (await import('fastify')).default;
   app = Fastify();
   await app.register((await import('@fastify/cookie')).default);
@@ -45,7 +46,7 @@ before(async () => {
 after(async () => {
   if (!RUN) return;
   try {
-    const ids = [member, fresh, admin].filter(Boolean).map((u) => u.id);
+    const ids = [member, fresh, admin, closer].filter(Boolean).map((u) => u.id);
     await p.review.deleteMany({ where: { userId: { in: ids } } });
     for (const m of ['notification', 'session']) await p[m]?.deleteMany({ where: { userId: { in: ids } } }).catch(() => {});
     await p.user.deleteMany({ where: { id: { in: ids } } });
@@ -135,5 +136,19 @@ describe('a member review waits for a moderator', { skip }, () => {
     assert.equal(typeof g.json().sectionOn, 'boolean');
     await app.inject({ method: 'DELETE', url: '/me/review', headers: { cookie: cMember } });
     assert.equal(await p.review.count({ where: { userId: member.id } }), 0);
+  });
+});
+
+describe('closing an account takes its review off the home page', { skip }, () => {
+  test('the review, which carries a copy of the display name, is deleted with the closure', async () => {
+    const r = await put(cCloser, { body: BODY });
+    assert.equal(r.statusCode, 200, r.body);
+    const id = r.json().review.id;
+    await app.inject({ method: 'PATCH', url: `/admin/reviews/${id}`, headers: { cookie: cAdmin }, payload: { status: 'approved' } });
+    assert.ok((await publicIds()).includes(id));
+    const { anonymiseAccount } = await import('../src/routes/closure.mjs');
+    await anonymiseAccount(p, await p.user.findUnique({ where: { id: closer.id } }));
+    assert.equal(await p.review.count({ where: { userId: closer.id } }), 0, 'an anonymised account still had its review');
+    assert.ok(!(await publicIds()).includes(id), "the closed account's review stayed on the landing");
   });
 });
