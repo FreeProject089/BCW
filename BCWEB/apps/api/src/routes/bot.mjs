@@ -1274,6 +1274,11 @@ export default async function botRoutes(app) {
     if (!botAuth(req, reply)) return;
     const b = z.object({ winnerIds: z.array(z.string().max(32)).max(50) }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    // One winner is one prize. A list naming the same id twice paid an UNLINKED winner twice
+    // over: the account path refuses a second payout on the giveaway's ledger ref, but the
+    // shadow row (DiscordEconomy) has no ledger to check, so the loop simply credited it
+    // again. The draw is claimed once, so this is the only place a duplicate could enter.
+    b.data.winnerIds = [...new Set(b.data.winnerIds)];
     const p = await db();
     const gw = await p.giveaway.findUnique({ where: { id: req.params.id } });
     if (!gw) return reply.code(404).send({ error: 'not_found' });

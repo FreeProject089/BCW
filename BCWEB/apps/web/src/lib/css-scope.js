@@ -36,6 +36,12 @@ const urlOk = (u) => /^(\/(?!\/)|#|data:image\/(?:png|jpeg|gif|webp|svg\+xml);)/
  */
 function decodeCssEscapes(input) {
   return String(input)
+    // A backslash before a newline is a LINE CONTINUATION inside a string: the browser deletes
+    // both characters and joins the halves, so `"https:\⏎//evil/x"` is `"https://evil/x"`. It
+    // is removed here, before anything matches literal text, for the same reason the hex
+    // escapes below are — and because the string scanner's `\\.` cannot match it (`.` is not a
+    // newline), which made it a way to write a URL that no rule in this file could see.
+    .replace(/\\(?:\r\n|[\n\r\f])/g, '')
     .replace(/\\([0-9a-fA-F]{1,6})(\r\n|[ \t\r\n\f])?/g, (all, hex) => {
       const cp = parseInt(hex, 16);
       // 0 and anything past the last code point are replaced, as CSS says.
@@ -53,8 +59,73 @@ function decodeCssEscapes(input) {
  * these is a URL and goes through the same test; if any of them fails, the whole function
  * is replaced rather than edited, because half a rewritten image-set is not a value.
  */
-const FN_URL_RE = /\b(?:-webkit-|-ms-|-moz-)?(?:image-set|src)\s*\(([^()]*)\)/gi;
+const FN_START = /(?:-webkit-|-ms-|-moz-)?(?:image-set|src)\s*\(/gi;
 const STR_RE = /(['"])((?:[^'"\\]|\\.)*)\1/g;
+/** Functions that may appear INSIDE an image-set()/src(): a URL we have already checked, or a
+ *  descriptor that carries no URL at all. Anything else — `var()`, `env()`, `attr()` — hides
+ *  its value from this file, and a value this file cannot read is refused, not trusted. */
+const FN_NESTED_OK = /^(?:-webkit-|-ms-|-moz-)?(?:url|src|image-set|type|format|tech|local)$/i;
+/** Descriptors whose string argument is a MIME type or a font name, not a URL. */
+const FN_META = /(?:type|format|tech|local)\s*\([^()]*\)/gi;
+
+/** Index just past the `)` that closes the `(` at `open`, or -1 (strings are skipped). */
+function closeParen(s, open) {
+  let depth = 0;
+  for (let i = open; i < s.length; i++) {
+    const c = s[i];
+    if (c === '\\') { i++; continue; }
+    if (c === '"' || c === "'") {
+      const q = c;
+      for (i++; i < s.length; i++) { if (s[i] === '\\') { i++; } else if (s[i] === q) break; }
+      if (i >= s.length) return -1; // unterminated string: nothing here can be read
+      continue;
+    }
+    if (c === '(') depth++;
+    else if (c === ')' && --depth === 0) return i + 1;
+  }
+  return -1;
+}
+
+/** What makes this argument list unreadable or forbidden, or null when every part checks out. */
+function badImageArgs(inner) {
+  for (const f of inner.matchAll(/([\w-]+)\s*\(/g)) if (!FN_NESTED_OK.test(f[1])) return `${f[1]}()`;
+  for (const m of inner.replace(FN_META, '').matchAll(STR_RE)) if (!urlOk(m[2])) return m[2];
+  return null;
+}
+
+/**
+ * `image-set(…)` and `src(…)` take a URL as a bare STRING, so URL_RE never sees them.
+ *
+ * Scanned with balanced parentheses rather than `([^()]*)`, because the regex form could not
+ * see past a nested function — which made `image-set(var(--u) 1x)` invisible to it, with the
+ * URL parked in a custom property. The whole function is replaced rather than edited: half a
+ * rewritten image-set is not a value.
+ */
+function refuseImageFns(s, refused) {
+  let out = ''; let i = 0; let m;
+  FN_START.lastIndex = 0;
+  while ((m = FN_START.exec(s))) {
+    if (m.index > 0 && /[\w-]/.test(s[m.index - 1])) continue; // part of a longer identifier
+    const open = m.index + m[0].length - 1;
+    const end = closeParen(s, open);
+    out += s.slice(i, m.index);
+    // No balanced close: the function is refused, and scanning resumes just after its `(`.
+    // Returning here instead would drop the rest of the stylesheet — a refusal that deletes
+    // the author's next rule is the failure mode this file has already been bitten by once.
+    if (end < 0) {
+      refused.add('image url(unterminated)');
+      out += 'none';
+      i = open + 1; FN_START.lastIndex = i;
+      continue;
+    }
+    const bad = badImageArgs(s.slice(open + 1, end - 1));
+    if (bad === null) out += s.slice(m.index, end);
+    else { refused.add(`image url(${String(bad).slice(0, 40)})`); out += 'none'; }
+    i = end;
+    FN_START.lastIndex = end;
+  }
+  return out + s.slice(i);
+}
 
 const BLOCK_AT = /^@(media|supports|container|layer|scope)\b/i;
 const KEEP_AT = /^@(keyframes|-webkit-keyframes|font-face|property|counter-style|page)\b/i;
@@ -110,13 +181,7 @@ export function scopeCss(input, scope) {
   s = s.replace(URL_RE, (all, q, u) => { if (urlOk(u)) return all; refused.add(`url(${u.slice(0, 40)})`); return 'none'; });
   // After url(), because a url() inside an image-set has already been dealt with and a
   // refused one now reads `none`, which is a legal image-set entry.
-  s = s.replace(FN_URL_RE, (all, inner) => {
-    let bad = null;
-    for (const m of inner.matchAll(STR_RE)) if (!urlOk(m[2])) { bad = m[2]; break; }
-    if (bad === null) return all;
-    refused.add(`image url(${bad.slice(0, 40)})`);
-    return 'none';
-  });
+  s = refuseImageFns(s, refused);
   const out = [];
   walk(s, scope, out, 0);
   return { css: out.join('\n'), refused: [...refused] };
@@ -127,16 +192,28 @@ export function safeClasses(input) {
   return String(input || '').split(/\s+/).filter((c) => c && c.length <= 80 && /^[a-zA-Z0-9_:\-/[\]#%.!()]+$/.test(c)).slice(0, 40).join(' ');
 }
 
-/** Inline declarations typed by an author → a React style object, with the same refusals. */
+/**
+ * Inline declarations typed by an author → a React style object, with the same refusals.
+ *
+ * Every test runs against the DECODED declaration — what the browser will read — while what is
+ * emitted is what the author wrote. The two used to be the same string, so this door had none
+ * of the three protections the stylesheet door has: `\75 rl(https://…)` carried no literal
+ * `url(` to match, and `image-set("https://…" 1x)` / `src("https://…")` name a URL without one
+ * at all. All three reached the DOM and fetched.
+ */
 export function safeInlineStyle(input) {
   const style = {};
   const src = String(input || '').slice(0, 4000);
-  if (REFUSE.some(([re]) => re.test(src))) return style;
+  if (REFUSE.some(([re]) => re.test(decodeCssEscapes(src)))) return style;
   for (const decl of src.split(';')) {
     const k = decl.indexOf(':'); if (k < 0) continue;
-    const prop = decl.slice(0, k).trim().toLowerCase(); let val = decl.slice(k + 1).trim();
+    const prop = decl.slice(0, k).trim().toLowerCase(); const val = decl.slice(k + 1).trim();
     if (!/^[a-z-]+$/.test(prop) || !val) continue;
-    if (/url\s*\(/i.test(val) && !urlOk((val.match(URL_RE) ? val.replace(URL_RE, (a, q, u) => u) : ''))) continue;
+    const read = decodeCssEscapes(val);
+    if (/url\s*\(/i.test(read) && !urlOk((read.match(URL_RE) ? read.replace(URL_RE, (a, q, u) => u) : ''))) continue;
+    const refused = new Set();
+    refuseImageFns(read, refused);
+    if (refused.size) continue;
     const camel = prop.startsWith('--') ? prop : prop.replace(/-([a-z])/g, (m, c) => c.toUpperCase());
     style[camel] = val;
   }

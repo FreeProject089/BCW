@@ -83,7 +83,11 @@ export function matchesLang(name, lang) {
 export function DocRoadmap({ node }) {
   const { lang, Roadmap } = useContext(MarkdownConfig);
   const p = node?.properties || {};
-  const src = p.dataSrc || p['data-src'] || '';
+  // Through the same door as every other live block (`::fetch`, `::include`, `::openapi`):
+  // the URL policy decides where an author may point it, and the read is uncredentialed.
+  // This one was fetching the raw attribute with the default `same-origin` credentials, so
+  // `:::roadmap{src=/api/…}` read the READER's own session and drew the answer on the page.
+  const src = apiUrl(p.dataSrc || p['data-src'] || '');
   const rawJson = p.dataJson || p['data-json'] || '';
   const title = p.dataTitle || p['data-title'] || (lang === 'fr' ? 'Feuille de route' : 'Roadmap');
   const inline = useMemo(() => {
@@ -95,7 +99,7 @@ export function DocRoadmap({ node }) {
   useEffect(() => {
     if (!src) return;
     let alive = true; setFetchErr(false);
-    fetch(src).then((r) => { if (!r.ok) throw new Error('http'); return r.json(); })
+    fetch(src, { credentials: 'omit' }).then((r) => { if (!r.ok) throw new Error('http'); return r.json(); })
       .then((j) => { if (alive) setRemote(j); })
       .catch(() => { if (alive) setFetchErr(true); });
     return () => { alive = false; };

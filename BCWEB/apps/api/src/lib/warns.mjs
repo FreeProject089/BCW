@@ -116,15 +116,32 @@ export async function issueWarn(p, { discordId, reason, guildId = null, issuedBy
 
     // The count INCLUDING this one, and only warnings still standing: a revoked warning stays
     // in the record and must never push somebody over a line.
-    const count = 1 + await p.botWarn.count({ where: { discordId, revokedAt: null } });
-    const triggered = actionFor(count, cfgRow?.value?.moderation?.warnThresholds || []);
-
-    const warn = await p.botWarn.create({
-        data: {
-            discordId, targetLabel, reason, guildId,
-            issuedById, issuedByLabel: String(issuedByLabel).slice(0, 200),
-            triggered: triggered ? `${triggered.kind}${triggered.minutes ? `:${triggered.minutes}` : ''}` : null,
-        },
+    //
+    // Counted and written under a lock on THIS member, because counting and inserting are two
+    // statements and the ladder is decided between them. Two warnings arriving together —
+    // which is the normal case for the thing the ladder exists to stop, since automod runs one
+    // handler per message and a spammer sends several at once — both read the same total, both
+    // write, and the number in the middle is never anybody's count. A ladder step on that
+    // number therefore never fires: three warnings land, nobody is timed out, and the next
+    // warning is the fourth. Spamming FASTER bought fewer consequences than spamming slowly.
+    //
+    // A transaction-scoped advisory lock rather than a unique ordinal column: no migration, it
+    // is released by the commit whatever happens, and it serialises only the warnings aimed at
+    // one member. `hashtext` is a Postgres builtin; the key is namespaced so an unrelated
+    // advisory lock cannot collide with it on purpose.
+    const lockKey = `botwarn:${discordId}`;
+    const { count, triggered, warn } = await p.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
+        const n = 1 + await tx.botWarn.count({ where: { discordId, revokedAt: null } });
+        const t = actionFor(n, cfgRow?.value?.moderation?.warnThresholds || []);
+        const row = await tx.botWarn.create({
+            data: {
+                discordId, targetLabel, reason, guildId,
+                issuedById, issuedByLabel: String(issuedByLabel).slice(0, 200),
+                triggered: t ? `${t.kind}${t.minutes ? `:${t.minutes}` : ''}` : null,
+            },
+        });
+        return { count: n, triggered: t, warn: row };
     });
     // Record the warning itself in the guild's moderation log (mode permitting). auto = no
     // human issuer (a bot rule fired it). The ladder-triggered ban/kick below logs on success.

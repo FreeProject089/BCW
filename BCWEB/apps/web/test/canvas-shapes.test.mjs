@@ -90,10 +90,57 @@ describe('scopeCss', () => {
     assert.ok(scopeCss('.a{background:image-set("/u/p.png" 1x)}', SCOPE).css.includes('/u/p.png'));
     assert.ok(scopeCss('.a{background:image-set(url(/u/p.png) 1x)}', SCOPE).css.includes('url(/u/p.png)'));
   });
+  // Pentest 2026-09-23, card 6. The string scan inside image-set()/src() was a regex over the
+  // literal text, so two ways of writing the SAME string defeated it: a CSS line continuation
+  // (a backslash before a newline, which a browser deletes inside a string) and putting the
+  // string in a custom property and substituting it with var(). Both fetched, both reported
+  // nothing refused.
+  test('a line continuation inside an image string is still that string', () => {
+    const BS = String.fromCharCode(92);
+    for (const decl of [`background:image-set("https:${BS}\n//evil/p.png" 1x)`,
+      `background:src("https:${BS}\n//evil/p.png")`]) {
+      const { css, refused } = scopeCss(`.a{${decl}}`, SCOPE);
+      assert.ok(!css.includes('evil'), decl);
+      assert.ok(refused.some((r) => r.includes('evil')), decl);
+    }
+  });
+  test('an image function whose argument this cannot read is refused, not trusted', () => {
+    for (const src of ['.a{--u:"https://evil/p.png";background:image-set(var(--u) 1x)}',
+      '.a{--u:"https://evil/p.png";background:src(var(--u))}',
+      '@property --u{syntax:"*";inherits:false;initial-value:"https://evil/p.png"}\n.a{background:image-set(var(--u) 1x)}']) {
+      const { css, refused } = scopeCss(src, SCOPE);
+      assert.ok(!/image-set\(\s*var|src\(\s*var/.test(css), src);
+      assert.ok(refused.length, src);
+    }
+    // An image function nobody can close is refused without taking the rest of the sheet.
+    {
+      const { css, refused } = scopeCss('.a{background:image-set("x 1x)}\n.b{color:red}', SCOPE);
+      assert.ok(refused.length);
+      assert.ok(css.includes('color:red'), css);
+    }
+    // The shapes a real stylesheet uses keep working.
+    assert.ok(scopeCss('.a{background:image-set("/u/p.png" 1x, "/u/p2.png" 2x)}', SCOPE).css.includes('/u/p2.png'));
+    assert.ok(scopeCss('.a{background:image-set("/u/p.png" type("image/png"))}', SCOPE).css.includes('type("image/png")'));
+  });
   test('classes and inline style are filtered the same way', () => {
     assert.equal(safeClasses('hero rounded-2xl md:flex bg-[#fff] <script> a"b'), 'hero rounded-2xl md:flex bg-[#fff]');
     assert.deepEqual(safeInlineStyle('letter-spacing: .04em; background-image: url(https://evil/x); color: red; --accent: #f00'), { letterSpacing: '.04em', color: 'red', '--accent': '#f00' });
     assert.deepEqual(safeInlineStyle('width: expression(1)'), {});
+  });
+  // The same three channels, on the OTHER door. safeInlineStyle matched `url(` in the raw text
+  // and knew nothing about escapes or about the two functions that take a bare string, so a
+  // block's own `style` reached the DOM with all three.
+  test('an inline style is read the way the browser reads it', () => {
+    const BS = String.fromCharCode(92);
+    for (const decl of [`background:${BS}75 rl(https://evil/p.png)`,
+      'background-image:image-set("https://evil/p.png" 1x)',
+      'background-image:src("https://evil/p.png")',
+      'background-image:image-set(var(--u) 1x)']) {
+      assert.deepEqual(safeInlineStyle(decl), {}, decl);
+    }
+    // and the ordinary ones still arrive, exactly as typed
+    assert.deepEqual(safeInlineStyle('background:url(/ok.png);background-image:image-set("/a.png" 1x)'),
+      { background: 'url(/ok.png)', backgroundImage: 'image-set("/a.png" 1x)' });
   });
 });
 

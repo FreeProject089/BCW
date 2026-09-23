@@ -58,6 +58,55 @@ export function sniffImage(buf) {
   return null;
 }
 
+/** The largest source image, per side. A 2 MB cap bounds the BYTES and says nothing about the
+ *  PIXELS: a PNG of one flat colour at 60000x60000 is a few kilobytes on the wire and 14 GB
+ *  once a decoder has it. Read from the header, before anything decodes. */
+export const MAX_SOURCE_PIXELS = 4096;
+
+/**
+ * `{ w, h }` from an image's own header, or null when this cannot tell.
+ *
+ * Deliberately a header read and not a decode: the whole point is to answer before the bytes
+ * reach a decoder. `null` means "unknown", and the caller refuses on unknown rather than
+ * hoping — the four formats accepted here all state their size in the first few bytes.
+ */
+export function imageSize(buf) {
+  if (!Buffer.isBuffer(buf) || buf.length < 12) return null;
+  const type = sniffImage(buf);
+  if (type === 'image/png') {
+    // IHDR is the first chunk and its width/height are at 16..24, big-endian.
+    if (buf.length < 24 || buf.toString('latin1', 12, 16) !== 'IHDR') return null;
+    return { w: buf.readUInt32BE(16), h: buf.readUInt32BE(20) };
+  }
+  if (type === 'image/gif') return { w: buf.readUInt16LE(6), h: buf.readUInt16LE(8) };
+  if (type === 'image/webp') {
+    const fourcc = buf.toString('latin1', 12, 16);
+    if (fourcc === 'VP8X' && buf.length >= 30) return { w: 1 + buf.readUIntLE(24, 3), h: 1 + buf.readUIntLE(27, 3) };
+    if (fourcc === 'VP8 ' && buf.length >= 30) return { w: buf.readUInt16LE(26) & 0x3fff, h: buf.readUInt16LE(28) & 0x3fff };
+    if (fourcc === 'VP8L' && buf.length >= 25) {
+      const bits = buf.readUInt32LE(21);
+      return { w: (bits & 0x3fff) + 1, h: ((bits >> 14) & 0x3fff) + 1 };
+    }
+    return null;
+  }
+  if (type === 'image/jpeg') {
+    // Walk the markers to the first SOFn, which is where a JPEG states its size.
+    for (let i = 2; i + 9 < buf.length;) {
+      if (buf[i] !== 0xff) { i++; continue; }
+      const m = buf[i + 1];
+      if (m === 0xd8 || m === 0x01 || (m >= 0xd0 && m <= 0xd7) || m === 0xff) { i += 2; continue; }
+      const len = buf.readUInt16BE(i + 2);
+      if (len < 2) return null;
+      if (m >= 0xc0 && m <= 0xcf && m !== 0xc4 && m !== 0xc8 && m !== 0xcc) {
+        return { h: buf.readUInt16BE(i + 5), w: buf.readUInt16BE(i + 7) };
+      }
+      i += 2 + len;
+    }
+    return null;
+  }
+  return null;
+}
+
 /** `data:image/png;base64,...` to a Buffer, or null. Capped before the base64 is decoded. */
 export function decodeDataUrl(s, max = MAX_SOURCE_BYTES) {
   const m = /^data:([a-z0-9.+/-]+)?;base64,([A-Za-z0-9+/=\s]+)$/i.exec(String(s || '').trim());
@@ -127,6 +176,13 @@ export async function prepareCustomIcon(body, { existing = {}, replacing = null 
   if (!raw) return { ok: false, error: 'invalid_icon', issues: [`image must be a base64 data URL of at most ${Math.round(MAX_SOURCE_BYTES / 1024)} KiB`] };
   const type = sniffImage(raw);
   if (!type) return { ok: false, error: 'invalid_icon', issues: ['image must really be a PNG, JPEG, GIF or WebP (checked by its bytes, not by its name)'] };
+  // The pixel count, from the header, BEFORE a decoder sees the bytes. A size this cannot
+  // read is refused rather than decoded: the cap exists precisely for the image that is not
+  // what it looks like.
+  const size = imageSize(raw);
+  if (!size || !(size.w > 0) || !(size.h > 0) || size.w > MAX_SOURCE_PIXELS || size.h > MAX_SOURCE_PIXELS) {
+    return { ok: false, error: 'invalid_icon', issues: [`the image must state a size of at most ${MAX_SOURCE_PIXELS}x${MAX_SOURCE_PIXELS} pixels in its header`] };
+  }
   let out = null;
   try { out = await toEmojiPng(raw); } catch { out = null; }
   if (!out) return { ok: false, error: 'invalid_icon', issues: ['that image could not be decoded'] };

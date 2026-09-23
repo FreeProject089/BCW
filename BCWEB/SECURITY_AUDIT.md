@@ -1668,3 +1668,864 @@ header.
 - **The web side of any of this.** `apps/web/src/**` belongs to another agent this run and was not
   read, so nothing is claimed about what the admin screens do with the new `refused` list or the
   manifest's `redacted` paths.
+
+---
+
+# Pentest 2026-09-23 — Cards 1 and 4, conversations and data exposure
+
+Plan: `.Assets/.md/PLAN-PENTEST-SEPT22-2026.md`, cards 1 (A — conversations, files, signed
+copies) and 4 (F, J — data exposure and route guards). Scope: the Sept 22 conversation rework
+(`20fd0998`) and every route added since Sept 9. Local stack only, dev database, fixtures
+removed. The Discord bot was never started. Nothing was committed and nothing was pushed.
+
+Method: read, then attack, then **refute**. Every finding below was measured with a canary
+value or a counted side effect BEFORE the fix and again after; every one carries a test that
+was red first. Several leads that a reading suggested were dropped because the request refused
+them — they are in "Angles that found nothing".
+
+Tests: `apps/api/test/thread-copy-abuse.test.mjs` (5 new), `apps/api/test/repo-credentials.test.mjs`
+(2 new), one rewritten assertion in `apps/api/test/conversation-copy.test.mjs`. Suite run as
+CI runs it (`DATABASE_URL` set, `REDIS_URL` unset): **1925 / 1925, 0 skipped** — 1916 before
+this work, green then too.
+
+## Findings, most severe first
+
+### F1 — Closing a conversation was an unbounded mail sender, aimed at any address (FIXED)
+
+**CWE-770 / CWE-405.** CVSS 3.1 **6.5 medium** — `AV:N/AC:L/PR:L/UI:N/S:C/C:N/I:L/A:L`
+(S:C because the harm lands on a third party's mailbox and on our sending reputation, not on
+this server).
+
+**Trigger.** `POST /me/threads/:id/close` calls `mailCopiesOnClose`, which mails each side a
+signed copy with a zip attached. `close` and `reopen` are ordinary participant moves with no
+rate limit and no memory, so `close, reopen, close, reopen, …` sends a mail per cycle, for
+ever. The address is not the attacker's: on an anonymous thread it is whatever was typed into
+the contact form, never confirmed. So:
+
+1. Mallory owns a repo (any account can create one).
+2. She opens an **anonymous** thread to her *own* repo — the "not to yourself" check is
+   `if (uid && target.ownerId === uid)`, and an anonymous opener has no `uid` — with
+   `email: victim@example.com`.
+3. Signed in as the owner, she loops close/reopen.
+
+Measured before the fix: **6 cycles produced 12 mails, 6 of them to the chosen address**, each
+with a 2.8 kB zip attached, subject "Your copy of the conversation: …", from our domain. The
+sibling route knew better: `POST /me/threads/:id/copy/mail` is capped at 5 an hour.
+
+**Fix** (`apps/api/src/routes/threads.mjs`). Two layers.
+
+* `claimCopyMail()` — a copy for a SIDE goes out at most once per 24 h, recorded in the
+  database (`ConversationCursor`, under its own `kind: 'thread-copy'`, claimed by
+  compare-and-set so two closes racing cannot both send). Not a one-shot flag: a conversation
+  genuinely reopened weeks later and closed again should get its copy.
+* `close` / `reopen` / `archive` now carry `rateLimit: { max: 30, timeWindow: '1 hour' }`.
+
+**Why it holds.** The amplifier was "one close, one mail" with closes free. The claim removes
+the multiplier at the source — the second close of the same conversation sends nothing at all,
+whoever asks and however often — and the tap bounds the request rate even if a future caller
+reaches `mailCopiesOnClose` by another path. It is in the database, so a restart does not
+reopen it, and it is per side, so the answering side being several people still costs one mail.
+
+**Test (red first).** `thread-copy-abuse.test.mjs`, "close/reopen in a loop mails ONE copy per
+side, not one per close": 5 cycles, asserts at most 1 mail to the third-party address and at
+most 2 in total. Before the fix: 10 and 10. `conversation-copy.test.mjs` also now asserts that
+a second `mailCopiesOnClose` on the same thread returns 0.
+
+### F2 — An admin read and exported any private conversation without passing the 2FA gate (FIXED)
+
+**CWE-863 / CWE-306.** CVSS 3.1 **6.5 medium** — `AV:N/AC:L/PR:H/UI:N/S:U/C:H/I:L/A:N`.
+
+**Trigger.** `participant()` in `threads.mjs` lets `isStaff(user)` (ADMIN / SUPERADMIN) into any
+conversation. The routes that use it are `requireRole()` **with no roles**, and `requireRole`
+only calls `ensure2fa` when roles were named — so the staff path never met the wall. The admin
+door on the same data does: `requireCap('manage_reports')` always calls it.
+
+Measured before the fix, with one ADMIN account, `totpEnabled: false`:
+
+| request | before |
+|---|---|
+| `GET /admin/threads/<id>` | 403 `2fa_required` |
+| `GET /me/threads/<id>` | **200**, `side: "staff"`, the whole thread |
+| `GET /me/threads/<id>/copy` | **200 application/zip**, the signed export |
+
+Same account, same data, two doors, one unlocked — and the member door writes no audit line
+either, while `DELETE /admin/threads/:id` does.
+
+**Fix.** `ensure2fa` is now exported from `lib/lib.mjs` (with the reason written above it), and
+`participant()` calls it on the branch that is neither owner nor sender. Participants are
+untouched: the gate only ever runs for somebody who is in neither side of the conversation.
+
+**Why it holds.** The gate is attached to the POWER rather than to a URL prefix, which is what
+the bug was: `/admin/*` was treated as the definition of a staff surface, and a staff surface
+that is not named `/admin/*` slipped past. Any future route that reaches a conversation through
+`participant()` inherits it.
+
+**Test (red first).** `thread-copy-abuse.test.mjs`, "a staff account without 2FA cannot read,
+or export, a conversation it is not in" — asserts the admin route and the member route now
+agree (403 `2fa_required` on both, and on `/copy`).
+
+**Left open (owner):** a staff read of a conversation they are not in still writes no audit
+line, on either door. `DELETE`, `close`, `block` and `hide` all do.
+
+### F3 — A MOD received the share key, sync password hash and sandbox keys of every repo (FIXED)
+
+**CWE-200 / CWE-522.** CVSS 3.1 **6.5 medium** — `AV:N/AC:L/PR:H/UI:N/S:U/C:H/I:N/A:N`.
+
+**Trigger.** `ser()` in `routes/repos.mjs` was a **spread** of the `ServerRepo` row minus one
+column, with a comment saying `dashPassword` is removed "so it can never leak to a client".
+Four more secrets sit in that row and rode out with it. `GET /admin/repos`
+(`requireCap('manage_repos', 'MOD')`) fetches with `include`, not `select`, so a MOD received,
+for **every repo on the site**:
+
+| column | what it is |
+|---|---|
+| `shareKey` | the whole of `/r/<id>?k=…` — access to a private repo's page |
+| `syncPasswordHash` | argon2 hash of the owner's download password (offline crackable) |
+| `settings.access.keys` | the sandbox keys a whitelisted client presents to download |
+| `settings.access.ips` | the owner's whitelisted addresses |
+| `accessEmails[]` | the collaborators' e-mail addresses |
+
+Measured with canary values: all five present in the body of `GET /admin/repos` as a plain
+`MOD`. `GET /me/repos` also returned the owner their own `syncPasswordHash` — a password hash
+has no reader in a browser, and the sibling model already knew it
+(`hasPassword: !!c.syncPasswordHash` in `catalogs.mjs`, `hasSyncPassword` in
+`repo-dashboard.mjs`). The public `GET /repos` was already safe: its query uses an explicit
+`select`.
+
+**Fix.** `ser()` now strips `syncPasswordHash` for everybody and reports `hasSyncPassword` and
+`hasShareKey` instead. A new `serStaff()` additionally removes `shareKey`, `accessEmails` and
+the key/IP lists inside `settings`, replacing them with counts; it is used by the four staff
+routes that return somebody else's repo (`GET /admin/repos`, `POST /admin/repos/host`,
+`PATCH /admin/repos/:id`, `POST /admin/repos/:id/feature`). The owner keeps their own share key
+and their own whitelist — they need both.
+
+**Why it holds.** `manage_repos` and `MOD` are moderation grants, not "open every private repo".
+The booleans and counts say everything a moderation screen has to say, and the thing that made
+this survivable — a spread pretending to be an allowlist — is now bounded by a test written as
+canaries rather than by a reviewer noticing a new column.
+
+**Test (red first).** `repo-credentials.test.mjs`, two tests: a MOD's listing contains none of
+the five canaries but still reports `hasDashPassword` / `hasSyncPassword` / `hasShareKey`; the
+owner keeps `shareKey` and their sandbox keys and never receives either password hash.
+
+### F4 — The path can be the credential, and only the query string was redacted (FIXED)
+
+**CWE-532.** CVSS 3.1 **5.3 medium** — `AV:N/AC:H/PR:L/UI:N/S:U/C:H/I:L/A:N`.
+
+**Trigger.** The August fix for logged share keys (see "Re-audit — 2026-08-22") strips the
+QUERY STRING: `pathOnly(url) = url.split('?')[0]`, used by the `req` log serialiser, by the 500
+handler and by `ErrorEvent.path`. On a handful of routes the secret is in the **path**:
+
+* `/threads/t/<accessToken>` — read a private conversation, answer in the sender's name,
+  download the signed copy, make the server mail it. 24 random bytes, no expiry, survives
+  archiving and closing.
+* `/f/<token>` — a mail attachment or MYO deliverable link.
+* `/auth/oauth/link/<token>` — binds a provider to an account.
+
+Demonstrated with a canary: a request to `/threads/t/SECRETTOKEN123?k=QUERYSECRET` produced
+
+```
+{"level":30,"req":{"method":"GET","url":"/threads/t/SECRETTOKEN123","queryKeys":["k"]},"msg":"incoming request"}
+{"level":50,"path":"/threads/t/SECRETTOKEN123","msg":"request error"}
+```
+
+— the query secret masked, the path secret whole, on **every** request (level 30), and into
+`ErrorEvent.path` on a 500. `ErrorEvent` is readable with `manage_analytics`, a capability that
+grants no access to any of those conversations. Exactly the class the earlier fix was written
+for, missed because the rule it wrote down was "a query string is a secret" rather than "these
+routes carry a bearer token".
+
+**Fix.** `redactPath(url)` in `lib/errorlog.mjs`: `pathOnly`, then the segment after a
+credential-bearing prefix (`/threads/t/`, `/f/`, `/auth/oauth/link/`) replaced with an ellipsis,
+the rest of the path kept (`/threads/t/…/files/abc` still says what was asked for). Used by
+`recordServerError` **and** by both log sites in `server.mjs`, so the row and the line cannot
+disagree — which is the mistake the August fix itself made and had to correct.
+
+**Why it holds.** Prefix-matched, so a route added under `/threads/t/` is covered the day it is
+written, and a path that merely looks similar (`/me/threads/<id>`) is not, because an id is not
+a credential and a log with no identifier is a log nobody can use.
+
+**Test (red first).** `thread-copy-abuse.test.mjs`, "a path that IS a credential is redacted
+out of logs and error rows" — seven cases, including the negative one.
+
+### F5 — A blocked sender could still make the server mail them (FIXED)
+
+**CWE-770 / CWE-863.** CVSS 3.1 **3.7 low** — `AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L`.
+
+**Trigger.** `POST /threads/t/:token/copy/mail` looked the thread up by token and mailed a copy
+with no status check. Staff blocking a sender sets every one of their threads to `blocked`; the
+unread-mail flush already skips a blocked thread, this route did not. Measured: 200 `{ok:true}`
+on a thread set to `blocked`. A block is the one tool moderation has against a sender who costs
+us something, and this was the hole in it.
+
+**Fix.** 403 `blocked` when `status === 'blocked'`. Reading the conversation by token still
+works after archiving, closing and blocking — that is the deliberate rule everywhere here and
+is unchanged; what stops is a button that makes the server send mail.
+
+**Test (red first).** `thread-copy-abuse.test.mjs`, "a blocked sender cannot keep making the
+server mail them".
+
+### F6 — `/conversation-copy/verify` said "valid" without showing what was signed (FIXED)
+
+**CWE-345.** CVSS 3.1 **4.3 medium** — `AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:L/A:N`.
+
+**Trigger.** The archive carries `conversation.html` (the readable copy),
+`conversation.payload.json` (the signed bytes) and `conversation.sig`. **Nothing signs the
+HTML.** A recipient can edit one sentence of `conversation.html`, hand somebody the whole
+archive, and the page they are told to check it on — `POST /conversation-copy/verify`, which
+returned only `subject`, `about`, `with`, a message *count* and the issue date — answers
+"valid". Editing a body rather than adding a message leaves the count right too. The verifier
+exists to contradict a doctored copy and could not, because it never showed the authentic text.
+
+**Fix.** The route now also returns the messages from the signed payload (`at`, `side`, `from`,
+`body`, file names and sizes, capped at 2000). Not a disclosure: the caller already holds the
+signed document those bytes came from.
+
+**Why it holds.** The check becomes a comparison instead of a badge — the reader sees the true
+conversation beside the one they were handed.
+
+**Owner item:** the web page at `/verify-copy` must render `messages` for this to reach a human.
+`apps/web/src/**` belongs to another agent this run, so the API half is in and the page half is
+not.
+
+**Test (red first).** `thread-copy-abuse.test.mjs`, "verifying a copy shows what was signed, so
+a doctored readable copy is contradicted".
+
+### F7 — A deleted conversation left its cursors behind (FIXED, hygiene)
+
+`ConversationCursor` names its conversation by a plain string, so nothing cascades.
+`DELETE /admin/threads/:id` deleted the thread, its messages (cascade) and its files, under a
+comment saying "what is kept is the audit line" — and left the read receipts, the pending
+"you have unread messages" clock and (now) the copy claims pointing at a conversation that no
+longer exists. Fixed in the same route. Not a vulnerability; a promise the code did not keep,
+and a row that would have let a later reader tell that a deleted conversation had existed.
+
+## Open — documented, not changed
+
+### O1 — `GET /c/:slug` hands a private catalogue's share key to a whitelisted viewer (OWNER)
+
+**CWE-200, low.** `ser(c)` in `routes/catalogs.mjs:293` is a proper allowlist but it *names*
+`shareKey`, and it feeds the public routes `GET /c` and `GET /c/:slug`. `catalogGate` admits a
+caller to a **private** catalogue either with a matching `?k=` **or** through
+`accessListMatches(acc, identity)` — so a whitelisted creator id or IP that never held the share
+key receives it in the response body, and can pass the link to anybody. Verified by request that
+a private catalogue refuses an anonymous reader (403) and echoes the key to a reader who already
+presented it (harmless); the access-list path was **not** reproduced — it needs a signed
+identity — so this is reported on the code, not on a measurement. Fix: drop `shareKey` from the
+shared serialiser and add it only where the owner reads their own catalogue. It is one field in
+one allowlist, but `ser` also feeds `/me/catalogs` and the copy-share-link UI, and
+`apps/web/src/**` is another agent's this run, so it was not changed blind.
+
+### O2 — `GET /admin/settings` returns nested secrets (OWNER)
+
+`routes/misc.mjs:4001` filters by an exact-name denylist (`SECRET_SETTING_KEYS` in
+`lib/secret-guard.mjs`: `bot.token`, `kofi.token`, `backup.signingKey`,
+`identity.attestation.privateKeyPem`) and does **not** run `stripSecrets()`. So
+`codegraph.settings.<projectKey>.secret` — the GitHub webhook HMAC
+(`routes/code-webhook.mjs:41`) — reaches the response whole, although its own route deliberately
+masks it (`routes/projects.mjs:825`, `hasSecret: !!sec.secret`, with a comment saying it is
+"written but NEVER read back"). ADMIN-only, and ADMIN holds every capability, so this is defence
+in depth rather than a privilege break; it matters because the same hole swallows any secret
+pasted into a free-text setting. Fix: run the existing `stripSecrets` / `secretShape` over the
+values, not just over the names. Not applied — `misc.mjs` is four thousand lines of shared
+surface and three other agents are in this tree.
+
+### O3 — Raw exception text in response bodies (OWNER)
+
+Sixteen routes send `String(e.message)` to the client. The public ones —
+`/projects/:key/{progress,releases,activity,community}` (`projects.mjs:1007, 1044, 1111, 1133`)
+and the four `/showcase/:slug/*` twins (`showcase.mjs:113, 136, 161, 175`), all `optionalAuth()`
+— are the ones worth changing. Staff-only ones that hand back filesystem errors with absolute
+server paths: `devtools.mjs:218, 277, 416`; `lib/gitbackup.mjs:215` returns subprocess
+**stderr**. No route returns a Prisma code or a SQL string: every `P2002` / `P2003` / `P2034`
+site branches on the code and returns a fixed token. Two near-misses send `e.code` blind and
+would echo `"error":"P2002"` if a Prisma error escaped the same `try`:
+`hosting-content.mjs:363, 420` and `repo-dashboard.mjs:155, 218`.
+
+### O4 — `fileSer` spreads a `RepoFile` row, storage key included (OWNER)
+
+`hosting-content.mjs:30` and `repo-dashboard.mjs:18` both do `{ ...f, size: Number(f.size) }`,
+which ships the raw object-storage `key`. It reaches `GET /repos/:id/dashboard`, whose guard
+admits the owner, a whitelisted collaborator **or anyone holding the dashboard password**. Same
+class as F3, different model; not fixed because the dashboard is a shared surface and the fix
+wants a real allowlist rather than a second denylist.
+
+### O5 — The anonymous conversation link never expires (OWNER DECISION)
+
+24 random bytes (192 bits — the entropy is fine) and no expiry at all. It survives
+auto-archiving, closing and a staff block, and there is no rotate or revoke. That is deliberate
+— an anonymous sender has nothing else — but it means a mail forwarded two years ago still
+opens a conversation and downloads its signed copy. Worth a decision: expire N months after
+`lastActivityAt`, or offer the answering side a revoke.
+
+## Angles that found nothing — stated so they are not re-run
+
+* **`/conversation-copy/verify` as an oracle.** Key confusion: a document carrying its own
+  public key and a signature made with the matching private key returns `tampered`; the route
+  reads `signingKey(p)` and never the document. Canonicalisation: an added payload key, a
+  removed one (`recipient.name`) and a one-byte change to a message body all return `tampered`.
+  `keyId` is compared with `!==` but it is public and is only a pre-filter. **Zip-slip does not
+  apply** — the route takes JSON, never an archive, and `buildCopyZip` only ever writes seven
+  fixed names.
+* **Attachments.** Proved by request on a team inbox with attachments enabled: a filename of
+  `../../../../etc/passwd` is sanitised to `.._.._.._.._etc_passwd` and the key is
+  `contact/<threadId>/<uuid>-<name>`; `image/svg+xml` is refused 415; HTML bytes declared
+  `image/png` are stored but served `Content-Type: image/png` with
+  `X-Content-Type-Options: nosniff` and `Content-Disposition: attachment`, so no browser renders
+  them on our origin. **One thread's token cannot address another thread's file** — `sendFile`
+  filters on `{ id, threadId }`; measured 404.
+* **Thread IDOR.** A member who is neither participant nor staff gets 404 on `/me/threads/:id`
+  (not 403 — existence is not confirmed). `?project=<ref>` on `/me/threads` is ANDed with the
+  viewer's own rule, so it narrows and cannot widen.
+* **Route guards (card 4, J).** A parser that reads the whole handler — balanced-brace options
+  object, hoisted `const` guards resolved transitively, and the body, because
+  `if (!botAuth(req, reply)) return;` is a guard — over all **1151** routes. 121 carry no guard
+  expression and **every one of them is explicable**: `/bot/*` (shared secret, checked in the
+  body), `/v1/*` (`apiAuth(scope)`), `/oauth2/*` (`oauthBearer(scope)`), `/agent/*`
+  (`authAgent`), `/repos/:id/dashboard/*` (`resolve()`), `/threads/t/:token/*` (the token IS the
+  credential), plus the genuinely public ones (`/v1/scopes`, `/v1/webhook-events`,
+  `/bot/invite`, `/repos/:id/dashboard/{unlock,lock}`). **No `/admin/*` route and no `/me/*`
+  route is missing its guard.** The earlier parser's 19 false positives were all the
+  hoisted-const and multi-line-options shapes; this one produces none of them. The script was
+  kept out of the tree — it is a probe, not a gate.
+* **MailLog (card 4, F).** Correct as built: the list masks (`go•••@gm•••.com`), the `q` filter
+  searches `subject` and `mailId` and **never** the address (so it cannot be a "was mail sent to
+  X?" oracle), the full address is on the detail route only, both routes are
+  `requireCap('manage_users')`, subjects and transport errors go through `redactMailText`, and
+  the table has no body column.
+* **Catalogue traffic `keyed` (card 4, F).** `catalogAccessRow` (`lib/access-traffic.mjs:59`)
+  consumes `req.query.k` only to compute a boolean via `safeEqual`; the value is never assigned
+  to a column, the row has no `url` field, and `path` is a caller-supplied constant, not
+  `req.url`. The repo side is different by design: `RepoAccessEvent.accessKey`
+  (`hosting-content.mjs:47`) stores the sandbox key in clear for 30 days, visible only on the
+  owner's `/repos/:id/dashboard/traffic` — documented, owner-visible, left alone.
+* **Rate limits on the thread routes.** `POST /threads` 12 per 10 min,
+  `/me/threads/:id/messages` 40/h, `/threads/t/:token/messages` 10/h, both `copy/mail` 5/h, plus
+  the database-counted `userPerHour` / `anonPerHour` / `messagesPerHour`. The gap was the state
+  changes, and only those (F1).
+* **The anonymous unread mail as a spam or enumeration primitive.** `flushAnonThreadMails` mails
+  only the address the thread already carries, one mail per burst (`anonMailDebounceMin`, 10 min
+  by default), claimed with compare-and-set so the timer and the sweeper cannot both send, and
+  skipped entirely on a blocked thread. It enumerates nothing.
+* **Public repo listing.** `GET /repos` never carried a share key: its query uses an explicit
+  Prisma `select`, so F3's columns were never fetched. Measured, not assumed.
+
+## Not covered by this pass
+
+* The web half of F6 — `/verify-copy` must render the `messages` the API now returns.
+  `apps/web/src/**` is another agent's this run.
+* O1 to O4 are unfixed on purpose (the reason is given with each).
+* The API server was **left running** during the test runs, against the house rule, because
+  three other agents share this tree and this database. `rollup.test.mjs` passed anyway, so the
+  sweeper had not written `analytics.rollupAt` during the window; a run on a quiet machine would
+  be a firmer 1925.
+* No browser was involved. Every statement here comes from a request, a canary value found in a
+  response body or a log line, or a counted side effect.
+
+---
+
+# Pentest 2026-09-23 — Cards 5 and 6, bot surfaces and CSS/HTML injection
+
+Plan: `.Assets/.md/PLAN-PENTEST-SEPT22-2026.md`, cards 5 (G) and 6 (H, plus the B.MD half).
+Scope: every route the bot's shared secret reaches, the application-emoji map and the new
+admin-added icons (`7fd74a7f`), the giveaway draw, the warn ladder, the alert incident model,
+the Stripe status fetch, `/bot/status` and presence templating; then `scopeCss` again after
+`7447367f`, the B.MD sanitize schema, and the charity `code` block model. **The Discord bot was
+never started and no Discord API call was made** — everything here is reading, `node --check`
+and tests. Nothing was committed. Tests were run the CI way
+(`node --test test/*.test.mjs`), and the concurrency work also against the local dev Postgres;
+fixtures clean up after themselves (verified: zero rows left behind).
+
+## The bot's shared secret, and what it is worth
+
+`botAuth()` (`apps/api/src/lib/lib.mjs:200`) compares `x-bot-secret` against
+`BOT_SHARED_SECRET || LINK_LOOKUP_SECRET` with `safeEqual`. One secret, no scoping, no expiry,
+no per-route capability. It reaches **59 routes** across five files:
+
+| File | Routes | What the secret authorises |
+|---|---|---|
+| `routes/bot.mjs` | 51 | the bot's whole config, **`GET /bot/token` (the live Discord bot token)**, guild settings / language / features, per-guild storage mode, warnings, member activity and roster sync, giveaway create / enter / posted / **drawn**, the economy (`accrue`, `buy`, `gift`, `reveal`, `casino`, `casino/settle`, balance and history for ANY Discord id), pairing codes (`/bot/link/issue`), the DM and announcement queues, blog / Ko-fi / payment announcement state, error rows and the heartbeat |
+| `routes/bot-emoji.mjs` | 3 | the icon list, each 128×128 tile, and `PUT /bot/emoji/map` — the stored `name → id` map that becomes `<:name:id>` inside bot messages |
+| `routes/server-perf.mjs` | 4 | read every unannounced / pending **alert** and mark them announced or posted |
+| `routes/economy-admin.mjs` | 1 | the current economy season |
+| `routes/status.mjs` | 1 | `/bot/status` |
+
+**If it leaks:** the holder reads the Discord bot token (and from there owns the bot), mints
+economy points for any Discord id, issues and reads warnings against any member, re-points every
+guild's log channel, declares themselves the winner of any running giveaway, declares themselves
+the OWNER of any guild through the heartbeat's `guildList[].ownerId` — which is what the
+user-facing guild dashboard trusts (B10) — and silences every server alert by marking it
+announced. That is the design (the bot is a trusted process on a host we control) and it is
+worth writing down that **nothing narrows it**: the secret is the entire authorisation model for
+all 59 routes. The mitigations in place are that it is a boot-guard-enforced env variable, that
+it is compared in constant time from ONE implementation (the two copies that had drifted are
+gone), and that the routes validate their inputs strictly.
+
+Two routes take an ACTOR on top of the secret: `GET/PUT /bot/guilds/:id/settings` reads
+`actorDiscordId`, runs it through `canConfigureGuild`, and audits against the linked account
+rather than the snowflake. `PUT /bot/guilds/:id/language` does not — with the secret, any
+guild's language can be set. Inside the bot's trust boundary, so not a finding.
+
+## Findings, most severe first
+
+### F5-1 — The warn ladder never fired for the member who spammed fastest (FIXED)
+
+**CWE-367 (TOCTOU race).** CVSS 3.1 **6.5 medium** — `AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:H/A:N`
+(PR:L — any member of a server the bot is in; no site account needed).
+
+`issueWarn()` (`apps/api/src/lib/warns.mjs`) counted the warnings still standing and then wrote
+one, in two statements:
+
+```js
+const count = 1 + await p.botWarn.count({ where: { discordId, revokedAt: null } });
+const triggered = actionFor(count, …);     // EXACT match on the count, by design
+const warn = await p.botWarn.create({ … });
+```
+
+`actionFor` matches the count **exactly** — deliberately, so a step fires once and not for ever
+after. A count that no warning ever claims is therefore a step that never fires. And warnings
+arrive together in precisely the case the ladder exists for: automod runs one handler per
+`messageCreate` (`apps/bot/src/features/automod.mjs` → `recordAutomodWarn` → `api.warn` →
+`POST /bot/warns`), so a member posting four messages in the same instant produces four
+concurrent calls.
+
+**Trigger, measured against the dev Postgres** (`apps/api/test/warn-ladder-race.test.mjs` run
+against the pre-fix module):
+
+```
+counts claimed by 4 concurrent warnings:  [1, 1, 1, 1]
+counts claimed by the next 4:             [5, 5, 5, 5]
+```
+
+Eight warnings landed. The default ladder is 3 → timeout, 5 → kick, 7 → ban. **The 3 and the 7
+were never anybody's count, so neither fired**, and the 5 fired four times at once. Spamming
+faster bought fewer consequences than spamming slowly, and the moderation queue recorded four
+identical kick requests for one offence.
+
+**Fix.** The count and the insert are one transaction, serialised per target by a Postgres
+transaction-scoped advisory lock:
+
+```js
+const { count, triggered, warn } = await p.$transaction(async (tx) => {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`botwarn:${discordId}`}))`;
+  … count, decide, create …
+});
+```
+
+**Why it holds.** Two statements that must agree are now one critical section; the lock is keyed
+to the member, so warnings for different people never wait on each other, and it is released by
+the commit or the rollback — no path leaks it. No migration was needed (a unique ordinal column
+was the alternative). The queued action, the moderation log and the DM stay outside the
+transaction so it is short. The second caller blocks and then counts the row the first one
+wrote, so every warning gets its own number.
+
+**Test.** `apps/api/test/warn-ladder-race.test.mjs` — eight concurrent `issueWarn` calls must
+claim `[1..8]` and fire each ladder step exactly once. RED before (numbers above), GREEN after.
+Skips cleanly without `DATABASE_URL`, like every other DB test here.
+
+### F6-1 — `scopeCss`: two more ways to write a URL it could not read (FIXED)
+
+**CWE-20 / CWE-116.** CVSS 3.1 **5.4 medium** — `AV:N/AC:L/PR:L/UI:R/S:C/C:L/I:L/A:N`
+(PR:L — a project editor, or an admin with the charity card; the victim is every visitor).
+
+`7447367f` closed three of these. The rule it added — every string inside `image-set()` /
+`src()` is a URL and goes through `urlOk` — was a regex,
+`\b(?:-webkit-|…)?(?:image-set|src)\s*\(([^()]*)\)` with `(['"])((?:[^'"\\]|\\.)*)\1` over the
+inner text. Two ways of writing the same string walked past it, and **both reported nothing
+refused**, which is the worse failure mode: the author is told the stylesheet was accepted whole.
+
+1. **A line continuation.** A backslash before a newline inside a CSS string is deleted by the
+   browser and the halves are joined. The string regex cannot match it (`\\.` — `.` is not a
+   newline), so no string was found, `bad` stayed `null`, and the whole function was returned
+   untouched:
+
+   ```css
+   a { background-image: image-set("https:\
+   //evil.test/x.png" 1x) }        /* refused: []   — and the browser fetches it */
+   ```
+
+2. **`var()` indirection.** `([^()]*)` cannot see past a nested function, so
+   `image-set(var(--u) 1x)` never matched at all, with the URL parked in a custom property —
+   or, since `@property` bodies are kept verbatim, in an `initial-value`:
+
+   ```css
+   a { --u: "https://evil.test/x.png"; background-image: image-set(var(--u) 1x) }
+   @property --u { syntax: "*"; inherits: false; initial-value: "https://evil.test/x.png" }
+   ```
+
+Impact is the channel this file exists to close: every visitor to a studio page, a charity card
+or a site theme fetches an attacker-chosen third-party URL — their IP and User-Agent, and with
+attribute selectors the usual CSS exfiltration primitive.
+
+**Fix** (`apps/web/src/lib/css-scope.js`):
+
+* `decodeCssEscapes` now removes a backslash-newline first, alongside the hex escapes, for
+  exactly the reason the hex escapes are decoded there: every later rule matches literal text,
+  and this is how you write the same text without it.
+* the regex is replaced by `refuseImageFns()`, a **balanced-parenthesis scanner** that is
+  fail-closed. It reads the whole argument list (skipping strings correctly), refuses any nested
+  function that is not `url` / `src` / `image-set` / `type` / `format` / `tech` / `local` — so
+  `var()`, `env()` and `attr()` are refusals rather than blind spots — and then checks every
+  remaining string with `urlOk`. A function with no balanced close is refused too.
+
+**Why it holds.** The rule is now "decode what the browser decodes, read the argument list the
+way a parser does, refuse what cannot be read". A value whose URL is not statically visible is
+no longer *passed* because it was invisible; it is *refused* because it was invisible. The
+descriptor functions are blanked before the string check, so a legitimate `image-set` with
+`type("image/png")` still renders.
+
+**Test.** `apps/web/test/canvas-shapes.test.mjs` — "a line continuation inside an image string is
+still that string" and "an image function whose argument this cannot read is refused, not
+trusted". Both RED before, GREEN after, with the legitimate shapes (`image-set("/a.png" 1x,
+"/b.png" 2x)`, `type(…)`, a nested `url(/a.png)`) asserted to survive.
+
+### F6-2 — `safeInlineStyle` had none of the three protections the stylesheet door has (FIXED)
+
+**CWE-116.** CVSS 3.1 **5.4 medium** — `AV:N/AC:L/PR:L/UI:R/S:C/C:L/I:L/A:N`.
+
+Same file, other door. A studio block's own `style` goes through `safeInlineStyle`, which tested
+the RAW text for `url(` and knew nothing about escapes or about the two functions that name a
+URL without writing one. Measured before:
+
+```
+'background:\75 rl(https://evil.test/x.png)'               -> { background: '\75 rl(https://evil.test/x.png)' }
+'background-image:image-set("https://evil.test/x.png" 1x)' -> { backgroundImage: 'image-set(…)' }
+'background-image:src("https://evil.test/x.png")'          -> { backgroundImage: 'src(…)' }
+```
+
+All three reach `el.style` and fetch. `\75 rl(` is the identical escape `7447367f` fixed in
+`scopeCss` — the fix was applied to one of the two exported entry points.
+
+**Fix.** Every test now runs against the DECODED declaration (what the browser reads) while what
+is emitted is what the author wrote, and `refuseImageFns` is shared with `scopeCss`. The split on
+`;` still happens on the raw text, so an escaped `\3b` cannot hide a second declaration from the
+split — a browser does not treat it as a separator either.
+
+**Why it holds.** The two doors share one implementation of "where a URL may point", and the
+check is made on the string the CSS parser will see rather than on the string the author typed.
+
+**Test.** "an inline style is read the way the browser reads it" — RED before, GREEN after;
+`url(/ok.png)` and `image-set("/a.png" 1x)` still arrive unchanged.
+
+### F6-3 — A B.MD `style=` could take over the page through one CSS escape (FIXED)
+
+**CWE-116, enabling CWE-1021 (UI redressing).** CVSS 3.1 **5.4 medium** —
+`AV:N/AC:L/PR:L/UI:R/S:C/C:L/I:L/A:N`.
+
+`safeStyle` is the boundary for every `style=` an author writes in a blog post, a doc page or a
+**comment**. Its own comment names the live threat: "`position: fixed` needs no script at all. A
+`<div style="position:fixed;inset:0">` in a comment covers the page — a defacement, or a login
+box drawn over somebody else's." Every one of its rules matched literal text, and a CSS escape is
+decoded while the ident is tokenised — in a property name exactly as in a value. Measured before:
+
+```
+'position:fixed;inset:0'      -> 'inset:0'                    (refused, correctly)
+'position:\66 ixed;inset:0'   -> 'position:\66 ixed; inset:0'  (kept — and IS position:fixed)
+'\70 osition:fixed'           -> '\70 osition:fixed'           (kept — and IS position:fixed)
+'width:expre\73 sion(1)'      -> kept
+```
+
+The `expression()` / `behavior:` / `-moz-binding` escapes are dead vectors in current browsers;
+`position: fixed|sticky` is not, and it is the one the refusal was written for.
+
+**Fix.** `safeStyle` moved into its own dependency-free module,
+`packages/bmd/src/style-safe.js` (re-exported from `sanitize.js`, so no importer changed), and
+every rule now runs against the decoded declaration while the declaration kept is the one the
+author wrote.
+
+**Why it holds.** Same principle as F6-1/F6-2: judge what the browser reads. The decoder
+implements the CSS escape grammar (hex with its single optional whitespace terminator, the line
+continuation, and the literal form), so there is no third spelling of `position` left. Nothing
+legitimate is rewritten — `content:"\201C"` goes through byte for byte.
+
+**Test.** `apps/api/test/bmd-style-safe.test.mjs` (the API runner is where the runner is; the
+module has no imports for exactly that reason). RED before: 2 of its 4 suites failed.
+
+### F6-4 — `style="constructor:1"` crashed the whole document's render (FIXED)
+
+**CWE-1321 (prototype-chain lookup on author input) → CWE-248.** CVSS 3.1 **4.3 medium** —
+`AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:N/A:L`.
+
+```js
+const CSS_ESCAPES_FLOW = { position: /^\s*(fixed|sticky)\s*$/i };
+…
+if (CSS_ESCAPES_FLOW[prop]?.test(val)) return '';
+```
+
+`prop` is whatever the author wrote. `constructor` is a lowercase word, so
+`CSS_ESCAPES_FLOW['constructor']` finds `Object` — not null, so `?.` does not short-circuit —
+and `.test` is `undefined`:
+
+```
+safeStyle('constructor:1')  ->  THREW: CSS_ESCAPES_FLOW[prop]?.test is not a function
+```
+
+Thrown inside `rehypeSafeStyle`'s `visit()`, so it takes the whole unified transform with it: one
+comment or one post containing `<div style="constructor:1">` makes the page fail to render for
+everyone. (`toString` and `valueOf` produced junk; `constructor`, `__proto__` and
+`hasOwnProperty` threw.)
+
+**Fix.** `CSS_ESCAPES_FLOW` is a `Map`. **Why it holds:** a `Map` has no prototype chain to walk
+from a string key, so the lookup can only find what was put in it. **Test:** "a property name
+borrowed from Object.prototype does not throw" — five names, `assert.doesNotThrow`. RED before.
+
+### F6-5 — `:::roadmap{src=…}` fetched with the reader's session and no URL policy (FIXED)
+
+**CWE-359 / CWE-441 (confused deputy, read-only).** CVSS 3.1 **4.3 medium** —
+`AV:N/AC:L/PR:L/UI:R/S:U/C:L/I:N/A:N`.
+
+Every other live B.MD block funnels its `src` through `apiUrl()` (= `safeUrl` + the host policy)
+and fetches with `credentials: 'omit'`: `::fetch` (`blocks.jsx:368`), `::include` (`:454`),
+`::openapi` (`:478`). `DocRoadmap` did neither:
+
+```js
+const src = p.dataSrc || p['data-src'] || '';
+…
+fetch(src).then((r) => …)        // default credentials: 'same-origin'
+```
+
+So `:::roadmap{src=/api/…}` in any post read the READER's own authenticated endpoint and drew the
+answer into the page, and `src=https://anywhere/` was an unvetted third-party fetch from every
+reader's browser. Same class as the Sept-7 finding "B.MD live directives read credentialed
+same-origin data" — one block was missed when the others were fixed.
+
+**Fix.** `const src = apiUrl(…)` and `fetch(src, { credentials: 'omit' })`, identical to its three
+siblings. **Why it holds:** the URL now goes through the single policy every other block uses, and
+the request carries no ambient authority, so there is no deputy left to confuse. **Verified by**
+`check-md-security.mjs` (42 hostile documents), `check-md-renders.mjs` (95 directives through the
+real component) and `lint-bmd.mjs`, all green, plus a grep asserting `credentials: 'omit'` on all
+four fetch sites in `blocks.jsx`.
+
+### F5-2 — A bot icon was bounded in bytes, not in pixels (FIXED)
+
+**CWE-409 (decompression bomb) / CWE-789.** CVSS 3.1 **4.9 medium** —
+`AV:N/AC:L/PR:H/UI:N/S:U/C:N/I:N/A:H` (PR:H — `manage_bot`).
+
+`POST /admin/bot/custom-icons` caps the data URL at 2 MB **before decoding the base64** — a good
+cap on the wrong quantity. Bytes say nothing about what a decoder must allocate. A PNG of one
+flat colour at 60000×60000 is about 400 KB on the wire and roughly 14 GB once
+`@napi-rs/canvas`'s `loadImage` has it, and `prepareCustomIcon` handed the buffer straight over
+after the magic-byte sniff. Measured: with the gate removed, the test that posts the bomb does not
+fail an assertion — **the process dies**.
+
+**Fix.** `imageSize(buf)` reads the declared size out of the header (PNG IHDR, GIF screen
+descriptor, WebP VP8X/VP8/VP8L, JPEG's first SOFn) and `prepareCustomIcon` refuses anything over
+4096 px a side, **or anything whose header does not state a size at all**.
+
+**Why it holds.** The refusal happens on the first two dozen bytes, before a decoder is involved,
+and it fails closed: an image that will not say how big it is is exactly the image the cap exists
+for. The four formats checked are the four the sniffer already admits, so nothing reaches
+`loadImage` unmeasured.
+
+**Test.** `apps/api/test/bot-custom-icon-bomb.test.mjs` — a hand-built PNG, `imageSize` over the
+shapes, the bomb refused with the pixel cap named, and a PNG signature with no IHDR refused. RED
+before (process death), GREEN after. No DB, no canvas.
+
+### F5-3 — A duplicated winner id paid an unlinked winner twice (FIXED)
+
+**CWE-837 (improper enforcement of a single unique action).** CVSS 3.1 **2.7 low** —
+`AV:N/AC:L/PR:H/UI:N/S:U/C:N/I:L/A:N` (inside the bot's own trust boundary).
+
+`POST /bot/giveaways/:id/drawn` takes `winnerIds: z.array(…).max(50)` with no uniqueness and
+loops over it. "Paying twice is prevented twice", says `giveaway-reward.mjs`, and it is — for a
+LINKED winner: `claimDraw()` takes the draw with one conditional update, and `awardEconomyReward`
+refuses a second ledger row on `ref: giveaway:<id>`. The **shadow** path (an unlinked Discord id,
+credited on `DiscordEconomy`) has no ledger to check, and the guard's own comment says so: "that
+credit has no ledger, so only guard 1 covers it". Guard 1 covers a second REQUEST; it does not
+cover the same id twice in one list.
+
+**Fix.** `b.data.winnerIds = [...new Set(b.data.winnerIds)]` immediately after parsing, with the
+reason written beside it. **Why it holds:** the draw is claimed once, so this is the only door a
+duplicate could come through; after the dedupe the loop body runs at most once per id, which is
+what both guards already assume. It also stops a duplicated LINKED winner receiving two inventory
+rows for one prize.
+
+### F5-4 — `packages/bmd/src/url.js` was a binary file to every gate that greps (FIXED)
+
+**Hardening, no CVSS.** `const STRIP = /[…]/g` — the guard that removes control characters before
+a URL's scheme is read — was written with **raw 0x00, 0x1F and 0x7F bytes in the source**. It
+behaves correctly, and that is the trap: `grep` calls the file binary and prints
+`Binary file … matches` instead of the line, so every text gate and secret scan that walks this
+tree skips the file that decides whether `java<TAB>script:` is a scheme. Fourth sighting of this
+family in this project (`control-byte-in-a-pattern`, `generated-regex-backspace-trap`).
+
+**Fix.** `/[\x00-\x1f\x7f\s]/g` — the same class, written with escapes. **Why it holds:** proved
+identical rather than assumed. `safeUrl` was run over the same inputs before and after:
+`java<TAB>script:` refused, `java<DEL>script:` refused, `java<0x01>script:` refused, `//evil.com`
+refused, `https://my-site.example.com/a-b` unchanged with its hyphens intact. A sweep of
+`packages/bmd/src`, `apps/api/src`, `apps/bot/src` and `apps/web/src/lib` found no other source
+file containing a raw control byte.
+
+> A near-miss worth recording. Read in a terminal, that line looks like `[ -\s]`, and `[ -\s]` in
+> JavaScript (Annex B) is the three atoms `' '`, `'-'` and `\s` — it would have stripped every
+> **hyphen** from every URL B.MD renders, silently sending a reader of `https://my-site.example.com`
+> to `https://mysite.example.com`, a domain somebody else can register. Running the real module
+> refuted it in one call. The probe was the thing that was wrong, again.
+
+## Attacked and found to hold — stated so it is not re-attacked
+
+**The emoji map (`PUT /bot/emoji/map`).** Names are `^[a-z0-9_]+$` 2–32 and ids are
+`^\d{17,20}$`, enforced by zod on all three accepted body shapes, with the offending entry named
+rather than silently dropped. The map becomes `<:name:id>` inside bot messages, and neither
+character class can escape that token or reach Discord markup. `__proto__` passes the name regex
+and assigns through the `__proto__` setter — it tries to set the prototype of a local object
+literal to a **string**, which JavaScript ignores, and `JSON.stringify` never serialises it; the
+entry simply disappears. 2000-entry cap, matching Discord's. No finding.
+
+**Custom icons (`7fd74a7f`), apart from F5-2.** Keys are `^[a-z0-9_]{2,32}$` and may not shadow a
+built-in. The uploaded image is sniffed by **magic bytes**, never by a declared content-type; the
+base64 is refused on the STRING length so an oversize payload is never materialised; and — the
+answer to "can an uploaded image carry something that is not an image" — **the original bytes are
+never stored or served**. The image is re-drawn into a fresh 128×128 canvas and `encode('png')`-ed,
+so a polyglot, an appended payload, EXIF and an SVG-in-a-PNG are destroyed by construction; what
+is stored is our own encoder's output. `readStore` re-validates every key on the way OUT, so a row
+written by another path cannot reintroduce a bad one. Count, per-icon and whole-row caps are all
+checked, and the 128×128 PNG is refused if it exceeds Discord's own 256 KiB before anything is
+sent anywhere. The glyph path renders through the same tile renderer as a built-in, with
+`#rrggbb`-validated colours and an allowlisted shape.
+
+**The giveaway draw race, apart from F5-3.** `claimDraw()` is one conditional
+`updateMany({ where: { id, status: 'active' } })` and returns true only for `count === 1`; the
+loser is told `already: true` and delivers nothing, so parallel `/drawn` calls pay once. The
+second guard (`awardEconomyReward` refusing a duplicate ledger `ref`) is real and independent.
+`/bot/giveaways/:id/enter` deduplicates entrants and enforces `requirements.linked` / `.creator`
+server-side rather than trusting the Discord button. `/bot/giveaways/create` caps a guild at five
+active member-run giveaways.
+
+**The automod warn policy, apart from F5-1.** "Can a rule be made to warn someone else?" — no:
+`POST /bot/warns` takes `discordId` and a `by` LABEL, and the label is used for nothing but the
+record ("the bot is authenticated, the moderator is not" is written there and is true).
+"Never warn?" — `normalizeThresholds` drops a count below 1 and an unknown action, refuses two
+steps on the same count, and sorts highest-first; `actionFor` matches exactly, so no step stacks
+and no step repeats; `log` / `delete` / `warn` are explicit no-ops kept so a step can be disabled
+without deleting it. A revoked warning stays in the record and is excluded from the count. The
+only way to make a step not fire was the race.
+
+**The alert incident model.** `planAlert` is pure: one open row per key, severity only ever
+raised, a re-open inside 30 minutes is the same incident, and only a NEW or ESCALATED incident
+sets `fired`. The Details link is `${SITE_URL}/admin?s=serverperf&alert=` +
+`encodeURIComponent(id)` — a fixed host and an encoded parameter, so no open redirect.
+`POST /bot/alerts/posted` takes ids of up to 40 characters into an object map; `__proto__` there
+assigns an object to the `__proto__` setter of a **local spread copy**, which changes that
+object's prototype and nothing else — `Object.entries` in `prunePosts` and `JSON.stringify` on the
+way to the DB both see own properties only. The map is pruned to 300 entries and seven days.
+*Suppressing* alerts needs the shared secret (inventory above). *Causing* one: the
+unauthenticated `POST /analytics/error` (120/min rate limit, another card's file) feeds the
+`errors:client` burst rule — but that rule is KEYED, so it produces one open incident that is
+updated rather than a stream, and the keyless "a new kind of error appeared" rule is restricted to
+`source IN ('server','bot')`, which no public route can write. Bounded; recorded as a note for
+card 4's owner rather than a finding here.
+
+**The Stripe status fetch.** A constant `https://www.stripestatus.com/api/v2/status.json` — no
+host comes from configuration, so there is no SSRF parameter. 5 s `AbortSignal.timeout`, one
+request per 5-minute TTL shared process-wide, never more than one in flight, and a failure backs
+off ten minutes. A failure **opens nothing**: the last good answer is kept and marked `stale`, an
+unknown indicator maps to `unknown` rather than to `operational` ("guessing green is the failure
+this module exists to fix"), and `stripeUp()` returns `null` for unknown, which the status page
+renders as not-configured. Two nits, neither a finding: redirects are followed (the `fetch`
+default — bounded by the response only ever being parsed as JSON and sliced), and `r.json()` has
+no body-size cap, so a hostile *stripestatus.com* could feed a large document.
+
+**`/bot/status` and presence templating.** `/bot/status` returns exactly what the public `/status`
+page returns plus Stripe's own state; `cause` — the field that holds
+`connect ECONNREFUSED 172.20.0.5:5432` — is excluded there as it is on the public page, and no
+hostname, port, threshold or dependency configuration appears in the response. The presence
+`fill()` is `String(s).replace(/\{(\w+)\}/g, …)`: a **single pass**, so a substituted value
+containing `{guilds}` is not re-expanded and there is no recursion to drive. The variables are two
+integers, a translated word from a fixed three-item set, and Stripe's own description (already
+sliced to 200, then the whole line to 128). Nothing a member should not see: `{members}` is an
+aggregate count across the bot's guilds, and a presence line is not a message, so there is no
+mention or markdown to inject.
+
+**`scopeCss`, the rest of card 6's list.** Each attacked, each held after the two fixes: hex
+escapes of 1–6 digits with every terminator (`\75 rl(`, `\75rl(`, `\000075rl(`, seven digits,
+`\r\n`); a doubled backslash before a hex escape (the scoper refuses it, and a browser would not
+parse it as a URL either — the divergence is in the safe direction); `@import` split by a comment,
+hidden in a string, written `@\69 mport`, and `@@importimport` (not an at-keyword to a browser
+either); `@font-face { src: url(…) }` — the URL pass runs over the whole sheet before `walk`, so
+the verbatim-kept at-rules are covered; `@supports` prelude smuggling; `cross-fade()` and a nested
+`url()` inside `image-set` (handled by the `url()` pass, which leaves a legal `none` behind);
+`element()` and `paint()` (no network — `paint()` needs a worklet the author cannot register).
+Selector escape from the scope was attacked through `prefixSelector`'s `split(',')` inside `:is()`
+/ `:not()` and through the `startsWith(scope)` shortcut: every top-level part is either prefixed
+or begins with the scope's own attribute selector, and neither arrangement yields a selector that
+matches outside the canvas. `@page` IS kept verbatim and does apply to the printed page — it can
+carry margins and a size and no URL (the URL pass covers it), so it is noted below rather than
+refused.
+
+**The refusal-mutates-a-neighbour class** (the `@import` bug of `7447367f`) was re-attacked and is
+closed: `@import` / `@charset` are removed as whole statements, semicolon included, and
+`a{content:"@import url(x);"}` leaves `a{content:""}` with the next rule intact. One new instance
+was introduced by this pass's own fix and removed before it shipped — an `image-set(` with no
+balanced close made `refuseImageFns` return early and truncate the rest of the stylesheet. It now
+refuses the function and resumes scanning after its `(`, and there is a test for it.
+
+**The B.MD sanitize schema.** An allowlist, so an oddly-spelled event handler has nothing to be
+allowed by. `srcset` is on no tag (`img` spreads the default and adds
+`src/alt/loading/className/width/height/decoding`; `source` is `['src','type']` and REPLACES the
+default), so the `srcset` / `imagesrcset` detour does not exist. Every URL-bearing attribute goes
+through `safeUrl`: `data:` refused, protocol-relative `//evil` refused rather than repaired,
+whitespace and control characters stripped before the scheme is read (`java<TAB>script:`), `/a:b`
+correctly treated as a path, and an external anchor always gets `rel="noopener noreferrer"`.
+`iframe` survives sanitisation and is then dropped by `rehypeIframeAllowlist` unless the host
+vouches for its src. `svg`, `use` and `xlink` are not in `tagNames` at all.
+`check-md-security.mjs` renders 42 hostile documents through the real component on every lint, and
+it is green.
+
+**The charity `code` block model.** `normBlocks` is an allowlist REBUILD, not a filter: an unknown
+`kind` is dropped whole, `id` is forced to `^[A-Za-z0-9_-]{1,24}$` so it cannot escape the
+`[data-b="…"]` selector it is used in, `text` is capped and rendered as a text node (there is no
+markup path), `src` exists only for `kind: 'image'` and must be a site media path or `http(s)` —
+no `data:`, no `javascript:` — and `size` is clamped. `cls` goes through `safeClasses` at render.
+The stylesheet is scoped by `scopeCss`, the same single sanitiser, and injected as
+`<style>{scoped}</style>`, which React writes as a text node, so a `</style>` in author CSS is not
+a parse escape. This app is a client-rendered SPA; there is no SSR path where that would differ.
+
+## Angles that found nothing at all
+
+* `POST /bot/errors` — message 400, stack 6000, a context object with three capped fields;
+  deduplicated per message per minute; the context is JSON-stringified into the stack text, never
+  interpolated into a query.
+* `POST /bot/heartbeat` — every field declared (the schema strips unknowns, and the comments say
+  so where that has bitten before); guild, role and channel lists capped at 200 / 100 / 200.
+* `POST /bot/activity` — per-guild composite key, a capacity budget with eviction, and it stores
+  nothing at all when the guild's member mode is `none`.
+* `POST /bot/link/issue` — returns `{ linked: true }` without minting a code when a link already
+  exists; the code is eight characters from a 32-symbol unambiguous alphabet drawn with
+  `randomInt`.
+* Presence `{…}` expansion: no recursive expansion, no author-controlled key set.
+* `scopeCss` output injected into `<style>`: no escape.
+* B.MD: `srcset`, `xlink:href`, SVG `use`, oddly-spelled `on*`, and `javascript:` in tab /
+  newline / NUL / percent encodings — all refused by the allowlist or by `safeUrl`.
+
+## Open — not changed, with the reason
+
+* **The bot's shared secret is one unscoped credential for 59 routes, one of which hands out the
+  Discord bot token.** Narrowing it (per-route scopes, or at minimum a second secret in front of
+  `GET /bot/token`) is an owner decision that needs a bot-side change, so it is written up above
+  rather than done here.
+* **`DocReplay` passes `data-src` to the host application's replay player unfiltered**, unlike its
+  four siblings. The player lives in `apps/web/src/ui/` — another agent's files this run — so this
+  is a card, not a fix: it should get the same `apiUrl()` treatment as F6-5.
+* **`apiUrl()` calls `safeUrl` with `kind: 'api'`**, which no branch of `safeUrl` knows; it falls
+  through to `policy.allowHosts`, and with no allowlist configured a live block may fetch any
+  `https` host. That may well be the intent (an `::openapi{src=…}` pointing at a public spec), but
+  the *kind* reads as if it were doing something it is not. Worth an explicit `allowHosts` for the
+  doc site and a `kind` the function actually handles.
+* **`@page` survives `scopeCss` verbatim** and is not confined to the canvas. It can set page
+  margins and size for printing and nothing else; refusing it would still be defensible.
+* **`stripeStatus()` follows redirects and parses an unbounded body** from a third party.
+
+## Not run / not checked
+
+* **No browser was involved.** The CSS findings are argued from the CSS Syntax tokenizer rules
+  (an escaped newline inside a string; escapes inside idents, property names included) and
+  measured against the filters, not observed in a rendering engine. They should be confirmed once
+  in a real browser on a studio page before the owner-facing summary describes them as exploited.
+* **The bot was never started**, so nothing here was measured against a live Discord gateway: the
+  automod concurrency claim rests on reading `onAutomodMessage` (one handler per `messageCreate`,
+  all async, none awaited by the next) plus the API-side race, which WAS measured.
+* **`@napi-rs/canvas` itself was not fuzzed.** The decompression bomb is bounded now; a
+  memory-safety bug in the underlying Rust decoders is a supply-chain question (card 10).
+* **No HTTP-level parallel harness was run against a live API.** The giveaway and warn concurrency
+  was exercised at the library level against the real database, which is where both races live.
