@@ -99,12 +99,13 @@ Et une à laquelle le SQL répond seul : quelles migrations ont **perdu des donn
 `DROP COLUMN`, `DROP TABLE` et `DELETE FROM` ne peuvent pas être défaits par une autre
 migration, et savoir quelle version en contenait une fait la différence entre une restauration
 et une supposition. C'est épinglé sous le nom `dataLossMigrations` plus bas, parce que c'est
-ici le seul chiffre sur lequel quelqu'un agirait. Il y en a deux, sur 126 dossiers sur disque :
+ici le seul chiffre sur lequel quelqu'un agirait. Il y en a trois, sur 126 dossiers sur disque :
 
 | Migration | Ce qu'elle a fait |
 | --- | --- |
 | `20260812090000_drop_legacy_api_token` | `DROP COLUMN` sur `User` |
 | `20260901160000_discord_member_storage` | `DELETE FROM` sur `DiscordActivity`, `BotGuild`, `ModerationLog` |
+| `20260923120000_task_board_links_suggestions` | `DROP COLUMN` `assigneeId` sur `AdminTask`, après que la même migration l'a recopiée dans `assigneeIds` |
 
 !!! note "Une migration de données n'est pas une migration vide"
     Les migrations `INSERT`/`UPDATE` écrivent des LIGNES au lieu de changer la forme : elles ne
@@ -298,7 +299,7 @@ les semaines et sont écrits plus haut comme des instantanés datés, volontaire
 | Clé | Ce qu'elle compte | Valeur |
 | --- | --- | --- |
 | `liveSecretFallbacks` | Lectures `process.env` de nom secret avec repli codé en dur et sans garde de démarrage | **0** |
-| `dataLossMigrations` | Migrations contenant `DROP TABLE`, `DROP COLUMN` ou `DELETE FROM` | **2** |
+| `dataLossMigrations` | Migrations contenant `DROP TABLE`, `DROP COLUMN` ou `DELETE FROM` | **3** |
 | `indexDrift` | Index créés par une migration et absents de `schema.prisma` | **0** |
 | `publishedPorts` | Entrées de port joignables depuis l'extérieur de la machine | **6** |
 | `workflows` | Fichiers de workflow GitHub Actions que la carte peut atteindre | **1** |

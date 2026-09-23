@@ -91,12 +91,13 @@ its three answers need a live database:
 And one the SQL answers alone: which migrations **lost data**. `DROP COLUMN`, `DROP TABLE` and
 `DELETE FROM` cannot be undone by another migration, and knowing which release contained one
 is the difference between a restore and a guess. Pinned as `dataLossMigrations` below, because
-it is the one figure here somebody would act on. There are two, out of 126 folders on disk:
+it is the one figure here somebody would act on. There are three, out of 126 folders on disk:
 
 | Migration | What it did |
 | --- | --- |
 | `20260812090000_drop_legacy_api_token` | `DROP COLUMN` on `User` |
 | `20260901160000_discord_member_storage` | `DELETE FROM` on `DiscordActivity`, `BotGuild`, `ModerationLog` |
+| `20260923120000_task_board_links_suggestions` | `DROP COLUMN` `assigneeId` on `AdminTask`, after the same migration copied it into `assigneeIds` |
 
 !!! note "A data migration is not a no-op"
     `INSERT`/`UPDATE` migrations write ROWS rather than change shape: they cannot simply be
@@ -282,7 +283,7 @@ be switched off within a month.
 | Key | What it counts | Value |
 | --- | --- | --- |
 | `liveSecretFallbacks` | Secret-ish `process.env` reads with a hardcoded fallback and no boot guard | **0** |
-| `dataLossMigrations` | Migrations containing `DROP TABLE`, `DROP COLUMN` or `DELETE FROM` | **2** |
+| `dataLossMigrations` | Migrations containing `DROP TABLE`, `DROP COLUMN` or `DELETE FROM` | **3** |
 | `indexDrift` | Indexes created by a migration and absent from `schema.prisma` | **0** |
 | `publishedPorts` | Port entries reachable from outside the machine | **6** |
 | `workflows` | GitHub Actions workflow files the map can reach | **1** |

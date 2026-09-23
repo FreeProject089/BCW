@@ -46,19 +46,33 @@ export const priorityLabel = (t, p) => ({
   urgent: t('atask.prio.urgent', 'Urgent'),
 }[p] || p);
 
+/** A link, read from the side of the task on screen. The API stores `blocks` once and
+ *  reports it as `blocked_by` from the other end. */
+export const linkLabel = (t, k) => ({
+  blocks: t('atask.link.k.blocks', 'Blocks'),
+  blocked_by: t('atask.link.k.blocked_by', 'Blocked by'),
+  relates: t('atask.link.k.relates', 'Related to'),
+}[k] || k);
+
 /** What a history row says, in a sentence rather than a column of raw fields. */
 export const eventLabel = (t, e, nameOf) => {
   const who = (id) => nameOf(id);
   switch (e.kind) {
     case 'created': return t('atask.ev.created', 'created the task');
     case 'assigned': return e.to ? t('atask.ev.assigned', 'handed it to {n}').replace('{n}', who(e.to)) : t('atask.ev.unassigned', 'took it off the assignee');
-    case 'released': return e.note ? `${t('atask.ev.released', 'sent it back to the pool')} (${e.note})` : t('atask.ev.released', 'sent it back to the pool');
+    case 'released': {
+      // Since a task holds several people, a release names who came off it.
+      const what = e.from ? t('atask.ev.released.who', 'took {n} off it').replace('{n}', who(e.from)) : t('atask.ev.released', 'sent it back to the pool');
+      return e.note ? `${what} (${e.note})` : what;
+    }
     case 'state': return t('atask.ev.state', 'moved it to {n}').replace('{n}', stateLabel(t, e.to));
     case 'reopened': return t('atask.ev.reopened', 'reopened it');
     case 'priority': return t('atask.ev.priority', 'set the priority to {n}').replace('{n}', priorityLabel(t, e.to));
     case 'due': return e.to ? t('atask.ev.due', 'set the due date').concat(` (${new Date(e.to).toLocaleDateString()})`) : t('atask.ev.nodue', 'removed the due date');
     case 'team': return e.to ? t('atask.ev.team', 'moved it to another team') : t('atask.ev.noteam', 'took it out of its team');
     case 'note': return t('atask.ev.note', 'wrote a note');
+    case 'link': return t('atask.ev.link', 'linked another task ({n})').replace('{n}', linkLabel(t, e.from));
+    case 'unlink': return t('atask.ev.unlink', 'removed a link ({n})').replace('{n}', linkLabel(t, e.from));
     default: return e.kind;
   }
 };

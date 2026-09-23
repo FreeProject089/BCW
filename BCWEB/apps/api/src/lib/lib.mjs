@@ -392,6 +392,11 @@ export const CAPABILITIES = [
   // bot.mjs. Granting somebody the Discord dashboard must not hand them the ability to
   // mint the currency its shop spends.
   'manage_economy',
+  // The staff task board (routes/tasks.mjs, rules in lib/tasks.mjs). Three, because "who may
+  // read the board", "who may hand work out" and "who may shape the teams" are three different
+  // people on a real staff. Each is ordered so that nothing it lets you hand out is more than
+  // what it already gives you — see the non-escalation note at the top of lib/tasks.mjs.
+  'view_tasks', 'manage_tasks', 'manage_teams',
   // Translators — scoped to what they may translate, not to admin power. `translate_site`
   // opens the runtime-locale editor (site strings); the other two scope blog/docs translation.
   'translate_site', 'translate_blog', 'translate_docs',
@@ -552,6 +557,20 @@ export function hasCap(user, cap) {
 // via hasCap; a capability bundle can grant it to a non-admin (a "project moderator").
 export function canManageShowcase(user) { return hasCap(user, 'manage_showcase'); }
 export function canManageProjects(user) { return hasCap(user, 'manage_projects'); }
+
+// ── The staff task board ─────────────────────────────────────────────────────────
+// The three capability questions, written once. lib/tasks.mjs combines them with team
+// standing; nothing else asks hasCap about a task.
+//   dispatch  manage_tasks: every task, every team — assign, edit, cancel, move, accept a
+//             proposal. It is also what "run a team" is made of, which is why naming a chief
+//             needs it.
+//   read      view_tasks: every task, read and comment, nothing else. manage_tasks implies it.
+//   shape     manage_teams: create, rename, archive, dissolve teams. Taking standing AWAY
+//             needs only this; HANDING it out (a chief, a member) also needs dispatch — you
+//             cannot give somebody a power you do not hold.
+export function canDispatchTasks(user) { return hasCap(user, 'manage_tasks'); }
+export function canReadAllTasks(user) { return hasCap(user, 'manage_tasks') || hasCap(user, 'view_tasks'); }
+export function canShapeTeams(user) { return hasCap(user, 'manage_teams'); }
 
 // A user's per-project EDIT grants (ProjectPermission rows), collapsed into a quick-check
 // shape. Content-only: reserved controls are still gated behind canManage*(). Not cached —

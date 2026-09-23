@@ -4,14 +4,14 @@
 // builds from lib/tasks.mjs. The screen never re-derives "may I reassign this" from the role
 // and the team, because a rule written twice is a rule that will disagree with itself, and
 // the half that disagrees here is the half that draws an enabled button over a 403.
-import { useState } from 'react';
-import { History, Send, Trash2, UserCheck, UserMinus, Save, X, CalendarClock, AlertTriangle } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { History, Send, Trash2, UserCheck, UserMinus, UserPlus, Save, X, CalendarClock, AlertTriangle, Link2, Search, Check, Lock } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import Markdown from '../ui/md.jsx';
 import { Modal, Button, Input, Textarea, Field, Badge, Dropdown, Spinner, Explain, useToast, useDialog } from '../ui/ui.jsx';
 import { useAsync } from './pages.jsx';
-import { STATE_META, PRIORITY_META, stateLabel, priorityLabel, eventLabel, shortDate, shortDateTime, toLocalInput, fromLocalInput } from './admin-tasks-vocab.jsx';
+import { STATE_META, PRIORITY_META, stateLabel, priorityLabel, eventLabel, linkLabel, shortDate, shortDateTime, toLocalInput, fromLocalInput } from './admin-tasks-vocab.jsx';
 
 /** The history, oldest first, as sentences. Read-only and append-only: nothing here is editable. */
 function Timeline({ events, nameOf, t }) {
@@ -34,11 +34,124 @@ function Timeline({ events, nameOf, t }) {
   );
 }
 
-export function TaskDetail({ id, onClose, onChanged }) {
+/**
+ * Links to other tasks: blocks, blocked by, related. The server refuses a link that would
+ * close a loop of "blocks", and a linked task this account cannot read is shown as exactly
+ * that, never by its title.
+ */
+function Links({ task, can, onOpen, run, t }) {
+  const [kind, setKind] = useState('blocked_by');
+  const [q, setQ] = useState('');
+  const [hits, setHits] = useState([]);
+  const [adding, setAdding] = useState(false);
+  const toast = useToast();
+
+  useEffect(() => {
+    const term = q.trim();
+    if (!adding || term.length < 2) { setHits([]); return undefined; }
+    let alive = true;
+    const id = setTimeout(() => {
+      api.get(`/admin/tasks?scope=all&q=${encodeURIComponent(term)}&exclude=${encodeURIComponent(task.id)}`)
+        .then((r) => { if (alive) setHits((r.tasks || []).slice(0, 8)); })
+        .catch(() => { if (alive) setHits([]); });
+    }, 300);
+    return () => { alive = false; clearTimeout(id); };
+  }, [q, adding, task.id]);
+
+  const add = async (other) => {
+    try {
+      await api.post(`/admin/tasks/${task.id}/links`, { otherId: other.id, kind });
+      setQ(''); setHits([]); setAdding(false);
+      await run(async () => {});
+    } catch (x) {
+      const code = x?.data?.error;
+      toast.error(code === 'link_cycle'
+        ? t('atask.link.e.cycle', 'That would make a loop: the other task already waits on this one, directly or further down the chain.')
+        : code === 'already_linked'
+          ? t('atask.link.e.dup', 'Those two are already linked that way.')
+          : t('atask.err', 'That did not go through. Refresh and try again.'));
+    }
+  };
+
+  const links = task.links || [];
+  if (!links.length && !can.link) return null;
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-2 text-sm font-semibold"><Link2 size={15} className="text-[var(--muted)]" />{t('atask.links', 'Linked tasks')}</div>
+      {task.openBlockers > 0 && (
+        <div className="tint-warning b-warning border rounded-xl p-2.5 text-xs flex items-start gap-2 mb-2">
+          <AlertTriangle size={14} className="shrink-0 mt-0.5 text-warning" />
+          <span>{t('atask.link.waiting', 'Still waiting on {n} open task(s) that block this one.').replace('{n}', String(task.openBlockers))}</span>
+        </div>
+      )}
+      {links.length > 0 && (
+        <ul className="space-y-1.5">
+          {links.map((l) => (
+            <li key={l.id} className="panel-quiet rounded-xl border border-[var(--line)] px-2.5 py-1.5 flex items-center gap-2 text-sm">
+              <Badge>{linkLabel(t, l.kind)}</Badge>
+              {l.task ? (
+                <button type="button" onClick={() => onOpen?.(l.task.id)} className="min-w-0 flex-1 text-start hover:underline">
+                  <span className="block truncate" title={l.task.title}>{l.task.title}</span>
+                </button>
+              ) : (
+                <span className="min-w-0 flex-1 text-[var(--muted)] inline-flex items-center gap-1"><Lock size={12} aria-hidden="true" />{t('atask.link.hidden', 'A task you cannot open')}</span>
+              )}
+              {l.task && <Badge tone={STATE_META[l.task.state]?.tone}>{stateLabel(t, l.task.state)}</Badge>}
+              {can.link && (
+                // undo: a link is two ids and a kind, both still on screen; adding it back is one
+                // search below, and the history keeps both the link and the unlink.
+                <button type="button" className="shrink-0 p-1 text-[var(--faint)] hover:text-error"
+                  onClick={() => run(() => api.del(`/admin/tasks/${task.id}/links/${l.id}`))}
+                  title={t('atask.link.rm', 'Remove this link')} aria-label={t('atask.link.rm', 'Remove this link')}>
+                  <X size={13} />
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {can.link && (adding ? (
+        <div className="mt-2 rounded-xl border border-[var(--line)] p-2.5 space-y-2" style={{ background: 'var(--surface)' }}>
+          <div className="flex flex-wrap gap-2">
+            <Dropdown size="sm" value={kind} onChange={setKind} options={[
+              { value: 'blocked_by', label: t('atask.link.k.blocked_by', 'Blocked by') },
+              { value: 'blocks', label: t('atask.link.k.blocks', 'Blocks') },
+              { value: 'relates', label: t('atask.link.k.relates', 'Related to') },
+            ]} />
+            <div className="relative flex-1 min-w-[10rem]">
+              <Search size={14} className="absolute start-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" aria-hidden="true" />
+              <Input value={q} autoFocus onChange={(e) => setQ(e.target.value)} className="!ps-8" maxLength={80}
+                placeholder={t('atask.link.ph', 'Search a task by its title')} aria-label={t('atask.link.ph', 'Search a task by its title')} />
+            </div>
+            <Button size="sm" variant="ghost" onClick={() => { setAdding(false); setQ(''); }}>{t('atask.cancel', 'Cancel')}</Button>
+          </div>
+          {hits.length > 0 && (
+            <div className="rounded-lg border border-[var(--line)] divide-y divide-[var(--line)] max-h-56 overflow-y-auto" style={{ background: 'var(--bg-solid)' }}>
+              {hits.map((h) => (
+                <button key={h.id} type="button" onClick={() => add(h)} className="w-full text-start px-3 py-2 hover:bg-[var(--surface-2)] transition flex items-center gap-2 text-sm">
+                  <span className="min-w-0 flex-1 truncate" title={h.title}>{h.title}</span>
+                  <Badge tone={STATE_META[h.state]?.tone}>{stateLabel(t, h.state)}</Badge>
+                  <Check size={13} className="shrink-0 text-[var(--faint)]" />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        <Button size="sm" className="mt-2" onClick={() => setAdding(true)}><Link2 size={14} />{t('atask.link.add', 'Link a task')}</Button>
+      ))}
+    </div>
+  );
+}
+
+export function TaskDetail({ id, me, onClose, onChanged }) {
+  // The task on screen. A linked task opens in the same dialog rather than stacking another.
+  const [openId, setOpenId] = useState(id);
+  useEffect(() => { setOpenId(id); }, [id]);
   const { t } = useI18n();
   const toast = useToast();
   const dialog = useDialog();
-  const { data, loading, reload } = useAsync(() => api.get(`/admin/tasks/${id}`), [id]);
+  const { data, loading, reload } = useAsync(() => api.get(`/admin/tasks/${openId}`), [openId]);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState('');
   const [edit, setEdit] = useState(null);
@@ -63,7 +176,7 @@ export function TaskDetail({ id, onClose, onChanged }) {
   };
 
   const saveEdit = () => run(async () => {
-    await api.patch(`/admin/tasks/${id}`, {
+    await api.patch(`/admin/tasks/${openId}`, {
       title: edit.title.trim(), body: edit.body,
       priority: edit.priority, dueAt: fromLocalInput(edit.dueAt),
     });
@@ -77,16 +190,17 @@ export function TaskDetail({ id, onClose, onChanged }) {
       danger: true,
     });
     if (!ok) return;
-    await run(() => api.del(`/admin/tasks/${id}`));
+    await run(() => api.del(`/admin/tasks/${openId}`));
     onClose();
   };
 
   const can = task?.can || {};
   const StateIcon = task ? (STATE_META[task.state]?.icon || null) : null;
-  const assignOptions = task ? [
-    { value: '', label: t('atask.pool', 'Back to the team pool') },
-    ...(task.assignable || []).map((uid) => ({ value: uid, label: people[uid]?.displayName || uid })),
-  ] : [];
+  const on = task?.assigneeIds || [];
+  // Everybody who may be offered: the people already on it (so a dispatcher can take them
+  // off even if they left the team) and whoever the server says is assignable.
+  const offer = task ? [...new Set([...on, ...(task.assignable || [])])] : [];
+  const setPeople = (next) => run(() => api.post(`/admin/tasks/${task.id}/assign`, { userIds: next }), t('atask.assigned', 'Assignment updated.'));
 
   return (
     <Modal open onClose={onClose} title={task ? task.title : t('atask.loading', 'Opening the task')} icon={StateIcon || History} width="max-w-2xl"
@@ -100,8 +214,8 @@ export function TaskDetail({ id, onClose, onChanged }) {
           <div className="flex flex-wrap items-center gap-1.5">
             <Badge tone={STATE_META[task.state]?.tone}>{stateLabel(t, task.state)}</Badge>
             <Badge tone={PRIORITY_META[task.priority]?.tone}>{priorityLabel(t, task.priority)}</Badge>
-            {task.assigneeId
-              ? <Badge><UserCheck size={11} className="me-1" />{nameOf(task.assigneeId)}</Badge>
+            {on.length
+              ? on.map((uid) => <Badge key={uid}><UserCheck size={11} className="me-1" />{nameOf(uid)}</Badge>)
               : <Badge tone="amber"><UserMinus size={11} className="me-1" />{t('atask.unassigned', 'Unassigned')}</Badge>}
             {task.dueAt && (
               <Badge tone={task.overdue ? 'red' : ''} title={t('atask.due.title', 'Due date')}>
@@ -160,31 +274,47 @@ export function TaskDetail({ id, onClose, onChanged }) {
               <Field label={t('atask.f.move', 'Move it to')}>
                 <Dropdown value="" placeholder={t('atask.f.move.ph', 'Pick a state')}
                   options={(task.states || []).map((s) => ({ value: s, label: stateLabel(t, s) }))}
-                  onChange={(v) => run(() => api.post(`/admin/tasks/${id}/state`, { state: v }), t('atask.moved', 'State updated.'))} />
+                  onChange={(v) => run(() => api.post(`/admin/tasks/${openId}/state`, { state: v }), t('atask.moved', 'State updated.'))} />
               </Field>
             )}
-            {/* A dropdown for whoever may DISPATCH, and a single button for whoever may only
-                hand it back. Not one control with a trimmed option list: the release-only
-                case would then render two options sharing the empty value, which is a
-                duplicate React key and a menu with the same row twice. */}
+            {/* Toggles for whoever may DISPATCH (each click sends the whole new list), and one
+                button for whoever may only take themselves off, or take it from the pool. */}
             {can.assign ? (
-              <Field label={t('atask.f.assign', 'Assigned to')}>
-                <Dropdown value={task.assigneeId || ''} options={assignOptions}
-                  onChange={(v) => run(() => api.post(`/admin/tasks/${id}/assign`, { userId: v || null }), t('atask.assigned', 'Assignment updated.'))} />
+              <Field label={t('atask.f.assign.many', 'People on it')}>
+                <div className="flex flex-wrap gap-1.5">
+                  {offer.map((uid) => {
+                    const onIt = on.includes(uid);
+                    return (
+                      <button key={uid} type="button" aria-pressed={onIt} disabled={busy}
+                        onClick={() => setPeople(onIt ? on.filter((x) => x !== uid) : [...on, uid])}
+                        className={`badge ${onIt ? 'badge-primary' : ''}`}>
+                        {onIt ? <Check size={11} className="me-1" /> : <UserPlus size={11} className="me-1" />}{nameOf(uid)}
+                      </button>
+                    );
+                  })}
+                  {!offer.length && <span className="text-xs text-[var(--faint)]">{t('atask.f.assign.nobody', 'Nobody on this task’s team yet.')}</span>}
+                </div>
               </Field>
-            ) : can.release && task.assigneeId ? (
-              <Field label={t('atask.f.assign', 'Assigned to')}>
-                <Button size="sm" disabled={busy}
-                  onClick={() => run(() => api.post(`/admin/tasks/${id}/assign`, { userId: null }), t('atask.assigned', 'Assignment updated.'))}>
-                  <UserMinus size={14} />{t('atask.pool', 'Back to the team pool')}
+            ) : can.release && on.includes(me) ? (
+              <Field label={t('atask.f.assign.many', 'People on it')}>
+                <Button size="sm" disabled={busy} onClick={() => setPeople(on.filter((x) => x !== me))}>
+                  <UserMinus size={14} />{t('atask.release.me', 'Take me off it')}
+                </Button>
+              </Field>
+            ) : can.grab ? (
+              <Field label={t('atask.f.assign.many', 'People on it')}>
+                <Button size="sm" disabled={busy} onClick={() => setPeople([me])}>
+                  <UserPlus size={14} />{t('atask.grab', 'Take it')}
                 </Button>
               </Field>
             ) : null}
           </div>
 
+          <Links task={task} can={can} onOpen={setOpenId} run={run} t={t} />
+
           <Explain summary={t('atask.rules.s', 'Who can change what on this task.')}>
-            <p>{t('atask.rules.1', 'The person a task is assigned to moves it through the states and can always hand it back to the team pool. They cannot hand it to somebody else, and they cannot cancel it.')}</p>
-            <p>{t('atask.rules.2', 'The team chief hands the work out inside their own team, changes the priority and the due date, and closes or cancels. An admin does all of that across every team, and is the only one who can move a task between teams or delete it outright.')}</p>
+            <p>{t('atask.rules.1b', 'The people on a task move it through the states, and each can always take themselves off it. They cannot put somebody else on it, and they cannot cancel it.')}</p>
+            <p>{t('atask.rules.2b', 'The team chief hands the work out inside their own team, changes the priority and the due date, and closes or cancels. A dispatcher does all of that across every team and can move a task between teams. Deleting a task outright is for admins only.')}</p>
             <p>{t('atask.rules.3', 'Nothing in the history below is ever edited or removed. Cancelling keeps the record of why the work stopped; deleting does not, which is why it is an admin action.')}</p>
           </Explain>
 
@@ -200,7 +330,7 @@ export function TaskDetail({ id, onClose, onChanged }) {
               <Textarea rows={2} className="flex-1" value={note} onChange={(e) => setNote(e.target.value)}
                 placeholder={t('atask.note.ph', 'Add a note, markdown works')} aria-label={t('atask.note.aria', 'Write a note on this task')} />
               <Button variant="primary" size="sm" className="sm:self-end" disabled={!note.trim() || busy}
-                onClick={() => run(async () => { await api.post(`/admin/tasks/${id}/note`, { note: note.trim() }); setNote(''); })}>
+                onClick={() => run(async () => { await api.post(`/admin/tasks/${openId}/note`, { note: note.trim() }); setNote(''); })}>
                 <Send size={14} />{t('atask.note.send', 'Post')}
               </Button>
             </div>

@@ -4675,8 +4675,10 @@ model AdminTask {
   /// Null = the task belongs to no team; only an admin can dispatch it.
   team       StaffTeam? @relation(fields: [teamId], references: [id], onDelete: SetNull)
   teamId     String?
-  /// Null = in the team's pool, waiting for the chief to hand it to somebody.
-  assigneeId String?
+  /// Who is doing it. Empty = in the team's pool, waiting for the chief to hand it out.
+  /// A list since Sept 23 2026: one piece of work often needs two people, and the old single
+  /// column made the second one invisible. At most MAX_ASSIGNEES (lib/tasks.mjs).
+  assigneeIds String[]  @default([])
   creatorId  String
   dueAt      DateTime?
   closedAt   DateTime?
@@ -4684,11 +4686,69 @@ model AdminTask {
   createdAt  DateTime   @default(now())
   updatedAt  DateTime   @updatedAt
 
-  events AdminTaskEvent[]
+  events   AdminTaskEvent[]
+  linksOut AdminTaskLink[] @relation("TaskLinkFrom")
+  linksIn  AdminTaskLink[] @relation("TaskLinkTo")
 
   @@index([state, priority, dueAt])
-  @@index([assigneeId, state])
   @@index([teamId, state])
+}
+
+/// One edge between two tasks. `blocks` is directed (from blocks to; "blocked by" is the same
+/// row read from the other end) and the API refuses any edge that would close a cycle, so the
+/// blocks graph is a DAG by construction. `relates` is a plain association. Both ends cascade:
+/// an edge to a task that no longer exists says nothing.
+model AdminTaskLink {
+  id          String    @id @default(cuid())
+  from        AdminTask @relation("TaskLinkFrom", fields: [fromId], references: [id], onDelete: Cascade)
+  fromId      String
+  to          AdminTask @relation("TaskLinkTo", fields: [toId], references: [id], onDelete: Cascade)
+  toId        String
+  /// blocks | relates — see LINK_KINDS in lib/tasks.mjs.
+  kind        String
+  createdById String?
+  createdAt   DateTime  @default(now())
+
+  @@unique([fromId, toId, kind])
+  @@index([toId])
+}
+
+/// A task the SITE proposes: an open outage, a queue waiting on staff, a server alert, an error
+/// group. A draft, never a task, until an admin with the right to act on it accepts it.
+///
+/// `dedupKey` is what makes one incident one proposal: `status:<outageId>`,
+/// `pending:<queue>`, `alert:<alertId>`, `error:<groupId>`. The scan upserts on it, so a
+/// condition that stays true for a day refreshes one row instead of writing a hundred.
+///
+/// `title` and `body` are SCRUBBED before they are written (lib/task-suggest.mjs): no URL, no
+/// path, no query string, no token-shaped string, no e-mail. The row outlives the log it came
+/// from and, once accepted, is read by a whole team that may hold none of the capabilities the
+/// log is behind (CWE-532). `sourceCap` is the capability that reads the source; a viewer
+/// without it never sees the suggestion. Null = a public source (the status page).
+model TaskSuggestion {
+  id          String    @id @default(cuid())
+  dedupKey    String    @unique
+  /// status | pending | alert | error
+  source      String
+  sourceCap   String?
+  title       String
+  body        String    @default("")
+  priority    String    @default("normal")
+  /// An admin path (`/admin?s=errors`), never an external or request URL.
+  href        String?
+  /// How many sightings / items stand behind it, refreshed by every scan.
+  count       Int       @default(1)
+  /// open | accepted | dismissed
+  state       String    @default("open")
+  taskId      String?
+  decidedById String?
+  decidedAt   DateTime?
+  firstSeenAt DateTime  @default(now())
+  lastSeenAt  DateTime  @default(now())
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([state, lastSeenAt])
 }
 
 /// What happened to a task, append-only. Nothing here is ever updated or deleted except
@@ -4698,7 +4758,7 @@ model AdminTaskEvent {
   task      AdminTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
   taskId    String
   actorId   String?
-  /// created | assigned | released | state | priority | due | team | note | reopened
+  /// created | assigned | released | state | priority | due | team | note | reopened | link | unlink
   kind      String
   fromValue String?
   toValue   String?

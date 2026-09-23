@@ -26,7 +26,7 @@ const ctxNone = { chiefOf: [], memberOf: [] };
 
 const task = (over = {}) => ({
   id: 't1', title: 'Check the queue', body: '', state: 'todo', priority: 'normal',
-  teamId: T, assigneeId: 'u-mem', creatorId: 'u-chief', dueAt: null, createdAt: new Date('2026-09-01'),
+  teamId: T, assigneeIds: ['u-mem'], creatorId: 'u-chief', dueAt: null, createdAt: new Date('2026-09-01'),
   ...over,
 });
 
@@ -68,7 +68,7 @@ describe('who may see it', () => {
     assert.equal(canView(stranger, task(), ctxNone), false);
   });
   test('the person it is on, and the person who asked, always see it', () => {
-    const t = task({ teamId: 'other', assigneeId: stranger.uid });
+    const t = task({ teamId: 'other', assigneeIds: [stranger.uid] });
     assert.equal(canView(stranger, t, ctxNone), true, 'assignee');
     assert.equal(canView(chief, task({ teamId: 'other' }), ctxNone), true, 'creator');
   });
@@ -91,11 +91,11 @@ describe('who may hand the work out', () => {
   });
   test('"not me" is always sayable, "you" never is', () => {
     assert.equal(canRelease(member, task(), ctxMember), true, 'the assignee can hand it back');
-    assert.equal(canRelease(stranger, task({ assigneeId: 'u-mem' }), ctxNone), false);
+    assert.equal(canRelease(stranger, task({ assigneeIds: ['u-mem'] }), ctxNone), false);
     assert.equal(canRelease(member, task({ state: 'done' }), ctxMember), false, 'a closed task is not handed back');
   });
   test('an unfiled task can be dispatched by nobody but an admin', () => {
-    const unfiled = task({ teamId: null, assigneeId: null });
+    const unfiled = task({ teamId: null, assigneeIds: [] });
     assert.deepEqual(assignableIds(chief, unfiled, members, ctxChief), []);
     assert.equal(assignableIds(admin, unfiled, members, ctxNone).length, 3);
   });
@@ -106,9 +106,9 @@ describe('who may change the wording', () => {
     assert.equal(canEdit(admin, task(), ctxNone), true);
     assert.equal(canEdit(chief, task(), ctxChief), true);
     assert.equal(canEdit(member, task(), ctxMember), false, 'the assignee works from the wording, they do not own it');
-    const mine = task({ creatorId: stranger.uid, assigneeId: null, teamId: 'other' });
+    const mine = task({ creatorId: stranger.uid, assigneeIds: [], teamId: 'other' });
     assert.equal(canEdit(stranger, mine, ctxNone), true, 'an author may correct an unassigned task');
-    assert.equal(canEdit(stranger, { ...mine, assigneeId: 'u-mem' }, ctxNone), false,
+    assert.equal(canEdit(stranger, { ...mine, assigneeIds: ['u-mem'] }, ctxNone), false,
       'changing the wording under the person doing the work is how it gets done wrong');
   });
   test('moving a task between teams crosses a boundary, so it is admin-only', () => {
@@ -127,9 +127,9 @@ describe('states', () => {
   test('cancelling is the chief’s, the admin’s, or the author’s on an untouched task', () => {
     assert.equal(canSetState(chief, task(), 'cancelled', ctxChief), true);
     assert.equal(canSetState(admin, task(), 'cancelled', ctxNone), true);
-    const own = task({ creatorId: stranger.uid, assigneeId: null, teamId: 'other' });
+    const own = task({ creatorId: stranger.uid, assigneeIds: [], teamId: 'other' });
     assert.equal(canSetState(stranger, own, 'cancelled', ctxNone), true);
-    assert.equal(canSetState(stranger, { ...own, assigneeId: 'u-mem' }, 'cancelled', ctxNone), false);
+    assert.equal(canSetState(stranger, { ...own, assigneeIds: ['u-mem'] }, 'cancelled', ctxNone), false);
   });
   test('reopening takes the same standing as closing', () => {
     const closed = task({ state: 'done' });
@@ -169,12 +169,12 @@ describe('teams', () => {
 
 describe('what happens when somebody leaves', () => {
   const tasks = [
-    { id: 'a', assigneeId: 'u-mem', state: 'todo', teamId: T },
-    { id: 'b', assigneeId: 'u-mem', state: 'in_progress', teamId: T },
-    { id: 'c', assigneeId: 'u-mem', state: 'done', teamId: T },
-    { id: 'd', assigneeId: 'u-mem', state: 'cancelled', teamId: T },
-    { id: 'e', assigneeId: 'u-other', state: 'todo', teamId: T },
-    { id: 'f', assigneeId: 'u-mem', state: 'todo', teamId: 'team-2' },
+    { id: 'a', assigneeIds: ['u-mem'], state: 'todo', teamId: T },
+    { id: 'b', assigneeIds: ['u-mem'], state: 'in_progress', teamId: T },
+    { id: 'c', assigneeIds: ['u-mem'], state: 'done', teamId: T },
+    { id: 'd', assigneeIds: ['u-mem'], state: 'cancelled', teamId: T },
+    { id: 'e', assigneeIds: ['u-other'], state: 'todo', teamId: T },
+    { id: 'f', assigneeIds: ['u-mem'], state: 'todo', teamId: 'team-2' },
   ];
   test('their open work goes back to the pool; their finished work keeps their name', () => {
     assert.deepEqual(tasksToRelease(tasks, 'u-mem', T), ['a', 'b'],

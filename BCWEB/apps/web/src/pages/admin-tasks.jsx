@@ -14,7 +14,7 @@
 //   · every string is `t(key, 'English')` with the French in i18n.jsx, including the ones in
 //     `title=` and `aria-label=`, which are the two the checker cannot see.
 import { useState } from 'react';
-import { ClipboardList, Plus, Users, LayoutList, Search, UserCheck, UserMinus, CalendarClock, Filter } from 'lucide-react';
+import { ClipboardList, Plus, Users, LayoutList, Search, UserCheck, UserMinus, CalendarClock, Filter, Lightbulb, Check } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { Card, Button, Input, Textarea, Field, Badge, Modal, Dropdown, EmptyState, Spinner, Explain, useToast } from '../ui/ui.jsx';
@@ -22,19 +22,27 @@ import { useAsync } from './pages.jsx';
 import { STATE_META, PRIORITY_META, stateLabel, priorityLabel, shortDate, fromLocalInput } from './admin-tasks-vocab.jsx';
 import { TaskDetail } from './admin-tasks-detail.jsx';
 import { AdminTaskTeams } from './admin-tasks-teams.jsx';
+import { AdminTaskProposals } from './admin-tasks-proposals.jsx';
 
 /** The sidebar icon, re-exported so adding this tab to admin.jsx costs one import, not two:
  *  admin.jsx imports no clipboard icon today, and a second import line in a file five other
  *  people are editing is a second chance at a conflict. */
 export const TASKS_TAB_ICON = ClipboardList;
 
-const emptyDraft = () => ({ title: '', body: '', priority: 'normal', teamId: '', assigneeId: '', dueAt: '' });
+const emptyDraft = () => ({ title: '', body: '', priority: 'normal', teamId: '', assigneeIds: [], dueAt: '' });
+
+/** Up to three names, then "+N": a row must stay one line on a phone. */
+function namesOf(ids, people, t, max = 3) {
+  const names = ids.map((id) => people[id]?.displayName || t('atask.unknown', 'Unknown account'));
+  return names.length > max ? `${names.slice(0, max).join(', ')} +${names.length - max}` : names.join(', ');
+}
 
 /** One task, as a row you can scan: state, title, who has it, when it is due. */
 function TaskRow({ task, people, teams, onOpen, t }) {
   const StateIcon = STATE_META[task.state]?.icon || ClipboardList;
   const team = teams.find((x) => x.id === task.teamId);
-  const who = task.assigneeId ? (people[task.assigneeId]?.displayName || t('atask.unknown', 'Unknown account')) : null;
+  const on = task.assigneeIds || [];
+  const who = on.length ? namesOf(on, people, t) : null;
   return (
     <Card hover className="p-3 cursor-pointer" onClick={onOpen}>
       <div className="flex items-start gap-3">
@@ -69,10 +77,10 @@ function TaskComposer({ open, meta, onClose, onSaved }) {
   const teams = meta?.teams || [];
   const people = meta?.people || {};
   const mine = meta?.me || {};
-  // Whom this composer may offer: an admin picks anybody on a team, a chief picks inside the
-  // team they lead. The API checks the same thing and refuses the rest, so an offer here that
-  // the API would reject is a bug in the offer, not a hole.
-  const canDispatch = (teamId) => !!mine.admin || (mine.chiefOf || []).includes(teamId);
+  // Whom this composer may offer: a dispatcher picks anybody on a team, a chief picks inside
+  // the team they lead, anybody may put themselves on it. The API checks the same thing and
+  // refuses the rest, so an offer here that the API would reject is a bug in the offer.
+  const canDispatch = (teamId) => !!mine.dispatcher || (mine.chiefOf || []).includes(teamId);
   const assignable = d.teamId && canDispatch(d.teamId)
     ? (teams.find((x) => x.id === d.teamId)?.memberIds || [])
     : [];
@@ -83,7 +91,7 @@ function TaskComposer({ open, meta, onClose, onSaved }) {
     try {
       await api.post('/admin/tasks', {
         title: d.title.trim(), body: d.body, priority: d.priority,
-        teamId: d.teamId || null, assigneeId: d.assigneeId || null, dueAt: fromLocalInput(d.dueAt),
+        teamId: d.teamId || null, assigneeIds: d.assigneeIds, dueAt: fromLocalInput(d.dueAt),
       });
       setD(emptyDraft());
       onSaved();
@@ -114,16 +122,23 @@ function TaskComposer({ open, meta, onClose, onSaved }) {
             <Input type="datetime-local" value={d.dueAt} onChange={(e) => setD({ ...d, dueAt: e.target.value })} />
           </Field>
           <Field label={t('atask.f.team', 'Team')}>
-            <Dropdown value={d.teamId} onChange={(v) => setD({ ...d, teamId: v, assigneeId: '' })}
+            <Dropdown value={d.teamId} onChange={(v) => setD({ ...d, teamId: v, assigneeIds: [] })}
               options={[{ value: '', label: t('atask.f.team.none', 'No team') }, ...teams.map((x) => ({ value: x.id, label: x.name }))]} />
           </Field>
-          <Field label={t('atask.f.assign', 'Assigned to')} hint={d.teamId ? null : t('atask.f.assign.h', 'Pick a team first, or leave it for somebody to take.')}>
-            <Dropdown value={d.assigneeId} onChange={(v) => setD({ ...d, assigneeId: v })}
-              options={[
-                { value: '', label: t('atask.f.assign.none', 'Nobody yet') },
-                ...(mine.id ? [{ value: mine.id, label: t('atask.f.assign.me', 'Me') }] : []),
-                ...assignable.filter((uid) => uid !== mine.id).map((uid) => ({ value: uid, label: people[uid]?.displayName || uid })),
-              ]} />
+          <Field label={t('atask.f.assign.many', 'People on it')} hint={d.teamId ? t('atask.f.assign.many.h', 'Pick one or several members of the team, or leave it in the pool.') : t('atask.f.assign.h', 'Pick a team first, or leave it for somebody to take.')}>
+            <div className="flex flex-wrap gap-1.5">
+              {[...(mine.id ? [mine.id] : []), ...assignable.filter((uid) => uid !== mine.id)].map((uid) => {
+                const on = d.assigneeIds.includes(uid);
+                return (
+                  <button key={uid} type="button" aria-pressed={on}
+                    onClick={() => setD({ ...d, assigneeIds: on ? d.assigneeIds.filter((x) => x !== uid) : [...d.assigneeIds, uid] })}
+                    className={`badge ${on ? 'badge-primary' : ''}`}>
+                    {on && <Check size={11} className="me-1" />}
+                    {uid === mine.id ? t('atask.f.assign.me', 'Me') : (people[uid]?.displayName || t('atask.unknown', 'Unknown account'))}
+                  </button>
+                );
+              })}
+            </div>
           </Field>
         </div>
       </div>
@@ -155,6 +170,8 @@ export function AdminTasks() {
   const VIEWS = [
     { id: 'board', label: t('atask.view.board', 'Board'), icon: LayoutList },
     { id: 'teams', label: t('atask.view.teams', 'Teams'), icon: Users },
+    // Only for somebody who may accept one: a tab that 403s is a tab that looks broken.
+    ...(meta.data?.me?.suggestions ? [{ id: 'proposals', label: t('atask.view.proposals', 'Proposals'), icon: Lightbulb }] : []),
   ];
 
   return (
@@ -178,11 +195,12 @@ export function AdminTasks() {
         )}
       </div>
 
-      {view === 'teams' ? <AdminTaskTeams onChanged={reloadAll} /> : (
+      {view === 'teams' ? <AdminTaskTeams onChanged={reloadAll} me={meta.data?.me?.id} />
+        : view === 'proposals' ? <AdminTaskProposals meta={meta.data} onChanged={reloadAll} /> : (
         <div className="space-y-4">
-          <Explain summary={t('atask.x.s', 'Tasks are handed to a person, by an admin or by their team chief.')}>
+          <Explain summary={t('atask.x.s2', 'Tasks are handed to one or several people, by a dispatcher or by their team chief.')}>
             <p>{t('atask.x.1', 'A task carries a title, details in markdown, a state, a priority, a due date, whoever asked for it and whoever is doing it. Everything that happens to it is appended to its history, which is never edited or removed.')}</p>
-            <p>{t('atask.x.2', 'The person it is assigned to moves it through the states and can always hand it back to the team pool. Handing it to somebody else is the chief’s decision inside their team, and an admin’s anywhere.')}</p>
+            <p>{t('atask.x.2b', 'The people on a task move it through the states, and each of them can always take themselves off it. Putting somebody else on it is the chief’s decision inside their team, and a dispatcher’s anywhere. A task can wait on another one (blocked by), block one, or simply be related to it.')}</p>
             <p>{t('atask.x.3', 'Closing a task means done or cancelled. Cancelled keeps the record of why the work stopped, which is why it is not the same as deleting, and deleting is an admin action.')}</p>
           </Explain>
 
@@ -235,7 +253,7 @@ export function AdminTasks() {
       )}
 
       {composing && <TaskComposer open meta={meta.data} onClose={() => setComposing(false)} onSaved={reloadAll} />}
-      {openId && <TaskDetail id={openId} onClose={() => setOpenId(null)} onChanged={reloadAll} />}
+      {openId && <TaskDetail id={openId} me={meta.data?.me?.id} onClose={() => setOpenId(null)} onChanged={reloadAll} />}
     </div>
   );
 }

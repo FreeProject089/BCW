@@ -93,6 +93,12 @@
     "manage_showcase": [
       "/admin/showcase"
     ],
+    "manage_tasks": [
+      "/admin/tasks"
+    ],
+    "manage_teams": [
+      "/admin/tasks"
+    ],
     "manage_users": [
       "/admin/bot",
       "/admin/mail",
