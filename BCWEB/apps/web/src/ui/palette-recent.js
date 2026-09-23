@@ -37,11 +37,39 @@ export function pushRecent(id) {
 // state into App (which would re-render the whole shell on every keystroke).
 const OPEN_EVENT = 'bcw:cmdk-open';
 
-export function openPalette() {
-  try { window.dispatchEvent(new CustomEvent(OPEN_EVENT)); } catch { /* no window */ }
+// `scope: 'docs'` opens it narrowed to the documentation: the docs page's own search button
+// and its Alt shortcut use that, since the docs page no longer has a palette of its own.
+export function openPalette(opts = {}) {
+  try { window.dispatchEvent(new CustomEvent(OPEN_EVENT, { detail: { scope: opts.scope || null } })); } catch { /* no window */ }
 }
 
 export function onOpenPalette(fn) {
-  window.addEventListener(OPEN_EVENT, fn);
-  return () => window.removeEventListener(OPEN_EVENT, fn);
+  const h = (e) => fn(e?.detail || {});
+  window.addEventListener(OPEN_EVENT, h);
+  return () => window.removeEventListener(OPEN_EVENT, h);
+}
+
+// ── Recent documentation hits ─────────────────────────────────────────────────
+// The docs page's palette kept its own list of the sections you opened; it moved in here with
+// the merge, under the SAME key, so nobody's list was lost with it.
+const DOC_KEY = 'doc-search-recent';
+const DOC_MAX = 6;
+
+export function readDocRecent() {
+  try {
+    const v = JSON.parse(localStorage.getItem(DOC_KEY) || '[]');
+    return Array.isArray(v) ? v.filter((x) => x && typeof x.slug === 'string').slice(0, DOC_MAX) : [];
+  } catch { return []; }
+}
+
+export function pushDocRecent(r) {
+  const entry = { slug: r.slug, title: r.title, category: r.category, section: r.section || undefined, anchor: r.anchor || undefined };
+  const next = [entry, ...readDocRecent().filter((x) => !(x.slug === entry.slug && (x.anchor || '') === (entry.anchor || '')))].slice(0, DOC_MAX);
+  try { localStorage.setItem(DOC_KEY, JSON.stringify(next)); } catch { /* a convenience, not state */ }
+  return next;
+}
+
+export function clearDocRecent() {
+  try { localStorage.removeItem(DOC_KEY); } catch { /* ignore */ }
+  return [];
 }

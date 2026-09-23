@@ -11,6 +11,8 @@ import { getGlassPrefs, setGlassPrefs, getOrbTransitionPref, setOrbTransitionPre
 import { clearAllDrafts } from '../ui/draft-store.js';
 import { getConsent, setConsent } from '../lib/consent.js';
 import { SKIP_KEY } from '../ui/IntroContext.jsx';
+import { InstallAppCard } from '../ui/pwa-install.jsx';
+import { ShortcutsCard } from '../ui/shortcuts.jsx';
 
 /* ──────────────  BMM telemetry: my data (GDPR export / erasure)  ────────────── */
 // Only for a signed-in account with at least one linked BMM install (creator id). The
@@ -248,6 +250,9 @@ export function Settings() {
             {t('set.privacy.more', 'Read more in the')} <Link to="/legal/cookies" className="text-[var(--accent-ink)] hover:underline">{t('nav.cookies', 'Cookie Policy')}</Link> {t('set.and', 'and')} <Link to="/legal/privacy" className="text-[var(--accent-ink)] hover:underline">{t('nav.privacy', 'Privacy Policy')}</Link>.
           </div>
         </Group>
+
+        <InstallAppCard />
+        <ShortcutsCard className="lg:col-span-2" />
       </div>
     </div>
   );

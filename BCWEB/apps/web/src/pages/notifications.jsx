@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Bell, CheckCheck, Trash2, Sliders, Lock, Inbox, ShieldCheck, ArrowRight } from 'lucide-react';
 import { api } from '../lib/api.js';
-import { onNotifsChanged, applyNotifChange, markAllNotifsRead, deleteNotif, deleteAllNotifs } from '../lib/notifs.js';
+import { listNotifs, onNotifsChanged, applyNotifChange, markNotifRead, markAllNotifsRead, deleteNotif, deleteAllNotifs } from '../lib/notifs.js';
+import { NotifList, NotifFilter } from '../ui/notif-bell.jsx';
+import { notifHref } from '../lib/notif-view.js';
 import { useI18n } from '../i18n.jsx';
 import { Card, Button, Badge, EmptyState, Spinner, useToast, useDialog } from '../ui/ui.jsx';
 import { useAuth } from './auth.jsx';
@@ -17,14 +19,6 @@ import NotifApiKeyCard from './notif-api-key.jsx';
 //
 // The bell in the topbar stays a glance; this is the place you come when you want to deal
 // with things, and the only place the preferences live.
-
-function timeAgo(iso, t) {
-  const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
-  if (s < 60) return t('notif.now', 'just now');
-  if (s < 3600) return t('notif.min', '{n} min ago').replace('{n}', String(Math.floor(s / 60)));
-  if (s < 86400) return t('notif.hr', '{n} h ago').replace('{n}', String(Math.floor(s / 3600)));
-  return new Date(iso).toLocaleDateString();
-}
 
 function Preferences() {
   const { t } = useI18n(); const toast = useToast();
@@ -102,11 +96,12 @@ function StaffQueues() {
 
 export default function NotificationCentre() {
   const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
+  const nav = useNavigate();
   const { user, loading } = useAuth();
   const [items, setItems] = useState(null);
   const [filter, setFilter] = useState('all');
 
-  const load = () => api.get('/me/notifications').then((r) => setItems(r.notifications || [])).catch(() => setItems([]));
+  const load = () => listNotifs().then((r) => setItems(r.notifications || [])).catch(() => setItems([]));
   useEffect(() => { if (user) load(); }, [user]);
   useEffect(() => onNotifsChanged((d) => setItems((s) => applyNotifChange(s, d))), []);
 
@@ -125,20 +120,27 @@ export default function NotificationCentre() {
 
   const shown = (items || []).filter((n) => (filter === 'unread' ? !n.readAt : true));
   const unread = (items || []).filter((n) => !n.readAt).length;
+  const stamp = () => new Date().toISOString();
 
-  const markAll = () => {
-    const prev = items;
-    setItems((s) => s.map((x) => ({ ...x, readAt: x.readAt || new Date().toISOString() })));
-    toast.action({
-      tone: 'success', cancelLabel: t('common.undo', 'Undo'),
-      msg: t('notif.markedall', 'Marked all read.'),
-      onCommit: async () => { try { await markAllNotifsRead(); } catch { load(); } },
-      onCancel: () => setItems(prev),
-    });
+  // Reading is quiet. Marking one or all read used to raise an "Undo" toast every time, for
+  // an action that loses nothing: that was the nagging. Only deleting keeps its undo window.
+  const markOne = async (n) => {
+    if (n.readAt) return;
+    setItems((s) => s.map((x) => (x.id === n.id ? { ...x, readAt: stamp() } : x)));
+    try { await markNotifRead(n.id); } catch { load(); }
+  };
+  const markAll = async () => {
+    setItems((s) => s.map((x) => ({ ...x, readAt: x.readAt || stamp() })));
+    try { await markAllNotifsRead(); } catch { load(); }
+  };
+  const open = (n) => {
+    void markOne(n);
+    const to = notifHref(n);
+    if (to) nav(to);
   };
   const remove = (n) => {
-    // Optimistic hide, deferred delete. The row vanished immediately before this change too;
-    // what was missing was the few seconds in which "that was the wrong one" is still true.
+    // Optimistic hide, deferred delete: the few seconds in which "that was the wrong one" is
+    // still true.
     setItems((s) => s.filter((x) => x.id !== n.id));
     toast.action({
       tone: 'success', cancelLabel: t('common.undo', 'Undo'),
@@ -155,14 +157,14 @@ export default function NotificationCentre() {
       okLabel: t('common.delete', 'Delete'), danger: true,
     })) return;
     setItems([]);
-    try { await deleteAllNotifs(); toast.success(t('common.deleted', 'Deleted.')); } catch { load(); }
+    try { await deleteAllNotifs(); } catch { load(); }
   };
 
   return (
     <div className="max-w-3xl mx-auto py-8">
       <div className="flex items-center gap-3 mb-5">
-        <span className="grid place-items-center w-10 h-10 rounded-xl bg-[var(--surface-2)] border border-[var(--line)]"><Bell size={20} className="text-[var(--accent-ink)]" /></span>
-        <div className="flex-1">
+        <span className="grid place-items-center w-10 h-10 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] shrink-0"><Bell size={20} className="text-[var(--accent-ink)]" /></span>
+        <div className="flex-1 min-w-0">
           <h1 className="text-2xl font-bold leading-tight">{t('notif.title', 'Notifications')}</h1>
           <p className="text-sm text-[var(--muted)]">{unread ? t('notif.unread', '{n} unread').replace('{n}', String(unread)) : t('notif.allread', 'Nothing unread.')}</p>
         </div>
@@ -171,16 +173,11 @@ export default function NotificationCentre() {
       <StaffQueues />
 
       <Card className="p-0 overflow-hidden mt-4">
-        <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[var(--line)]">
-          <div className="inline-flex rounded-[10px] bg-[var(--surface-2)] p-0.5">
-            {[['all', t('notif.f.all', 'All')], ['unread', t('notif.f.unread', 'Unread')]].map(([k, l]) => (
-              <button key={k} onClick={() => setFilter(k)}
-                className={`px-2.5 py-1 rounded-[8px] text-[12px] ${filter === k ? 'bg-[var(--bg-solid)] font-medium' : 'text-[var(--muted)]'}`}>{l}</button>
-            ))}
-          </div>
-          <div className="ms-auto flex gap-2">
+        <div className="flex items-center gap-2 flex-wrap px-3 sm:px-4 py-2.5 border-b border-[var(--line)]">
+          <NotifFilter value={filter} onChange={setFilter} unread={unread} />
+          <div className="ms-auto flex gap-1.5">
             {unread > 0 && <Button size="sm" variant="ghost" onClick={markAll}><CheckCheck size={13} /> {t('notif.markall', 'Mark all read')}</Button>}
-            {(items || []).length > 0 && <Button size="sm" variant="ghost" onClick={clearAll}><Trash2 size={13} /> {t('notif.clear', 'Clear')}</Button>}
+            {(items || []).length > 0 && <Button size="sm" variant="ghost" onClick={clearAll} title={t('notif.clear.t', 'Delete every notification?')}><Trash2 size={13} /> {t('notif.deleteall', 'Delete all')}</Button>}
           </div>
         </div>
 
@@ -196,21 +193,7 @@ export default function NotificationCentre() {
                   ? { label: t('notif.showall', 'Show all'), onClick: () => setFilter('all'), icon: Inbox }
                   : { label: t('notif.none.a', 'Choose what we send you'), icon: Sliders, onClick: () => document.getElementById('notif-prefs')?.scrollIntoView({ behavior: 'smooth', block: 'center' }) }} />
             </div>
-          ) : (
-            <div className="divide-y divide-[var(--line)]">
-              {shown.map((n) => (
-                <div key={n.id} className={`px-4 py-3 flex items-start gap-3 ${n.readAt ? '' : 'tint-primary'}`}>
-                  {!n.readAt && <span className="w-1.5 h-1.5 rounded-full bg-[var(--primary)] mt-1.5 shrink-0" />}
-                  <div className="min-w-0 flex-1">
-                    <div className="text-[13px] font-medium">{n.kind}</div>
-                    <div className="text-[13px] text-[var(--muted)] break-words">{n.bodyFr && document.documentElement.lang === 'fr' ? n.bodyFr : n.body}</div>
-                    <div className="text-[11px] text-[var(--faint)] mt-0.5">{timeAgo(n.createdAt, t)}</div>
-                  </div>
-                  <Button size="sm" variant="ghost" onClick={() => remove(n)} title={t('common.delete', 'Delete')}><Trash2 size={12} /></Button>
-                </div>
-              ))}
-            </div>
-          )}
+          ) : <NotifList items={shown} onOpen={open} onMarkRead={markOne} onDelete={remove} />}
       </Card>
 
       <div className="mt-4"><Preferences /></div>

@@ -1,0 +1,68 @@
+/* The notification list (ui/notif-bell.jsx): the bell's panel and the centre share these rows.
+   The panel is a popup, so it is opaque (--bg-solid) whatever "Translucent surfaces" says. */
+
+/* ── The bell's panel ─────────────────────────────────────────────── */
+.nb-panel {
+  position: fixed; left: 8px; right: 8px; top: 64px; z-index: 60;
+  display: flex; flex-direction: column;
+  max-height: min(34rem, calc(100dvh - 64px - var(--mbar-h, 56px) - var(--mbar-gap, 10px) * 3 - env(safe-area-inset-bottom, 0px)));
+  border-radius: 14px; border: 1px solid var(--line-strong); overflow: hidden;
+  background: var(--bg-solid); color: var(--text);
+  box-shadow: 0 20px 60px -12px rgba(0, 0, 0, .55);
+}
+@media (min-width: 640px) {
+  .nb-panel { position: absolute; left: auto; right: 0; top: calc(100% + 8px); width: 23rem; max-height: min(34rem, calc(100vh - 6rem)); }
+}
+@media (min-width: 768px) {
+  /* no mobile bar up here */
+  .nb-panel { max-height: min(34rem, calc(100vh - 6rem)); }
+}
+.nb-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px 6px; flex-shrink: 0; }
+.nb-filter { padding: 0 12px 8px; border-bottom: 1px solid var(--line); flex-shrink: 0; }
+.nb-body { overflow-y: auto; overscroll-behavior: contain; flex: 1 1 auto; min-height: 0; }
+.nb-link { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--accent-ink); min-height: 32px; }
+.nb-link:hover { text-decoration: underline; }
+.nb-foot { display: flex; align-items: center; gap: 8px; padding: 9px 12px; font-size: 12px; border-top: 1px solid var(--line); flex-shrink: 0; background: var(--bg-solid); }
+.nb-foot:hover { background: var(--surface-2); }
+.nb-staff { color: var(--text); }
+.nb-staff-n { flex-shrink: 0; padding: 1px 7px; border-radius: 999px; font-size: 10.5px; font-weight: 700; background: var(--warning); color: #fff; }
+
+/* ── The filter ───────────────────────────────────────────────────── */
+.nl-seg { display: inline-flex; padding: 2px; border-radius: 10px; background: var(--surface-2); }
+.nl-seg > button { display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px; min-height: 30px; border-radius: 8px; font-size: 12px; color: var(--muted); }
+.nl-seg > button.is-on { background: var(--bg-solid); color: var(--text); font-weight: 600; box-shadow: 0 1px 2px rgba(0, 0, 0, .12); }
+.nl-seg-n { padding: 0 6px; border-radius: 999px; font-size: 10.5px; font-weight: 700; background: var(--primary); color: var(--on-primary); }
+
+/* ── The list ─────────────────────────────────────────────────────── */
+/* Day headings stick inside the bell's own scroller; on the centre page the topbar owns the top. */
+.nb-body .nl-day-t { position: sticky; top: 0; z-index: 1; }
+.nl-day-t {
+  margin: 0; padding: 8px 14px 5px; font-size: 10.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--faint); background: var(--bg-solid); border-bottom: 1px solid var(--line);
+}
+.nl-list { list-style: none; margin: 0; padding: 0; }
+.nl-row { position: relative; display: flex; align-items: flex-start; border-bottom: 1px solid var(--line); }
+.nl-day:last-child .nl-row:last-child { border-bottom: 0; }
+.nl-row.is-unread { background: color-mix(in srgb, var(--primary) 7%, transparent); }
+.nl-row.is-unread::before { content: ""; position: absolute; left: 0; top: 10px; bottom: 10px; width: 3px; border-radius: 0 3px 3px 0; background: var(--primary); }
+.nl-main { flex: 1; min-width: 0; display: flex; align-items: flex-start; gap: 10px; padding: 11px 6px 11px 14px; text-align: start; }
+.nl-main:hover { background: color-mix(in srgb, var(--text) 4%, transparent); }
+.nl-ico { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; flex-shrink: 0; margin-top: 1px; }
+.nl-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.nl-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.nl-kind { font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+.nl-time { font-size: 11px; color: var(--faint); }
+.nl-dot { width: 7px; height: 7px; border-radius: 999px; background: var(--primary); flex-shrink: 0; }
+.nl-body { font-size: 13.5px; line-height: 1.4; color: var(--muted); overflow-wrap: anywhere; }
+.nl-row.is-unread .nl-body { color: var(--text); font-weight: 500; }
+.nl-actions { display: flex; align-items: center; gap: 2px; padding: 8px 8px 0 0; flex-shrink: 0; }
+.nl-act { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; color: var(--faint); }
+.nl-act:hover { color: var(--text); background: var(--surface-2); }
+.nl-act.is-danger:hover { color: var(--error); }
+/* Where there is a mouse, the row's buttons wait for it; on a touchscreen they are always there. */
+@media (hover: hover) {
+  .nl-actions { opacity: 0; transition: opacity .12s; }
+  .nl-row:hover .nl-actions, .nl-row:focus-within .nl-actions { opacity: 1; }
+}
+.nl.is-compact .nl-main { padding-block: 9px; }
+.nl.is-compact .nl-body { font-size: 13px; }

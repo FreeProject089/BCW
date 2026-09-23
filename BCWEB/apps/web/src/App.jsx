@@ -1,10 +1,10 @@
 import { useEffect, useState, useRef, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Routes, Route, Link, NavLink, Navigate, useLocation, useNavigate, useNavigationType } from 'react-router-dom';
-import { Code2, Boxes, Orbit, Music2, Newspaper, Server, Rocket, LayoutDashboard, Shield, LogOut, Download, Menu, X, Sparkles, Bell, Trash2, CheckCheck, Mail, Home as HomeIcon, ChevronDown, MoreHorizontal, LayoutGrid, ShieldCheck, ArrowUpRight, Info, AlertTriangle, CheckCircle2, Settings as SettingsIcon, BookOpen, Search, Languages, LogIn, Cloud, HelpCircle } from 'lucide-react';
+import { Code2, Boxes, Orbit, Music2, Newspaper, Server, Rocket, LayoutDashboard, Shield, LogOut, Download, Menu, X, Sparkles, Bell, Mail, Home as HomeIcon, ChevronDown, MoreHorizontal, LayoutGrid, ShieldCheck, ArrowUpRight, Info, AlertTriangle, CheckCircle2, Settings as SettingsIcon, BookOpen, Search, Languages, LogIn, Cloud, HelpCircle } from 'lucide-react';
 import { useAuth } from './pages/auth.jsx';
 import { api } from './lib/api.js';
-import { onNotifsChanged, applyNotifChange, markNotifRead, markAllNotifsRead, deleteNotif } from './lib/notifs.js';
+import NavNotifications from './ui/notif-bell.jsx';
 import { useReportsUnseen } from './lib/reports-unseen.js';
 import { getHero3dDisabled } from './lib/prefs.js';
 import { prefersReducedMotion } from './lib/fx-pref.js';
@@ -16,6 +16,7 @@ import { UtilGlyph, utilIconFor, utilSize } from './ui/topbar-glyph.jsx';
 
 import { useI18n, LangToggle, LangSelect } from './i18n.jsx';
 import CommandPalette from './ui/command-palette.jsx';
+import ShortcutsHost from './ui/shortcuts.jsx';
 import { openPalette } from './ui/palette-recent.js';
 import { buildDownbar } from './ui/mobilebar-items.js';
 import { KofiIcon, GithubIcon, DiscordIcon, RedditIcon, XIcon, YoutubeIcon, TwitchIcon,
@@ -50,6 +51,7 @@ import { canAdmin, effectiveCaps, hasProjectGrant, utilAllowed } from './lib/rol
 import { readLayout, navAlignClass } from './lib/navLayout.js';
 import CookieConsent from './ui/CookieConsent.jsx';
 import PwaUpdatePrompt from './ui/pwa-update.jsx';
+import PwaInstallPrompt from './ui/pwa-install.jsx';
 import PromoBadge from './ui/promo-badge.jsx';
 import EventEffect from './hero/event-effect.jsx';
 import { IntroProvider, useIntro } from './ui/IntroContext.jsx';
@@ -58,7 +60,6 @@ import { ReportJoin } from './ui/report.jsx';
 import Avatar from './ui/Avatar.jsx';
 // Eager: the initial landing routes + nav-critical modules (the notification map is
 // rendered by the always-present nav bell, which keeps dashboard.jsx in the main chunk).
-import { NOTIF, NOTIF_FALLBACK } from './ui/notif.js'; // tiny data module — kept eager for the nav bell
 import { Home } from './pages/home.jsx';
 import { Catalog, ItemDetail } from './pages/catalog.jsx';
 import { DEFAULT_FOOTER_SOCIALS, DEFAULT_FOOTER_COLUMNS } from './ui/footer-default.js';
@@ -392,13 +393,6 @@ function NavSheetGroup({ item, t, lang, onNavigate }) {
   );
 }
 
-function timeAgo(d, justnow) {
-  const s = Math.floor((Date.now() - new Date(d).getTime()) / 1000);
-  if (s < 60) return justnow;
-  const m = Math.floor(s / 60); if (m < 60) return `${m}m`;
-  const h = Math.floor(m / 60); if (h < 24) return `${h}h`;
-  return `${Math.floor(h / 24)}d`;
-}
 
 /** "Your account is suspended", said by the app rather than discovered by watching things fail.
  *
@@ -523,150 +517,8 @@ function SanctionBanner() {
   );
 }
 
-// Global notifications bell — visible on every page in the topbar when signed in.
-// Where a notification takes you when clicked (by kind) — makes the bell actionable
-// instead of just informational. Falls back to no navigation for pure-info kinds.
-const NOTIF_LINK = {
-  submission_approved: '/dashboard', submission_rejected: '/dashboard',
-  repo_verified: '/repos', repo_published: '/dashboard?s=repos', repo_rejected: '/dashboard?s=repos',
-  repo_access_granted: '/dashboard?s=repos', repo_renew: '/dashboard?s=repos', repo_upgrade: '/dashboard?s=repos',
-  repo_review: '/admin?s=moderation',
-  hosting_started: '/dashboard?s=repos', hosting_online: '/dashboard?s=repos', hosting_stopped: '/dashboard?s=repos', hosting_expiring: '/dashboard?s=repos',
-  feature_active: '/dashboard?s=repos', server_alert: '/admin?s=serverperf',
-  creator_linked: '/profile', discord_linked: '/profile',
-  kofi_reward: '/dashboard', promo_redeemed: '/dashboard', discount: '/hosting#plans', free_hosting: '/dashboard?s=repos', free_pool: '/dashboard?s=repos', free_boost: '/dashboard?s=repos',
-};
-
-function NavNotifications({ icon = null } = {}) {
-  const { t, lang } = useI18n();
-  const { user } = useAuth();
-  const nav = useNavigate();
-  const [open, setOpen] = useState(false);
-  const [items, setItems] = useState([]);
-  const ref = useRef(null);
-  // Locally-read ids (so a 60s poll can't revert an optimistic mark-read) + a persisted
-  // "cleared before" timestamp (so Clear is durable — cleared notifs don't come back on
-  // the next poll/reload; only newer ones appear).
-  const readIds = useRef(new Set());
-  const clearedAt = useRef((() => { try { return Number(localStorage.getItem('bcw_notif_cleared')) || 0; } catch { return 0; } })());
-  const load = () => api.get('/me/notifications').then((d) => {
-    const list = (d.notifications || []).filter((n) => new Date(n.createdAt).getTime() > clearedAt.current);
-    setItems(list.map((n) => (readIds.current.has(n.id) && !n.readAt ? { ...n, readAt: new Date().toISOString() } : n)));
-  }).catch(() => {});
-  useEffect(() => { load(); const id = setInterval(load, 60000); return () => clearInterval(id); }, []);
-  // The badge is the thing people watch, and it was the slowest to hear anything: marking
-  // everything read on the notifications PAGE left this number sitting there for up to a
-  // minute, which reads as "I have to refresh". Applied locally first so the badge drops on
-  // the click, then reloaded to reconcile — the ids marked read locally are remembered, so
-  // a poll that overtakes the write cannot push the number back up.
-  useEffect(() => onNotifsChanged((d) => {
-    if (d.readAll) items.forEach((x) => readIds.current.add(x.id));
-    (d.read || []).forEach((id) => readIds.current.add(id));
-    setItems((s) => applyNotifChange(s, d));
-    void load();
-  }), [items]);
-  useEffect(() => {
-    const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
-    document.addEventListener('mousedown', onDoc); return () => document.removeEventListener('mousedown', onDoc);
-  }, []);
-  const unread = items.filter((n) => !n.readAt).length;
-  // Staff queues count towards the SAME badge. A moderator standing on the blog page has no
-  // other signal that a report came in — the queue counters only exist inside the admin
-  // dashboard, which is exactly where they are not needed.
-  //
-  // Gated on the user actually being staff. The route is `requireCap('manage_users', …)`, so
-  // for a normal account this poll only ever 403s — once a minute, for nothing. Checking the
-  // caps we already hold means the request is never made rather than made and refused. (The
-  // api client no longer toasts a GET 403, so a stray one is silent either way — but a
-  // refused request every 60s is still a refused request.)
-  const canSeeQueues = !!user && (canAdmin(user) || effectiveCaps(user).includes('manage_users'));
-  const [pending, setPending] = useState(0);
-  // The staff-queue count only drops when items are actually handled, and only the 60s poll
-  // ever changed it — so after you LOOK at the queues the badge sat there for up to a minute,
-  // which reads as "I have to refresh". A persisted baseline fixes it: opening the bell marks
-  // the current queue total as seen, so its contribution to the badge is zeroed on the click.
-  // The badge then only counts what arrived SINCE (pending − seen); the footer link still shows
-  // the true total so nothing is hidden, and the admin dashboard is where they're acted on.
-  const [pendingSeen, setPendingSeen] = useState(() => { try { return Number(localStorage.getItem('bcw_pending_seen')) || 0; } catch { return 0; } });
-  useEffect(() => {
-    if (!canSeeQueues) { setPending(0); return undefined; }
-    let live = true;
-    const poll = () => api.get('/admin/pending').then((r) => { if (live) setPending(r?.total || 0); }).catch(() => { if (live) setPending(0); });
-    poll();
-    const id = setInterval(poll, 60_000);
-    return () => { live = false; clearInterval(id); };
-  }, [canSeeQueues]);
-  const pendingNew = Math.max(0, pending - pendingSeen);
-  const markPendingSeen = () => { setPendingSeen(pending); try { localStorage.setItem('bcw_pending_seen', String(pending)); } catch {} };
-  const badge = unread + pendingNew;
-  useEffect(() => { publishNavBadge(badge); }, [badge]);
-  useEffect(() => () => publishNavBadge(0), []); // signing out unmounts the bell; don't leave a number behind
-  const markOne = async (n) => { if (n.readAt) return; readIds.current.add(n.id); setItems((s) => s.map((x) => (x.id === n.id ? { ...x, readAt: new Date().toISOString() } : x))); try { await markNotifRead(n.id); } catch {} };
-  // Click = mark read + go to the relevant page (if the kind maps to one).
-  // The notification's OWN destination first, the per-kind default second.
-  //
-  // NOTIF_LINK is a map from kind to one fixed page, so every transfer offer went to the same
-  // place and no notification could ever point at the particular thing it was about. `href` is
-  // written per notification by whatever raised it, validated server-side to an in-app path.
-  // The map stays as the fallback: dozens of existing kinds rely on it and every notification
-  // already in the database has no href.
-  const openNotif = (n) => {
-    markOne(n);
-    const to = n.href || NOTIF_LINK[n.kind];
-    if (to) { setOpen(false); nav(to); }
-  };
-  const markAll = async () => { items.forEach((x) => readIds.current.add(x.id)); setItems((s) => s.map((x) => ({ ...x, readAt: x.readAt || new Date().toISOString() }))); try { await markAllNotifsRead(); } catch {} };
-  const del = async (n) => { setItems((s) => s.filter((x) => x.id !== n.id)); try { await deleteNotif(n.id); } catch {} };
-  // Durable menu dismiss: remember "everything up to now is cleared" so the poll/reload
-  // won't bring them back (only genuinely newer notifications will). The dashboard's
-  // "delete everything" action.
-  const clearMenu = () => { clearedAt.current = Date.now(); try { localStorage.setItem('bcw_notif_cleared', String(clearedAt.current)); } catch {} setItems([]); };
-  return (
-    <div className="relative" ref={ref}>
-      <button className="nav-link !px-2 relative" onClick={() => { setOpen((o) => !o); if (!open) { load(); markPendingSeen(); } }} title={t('nav.notifications')} aria-label={t('nav.notifications')}>
-        {icon || <Bell size={16} />}
-        {badge > 0 && <span className="absolute top-0.5 right-0.5 min-w-[15px] h-[15px] px-1 rounded-full bg-[var(--primary)] text-[var(--on-primary)] text-[9px] font-bold grid place-items-center">{badge > 9 ? '9+' : badge}</span>}
-      </button>
-      {open && (
-        <div className="fixed left-2 right-2 top-16 w-auto sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-[21rem] flex flex-col max-h-[26rem] rounded-xl border border-[var(--line-strong)] z-[60] anim-fade overflow-hidden"
-          style={{ background: 'var(--bg-solid)', boxShadow: '0 20px 60px -12px rgba(0,0,0,0.55), 0 0 0 1px var(--line)' }}>
-          <div className="flex items-center justify-between px-3 py-2.5 border-b border-[var(--line)] shrink-0" style={{ background: 'var(--bg-solid)' }}>
-            <span className="text-sm font-semibold flex items-center gap-1.5"><Bell size={14} className="text-[var(--accent-ink)]" /> {t('nav.notifications')}{unread > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--primary)] text-[var(--on-primary)]">{unread}</span>}</span>
-            <span className="flex items-center gap-2.5 shrink-0">
-              {unread > 0 && <button className="text-xs text-[var(--accent-ink)] hover:underline flex items-center gap-1" onClick={markAll}><CheckCheck size={12} /> {t('notif.markall')}</button>}
-              {items.length > 0 && <button className="text-xs text-[var(--faint)] hover:text-[var(--text)] hover:underline flex items-center gap-1" onClick={clearMenu} title={t('notif.clearmenu.hint')}><X size={12} /> {t('notif.clear')}</button>}
-            </span>
-          </div>
-          <div className="overflow-y-auto flex-1 min-h-0">
-          {items.length ? items.slice(0, 30).map((n) => { const m = NOTIF[n.kind] || NOTIF_FALLBACK; return (
-            <div key={n.id} className={`group w-full px-3 py-2.5 border-b border-[var(--line)] hover:bg-[var(--surface-2)] flex gap-2.5 items-start ${n.readAt ? '' : 'bg-orange-500/5'}`}>
-              <button onClick={() => openNotif(n)} className={`flex gap-2.5 items-start text-start min-w-0 flex-1 ${NOTIF_LINK[n.kind] ? 'cursor-pointer' : ''}`}>
-                <span className={`grid place-items-center w-7 h-7 rounded-lg shrink-0 mt-0.5 ${m.tint}`}><m.icon size={13} className={m.tone} /></span>
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-center gap-1.5">
-                    <span className={`text-[9px] font-semibold uppercase tracking-wider ${m.tone}`}>{m.label}</span>
-                    {!n.readAt && <span className="w-1.5 h-1.5 rounded-full bg-[var(--primary)] shrink-0" />}
-                  </span>
-                  <span className="text-sm text-[var(--text)] block leading-snug break-words [overflow-wrap:anywhere]">{(lang === 'fr' && n.bodyFr) || n.body}</span>
-                  <span className="text-[11px] text-[var(--faint)]">{timeAgo(n.createdAt, t('notif.justnow'))}</span>
-                </span>
-              </button>
-              <button onClick={() => del(n)} title={t('app.delete', "Delete")} className="shrink-0 text-[var(--faint)] hover:text-error opacity-0 group-hover:opacity-100 transition mt-0.5"><Trash2 size={13} /></button>
-            </div>
-          ); }) : <div className="px-3 py-8 text-center text-sm text-[var(--muted)]">{t('notif.none')}</div>}
-          </div>
-          {pending > 0 && (
-            <Link to="/notifications" onClick={() => setOpen(false)} className="flex items-center gap-2 px-3 py-2 border-t border-[var(--line)] shrink-0 text-xs hover:bg-[var(--surface-2)]" style={{ background: 'var(--bg-solid)' }}>
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500 text-white font-semibold">{pending}</span>
-              <span className="text-[var(--text)]">{t('notif.staff.badge', 'waiting in your moderation queues')}</span>
-            </Link>
-          )}
-          <Link to="/notifications" onClick={() => setOpen(false)} className="block text-center text-xs text-[var(--muted)] hover:text-[var(--text)] py-2 border-t border-[var(--line)] shrink-0" style={{ background: 'var(--bg-solid)' }}>{t('notif.centre', 'Notification centre')}</Link>
-        </div>
-      )}
-    </div>
-  );
-}
+// The topbar bell lives in ui/notif-bell.jsx (NavNotifications), with the list it shares with
+// the notification centre. `onBadge` is how it publishes the number for the mobile bar.
 
 // `preview` (admin Live preview only): { cfg, user }. The bar then renders from the editor's
 // draft config and a stand-in viewer instead of /nav and the signed-in account, and never
@@ -885,7 +737,7 @@ export function Nav({ preview = null } = {}) {
       // own notifications inside a "signed-out visitor" preview.
       case 'notifications': return preview
         ? <span key="u-notif" className="nav-link !px-2 relative" title={t('nav.notifications')}>{ug('notifications', Bell)}</span>
-        : <NavNotifications key="u-notif" icon={hasIcon('notifications', theme) || uCfg.notifications?.size ? ug('notifications', Bell) : null} />;
+        : <NavNotifications key="u-notif" onBadge={publishNavBadge} icon={hasIcon('notifications', theme) || uCfg.notifications?.size ? ug('notifications', Bell) : null} />;
       case 'projects': return <NavLink key="u-proj" to="/projects" className={({ isActive }) => `hidden sm:inline-flex nav-link !px-2 ${isActive ? 'nav-link-active' : ''}`} title={t('nav.projects')} aria-label={t('nav.projects')}>{ug('projects', Orbit)}</NavLink>;
       // Inert in the preview: it would switch the ADMIN's language, not the preview's.
       case 'lang': return <span key="u-lang" className={preview ? 'pointer-events-none contents' : 'contents'}><LangToggle type={uCfg.lang?.type || 'auto'} icon={hasIcon('lang', theme) || uCfg.lang?.size ? ug('lang', Languages) : null} /></span>;
@@ -1836,6 +1688,7 @@ export default function App() {
               DOM and would otherwise paint over an open dropdown on short pages. */}
           <LocaleSync />
           <CommandPalette />
+          <ShortcutsHost />
           <SanctionBanner />
           <LegalReaccept />
           {/* One-time, and it answers the cookie question itself — so it replaces the
@@ -1941,6 +1794,7 @@ export default function App() {
           <MobileTabBar />
           <CookieConsent />
           <PwaUpdatePrompt />
+          <PwaInstallPrompt />
         </AppReveal>
       </div>
     </IntroProvider>

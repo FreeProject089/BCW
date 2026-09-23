@@ -1,0 +1,38 @@
+/* The "Install the app" corner card (ui/pwa-install.jsx).
+   Opaque on --bg-solid: a popup must not turn see-through under "Translucent surfaces".
+   Bottom-left on desktop (the toast host owns bottom-right); on a phone it sits above the
+   mobile tab bar, full width minus the same gutter the bar uses. */
+.pwa-install {
+  position: fixed; z-index: 60;
+  left: 20px; bottom: 20px;
+  width: 20rem; max-width: calc(100vw - 2.5rem);
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid var(--line-strong);
+  background: var(--bg-solid);
+  color: var(--text);
+  box-shadow: 0 14px 40px -14px rgba(0, 0, 0, .62);
+}
+@media (max-width: 767.98px) {
+  .pwa-install {
+    left: var(--mbar-gap, 10px); right: var(--mbar-gap, 10px);
+    width: auto; max-width: none;
+    bottom: calc(var(--mbar-h, 56px) + var(--mbar-gap, 10px) * 2 + env(safe-area-inset-bottom, 0px));
+  }
+}
+.pwa-install-ico {
+  display: grid; place-items: center; flex-shrink: 0;
+  width: 28px; height: 28px; border-radius: 8px;
+  color: var(--accent-ink);
+  background: color-mix(in srgb, var(--primary) 16%, transparent);
+}
+.pwa-install-x {
+  flex-shrink: 0; margin-inline-end: -2px; padding: 4px; border-radius: 8px;
+  color: var(--faint);
+}
+.pwa-install-x:hover { color: var(--text); background: var(--surface-2); }
+
+.pwa-steps { margin: 10px 0 0; padding: 0; list-style: none; display: grid; gap: 6px; font-size: 12.5px; }
+.pwa-steps li { display: flex; align-items: flex-start; gap: 8px; }
+.pwa-steps li svg { flex-shrink: 0; margin-top: 2px; color: var(--accent-ink); }

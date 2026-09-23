@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useParams, useNavigate, Link } from 'react-router-dom';
-import { BookOpen, Plus, Pencil, Trash2, Search, PanelLeftClose, Menu, Save, Languages, Smile, Meh, Frown, CornerDownLeft, X, ChevronRight, Hash, History, MessageSquare, Globe, FolderTree, Eye, Newspaper } from 'lucide-react';
+import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
+import { BookOpen, Plus, Pencil, Trash2, Search, PanelLeftClose, Menu, Save, Languages, Smile, Meh, Frown, X, ChevronRight, History, MessageSquare, Globe, FolderTree, Eye, Newspaper } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { merge3, hasConflictMarkers } from '../lib/merge3.js';
 import HistoryModal from '../editor/history-modal.jsx';
@@ -15,6 +15,9 @@ import { MarkdownEditor } from '../editor/markdown-editor.jsx';
 import { useToast, useDialog, Button, Spinner, Input, EmptyState, Explain } from '../ui/ui.jsx';
 import { EntryModal, EntryActions, EntrySection, EntryField, FieldError, LangTabs, MergeBanner, useDirtyForm } from '../ui/entry-modal.jsx';
 import { useDraft, DraftBanner } from '../ui/drafts.jsx';
+import { openPalette } from '../ui/palette-recent.js';
+import { useShortcutHandlers, useTouchOnly, Keys } from '../ui/shortcuts.jsx';
+import { paletteCombo } from '../lib/shortcuts.js';
 
 // BCWEB documentation — a docs space rendered with the B.MD block markdown
 // system. Public read; ADMIN/SUPERADMIN (the "special role") get an inline editor.
@@ -29,7 +32,6 @@ export default function Docs() {
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
   const [sidebar, setSidebar] = useState(() => typeof window === 'undefined' || window.innerWidth >= 768);
-  const [search, setSearch] = useState(false); // ⌘K palette
   const [editing, setEditing] = useState(null); // page object being edited, or {} for new
   const [readerComments, setReaderComments] = useState(false); // public/editor comments viewer
   const [readerHistory, setReaderHistory] = useState(false); // read-only edit history (click the date)
@@ -49,9 +51,14 @@ export default function Docs() {
     api.get(`/docs/${target}`).then((r) => { setPage(r.page); setContributors(r.contributors || []); }).catch(() => { setPage(null); setContributors([]); }).finally(() => setLoading(false));
   }, [slug, firstSlug]);
 
-  // ⌘K / Ctrl-K is now the site-wide command palette (ui/command-palette.jsx, mounted in App),
-  // which searches the docs too — so the docs page no longer binds its own global key (that would
-  // double-fire). The docs full-text palette here stays reachable via the search button.
+  // Search is the site-wide palette (ui/command-palette.jsx), opened narrowed to the docs. This
+  // page used to render a second palette of its own, inside <main>'s stacking context, which is
+  // why it came up BEHIND the sticky topbar. One palette now; on /docs a plain Ctrl+K puts the
+  // documentation first. Alt+/ and Alt+S are this page's own shortcut rows (lib/shortcuts.js),
+  // live only while it is mounted.
+  const touchOnly = useTouchOnly();
+  const searchDocs = () => openPalette({ scope: 'docs' });
+  useShortcutHandlers({ 'docs.search': searchDocs, 'docs.sidebar': () => setSidebar((v) => !v) });
 
   // Swipe from the left edge opens the sidebar drawer on touch devices.
   useEffect(() => {
@@ -130,14 +137,10 @@ export default function Docs() {
   }, [tree, lang]);
   const onSaved = async (savedSlug) => { setEditing(null); await loadTree(); if (savedSlug) nav(`/docs/${savedSlug}`); else if (slug) { const r = await api.get(`/docs/${slug}`).catch(() => null); if (r) { setPage(r.page); setContributors(r.contributors || []); } } };
   const activeSlug = slug || firstSlug;
-  const goTo = (r) => {
-    setSearch(false);
-    if (window.innerWidth < 768) setSidebar(false);
-    const slug = typeof r === 'object' ? r.slug : r;
-    const anchor = typeof r === 'object' ? r.anchor : null;
-    nav(`/docs/${slug}${anchor ? '#' + anchor : ''}`);
-    if (anchor) setTimeout(() => anchorEl(anchor)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 350);
-  };
+  // A search hit picked from the phone drawer lands on the page, not behind the drawer. (The
+  // palette navigates; the anchor scroll is App's useRouteScroll, as for any #hash link.)
+  const loc = useLocation();
+  useEffect(() => { if (window.innerWidth < 768) setSidebar(false); }, [loc.pathname, loc.hash]);
 
   // Shared sidebar content — rendered in the desktop rail AND the mobile drawer.
   const sideInner = (
@@ -146,10 +149,10 @@ export default function Docs() {
         <BookOpen size={18} className="text-[var(--accent-ink)]" />
         <span className="font-bold">{t('docs.title')}</span>
       </div>
-      <button onClick={() => setSearch(true)}
+      <button onClick={searchDocs}
         className="w-full flex items-center gap-2 px-3 py-2 mb-2.5 rounded-2xl border border-[var(--line)] bg-[var(--surface-2)] text-sm text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--line-strong)] transition">
         <Search size={14} /> <span className="flex-1 text-start">{t('docs.search')}</span>
-        <kbd className="text-[10px] font-semibold px-1.5 py-0.5 rounded-lg border border-[var(--line)] bg-[var(--bg)]">⌘K</kbd>
+        {!touchOnly && <Keys combo={paletteCombo()} />}
       </button>
       <div className="relative mb-4">
         <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('docs.filter')} className="!py-2 !text-sm !rounded-2xl" />
@@ -260,7 +263,6 @@ export default function Docs() {
 
       {page && <PageToc body={body} />}
 
-      {search && <SearchPalette onClose={() => setSearch(false)} onPick={goTo} />}
       {readerComments && page && <CommentsModal base={`/docs/${page.id}`} body={body} onClose={() => setReaderComments(false)} onJump={(slug) => anchorEl(slug)?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />}
       {readerHistory && page && <HistoryModal base={`/docs/${page.id}`} onClose={() => setReaderHistory(false)} />}
       {editing && <DocEditor page={editing.id ? editing : null} draft={editing._draft || null} draftBase={editing._base || null} conflictReopen={!!editing._conflict}
@@ -354,146 +356,6 @@ function PageToc({ body }) {
         ))}
       </nav>
     </aside>
-  );
-}
-
-/* ⌘K command-palette search over doc titles + bodies (server-side ranked). */
-// Wrap every case-insensitive occurrence of `q` in <mark> for result highlighting.
-// Highlight EACH query term, not just the whole string — so a multi-word search ("plugin
-// permission") marks both words wherever they land, matching the multi-term backend ranking.
-function highlight(text, q) {
-  const s = String(text || '');
-  const terms = [...new Set(String(q || '').toLowerCase().split(/\s+/).filter((w) => w.length >= 2))];
-  if (!terms.length) return s;
-  const low = s.toLowerCase();
-  const parts = []; let i = 0;
-  while (i < s.length) {
-    // Nearest occurrence of any term from position i.
-    let best = -1, bestLen = 0;
-    for (const tm of terms) { const idx = low.indexOf(tm, i); if (idx >= 0 && (best < 0 || idx < best)) { best = idx; bestLen = tm.length; } }
-    if (best < 0) { parts.push(s.slice(i)); break; }
-    if (best > i) parts.push(s.slice(i, best));
-    parts.push(<mark key={best} className="doc-hl">{s.slice(best, best + bestLen)}</mark>);
-    i = best + bestLen;
-  }
-  return parts;
-}
-const RECENT_KEY = 'doc-search-recent';
-const readRecent = () => { try { return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); } catch { return []; } };
-
-function SearchPalette({ onClose, onPick }) {
-  const { t } = useI18n();
-  const [q, setQ] = useState('');
-  const [results, setResults] = useState([]);
-  const [active, setActive] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const [recent, setRecent] = useState(readRecent);
-  const clearRecent = () => { try { localStorage.removeItem(RECENT_KEY); } catch {} setRecent([]); };
-  const inputRef = useRef(null);
-  const listRef = useRef(null);
-  useEffect(() => { inputRef.current?.focus(); }, []);
-  useEffect(() => {
-    if (q.trim().length < 2) { setResults([]); setLoading(false); return; }
-    setLoading(true);
-    const id = setTimeout(() => {
-      api.get(`/docs/search?q=${encodeURIComponent(q.trim())}`)
-        .then((r) => { setResults(r.results || []); setActive(0); })
-        .catch(() => setResults([]))
-        .finally(() => setLoading(false));
-    }, 140);
-    return () => clearTimeout(id);
-  }, [q]);
-  // Keep the active row in view when navigating with the keyboard.
-  useEffect(() => { listRef.current?.querySelector('[data-active="1"]')?.scrollIntoView({ block: 'nearest' }); }, [active]);
-
-  const showRecent = q.trim().length < 2 && recent.length > 0;
-  // DocSearch-style grouping: one page row, its matching sections nested under it
-  // with tree connectors (└) instead of a flat list of noisy rows.
-  const rows = useMemo(() => {
-    if (showRecent) return recent;
-    const byPage = new Map();
-    for (const r of results) {
-      if (!byPage.has(r.slug)) byPage.set(r.slug, { page: null, sections: [] });
-      const g = byPage.get(r.slug);
-      if (r.section) g.sections.push(r); else g.page = r;
-    }
-    const out = [];
-    for (const [slug, g] of byPage) {
-      const head = g.sections[0] || {};
-      out.push(g.page || { slug, title: head.title, category: head.category, icon: head.icon });
-      for (const s of g.sections) out.push({ ...s, sub: true });
-    }
-    return out;
-  }, [results, recent, showRecent]);
-  const pick = (r) => {
-    try {
-      const next = [r, ...readRecent().filter((x) => !(x.slug === r.slug && x.anchor === r.anchor))].slice(0, 6);
-      localStorage.setItem(RECENT_KEY, JSON.stringify(next));
-    } catch {}
-    onPick(r);
-  };
-  const onKey = (e) => {
-    if (e.key === 'Escape') return onClose();
-    if (e.key === 'ArrowDown') { e.preventDefault(); setActive((a) => Math.min(a + 1, rows.length - 1)); }
-    if (e.key === 'ArrowUp') { e.preventDefault(); setActive((a) => Math.max(a - 1, 0)); }
-    if (e.key === 'Enter' && rows[active]) { e.preventDefault(); pick(rows[active]); }
-  };
-  const Row = (r, i) => r.sub ? (
-    // Nested section hit: tree connector + # tile, page context muted below.
-    <button key={`${r.slug}-${r.anchor || i}`} data-active={i === active ? '1' : '0'} onMouseEnter={() => setActive(i)} onClick={() => pick(r)}
-      className={`w-full text-start pe-3.5 py-2 flex items-stretch gap-0 rounded-xl transition ${i === active ? 'tint-primary' : 'hover:bg-[var(--surface-2)]'}`}>
-      <span className="relative w-9 shrink-0" aria-hidden>
-        <span className="absolute left-[22px] -top-1 bottom-1/2 w-px bg-[var(--line-strong)]" />
-        <span className="absolute left-[22px] top-1/2 w-2.5 h-px bg-[var(--line-strong)]" style={{ transform: 'translateY(-0.5px)' }} />
-      </span>
-      <span className={`self-center grid place-items-center w-7 h-7 rounded-lg shrink-0 ${i === active ? 'text-[var(--accent-ink)] tint-primary' : 'text-[var(--muted)] bg-[var(--surface-2)]'}`}><Hash size={13} /></span>
-      <div className="min-w-0 flex-1 self-center ps-3">
-        <div className="text-sm font-medium truncate">{highlight(r.section, q)}</div>
-        <div className="text-[11px] text-[var(--faint)] truncate" title={r.title}>{r.title}</div>
-      </div>
-      {i === active && <CornerDownLeft size={14} className="self-center text-[var(--faint)] shrink-0" />}
-    </button>
-  ) : (
-    <button key={`${r.slug}-page-${i}`} data-active={i === active ? '1' : '0'} onMouseEnter={() => setActive(i)} onClick={() => pick(r)}
-      className={`w-full text-start px-3 py-2.5 flex items-center gap-3 rounded-xl transition ${i > 0 ? 'mt-1' : ''} ${i === active ? 'tint-primary' : 'hover:bg-[var(--surface-2)]'}`}>
-      <span className={`grid place-items-center w-8 h-8 rounded-lg shrink-0 ${i === active ? 'text-[var(--accent-ink)] tint-primary' : 'text-[var(--muted)] bg-[var(--surface-2)]'}`}>
-        <IconGlyph name={r.icon || 'file'} size={15} />
-      </span>
-      <div className="min-w-0 flex-1">
-        <div className="text-sm font-semibold truncate">{highlight(r.title, q)} <span className="text-[var(--faint)] font-normal text-xs">· {r.category}</span></div>
-        {r.snippet && <div className="text-xs text-[var(--muted)] truncate">{highlight(r.snippet, q)}</div>}
-      </div>
-      {i === active && <CornerDownLeft size={14} className="text-[var(--faint)] shrink-0" />}
-    </button>
-  );
-  return (
-    <div className="fixed inset-0 z-[60] flex items-start justify-center pt-[10vh] px-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
-      <div className="card modal-card w-full max-w-xl !rounded-2xl shadow-2xl overflow-hidden !p-0" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center gap-2.5 px-4 border-b border-[var(--line)]">
-          <Search size={17} className="text-[var(--muted)] shrink-0" />
-          <input ref={inputRef} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={onKey}
-            placeholder={t('docs.search.ph')} className="flex-1 bg-transparent border-0 outline-none py-3.5 text-[15px] text-[var(--text)]" />
-          {loading && <Spinner className="!w-4 !h-4 text-[var(--faint)]" />}
-          <button onClick={onClose} className="text-[var(--faint)] hover:text-[var(--text)] shrink-0"><X size={16} /></button>
-        </div>
-        <div ref={listRef} className="max-h-[54vh] overflow-auto p-1.5">
-          {showRecent && <div className="px-2.5 pt-1 pb-1.5 flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wide text-[var(--faint)]">{t('docs.search.recent')}</span>
-            <button onClick={clearRecent} className="text-[11px] text-[var(--faint)] hover:text-[var(--text)] flex items-center gap-1"><X size={11} /> {t('docs.search.clearrecent', 'Clear')}</button>
-          </div>}
-          {q.trim().length < 2 && !showRecent ? <div className="px-4 py-10 text-center text-sm text-[var(--faint)]">{t('docs.search.hint')}</div>
-            : q.trim().length >= 2 && loading && !results.length ? <div className="px-4 py-10 grid place-items-center"><Spinner /></div>
-            : q.trim().length >= 2 && !results.length ? <div className="px-4 py-10 text-center text-sm text-[var(--faint)]">{t('docs.search.none')} “{q}”.</div>
-            : rows.length ? rows.map(Row)
-            : <div className="px-4 py-10 text-center text-sm text-[var(--faint)]">{t('docs.search.hint')}</div>}
-        </div>
-        <div className="flex items-center gap-3 px-4 py-2 border-t border-[var(--line)] text-[11px] text-[var(--faint)]">
-          <span className="flex items-center gap-1"><kbd className="doc-kbd-hint">↑</kbd><kbd className="doc-kbd-hint">↓</kbd> {t('docs.kb.nav')}</span>
-          <span className="flex items-center gap-1"><kbd className="doc-kbd-hint">↵</kbd> {t('docs.kb.open')}</span>
-          <span className="flex items-center gap-1"><kbd className="doc-kbd-hint">esc</kbd> {t('docs.kb.close')}</span>
-        </div>
-      </div>
-    </div>
   );
 }
 
