@@ -33,6 +33,9 @@ import { defaultFooterConfig, DEFAULT_FOOTER_SOCIALS } from '../ui/footer-defaul
 // to catch.
 import { SOCIAL_ICONS, Nav, MobileTabBar, readMobileMenu } from '../App.jsx';
 import PreviewFrame from '../ui/preview-frame.jsx';
+import DomainPanel from '../ui/domain-panel.jsx';
+import { SaveBar } from '../ui/save-bar.jsx'; // D1 (agent-admin-D): one save bar for every editor
+import { Laptop as LaptopIcon } from 'lucide-react'; // D2 (agent-admin-D): laptop-width topbar preview
 import { UtilGlyph, UTIL_DEFAULT_SIZE, UTIL_SIZE_MIN, UTIL_SIZE_MAX } from '../ui/topbar-glyph.jsx';
 const SOCIAL_KEYS = Object.keys(SOCIAL_ICONS);
 import { TOKENS, TOKEN_GROUPS } from '../ui/theme-tokens.js';
@@ -21357,6 +21360,7 @@ export function OwnerCatalogs() {
                   to the wrong app is worse than an unlabelled one, and would otherwise be
                   permanently mislabelled. */}
               <label className="flex items-center gap-1.5 text-[var(--muted)]">
+  const [domainId, setDomainId] = useState(null); // the catalogue whose custom-domain panel is open
                 {t('oc.forapp', 'For')}
                 <Select className="!w-auto" value={c.app || ''} onChange={(e) => patch(c, { app: e.target.value })}>
                   <option value="">{t('oc.forapp.none', 'Not specified')}</option>
@@ -21406,6 +21410,7 @@ function OwnerCatalogItems({ catalog, onChange }) {
         meta: (!file && f.url) ? { download_url: f.url.trim() } : {},
       });
       setF({ ...f, name: '', url: '' }); setFile(null); if (fileRef.current) fileRef.current.value = '';
+                { key: 'domain', label: t('oc.domain', 'Custom domain'), icon: Globe, onClick: () => setDomainId(domainId === c.id ? null : c.id) },
       reload(); onChange?.();
     } catch (x) {
       const e = x.data?.error;
@@ -21434,6 +21439,8 @@ function OwnerCatalogItems({ catalog, onChange }) {
               <button onClick={() => rm(it)} className="text-[var(--faint)] hover:text-error"><X size={13} /></button>
             </div>
           ))}
+            {/* The API always accepted `catalogs` here (routes/domains.mjs); only repos had the panel. */}
+            {domainId === c.id && <div className="mt-3"><DomainPanel kind="catalogs" id={c.id} /></div>}
         </div>}
         <div className="flex flex-wrap items-end gap-2">
           {/* Not a choice. A catalog serves one kind, so every item in it has that kind by
