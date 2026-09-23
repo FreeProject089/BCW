@@ -6,7 +6,7 @@
 // TOTP/vault primitives live in twofa-lib.js (shared with the inline quick-fill).
 import { useEffect, useRef, useState } from 'react';
 import jsQR from 'jsqr';
-import { ShieldCheck, KeyRound, QrCode, Camera, Download, Upload, Plus, Trash2, Copy, Lock, Unlock, History as HistoryIcon, X, Clock, KeyRound as KeyIcon, AlertTriangle } from 'lucide-react';
+import { ShieldCheck, KeyRound, QrCode, Camera, Download, Upload, Plus, Trash2, Copy, Lock, Unlock, History as HistoryIcon, X, KeyRound as KeyIcon, AlertTriangle, Search, ShieldAlert, HardDrive } from 'lucide-react';
 import { useI18n } from '../i18n.jsx';
 import { Card, Button, Input, Select, Field, useToast, useDialog, PageHeader, EmptyState } from '../ui/ui.jsx';
 import { base32Decode, totp, parseOtpauth, sanitizeAccount, encryptVault, decryptVault, rid, takePending, LS_KEY } from '../lib/twofa-lib.js';
@@ -83,6 +83,8 @@ export function TwoFactor() {
   // ── Manual add form ──
   const [mf, setMf] = useState({ issuer: '', label: '', secret: '', digits: 6, period: 30, algorithm: 'SHA1' });
   const [manualOpen, setManualOpen] = useState(false);
+  // A filter once the list is long enough to need one; matches issuer and account.
+  const [q, setQ] = useState('');
   const submitManual = () => {
     try { base32Decode(mf.secret); } catch { return toast.error(t('tfa.badsecret', 'The secret isn’t valid Base32.')); }
     addAccount({ ...mf, digits: Number(mf.digits) || 6, period: Number(mf.period) || 30 });
@@ -225,12 +227,19 @@ export function TwoFactor() {
 
   // ── Locked screen ──
   if (locked) return (
-    <div className="max-w-md mx-auto">
-      <PageHeader icon={Lock} title={t('tfa.title', 'Authenticator (2FA)')} subtitle={t('tfa.locked.sub', 'This vault is encrypted. Enter your passphrase to unlock.')} />
-      <Card className="p-5 space-y-3">
+    <div className="max-w-md mx-auto pt-6">
+      <Card className="p-6 sm:p-8 space-y-4 text-center">
+        <div className="mx-auto w-16 h-16 rounded-2xl grid place-items-center" style={{ background: 'color-mix(in srgb, var(--primary) 14%, var(--bg-solid))', color: 'var(--accent-ink)' }}>
+          <Lock size={28} />
+        </div>
+        <div>
+          <h1 className="text-xl font-extrabold tracking-tight">{t('tfa.title', 'Authenticator (2FA)')}</h1>
+          <p className="text-sm text-[var(--muted)] mt-1">{t('tfa.locked.sub', 'This vault is encrypted. Enter your passphrase to unlock.')}</p>
+        </div>
         {pendingImport && <div className="text-xs text-[var(--accent-ink)] flex items-center gap-1.5"><KeyIcon size={13} /> {t('tfa.pending', 'A new account (“{n}”) will be added once you unlock.').replace('{n}', pendingImport.issuer || pendingImport.label)}</div>}
         <Input type="password" autoFocus value={unlockPass} onChange={(e) => setUnlockPass(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && unlock()} placeholder={t('tfa.pass.l', 'Passphrase')} />
         <Button variant="primary" className="w-full" onClick={unlock}><Unlock size={15} /> {t('tfa.unlock', 'Unlock')}</Button>
+        <p className="text-[11px] text-[var(--faint)] flex items-center justify-center gap-1.5"><HardDrive size={12} /> {t('tfa.locked.local', 'Unlocked on this device only, nothing is sent anywhere.')}</p>
       </Card>
     </div>
   );
@@ -243,6 +252,23 @@ export function TwoFactor() {
           <Button size="sm" onClick={exportJson}><Download size={14} /> {t('tfa.export', 'Export')}</Button>
           <label className="btn btn-sm cursor-pointer"><Upload size={14} /> {t('tfa.import', 'Import')}<input type="file" accept="application/json,.json" className="hidden" onChange={(e) => { importJson(e.target.files?.[0]); e.target.value = ''; }} /></label>
         </div>} />
+
+      {/* At a glance: how many accounts, whether the vault is encrypted, and that it is local.
+          The three facts the rest of the page explains, before any of the explaining. */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mb-4">
+        <Card className="p-3.5 flex items-center gap-3">
+          <span className="w-9 h-9 rounded-xl grid place-items-center shrink-0" style={{ background: 'color-mix(in srgb, var(--primary) 14%, var(--bg-solid))', color: 'var(--accent-ink)' }}><KeyRound size={17} /></span>
+          <div className="min-w-0"><div className="text-lg font-extrabold tabular-nums leading-tight">{accounts.length}</div><div className="text-[11px] text-[var(--muted)]">{t('tfa.st.accounts', 'Accounts')}</div></div>
+        </Card>
+        <Card className="p-3.5 flex items-center gap-3">
+          <span className="w-9 h-9 rounded-xl grid place-items-center shrink-0" style={{ background: `color-mix(in srgb, var(${encrypted ? '--success' : '--warning'}) 16%, var(--bg-solid))`, color: `var(${encrypted ? '--success' : '--warning'})` }}>{encrypted ? <Lock size={17} /> : <ShieldAlert size={17} />}</span>
+          <div className="min-w-0"><div className="text-sm font-semibold leading-tight">{encrypted ? t('tfa.st.enc', 'Encrypted') : t('tfa.st.plain', 'Not encrypted')}</div><div className="text-[11px] text-[var(--muted)]">{encrypted ? t('tfa.st.enc.s', 'A passphrase protects the vault') : t('tfa.st.plain.s', 'Add a passphrase below')}</div></div>
+        </Card>
+        <Card className="p-3.5 flex items-center gap-3">
+          <span className="w-9 h-9 rounded-xl grid place-items-center shrink-0" style={{ background: 'color-mix(in srgb, var(--success) 16%, var(--bg-solid))', color: 'var(--success)' }}><HardDrive size={17} /></span>
+          <div className="min-w-0"><div className="text-sm font-semibold leading-tight">{t('tfa.st.local', 'On this device')}</div><div className="text-[11px] text-[var(--muted)]">{t('tfa.st.local.s', 'Never sent to our servers')}</div></div>
+        </Card>
+      </div>
 
       {/* privacy / security note */}
       <div className="rounded-xl border border-[var(--line)] panel p-3 mb-4 flex items-start gap-2.5 text-xs text-[var(--muted)]">
@@ -275,13 +301,29 @@ export function TwoFactor() {
         </div>
       )}
 
-      {/* add controls */}
-      <div className="flex flex-wrap gap-2 mb-4">
-        <Button variant="primary" onClick={() => setManualOpen((v) => !v)}><KeyRound size={15} /> {t('tfa.addmanual', 'Add by secret')}</Button>
-        {scanning
-          ? <Button className="!text-error" onClick={stopScan}><X size={15} /> {t('tfa.stopscan', 'Stop camera')}</Button>
-          : <Button onClick={startScan}><Camera size={15} /> {t('tfa.scancam', 'Scan QR (camera)')}</Button>}
-        <label className="btn cursor-pointer"><QrCode size={15} /> {t('tfa.scanimg', 'Scan QR image')}<input type="file" accept="image/*" className="hidden" onChange={(e) => { scanImage(e.target.files?.[0]); e.target.value = ''; }} /></label>
+      {/* Adding an account: three ways, each a tile that says what it needs from you. */}
+      <div className="mb-4">
+        <div className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)] mb-2">{t('tfa.add.h', 'Add an account')}</div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+          {scanning
+            ? <button type="button" onClick={stopScan} className="text-start rounded-xl border b-error p-3.5 flex items-start gap-3 transition hover:shadow-sm" style={{ background: 'var(--bg-solid)' }}>
+                <span className="w-9 h-9 rounded-xl grid place-items-center shrink-0 text-error" style={{ background: 'color-mix(in srgb, var(--error) 14%, var(--bg-solid))' }}><X size={17} /></span>
+                <span className="min-w-0"><span className="block text-sm font-semibold">{t('tfa.stopscan', 'Stop camera')}</span><span className="block text-[11px] text-[var(--muted)]">{t('tfa.add.cam.stop', 'The camera turns off as soon as you stop')}</span></span>
+              </button>
+            : <button type="button" onClick={startScan} className="text-start rounded-xl border border-[var(--line)] p-3.5 flex items-start gap-3 transition hover:border-[var(--ring)] hover:shadow-sm" style={{ background: 'var(--bg-solid)' }}>
+                <span className="w-9 h-9 rounded-xl grid place-items-center shrink-0" style={{ background: 'color-mix(in srgb, var(--primary) 14%, var(--bg-solid))', color: 'var(--accent-ink)' }}><Camera size={17} /></span>
+                <span className="min-w-0"><span className="block text-sm font-semibold">{t('tfa.scancam', 'Scan QR (camera)')}</span><span className="block text-[11px] text-[var(--muted)]">{t('tfa.add.cam.s', 'Point your camera at the code on the other screen')}</span></span>
+              </button>}
+          <label className="text-start rounded-xl border border-[var(--line)] p-3.5 flex items-start gap-3 transition hover:border-[var(--ring)] hover:shadow-sm cursor-pointer" style={{ background: 'var(--bg-solid)' }}>
+            <span className="w-9 h-9 rounded-xl grid place-items-center shrink-0" style={{ background: 'color-mix(in srgb, var(--primary) 14%, var(--bg-solid))', color: 'var(--accent-ink)' }}><QrCode size={17} /></span>
+            <span className="min-w-0"><span className="block text-sm font-semibold">{t('tfa.scanimg', 'Scan QR image')}</span><span className="block text-[11px] text-[var(--muted)]">{t('tfa.add.img.s', 'A screenshot of the QR code works')}</span></span>
+            <input type="file" accept="image/*" className="hidden" onChange={(e) => { scanImage(e.target.files?.[0]); e.target.value = ''; }} />
+          </label>
+          <button type="button" onClick={() => setManualOpen((v) => !v)} aria-expanded={manualOpen} className={`text-start rounded-xl border p-3.5 flex items-start gap-3 transition hover:border-[var(--ring)] hover:shadow-sm ${manualOpen ? 'border-[var(--ring)]' : 'border-[var(--line)]'}`} style={{ background: 'var(--bg-solid)' }}>
+            <span className="w-9 h-9 rounded-xl grid place-items-center shrink-0" style={{ background: 'color-mix(in srgb, var(--primary) 14%, var(--bg-solid))', color: 'var(--accent-ink)' }}><KeyRound size={17} /></span>
+            <span className="min-w-0"><span className="block text-sm font-semibold">{t('tfa.addmanual', 'Add by secret')}</span><span className="block text-[11px] text-[var(--muted)]">{t('tfa.add.key.s', 'The setup key shown under "can\u2019t scan?"')}</span></span>
+          </button>
+        </div>
       </div>
 
       {scanning && (
@@ -325,10 +367,18 @@ export function TwoFactor() {
       )}
 
       {/* accounts + live codes */}
+      {accounts.length > 4 && (
+        <div className="relative mb-3">
+          <Search size={14} className="absolute start-3 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" />
+          <Input value={q} onChange={(e) => setQ(e.target.value)} className="ps-9" placeholder={t('tfa.search', 'Find an account')} aria-label={t('tfa.search', 'Find an account')} />
+        </div>
+      )}
       {accounts.length ? <div className="grid sm:grid-cols-2 gap-3">
-        {accounts.map((a) => { const period = a.period || 30; const remaining = period - (Math.floor(now / 1000) % period); const pct = (remaining / period) * 100; const code = codes[a.id]; return (
+        {accounts.filter((a) => !q.trim() || `${a.issuer || ''} ${a.label || ''}`.toLowerCase().includes(q.trim().toLowerCase())).map((a) => { const period = a.period || 30; const remaining = period - (Math.floor(now / 1000) % period); const pct = (remaining / period) * 100; const code = codes[a.id]; const urgent = remaining <= 5; return (
           <Card key={a.id} className="p-4">
-            <div className="flex items-start gap-2">
+            <div className="flex items-start gap-3">
+              {/* A monogram, so a long list is scanned by shape before it is read. */}
+              <span aria-hidden="true" className="w-10 h-10 rounded-xl grid place-items-center shrink-0 font-extrabold text-base" style={{ background: 'color-mix(in srgb, var(--primary) 14%, var(--bg-solid))', color: 'var(--accent-ink)' }}>{String(a.issuer || a.label || '?').trim().charAt(0).toUpperCase() || '?'}</span>
               <div className="flex-1 min-w-0">
                 <div className="font-semibold truncate" title={a.issuer || a.label}>{a.issuer || a.label}</div>
                 {a.issuer && a.label && <div className="text-xs text-[var(--faint)] truncate" title={a.label}>{a.label}</div>}
@@ -338,11 +388,18 @@ export function TwoFactor() {
             <button onClick={() => copyCode(a)} className="mt-3 w-full flex items-center justify-between gap-3 group" title={t('tfa.copyhint', 'Click to copy')}>
               <span className="text-3xl font-bold font-mono tracking-widest tabular-nums text-[var(--text)] group-hover:text-[var(--accent-ink)] transition">{code ? code.replace(/(\d{3})(\d+)/, '$1 $2') : '••••••'}</span>
               <span className="flex items-center gap-2 shrink-0">
-                <span className={`text-xs tabular-nums flex items-center gap-1 ${remaining <= 5 ? 'text-error' : 'text-[var(--faint)]'}`}><Clock size={12} /> {remaining}s</span>
+                {/* The time left as a ring that empties, with the seconds inside it. */}
+                <span className="relative w-9 h-9 grid place-items-center" title={t('tfa.left', '{n}s left').replace('{n}', String(remaining))}>
+                  <svg viewBox="0 0 36 36" className="absolute inset-0 w-full h-full -rotate-90" aria-hidden="true">
+                    <circle cx="18" cy="18" r="15.5" fill="none" stroke="var(--line)" strokeWidth="3" />
+                    <circle cx="18" cy="18" r="15.5" fill="none" stroke={urgent ? 'var(--error)' : 'var(--primary)'} strokeWidth="3" strokeLinecap="round"
+                      strokeDasharray={`${(pct / 100) * 97.4} 97.4`} style={{ transition: 'stroke-dasharray 1s linear' }} />
+                  </svg>
+                  <span className={`relative text-[11px] font-semibold tabular-nums ${urgent ? 'text-error' : 'text-[var(--muted)]'}`}>{remaining}</span>
+                </span>
                 <Copy size={14} className="text-[var(--faint)] group-hover:text-[var(--accent-ink)]" />
               </span>
             </button>
-            <div className="h-1 rounded-full bg-[var(--surface-2)] overflow-hidden mt-2"><div className={`h-full transition-all duration-1000 ease-linear ${remaining <= 5 ? 'bg-error' : 'bg-gradient-to-r from-brand to-brand-2'}`} style={{ width: `${pct}%` }} /></div>
             {/* Backup / recovery codes stored alongside this account. */}
             <details className="mt-2.5 group/bk">
               <summary className="text-[11px] text-[var(--faint)] hover:text-[var(--text)] cursor-pointer flex items-center gap-1.5 select-none list-none"><KeyIcon size={11} /> {t('tfa.bk.title', 'Backup codes')} {(a.backupCodes?.length || 0) > 0 && <span className="text-[var(--accent-ink)]">({a.backupCodes.length})</span>}</summary>
