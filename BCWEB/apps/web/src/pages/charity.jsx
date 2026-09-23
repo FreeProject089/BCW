@@ -18,6 +18,7 @@ import { api } from '../lib/api.js';
 // (apps/web/test/canvas-shapes.test.mjs), rather than a second copy that drifts from it.
 import { scopeCss, safeClasses } from '../lib/css-scope.js';
 import { useI18n } from '../i18n.jsx';
+import { Marker } from '../ui/marker.jsx'; // M3 (agent-landing-M)
 import { useAsync } from './pages.jsx';
 // The same question list /hosting uses (ui/accordion.jsx).
 import Accordion from '../ui/accordion.jsx';
@@ -477,7 +478,7 @@ export default function CharityPage() {
     <div className="max-w-5xl mx-auto">
       <header className="plate max-w-3xl">
         <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight flex items-center gap-2.5">
-          <Heart className="text-[var(--accent-ink)] shrink-0" /> {t('ch.title', 'Community Charity')}
+          <Heart className="text-[var(--accent-ink)] shrink-0" /> <Marker delay={200}>{t('ch.title', 'Community Charity')}</Marker>
         </h1>
         <p className="text-[var(--muted)] mt-3 text-[15.5px] leading-relaxed">{t('ch.page.intro', 'Each month, a share of BetterCommunity’s eligible revenue — plus voluntary gifts from the community — is pooled and donated to an association the Discord community votes for.')}</p>
       </header>

@@ -1902,21 +1902,11 @@ html[data-studio-open="1"], html[data-studio-open="1"] body { overflow: hidden; 
    glyphs, so the pixels it reads are the ones the letters are drawn on.
    Background and text-shadow only: no padding, no margin, nothing that could move a layout
    (the rule the first version broke on `mx-auto` blocks still holds). */
-.plate, .on-backdrop {
-  --halo: var(--bg);
-  text-shadow:
-    0 0 1px var(--halo), 0 0 2px var(--halo), 0 0 4px var(--halo), 0 0 4px var(--halo),
-    0 0 7px var(--halo), 0 0 7px var(--halo), 0 0 7px var(--halo),
-    0 0 12px var(--halo), 0 0 12px var(--halo), 0 0 12px var(--halo),
-    0 0 20px color-mix(in srgb, var(--halo) 85%, transparent), 0 0 20px color-mix(in srgb, var(--halo) 85%, transparent), 0 0 32px color-mix(in srgb, var(--halo) 55%, transparent);
-}
-[data-theme="dark"] :is(.plate, .on-backdrop) {
-  text-shadow:
-    0 0 1px var(--halo), 0 0 2px var(--halo), 0 0 4px var(--halo), 0 0 4px var(--halo),
-    0 0 7px var(--halo), 0 0 7px var(--halo), 0 0 7px var(--halo),
-    0 0 12px var(--halo), 0 0 12px var(--halo), 0 0 12px var(--halo), 0 0 12px var(--halo),
-    0 0 20px var(--halo), 0 0 20px var(--halo), 0 0 20px var(--halo), 0 0 32px color-mix(in srgb, var(--halo) 70%, transparent);
-}
+/* M4 (agent-landing-M): the halo is gone. On dark it read as a shadow round every letter
+   ("01 THE SUITE", the /hosting hero); legibility now comes from the backdrop veil (see
+   body::before, "M-landing" block at the end of this file), which dims the 3D scene itself,
+   uniformly, and draws no shape behind any word. */
+.plate, .on-backdrop { text-shadow: none; }
 /* The secondary inks, one step stronger inside a halo block. --muted and --faint are sized
    for a card (4.5:1 there); on the backdrop the halo recovers most of that but not all, and the
    audit found the small grey lines (a SideDash subtitle at 14px, a 12px aside) at 3.5-4.4:1
@@ -2006,14 +1996,14 @@ html[data-studio-open="1"], html[data-studio-open="1"] body { overflow: hidden; 
   --grain-pos: 0 0, 83px 47px;
   --grain-k-page: .08;
   --grain-k-fine: .065;
-  --grain-k-medium: .10;
+  --grain-k-medium: .05; /* M5: halved (.10 -> .05) */
   /* Kept for anything outside this file that still reads the first-pass names. */
   --tex: var(--grain-medium);
   --tex-size: var(--grain-size);
   --tex-pos: var(--grain-pos);
   --tex-page: var(--grain-k-page);
 }
-[data-theme="dark"] { --grain-k-page: .12; --grain-k-fine: .115; --grain-k-medium: .15; }
+[data-theme="dark"] { --grain-k-page: .12; --grain-k-fine: .115; --grain-k-medium: .075; /* M5: halved (.15) */ }
 :root[data-texture="off"] { --grain-fine: none, none; --grain-medium: none, none; }
 @media (forced-colors: active), (prefers-reduced-transparency: reduce) {
   :root, :root[data-texture] { --grain-fine: none, none !important; --grain-medium: none, none !important; }
@@ -2021,18 +2011,16 @@ html[data-studio-open="1"], html[data-studio-open="1"] body { overflow: hidden; 
 
 /* The page: a fixed layer above the 3D scene (-z-10) and below every element. Fixed and
    unfiltered, so scrolling moves the content over it and repaints nothing. */
-body::before {
-  content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
-  background-image: var(--grain-medium);
-  background-size: var(--grain-size);
-  background-position: var(--grain-pos);
-  opacity: var(--grain-k-page);
-}
+/* M5 (agent-landing-M): the page itself and the footer carry NO grain any more ("light, and
+   only on some elements, not the page background"). body::before is now the backdrop veil,
+   defined in the "M-landing" block at the end of this file. `.grain-fine` stays a class but
+   draws nothing; `.grain-hero` (the home CTA, the build tabs, the closing band, the charity
+   card) is the one carrier, at half the strength it had. */
 /* The carriers. A layer of their own rather than a background on the surface: that is what
    lets the recipe's token govern the strength, and `z-index: -1` inside the element's own
    stacking context keeps the grain above the surface colour and below every word on it. */
-.grain-fine, .grain-hero, .tex-surface, .plate.plate-band { position: relative; isolation: isolate; }
-.grain-fine::before, .grain-hero::before, .tex-surface::before, .plate.plate-band::before {
+.grain-hero, .tex-surface { position: relative; isolation: isolate; }
+.grain-hero::before, .tex-surface::before {
   content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
   border-radius: inherit;
   background-image: var(--grain-medium);
@@ -2040,7 +2028,6 @@ body::before {
   background-position: var(--grain-pos);
   opacity: var(--grain-k-medium);
 }
-.grain-fine::before, .plate.plate-band::before { background-image: var(--grain-fine); opacity: var(--grain-k-fine); }
 /* ════ END: text on the backdrop + page grain ══════════════════════════════════════════════ */
 
 /* ════ BEGIN: the dashboard sheet (SideDash's content column) ═══════════════════════════════
@@ -2402,3 +2389,29 @@ a:has(> .btn), a:has(> button) { display: inline-flex; }
 }
 [data-surface-glass] .foot-cols { background: color-mix(in srgb, var(--surface) calc(var(--glass-alpha, 0.85) * 100%), transparent); }
 /* ════ END: topbar, phone menu, footer, scroll and admin rail ═══════════════════════════════ */
+
+/* M-landing (agent-landing-M) */
+/* M4: the backdrop veil. Legibility for text that sits on the 3D scene, without drawing any
+   shape behind any word: one fixed layer between the scene (-z-10) and the page, in the page
+   colour, that dims the SCENE itself. Full height, no edge anywhere a reader can find: it is
+   uniform across the content column and only lets a little more of the scene through past
+   the column on a wide screen (below about 1280px the column is the viewport, so it is
+   uniform edge to edge). The earlier answers each drew something behind text (a slab, a
+   radial fade, a halo round the letters); this dims what is behind, the same everywhere.
+   Hidden while the intro plays, so the intro's orb is shown at full strength, and faded in
+   with the page. Strength measured with scripts/audit-text-contrast.mjs (report M4). */
+:root { --veil-core: 66%; --veil-edge: 40%; }
+[data-theme="dark"] { --veil-core: 70%; --veil-edge: 45%; }
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--bg) var(--veil-edge), transparent) 0%,
+    color-mix(in srgb, var(--bg) var(--veil-core), transparent) max(0%, calc(50% - 40rem)),
+    color-mix(in srgb, var(--bg) var(--veil-core), transparent) min(100%, calc(50% + 40rem)),
+    color-mix(in srgb, var(--bg) var(--veil-edge), transparent) 100%);
+  opacity: 1;
+  transition: opacity .7s ease .05s;
+}
+:root[data-intro] body::before { opacity: 0; transition: none; }
+@media (forced-colors: active) { body::before { display: none; } }
+/* END M-landing */

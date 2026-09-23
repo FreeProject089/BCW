@@ -34,8 +34,16 @@
 /* The line variant: a thin hand-drawn underline, for section titles where a full stroke would
    be one highlight too many on the page. */
 .mk--line .mk-swash { bottom: -0.2em; height: 0.2em; }
-.mk--line .mk-swash path { fill: none; stroke: currentColor; stroke-width: 3.2; stroke-linecap: round; }
+.mk--line .mk-swash path { fill: none; stroke: currentColor; stroke-width: max(2px, 0.075em); stroke-linecap: round; }
 .mk--line { --mk-ink: color-mix(in srgb, var(--primary) 70%, transparent); }
+/* The circle: a loop round a short word, a price or a badge. It sits AROUND the text, so it
+   never crosses the letters: 0.3em of air above and below, 0.45em either side. Stroke only. */
+.mk--circle { --mk-ink: color-mix(in srgb, var(--primary) 78%, transparent); }
+.mk--circle .mk-swash {
+  inset: -0.32em -0.45em; bottom: auto; width: auto; height: auto;
+  transform: rotate(-1.5deg); transform-origin: 50% 50%;
+}
+.mk--circle .mk-swash path { fill: none; stroke: currentColor; stroke-width: max(2px, 0.07em); stroke-linecap: round; stroke-linejoin: round; }
 
 @keyframes mkDraw { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
 @keyframes mkDrawRtl { from { clip-path: inset(0 0 0 100%); } to { clip-path: inset(0 0 0 0); } }
@@ -49,16 +57,41 @@
 @media print { .mk-swash { animation: none; } }
 
 /* ── The handwritten note ──────────────────────────────────────────────────────────────────
-   No web font: the site loads none (privacy-first, nothing fetched from a font CDN), so this is
-   the handwriting face each system already has: Segoe Print on Windows, Bradley Hand or
-   Chalkboard on Apple, and the platform's `cursive` elsewhere. Worst case it is an italic in
-   the accent ink, which still reads as an aside. */
+   Caveat (SIL Open Font License 1.1, public/fonts/OFL.txt), SELF-HOSTED: nothing is fetched
+   from a font CDN, and the CSP's font-src 'self' covers it. Split by unicode-range as Google
+   Fonts ships it, so a French page downloads the latin file only (75 kB, preloaded by
+   marker.jsx on the pages that import it). `font-display: swap`: the note shows at once in
+   the fallback and changes face when the file lands. The fallbacks are the handwriting face
+   each system already has (Segoe Print, Bradley Hand, Chalkboard) and then `cursive`. */
+@font-face {
+  font-family: "BC Hand"; font-style: normal; font-weight: 400 700; font-display: swap;
+  src: url(/fonts/caveat-latin.woff2) format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "BC Hand"; font-style: normal; font-weight: 400 700; font-display: swap;
+  src: url(/fonts/caveat-latin-ext.woff2) format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "BC Hand"; font-style: normal; font-weight: 400 700; font-display: swap;
+  src: url(/fonts/caveat-cyrillic.woff2) format("woff2");
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: "BC Hand"; font-style: normal; font-weight: 400 700; font-display: swap;
+  src: url(/fonts/caveat-cyrillic-ext.woff2) format("woff2");
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
 .hand-note {
-  font-family: "Segoe Print", "Bradley Hand", "Chalkboard SE", "Comic Neue", "Marker Felt", cursive;
+  font-family: "BC Hand", "Segoe Print", "Bradley Hand", "Chalkboard SE", "Comic Neue", "Marker Felt", cursive;
+  font-weight: 600;
   /* The words in the text colour, the arrow in the accent. Measured: the accent ink as text,
-     at this size on the hero backdrop, gave 3.4:1 (under AA for small text). */
+     at this size on the hero backdrop, gave 3.4:1 (under AA for small text).
+     19px: Caveat's x-height is small, and at 15px it read a size smaller than the Segoe Print
+     it replaced. */
   color: var(--text);
-  font-size: 15px;
+  font-size: 19px;
   line-height: 1.35;
   display: inline-flex;
   align-items: flex-start;
@@ -70,6 +103,9 @@
 .hand-note-arrow { flex-shrink: 0; width: 34px; height: 30px; color: var(--accent-ink); overflow: visible; }
 .hand-note-arrow path { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 [dir="rtl"] .hand-note-arrow { transform: scaleX(-1); }
+/* Arrow after the words: it points from the note at what follows it, a little lower. */
+.hand-note--right { align-items: center; }
+.hand-note--right .hand-note-arrow { margin-top: 0.35em; }
 [dir="rtl"] .hand-note { transform: rotate(2deg); }
 
 /* A mark inside a section that reveals on scroll draws when the section arrives, not while it

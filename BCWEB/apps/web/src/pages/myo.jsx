@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { api, uploadMyoDeliverable } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
+import { Marker, HandNote } from '../ui/marker.jsx';
 import { useAuth } from './auth.jsx';
 import { Card, Button, Input, Textarea, Select, Badge, Modal, EmptyState, Spinner, Field, useToast, useDialog } from '../ui/ui.jsx';
 import Avatar from '../ui/Avatar.jsx';
@@ -100,8 +101,11 @@ export function MyoPage() {
         <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold uppercase tracking-wider text-[var(--accent-ink)] tint-primary-solid border b-primary mb-4">
           <Sparkles size={13} /> {t('myo.eyebrow', 'Made to order')}
         </span>
-        <h1 className="text-3xl sm:text-[2.7rem] font-extrabold tracking-tight leading-[1.08]">{t('myo.title', 'We build it for you')}</h1>
+        {/* M3: the site's hand (ui/marker.jsx): a hand-drawn underline under the promise, and
+            one handwritten aside with the fact people ask first. */}
+        <h1 className="text-3xl sm:text-[2.7rem] font-extrabold tracking-tight leading-[1.08]"><Marker variant="line">{t('myo.title', 'We build it for you')}</Marker></h1>
         <p className="text-[var(--muted)] mt-3.5 text-[15px] leading-relaxed">{t('myo.sub', 'A Discord bot, an app, a website — or something else entirely. Start with a paid consultation: real advice and a fixed quote. Nothing is built until you approve it.')}</p>
+        <p className="mt-3 w-fit max-w-full mx-auto"><HandNote arrow="down">{t('myo.note', 'You approve the quote before any work starts')}</HandNote></p>
       </div>
 
       {/* ── How it works + the clear "what you pay for" disclaimer ── */}

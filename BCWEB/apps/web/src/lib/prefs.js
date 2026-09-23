@@ -92,9 +92,9 @@ export function setGlassPrefs({ on, pct }) {
   applyGlassPrefs({ on, pct: pct ?? getGlassPrefs().pct });
 }
 
-// Grain: the noise recipes in index.css (`--grain-fine` / `--grain-medium`), carried by the page
-// backdrop, the footer band, the hero cards (.grain-hero) and a few large quiet cards
-// (.grain-fine); nothing text-dense carries any. One switch, not a level: the grain only has
+// Grain: the noise recipes in index.css (`--grain-fine` / `--grain-medium`), carried only by
+// the few hero cards marked `.grain-hero`, at half its first strength (M5: not the page
+// background, not the footer, not the large quiet cards); nothing text-dense carries any. One switch, not a level: the grain only has
 // to be there or not, and a slider for "how much dirt" is a question nobody wants asked.
 //
 // ON by default, earned by measurement: no speck on any carrier reaches 1.5:1 against its own

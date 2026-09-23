@@ -39,4 +39,9 @@ export const homeVariantList = (t) => [
     name: t('hp.v3', 'What’s happening'),
     sub: t('hp.v3.s2', 'Pick this when most arrivals have been here before. It reports: the posts as a feed, with the open poll, the reviews, what is on offer and the showcase beside them. No hero, because they know what the site is.'),
   },
+  {
+    v: 'v4',
+    name: t('hp.v4', 'The path'),
+    sub: t('hp.v4.s', 'Pick this to walk newcomers through it. A short hero, then numbered stops joined by one line that snakes down the page, from a first look to hosting or a commission, each stop a page they can open and ticked once they have done it. Then the suite and the news.'),
+  },
 ];

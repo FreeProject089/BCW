@@ -1,4 +1,4 @@
-// D3: the three landing-page presets, as cards (Admin → Home page).
+// D3: the landing-page presets, as cards (Admin → Home page). v4, the snake, added by M2.
 //
 // Moved out of HomePageEditor (admin.jsx) and reworked:
 //   - each wireframe is drawn in its page's real LAYOUT, not as one stack of bars: v1 is a long
@@ -61,6 +61,31 @@ function Wire({ v, list, label, t }) {
       </div>
     );
   }
+  if (v === 'v4') {
+    // The snake: stops that alternate sides, joined by one line, then the rest as bars.
+    const rest = list.filter((id) => id !== 'steps' && id !== 'myo');
+    return (
+      <div className="space-y-1">
+        <Bar label={hero} strong className="h-5" />
+        {has('steps') && (
+          <div className="relative rounded bg-[var(--surface-3,var(--line))] px-1 py-1">
+            <svg viewBox="0 0 100 40" preserveAspectRatio="none" className="absolute inset-0 w-full h-full" aria-hidden="true">
+              <path d="M12 6 C12 13 88 13 88 20 C88 27 12 27 12 34" fill="none" stroke="var(--primary)" strokeWidth="3" vectorEffect="non-scaling-stroke" strokeLinecap="round" />
+            </svg>
+            <div className="relative space-y-[3px]">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className={`flex items-center gap-1 ${i % 2 ? 'flex-row-reverse' : ''}`}>
+                  <span className="w-2.5 h-2.5 rounded-full border-2 border-[var(--primary)] bg-[var(--bg-solid)] shrink-0" />
+                  <span className="h-2 w-1/2 rounded-sm bg-[var(--surface-2)]" />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {rest.map((id) => <Bar key={id} label={label(id)} />)}
+      </div>
+    );
+  }
   return (
     <div className="space-y-1">
       <Bar label={hero} strong className="h-6" />
@@ -82,7 +107,7 @@ export default function HomePresetCards({ variants, variantMap, variant, saved, 
   const { t } = useI18n();
   const label = (id) => sectionLabel[id] || id;
   return (
-    <div className="grid sm:grid-cols-3 gap-3" data-home-presets="">
+    <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-3" data-home-presets="">
       {variants.map((v) => {
         const list = variantMap?.[v.v]?.sections || [];
         const hasHero = v.v !== 'v3';

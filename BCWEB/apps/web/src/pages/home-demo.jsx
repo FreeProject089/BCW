@@ -6,9 +6,15 @@
 // has not, which used to be an empty rectangle with a sparkle in it.
 //
 // Everything in the window is an illustration of the interface, drawn from the same tokens as
-// the real one, and says so (the caption under it). The entries are generic ("A texture pack"),
-// not invented products with invented download counts: a demo that makes up numbers is the
-// one kind of marketing this site has decided not to do.
+// the real one. The entries are generic ("A texture pack"), not invented products with invented
+// download counts: a demo that makes up numbers is the one kind of marketing this site has
+// decided not to do.
+//
+// Under it, where a caption used to say "an illustration, not live data", a handwritten line
+// says something TRUE about the reader, with an arrow at the link beside it: signed in or not,
+// a Discord account linked, something published, a pool live. Read only from what the page has
+// already loaded (the session, and /me/progress which v1 fetches for its steps); a fact the
+// page does not have is never guessed, it is simply not said. See `demoFact`.
 //
 // The tabs are the WAI-ARIA pattern (roving tabindex, arrows / Home / End), and every panel is
 // rendered, stacked in one grid cell, the hidden ones `visibility: hidden`: the window is as tall
@@ -18,9 +24,43 @@ import { Link } from 'react-router-dom';
 import { Search, Download, CheckCircle2, BadgeCheck, Users, Cloud, Link2, Globe, ArrowRight, Package, Palette, Server } from 'lucide-react';
 import { useI18n } from '../i18n.jsx';
 import { HandNote } from '../ui/marker.jsx';
+import { useAuth } from './auth.jsx';
 
-export default function HomeDemo({ className = '' }) {
+/**
+ * One true sentence about the reader, and where the link beside it should go.
+ *
+ * Most specific first: what they own, then what they linked, then that they are signed in at
+ * all. `progress` is null when the page has not asked (signed out, or v2/v3, which do not
+ * fetch it): then nothing is said about publishing or hosting, rather than "not yet".
+ */
+export function demoFact(user, progress, tab, t) {
+  if (!user) {
+    return tab === 'host'
+      ? { text: t('home.demo.f.guestHost', 'Hosting needs a free account, looking around does not'), to: '/hosting', go: t('home.demo.go3', 'See the hosting plans') }
+      : { text: t('home.demo.f.guest', 'You are not signed in, and all of this is open to you'), to: '/catalog', go: t('home.demo.go1', 'Open the catalogue') };
+  }
+  if (tab === 'host' && progress?.hosting) {
+    return { text: t('home.demo.f.pool', 'Your hosting pool is already live'), to: '/dashboard', go: t('home.cta.dash', 'Open your dashboard') };
+  }
+  if (tab === 'host') {
+    return { text: t('home.demo.f.noPool', 'Signed in: a pool is one plan away'), to: '/hosting#plans', go: t('home.demo.go3', 'See the hosting plans') };
+  }
+  if (progress?.published) {
+    return { text: t('home.demo.f.published', 'You have already published something here'), to: '/dashboard', go: t('home.cta.dash', 'Open your dashboard') };
+  }
+  const discord = (user._count?.discordLinks || 0) > 0 || !!user.oauthAccounts?.some((a) => a.provider === 'discord');
+  if (discord) {
+    return { text: t('home.demo.f.discord', 'Your Discord account is linked to this one'), to: '/catalog', go: t('home.demo.go1', 'Open the catalogue') };
+  }
+  if ((user._count?.creatorLinks || 0) > 0) {
+    return { text: t('home.demo.f.bmm', 'BetterModsManager is linked to your account'), to: '/catalog', go: t('home.demo.go1', 'Open the catalogue') };
+  }
+  return { text: t('home.demo.f.in', 'You are signed in, your next install is one click'), to: '/catalog', go: t('home.demo.go1', 'Open the catalogue') };
+}
+
+export default function HomeDemo({ className = '', progress = null }) {
   const { t } = useI18n();
+  const { user } = useAuth();
   const uid = useId();
   const refs = useRef({});
   const tabs = [
@@ -39,6 +79,7 @@ export default function HomeDemo({ className = '' }) {
     refs.current[tabs[to].id]?.focus();
   };
   const cur = tabs.find((x) => x.id === tab);
+  const fact = demoFact(user, progress, tab, t);
 
   const rows = [
     [Palette, t('home.demo.r1', 'A texture pack'), true],
@@ -163,10 +204,10 @@ export default function HomeDemo({ className = '' }) {
           ))}
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-2 px-4 sm:px-6 py-3 border-t border-[var(--line)] bg-[var(--surface-2)]">
-          <figcaption className="text-[11.5px] text-[var(--muted)] min-w-0">{t('home.demo.caption', 'An illustration of the interface, not live data.')}</figcaption>
-          <Link to={tab === 'host' ? '/hosting' : '/catalog'} className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-[var(--accent-ink)] hover:underline min-h-[24px] max-lg:min-h-[44px]">
-            {tab === 'host' ? t('home.demo.go3', 'See the hosting plans') : t('home.demo.go1', 'Open the catalogue')} <ArrowRight size={14} className="rtl-mirror" />
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 sm:px-6 py-2.5 border-t border-[var(--line)] bg-[var(--surface-2)]">
+          <figcaption className="min-w-0"><HandNote arrow="right">{fact.text}</HandNote></figcaption>
+          <Link to={fact.to} className="ms-auto inline-flex items-center gap-1.5 text-[13px] font-semibold text-[var(--accent-ink)] hover:underline min-h-[24px] max-lg:min-h-[44px]">
+            {fact.go} <ArrowRight size={14} className="rtl-mirror" />
           </Link>
         </div>
       </div>

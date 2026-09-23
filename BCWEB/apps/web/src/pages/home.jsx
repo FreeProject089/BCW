@@ -8,7 +8,7 @@ const CanvasView = lazy(() => import('../ui/canvas-view.jsx'));
 import { ErrorBoundary } from '../ui/ErrorBoundary.jsx';
 import { Link } from 'react-router-dom';
 import {
-  Server, ArrowRight, Upload, CheckCircle2, ShieldCheck, Inbox, Eye, Lock, Users, Newspaper, LayoutDashboard, Star, Link2, Code2, Wand2, AppWindow, Globe, Sparkles, Clock, ChevronLeft, ChevronRight, BadgeCheck, AlertTriangle, Ban, MessageSquare, Plus, KeyRound, LogIn, Webhook, FlaskConical, HeartHandshake, Cloud
+  Server, ArrowRight, Upload, CheckCircle2, ShieldCheck, Inbox, Eye, Lock, Users, Newspaper, LayoutDashboard, Star, Link2, Code2, Wand2, AppWindow, Globe, Sparkles, Clock, Activity, ChevronLeft, ChevronRight, BadgeCheck, AlertTriangle, Ban, MessageSquare, Plus, KeyRound, LogIn, Webhook, FlaskConical, HeartHandshake, Cloud
 } from 'lucide-react';
 import { Button, Card, Badge, Explain } from '../ui/ui.jsx';
 import { api } from '../lib/api.js';
@@ -36,6 +36,8 @@ import { useFramedDraft } from '../lib/studio-preview.js';
 // demo that fills the media frame when no showcase is configured.
 import { Marker, HandNote } from '../ui/marker.jsx';
 import HomeDemo from './home-demo.jsx';
+// M9 / M2: the snake path (steps joined by one swinging line) and the v4 landing built on it.
+import { SnakeSteps, HomeSnake } from './home-snake.jsx';
 
 /* ─────────────────────────  Home  ───────────────────────── */
 function useScrollReveal() {
@@ -415,7 +417,19 @@ export function Home({ draft: draftProp = null }) {
   // be told to go and look.
   const step2done = browsed || !!progress?.published;
 
-  const ctx = { data, stats, myo, reviewsData, pollData, homeCfg, showcase, show, user, t, lang, products, posts: data?.posts || [] };
+  const ctx = { data, stats, myo, reviewsData, pollData, homeCfg, showcase, show, user, t, lang, products, posts: data?.posts || [], progress, browsed };
+  // v4, the snake (M2): the journey as one path. Same outer frame as v2/v3 below.
+  if (homeCfg?.variant === 'v4') {
+    return (
+      <div ref={root} className="space-y-16">
+        <HomeCustomSections cfg={homeCfg} position="top" />
+        <HomeSnake {...ctx} />
+        <HomeCustomSections cfg={homeCfg} position="bottom" />
+        <CharityWidget />
+        <KofiGoalWidget />
+      </div>
+    );
+  }
   // Custom sections wrap the alternate variants from OUT here (rather than inside each), so
   // one placement covers v2 and v3 without a home ⇄ home-variants import cycle.
   if (homeCfg?.variant === 'v2' || homeCfg?.variant === 'v3') {
@@ -510,7 +524,7 @@ export function Home({ draft: draftProp = null }) {
               the hero ending on its buttons with nothing to look at. */}
           {!showcaseLoading && !showcase?.enabled && (
             <div className="anim-slide mt-14 mx-auto w-full max-w-3xl" style={{ animationDelay: '320ms' }}>
-              <HomeDemo />
+              <HomeDemo progress={progress} />
             </div>
           )}
           {/* The headline counts are gone. They were the two numbers a visitor cannot
@@ -612,6 +626,10 @@ export function Home({ draft: draftProp = null }) {
       {show('why') && (
       <section>
         <SectionKicker n="02" label={t('home.k.why', 'Why BetterCommunity')} />
+        {/* M8/M3: a heading for the section, with the one word it is about circled by hand. */}
+        <h2 className="reveal-on-scroll plate text-3xl md:text-4xl font-extrabold tracking-tight text-center mb-9 max-w-2xl mx-auto">
+          {t('home.why.h.a', 'What you can')} <Marker variant="circle">{t('home.why.h.b', 'count on')}</Marker>{t('home.why.h.c', ' here')}
+        </h2>
         {/* The featured tile spans the full width and the four promises sit UNDER it as a
             list, not beside it as four more cards. The pipeline is the argument this section
             exists to make; giving it the same chrome as a one-line blurb made it read as a
@@ -681,22 +699,29 @@ export function Home({ draft: draftProp = null }) {
               </div>
             </div>
           </Card>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-5">
-            {[[LayoutDashboard, t('home.feat.accounts'), t('home.feat.accounts.d')],
-              [Cloud, t('home.feat.hosting'), t('home.feat.hosting.d')],
-              [Link2, t('home.feat.install', 'One-click install'), t('home.feat.install.d', 'Catalog entries install straight into the app in one click through deeplinks, no manual downloads, no hunting for files.')],
-              [Lock, t('home.feat.privacy', 'Privacy-first'), t('home.feat.privacy.d', 'No third-party trackers and no ads. Analytics are first-party and anonymous, off until you opt in, and you can turn them back off anytime.')]].map(([I, title, d]) => (
-              // A rule instead of a border — four bordered boxes under a bordered card is
-              // five rectangles competing for one attention. That part was right. What was
-              // missing is a BACKGROUND: with only a rule, muted text sat straight on the
-              // hero orb, which is a permanent backdrop and bright in places, and it was
-              // reported as hard to read. `.rail-tile` keeps the rule and adds the same
-              // solid surface the cards use.
-              <div key={title} className="group rail-tile">
-                <I size={18} className="text-[var(--accent-ink)]" />
-                <div className="font-semibold mt-2.5 text-[15px]">{title}</div>
-                <div className="text-sm text-[var(--muted)] mt-1 leading-relaxed">{d}</div>
-              </div>
+          {/* M8: six promises instead of four, each one a door. A promise with nowhere to go
+              was a sentence to take on trust; every tile now opens the page that shows it is
+              true (the plans, the privacy policy, the status page, the API reference). Only
+              claims the site already makes elsewhere and keeps: nothing here is new copy about
+              features, it is the same facts, reachable. */}
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[[LayoutDashboard, t('home.feat.accounts'), t('home.feat.accounts.d'), user ? '/dashboard' : '/auth', user ? t('home.cta.dash', 'Open your dashboard') : t('home.why.go.acc', 'Create a free account')],
+              [Cloud, t('home.feat.hosting'), t('home.feat.hosting.d'), '/hosting', t('home.demo.go3', 'See the hosting plans')],
+              [Link2, t('home.feat.install', 'One-click install'), t('home.feat.install.d', 'Catalog entries install straight into the app in one click through deeplinks, no manual downloads, no hunting for files.'), '/catalog', t('home.demo.go1', 'Open the catalogue')],
+              [Lock, t('home.feat.privacy', 'Privacy-first'), t('home.feat.privacy.d', 'No third-party trackers and no ads. Analytics are first-party and anonymous, off until you opt in, and you can turn them back off anytime.'), '/legal/privacy', t('home.why.go.priv', 'Read the privacy policy')],
+              [Activity, t('home.why.status', 'Status in the open'), t('home.why.status.d', 'Uptime and incidents are on a public status page anyone can read, not in a support ticket.'), '/status', t('home.why.go.status', 'See the status page')],
+              [Code2, t('home.why.api', 'Open to developers'), t('home.why.api.d', 'A REST API, sign-in with OpenID Connect and webhooks, documented where anyone can read it.'), '/docs/bcweb-api', t('home.dev.cta2', 'API reference')],
+            ].map(([I, title, d, to, go]) => (
+              // `.rail-tile` keeps the rule and the solid surface the cards use: muted text never
+              // sits on the backdrop.
+              <Link key={title} to={to} className="group rail-tile flex flex-col">
+                <span className="grid place-items-center w-9 h-9 rounded-lg bg-[var(--surface-2)] border border-[var(--line)]"><I size={18} className="text-[var(--accent-ink)]" aria-hidden="true" /></span>
+                <div className="font-semibold mt-3 text-[15px]">{title}</div>
+                <div className="text-sm text-[var(--muted)] mt-1 leading-relaxed flex-1">{d}</div>
+                <div className="mt-3 inline-flex items-center gap-1.5 text-[13px] font-semibold text-[var(--accent-ink)]">
+                  {go} <ArrowRight size={13} className="rtl-mirror transition-transform group-hover:translate-x-1" aria-hidden="true" />
+                </div>
+              </Link>
             ))}
           </div>
         </div>
@@ -718,56 +743,19 @@ export function Home({ draft: draftProp = null }) {
             So: a rail with a real state on the first stop. Signed in, it is ticked and the row
             goes quiet; signed out, it is the only lit one. The other two are not claimed to be
             done, because nothing on this page can tell. */}
-        <ol className="reveal-stagger relative max-w-3xl mx-auto ps-11 sm:ps-14">
-          {/* The spine. It starts and ends at the centre of the first and last marker rather
-              than running the height of the list — a line continuing past the last stop
-              promises a fourth one. */}
-          <div aria-hidden className="absolute left-[15px] sm:left-[19px] top-6 bottom-6 w-px bg-[var(--line)]" />
-          {[[Users, t('home.step1'), t('home.step1.d'), user ? '/profile' : '/auth',
-             user ? t('home.step1.done', "You're set, view profile") : t('home.step1.cta', 'Sign up free'), !!user],
-            [Upload, t('home.step2'), t('home.step2.d'), '/catalog',
-             step2done ? t('home.step2.done', 'Seen, go back to the catalogue') : t('home.step2.cta', 'Browse the catalog'), step2done],
-            [Cloud, t('home.step3'), t('home.step3.d'), progress?.hosting ? '/dashboard' : '/hosting#plans',
-             progress?.hosting ? t('home.step3.done', 'Hosting is live, open your dashboard') : t('home.step3.cta', 'See hosting plans'), !!progress?.hosting],
-          ].map(([I, title, d, to, cta, done], i) => (
-            <li key={title} className="relative pb-9 last:pb-0">
-              {/* The marker sits ON the spine. A done step is filled and shows a tick; the rest
-                  keep their number, because a number is what makes it a step. */}
-              <span aria-hidden
-                className={`absolute -left-11 sm:-left-14 top-0 grid place-items-center w-8 h-8 sm:w-10 sm:h-10 rounded-full border-2 text-[13px] sm:text-sm font-bold transition-colors ${
-                  done
-                    ? 'bg-success border-success text-[var(--bg-solid)]'
-                    : 'bg-[var(--bg-solid)] border-[var(--line-strong)] text-[var(--muted)]'
-                }`}>
-                {done ? <CheckCircle2 size={17} /> : i + 1}
-              </span>
-              <Link to={to} className="group block">
-                <div className={`rounded-2xl border p-5 sm:p-6 transition-colors ${
-                  done
-                    ? 'border-[var(--line)] panel-quiet'
-                    : 'border-[var(--line)] bg-[var(--surface)] group-hover:border-[color-mix(in_srgb,var(--primary)_45%,var(--line))]'
-                }`}>
-                  <div className="flex items-start gap-4">
-                    <span className={`grid place-items-center w-10 h-10 rounded-xl shrink-0 transition-transform duration-300 ${
-                      done
-                        ? 'bg-[var(--surface-2)] border border-[var(--line)]'
-                        : 'bg-gradient-to-br from-brand to-brand-2 shadow-lg shadow-orange-500/25 group-hover:scale-105'
-                    }`}>
-                      <I size={19} className={done ? 'text-[var(--muted)]' : 'text-white'} />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="font-bold text-[17px] leading-snug">{title}</div>
-                      <div className="text-sm text-[var(--muted)] mt-1.5 leading-relaxed">{d}</div>
-                      <div className={`text-sm mt-4 inline-flex items-center gap-1.5 font-semibold ${done ? 'text-[var(--muted)]' : 'text-[var(--accent-ink)]'}`}>
-                        {cta} <ArrowRight size={14} className="transition-transform group-hover:translate-x-1" />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </Link>
-            </li>
-          ))}
-        </ol>
+        {/* M9: the same three stops, now a snake (pages/home-snake.jsx): the stops swing left
+            and right from md up and one thick path joins them, straight down on a phone. The
+            first stop still knows whether the reader is signed in; the other two are ticked
+            only on what the page can see (a catalogue opened here, something published, a
+            pool owned). */}
+        <SnakeSteps className="max-w-4xl mx-auto" steps={[
+          { key: 's1', icon: Users, title: t('home.step1'), desc: t('home.step1.d'), to: user ? '/profile' : '/auth',
+            cta: user ? t('home.step1.done', "You're set, view profile") : t('home.step1.cta', 'Sign up free'), done: !!user },
+          { key: 's2', icon: Upload, title: t('home.step2'), desc: t('home.step2.d'), to: '/catalog',
+            cta: step2done ? t('home.step2.done', 'Seen, go back to the catalogue') : t('home.step2.cta', 'Browse the catalog'), done: step2done },
+          { key: 's3', icon: Cloud, title: t('home.step3'), desc: t('home.step3.d'), to: progress?.hosting ? '/dashboard' : '/hosting#plans',
+            cta: progress?.hosting ? t('home.step3.done', 'Hosting is live, open your dashboard') : t('home.step3.cta', 'See hosting plans'), done: !!progress?.hosting },
+        ].map((x) => ({ ...x, doneLabel: t('home.snake.doneSr', 'done') }))} />
       </section>
       )}
 
@@ -933,6 +921,28 @@ export function Home({ draft: draftProp = null }) {
   );
 }
 
+// M10: under each tab's buttons, the pages to go and look at before committing to anything,
+// with a handwritten nudge. Plain links to real pages; the note makes no promise about them.
+function LookAround({ links }) {
+  const { t } = useI18n();
+  return (
+    <div className="mt-6 pt-5 border-t border-[var(--line)]">
+      <HandNote arrow="down">{t('home.look.note', 'Or go and look around first')}</HandNote>
+      <ul className="flex flex-wrap gap-2 mt-2.5">
+        {links.map(([to, I, label]) => (
+          <li key={to}>
+            <Link to={to} className="group inline-flex items-center gap-2 rounded-full border border-[var(--line)] bg-[var(--bg-solid)] px-3.5 py-2 text-[13px] font-semibold hover:border-[var(--primary)] transition-colors min-h-[44px] sm:min-h-0">
+              <I size={14} className="text-[var(--accent-ink)] shrink-0" aria-hidden="true" />
+              <span>{label}</span>
+              <ArrowRight size={13} className="rtl-mirror text-[var(--faint)] group-hover:text-[var(--accent-ink)] transition-colors" aria-hidden="true" />
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 // "Build on BetterCommunity" and "Have it built for you", as the two tabs of one block.
 //
 // Both panels are always rendered, stacked in ONE grid cell, and the hidden one is only
@@ -1017,6 +1027,11 @@ function BuildTabs({ myoOn, queueFull }) {
                   <Link to="/dev"><Button variant="primary" className="!px-5 !py-2.5"><Code2 size={15} /> {t('home.dev.cta', 'Open the developer area')}</Button></Link>
                   <Link to="/docs/bcweb-api"><Button className="!px-5 !py-2.5">{t('home.dev.cta2', 'API reference')}</Button></Link>
                 </div>
+                <LookAround links={[
+                  ['/submit', Upload, t('home.look.submit', 'Publish in the catalogue')],
+                  ['/hosting', Cloud, t('home.look.hosting', 'Host a repo or a catalogue')],
+                  ['/docs', Newspaper, t('home.look.docs', 'Browse the docs')],
+                ]} />
               </>))}
               {myoOn && panel('myo', (<>
                 <p className="text-[var(--muted)] leading-relaxed">
@@ -1041,6 +1056,11 @@ function BuildTabs({ myoOn, queueFull }) {
                 <div className="flex flex-wrap gap-2 mt-6">
                   <Link to="/myo"><Button variant="primary" className="!px-5 !py-2.5"><Wand2 size={15} /> {t('home.myo.cta', 'Start a commission')}</Button></Link>
                 </div>
+                <LookAround links={[
+                  ['/myo', Eye, t('home.look.myo', 'See what can be ordered')],
+                  ['/projects', AppWindow, t('home.look.projects', 'See the projects already here')],
+                  ['/contact', MessageSquare, t('home.look.contact', 'Ask a question first')],
+                ]} />
                 {/* A page still inviting commissions while the team is full sells a promise
                     nobody can keep. */}
                 {queueFull && (
