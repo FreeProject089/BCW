@@ -299,6 +299,22 @@ export default async function authRoutes(app) {
     const p = await db();
     const pr = await p.passwordReset.findUnique({ where: { tokenHash: sha256(b.data.token) } });
     if (!pr || pr.usedAt || pr.expiresAt < new Date()) return reply.code(400).send({ error: 'invalid_token' });
+    // A CLOSED account has no way in, and a reset must not become one.
+    //
+    // `anonymiseAccount` clears the password, revokes the sessions and deletes the provider
+    // links — "everything that could still let somebody in", as it says. It does not delete
+    // PasswordReset rows, and this route never asked whose account the token belonged to. So a
+    // token issued in the hour before the closure swept (or a 24-hour set-a-password link from
+    // an OAuth signup) still wrote a hash onto the closed row, and `/auth/login` had no
+    // closedAt check either — reviving an account whose address is the predictable
+    // `closed+<id>@account.invalid`. Burned rather than merely refused, so the same token
+    // cannot be tried again.
+    // Measured before the fix: the token survived `anonymiseAccount` live and unused.
+    const target = await p.user.findUnique({ where: { id: pr.userId }, select: { closedAt: true } });
+    if (target?.closedAt) {
+      await p.passwordReset.update({ where: { id: pr.id }, data: { usedAt: new Date() } }).catch(() => {});
+      return reply.code(400).send({ error: 'invalid_token' });
+    }
     await p.user.update({ where: { id: pr.userId }, data: { passwordHash: await argon2.hash(b.data.password, { type: argon2.argon2id }) } });
     await p.passwordReset.update({ where: { id: pr.id }, data: { usedAt: new Date() } });
     // A reset is the recovery path after a takeover: kill every existing session so an
@@ -334,6 +350,15 @@ export default async function authRoutes(app) {
       return reply.code(429).send({ error: 'pow_required', ...powChallenge() });
     }
     let user = await p.user.findUnique({ where: { email: parsed.data.email } });
+    // A closed account is not an account. It normally cannot reach the next line anyway —
+    // closing clears the password — but the refusal belongs here and not only in the absence
+    // of a hash: this is the one route that decides who gets a session, and "it happens to
+    // have no password" is a property of another function, not a rule. Answered exactly like
+    // a wrong password, so the closed address of a real person is not confirmable from here.
+    if (user?.closedAt) {
+      await logLogin(p, { email: parsed.data.email, ip, success: false, reason: 'account_closed', userId: user.id });
+      return reply.code(401).send({ error: 'invalid_credentials' });
+    }
     if (!user?.passwordHash) {
       // OAuth-only account (GitHub/Discord) — no password to check against.
       await logLogin(p, { email: parsed.data.email, ip, success: false, reason: user ? 'oauth_only' : 'bad_password', userId: user?.id });

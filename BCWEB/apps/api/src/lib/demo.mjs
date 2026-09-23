@@ -211,13 +211,25 @@ function normalize(v) {
   if (!Number.isFinite(started) || !Number.isFinite(expires)) return null;
   const seed = Number(v.seed);
   if (!Number.isInteger(seed) || seed < 1 || seed > 0x7fffffff) return null;
+  // A session cannot have started in the FUTURE, and the ceiling has to say so.
+  //
+  // The cap below is `startedAt + MAX_MINUTES`, which is only a cap on a row whose start is
+  // in the past. A planted row dated 2099 kept its own `expiresAt` untouched — it is already
+  // below its own start plus eight hours — so `readDemoSession` found it unexpired and demo
+  // mode stayed on for seventy-two years. That is precisely the "an `expiresAt` in 2099 would
+  // make a demo that never ends" this function exists to refuse, and it did not.
+  //
+  // `startDemo` always writes `new Date()`, so clamping the start to now changes nothing for
+  // a session this module wrote, and turns a planted one into a session that expires at most
+  // MAX_MINUTES from the moment it is first read.
+  const startedMs = Math.min(started, Date.now());
   return {
     id: v.id, seed,
     n: clamp(v.n, 1, MAX_ITEMS, 120),
     label: v.label ? String(v.label).slice(0, 80) : null,
-    startedAt: new Date(started).toISOString(),
+    startedAt: new Date(startedMs).toISOString(),
     startedBy: typeof v.startedBy === 'string' ? v.startedBy : null,
-    expiresAt: new Date(Math.min(expires, started + MAX_MINUTES * 60_000)).toISOString(),
+    expiresAt: new Date(Math.min(expires, startedMs + MAX_MINUTES * 60_000)).toISOString(),
   };
 }
 

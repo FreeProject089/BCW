@@ -23,7 +23,8 @@ import path from 'node:path';
 import { db, requireRole, requireCanControlServer, requireElevated, logAudit, clientIp } from '../lib/lib.mjs';
 import { zipReadAll } from '../lib/native.mjs';
 import { backupFile, fileHistory, fileAtCommit } from '../lib/gitbackup.mjs';
-import { SECRET_SETTING_KEYS } from '../lib/secret-guard.mjs';
+import { SECRET_SETTING_KEYS, stripSecrets, keepLocalSecrets } from '../lib/secret-guard.mjs';
+import { checkAdminSetting } from './misc.mjs';
 
 /**
  * Where the pre-import state is committed.
@@ -100,9 +101,52 @@ export const SECTIONS = {
     // token, the Ko-fi token, the backup signing key and the attestation private key into a
     // zip that ends up in a Downloads folder, under a header promising it held no tokens.
     // Refused on the way back in too, so a zip made before this fix cannot put them back.
-    restore: (p, rows) => rows.filter((r) => !SECRET_SETTING_KEYS.has(r.key)).map((r) => p.adminSetting.upsert({ where: { key: r.key }, update: r, create: r })),
+    //
+    // ── The zip is a settings WRITER, and it was a wider one than the screen ──────────
+    // Excluding the four credential KEYS was only half the rule. A row is not the unit a
+    // secret lives in: `codegraph.settings.<project>` holds a webhook `secret` beside a
+    // harmless `url`, and that row is not on the credential list, so the whole value went
+    // into the zip under a header promising no tokens. The config transfer has always
+    // stripped credential FIELDS as well as credential rows (lib/secret-guard.mjs); this
+    // exporter did not, and the two were describing the same policy.
+    //
+    // The import side was worse. `restore` upserted whatever the zip said into whatever key
+    // the zip named, with no check at all — while `PUT /admin/settings/:key` runs every write
+    // through `checkAdminSetting`, which refuses the credential keys, refuses `demo.*`
+    // (routes/demo.mjs owns those and clamps them), refuses the SUPERADMIN-only rows to an
+    // ADMIN, and validates a handful of values that break the site when they are wrong. This
+    // route is ADMIN + server-control + elevated, NOT SUPERADMIN, so a hand-edited zip was a
+    // way for an admin to write settings the site reserves for somebody above them.
+    //
+    // So both halves now go through the same policy the single-setting screen uses, with the
+    // importing admin's OWN role, and a refused row is reported rather than dropped in
+    // silence. `restore` is async for it, which is why the route awaits it.
+    restore: async (p, rows, ctx = {}) => {
+      const ops = [];
+      for (const r of Array.isArray(rows) ? rows : []) {
+        if (!r || typeof r.key !== 'string' || !r.key) { ctx.refused?.push({ key: String(r?.key ?? '(none)'), error: 'no_key' }); continue; }
+        if (SECRET_SETTING_KEYS.has(r.key)) { ctx.refused?.push({ key: r.key, error: 'credential' }); continue; }
+        const verdict = await checkAdminSetting(p, r.key, r.value, { role: ctx.role });
+        if (!verdict.ok) { ctx.refused?.push({ key: r.key, error: verdict.body?.error || 'refused' }); continue; }
+        // The export dropped this row's credential fields; the ones this install already has
+        // must survive the restore, or an import silently erases them (lib/secret-guard.mjs).
+        const current = (await p.adminSetting.findUnique({ where: { key: r.key } }).catch(() => null))?.value;
+        const value = keepLocalSecrets(verdict.value, current);
+        ops.push(p.adminSetting.upsert({ where: { key: r.key }, create: { key: r.key, value }, update: { value } }));
+      }
+      return ops;
+    },
     count: (p) => p.adminSetting.count({ where: { key: { notIn: [...SECRET_SETTING_KEYS] } } }),
-    read: (p) => p.adminSetting.findMany({ where: { key: { notIn: [...SECRET_SETTING_KEYS] } }, orderBy: { key: 'asc' } }),
+    // `sink`, when given, collects what was removed by path, so the manifest can say what did
+    // not travel instead of leaving it to be discovered on the other install.
+    read: async (p, sink) => {
+      const rows = await p.adminSetting.findMany({ where: { key: { notIn: [...SECRET_SETTING_KEYS] } }, orderBy: { key: 'asc' } });
+      return rows.map((r) => {
+        const clean = stripSecrets(r.value);
+        if (sink) for (const x of clean.removed) sink.push({ key: r.key, path: x.path, reason: x.reason });
+        return { ...r, value: clean.value };
+      });
+    },
   },
   reviews: {
     label: 'Reviews & polls',
@@ -270,10 +314,16 @@ export default async function contentBackupRoutes(app) {
     zip.on('error', (e) => { req.log?.error({ err: e }, 'content backup failed mid-stream'); });
 
     const manifest = { generatedAt: at, sections: {}, notes: [] };
+    // What a section removed on the way out, by path. Only the settings section fills it
+    // today; passing it to every section means the next one that strips something is
+    // reported without anybody remembering to wire it up.
+    const redacted = [];
     for (const key of include) {
-      const rows = await SECTIONS[key].read(p);
+      const before = redacted.length;
+      const rows = await SECTIONS[key].read(p, redacted);
       const n = Array.isArray(rows) ? rows.length : Object.values(rows).reduce((a, v) => a + v.length, 0);
       manifest.sections[key] = { label: SECTIONS[key].label, records: n };
+      if (redacted.length > before) manifest.sections[key].redacted = redacted.slice(before);
       // BigInt → Number: some rows carry BigInt columns (repo/catalog quotas, a platform
       // asset's size), and JSON.stringify THROWS on a bigint — which would abort the whole
       // export mid-stream. Prisma accepts a plain number back for those fields on restore.
@@ -287,6 +337,9 @@ export default async function contentBackupRoutes(app) {
     }
     if (include.includes('showcase') || include.includes('projects')) {
       manifest.notes.push('Restore the Accounts and Admin settings sections first: a project/showcase page can reference an author or config that must already exist.');
+    }
+    if (redacted.length) {
+      manifest.notes.push(`${redacted.length} credential field(s) were removed from the settings this archive carries; they are listed per section as \`redacted\`. Restoring this archive keeps whatever the receiving install already holds for them.`);
     }
     manifest.notes.push('This is a content backup, not a restore point. For that, use the database backup in Advanced server management.');
     zip.append(JSON.stringify(manifest, null, 2), { name: 'manifest.json' });
@@ -459,8 +512,12 @@ export default async function contentBackupRoutes(app) {
     }
 
     const applied = {};
+    // A row the site's own settings door would refuse is refused here too, and named. The
+    // `await` is what lets a section CHECK before it writes: a restore may now be async, and
+    // it still has to hand back the operation list so the transaction below wraps real work.
+    const refused = [];
     for (const [key, data] of Object.entries(parsed)) {
-      const ops = SECTIONS[key].restore(p, data);
+      const ops = await SECTIONS[key].restore(p, data, { role: req.user.role, refused });
       // One transaction per section: a section either lands whole or not at all. Across
       // sections it is sequential on purpose — a single transaction over six tables holds
       // locks for as long as the slowest one, on a live site.
@@ -469,7 +526,7 @@ export default async function contentBackupRoutes(app) {
     }
 
     await logAudit(p, req.user.uid, 'content.import', Object.keys(applied).join(','), clientIp(req)).catch(() => {});
-    return { ok: true, applied, skipped, undo: snapshot };
+    return { ok: true, applied, skipped, refused, undo: snapshot };
   });
 
   /**
@@ -511,9 +568,10 @@ export default async function contentBackupRoutes(app) {
       return reply.code(500).send({ error: 'snapshot_failed', detail: 'nothing was changed' });
     }
 
-    const ops = sec.restore(p, rows);
+    const refused = [];
+    const ops = await sec.restore(p, rows, { role: req.user.role, refused });
     await p.$transaction(ops);
     await logAudit(p, req.user.uid, 'content.rollback', `${key}@${hash.slice(0, 8)}`, clientIp(req)).catch(() => {});
-    return { ok: true, section: key, restored: ops.length };
+    return { ok: true, section: key, restored: ops.length, refused };
   });
 }

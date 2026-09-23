@@ -422,6 +422,39 @@ describe('demo mode over HTTP', { skip }, () => {
     assert.equal(await p.user.count({ where: { email: { endsWith: '@demo.invalid' } } }), 0);
   });
 
+  test('a session dated in the FUTURE cannot outlive the ceiling', async () => {
+    // Pentest 2026-09-22, card 3. `normalize` clamps `expiresAt` to `startedAt + MAX_MINUTES`,
+    // which is only a ceiling on a row that started in the past. A row planted with a start in
+    // 2099 is already inside its own start plus eight hours, so it came back unexpired and
+    // demo mode stayed on for seventy-two years — the exact "an `expiresAt` in 2099 would make
+    // a demo that never ends" the function's own docstring says it refuses.
+    //
+    // The door is real: `PUT /admin/settings/demo.session` refuses `demo.*`, but the content
+    // backup's settings restore wrote any AdminSetting row the zip named, unchecked.
+    await p.adminSetting.deleteMany({ where: { key: { startsWith: 'demo.' } } });
+    await p.adminSetting.create({ data: { key: DEMO_KEY, value: {
+      id: `dm_${'a'.repeat(32)}`, seed: 1, n: 400, label: 'planted',
+      startedAt: '2099-01-01T00:00:00.000Z', expiresAt: '2099-01-01T01:00:00.000Z',
+    } } });
+
+    try {
+      const r = await call('admin', { method: 'GET', url: '/admin/demo' });
+      assert.equal(r.statusCode, 200, r.body);
+      const s = r.json().session;
+      if (s) {
+        const ceiling = Date.now() + demo.MAX_MINUTES * 60_000 + 60_000; // + a minute of slack
+        assert.ok(Date.parse(s.expiresAt) <= ceiling,
+          `a planted session expires at ${s.expiresAt}, past the ${demo.MAX_MINUTES}-minute ceiling`);
+        assert.ok(s.expiresInSec <= demo.MAX_MINUTES * 60 + 60, `expiresInSec=${s.expiresInSec}`);
+      }
+    } finally {
+      // Whatever the verdict, the planted row must not survive into the next test — a failure
+      // that also breaks its neighbours reads as two bugs and is one.
+      await p.adminSetting.deleteMany({ where: { key: { startsWith: 'demo.' } } });
+    }
+    assert.equal(await p.adminSetting.count({ where: { key: { startsWith: 'demo.' } } }), 0);
+  });
+
   test('a malformed row is treated as off and removed, never served', async () => {
     await p.adminSetting.create({ data: { key: DEMO_KEY, value: { id: 'x', seed: 'nope', n: 1e9 } } });
     const r = await call('admin', { method: 'GET', url: '/admin/demo/data' });

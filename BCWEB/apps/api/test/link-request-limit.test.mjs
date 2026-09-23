@@ -100,6 +100,32 @@ describe('POST /link/request (db)', { skip }, () => {
     assert.ok(refused, `one address enumerated ${LINK_REQUEST_MAX_PER_IP + 1} creator ids without being stopped`);
   });
 
+  test('an id that is already linked is answered `linked` in EITHER case', async () => {
+    // Pentest 2026-09-22, card 2. The v5 gate lowercases the claimed id before it looks for a
+    // key pin (`creatorProofGate`), and a creator id is the hex of an ed25519 public key, so
+    // two spellings are one identity. This lookup did not: `findUnique` on a case-sensitive
+    // text column answered "nobody holds it" for the UPPER-case spelling of a linked id, and
+    // handed out a pairing code for somebody else's identity. Redeeming it then made a second
+    // CreatorLink for one id, against the rule the route states.
+    const owner = await p.user.findFirst({ select: { id: true } });
+    if (!owner) return; // a database with no accounts cannot show this
+    const lower = `linklimit-fixture-case-${'ab'.repeat(8)}`;
+    const upper = lower.toUpperCase();
+    await p.creatorLink.deleteMany({ where: { creatorId: { in: [lower, upper] } } });
+    await p.creatorLink.create({ data: { userId: owner.id, creatorId: lower, displayName: 'case fixture', linkedAt: new Date(), unlinkableAt: new Date(Date.now() + 864e5) } });
+    try {
+      const ask = (creatorId) => app.inject({ method: 'POST', url: '/link/request', headers: { 'x-forwarded-for': '203.0.113.240' }, payload: { creatorId } });
+      const same = await ask(lower);
+      assert.deepEqual(same.json(), { linked: true }, 'the exact spelling was already right');
+      const flipped = await ask(upper);
+      assert.ok(!flipped.json().code, `a pairing code was issued for ${upper}, an id that is linked as ${lower}`);
+      assert.equal(flipped.json().linked, true);
+    } finally {
+      await p.creatorLink.deleteMany({ where: { creatorId: { in: [lower, upper] } } });
+      await p.linkCode.deleteMany({ where: { creatorId: { in: [lower, upper] } } });
+    }
+  });
+
   test('the residual risk is written down at the route', async () => {
     const fs = await import('node:fs');
     const path = await import('node:path');

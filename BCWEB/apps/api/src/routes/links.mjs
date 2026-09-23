@@ -84,7 +84,16 @@ export default async function linkRoutes(app) {
       if (!idHit.ok) return reply.code(429).send({ error: 'rate_limited', retryAfterSec: idHit.retryAfterSec });
     }
     // Already linked? Tell BMM so it can show "already linked" instead of a code.
-    const existing = await p.creatorLink.findUnique({ where: { creatorId: b.data.creatorId } });
+    //
+    // Case-INSENSITIVELY, because the v5 gate above is: `creatorProofGate` lowercases the id
+    // before it looks for a key pin, and `acceptCreatorProof` pins the lowercased id. A
+    // creator id is the hex of an ed25519 public key and BMM writes it in lower case, so the
+    // two spellings are the same identity — but this lookup was exact, and `findUnique` on a
+    // case-sensitive text column answered "nobody" for the upper-case spelling of an id that
+    // is already somebody's. That handed out a pairing code for a LINKED id, and
+    // `/me/creator-links` (also exact) then created a second CreatorLink for one identity,
+    // against the rule this endpoint states two lines below.
+    const existing = await p.creatorLink.findFirst({ where: { creatorId: { equals: b.data.creatorId, mode: 'insensitive' } } });
     if (existing) return { linked: true };
     // One active code per creator id at a time.
     await p.linkCode.deleteMany({ where: { creatorId: b.data.creatorId } });
@@ -235,8 +244,9 @@ export default async function linkRoutes(app) {
     const p = await db();
     const pending = await p.linkCode.findUnique({ where: { code } });
     if (!pending || pending.expiresAt < new Date()) return reply.code(400).send({ error: 'invalid_or_expired' });
-    // One creator id ↔ one account.
-    if (await p.creatorLink.findUnique({ where: { creatorId: pending.creatorId } })) {
+    // One creator id ↔ one account. Case-insensitively: see /link/request. A code minted
+    // before that check existed must not still land here and make two links out of one id.
+    if (await p.creatorLink.findFirst({ where: { creatorId: { equals: pending.creatorId, mode: 'insensitive' } } })) {
       await p.linkCode.delete({ where: { id: pending.id } }).catch(() => {});
       return reply.code(409).send({ error: 'already_linked' });
     }
