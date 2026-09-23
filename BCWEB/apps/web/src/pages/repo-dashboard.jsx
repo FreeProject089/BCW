@@ -1,12 +1,12 @@
 import { useEffect, useState, useRef } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useSearchParams } from 'react-router-dom';
 import {
   Link2 as LinkIcon, Fingerprint,
   Server, GitBranch, ArrowLeft, Wifi, WifiOff, ShieldCheck, HardDrive, Zap, Lock, Copy, ExternalLink,
   FileJson, FileText, Trash2, UploadCloud, FolderUp, CheckCircle2, AlertTriangle, KeyRound,
   Users, Mail, Plus, X, Eye, EyeOff, Files, Settings2, Loader2, Globe, History, Hash, Search, ChevronDown,
   UploadCloud as UploadIcon, Trash, Wifi as WifiOn, WifiOff as WifiGone, Download, Ban, Radio, Star,
-  Terminal, RefreshCw, ListTree, Unlock, Gauge,
+  Terminal, RefreshCw, ListTree, Unlock, Gauge, Clock,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { repoStatusMeta, repoCategoryMeta, repoLocked } from './repos.jsx';
@@ -92,14 +92,23 @@ function AuthGate() {
 
 function Dashboard({ data, reload }) {
   const { t } = useI18n(); const toast = useToast();
-  const [tab, setTab] = useState('files');
+  // The open tab lives in the URL (?tab=), so a link can open "Access" directly, Back returns
+  // to the previous tab, and a reload does not drop you on Files again.
+  const [sp, setSp] = useSearchParams();
+  const tab = sp.get('tab') || 'files';
+  const setTab = (id) => { const n = new URLSearchParams(sp); if (id === 'files') n.delete('tab'); else n.set('tab', id); setSp(n); };
   const r = data; const online = r.published && r.status === 'ONLINE';
   const publicUrl = r.hostPath ? `${location.origin}/hosting/${r.hostPath}/repo.json` : '';
   const pct = r.storageQuotaBytes ? Math.min(100, (r.used / r.storageQuotaBytes) * 100) : 0;
   const levelBadge = { owner: ['amber', t('rd.lvl.owner', 'Owner')], collab: ['primary', t('rd.lvl.collab', 'Collaborator')], password: ['', t('rd.lvl.password', 'Password access')] }[r.level] || ['', r.level];
 
+  // How full, in words a glance can take: amber from 85%, red from 97%.
+  const fill = pct >= 97 ? 'error' : pct >= 85 ? 'warning' : 'primary';
+  const lastChange = (r.files || []).reduce((m, f) => Math.max(m, new Date(f.updatedAt || f.createdAt || 0).getTime() || 0), 0);
+  const quotaLabel = gb(r.storageQuotaBytes) * 1024 >= 1024 ? `${gb(r.storageQuotaBytes)} GB` : `${mb(r.storageQuotaBytes)} MB`;
+
   const tabs = [
-    ['files', t('rd.tab.files', 'Files'), Files],
+    ['files', `${t('rd.tab.files', 'Files')}${r.files?.length ? ` (${r.files.length})` : ''}`, Files],
     ['online', t('rd.tab.online', 'Online'), Globe],
     ...(r.hosted ? [['users', t('rd.tab.users', 'Users'), Users]] : []),
     // Only for a repo that lives somewhere else, and only for its owner. On a repo we host
@@ -142,13 +151,6 @@ function Dashboard({ data, reload }) {
               </div>
             </div>
           </div>
-          {r.hosted && (
-            <div className="text-end">
-              <div className="text-xs text-[var(--faint)] flex items-center gap-1 justify-end"><HardDrive size={12} /> {mb(r.used)} / {gb(r.storageQuotaBytes) * 1024 >= 1024 ? `${gb(r.storageQuotaBytes)} GB` : `${mb(r.storageQuotaBytes)} MB`}</div>
-              <div className="w-40 h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden mt-1.5 ms-auto"><div className="h-full bg-gradient-to-r from-brand to-brand-2" style={{ width: `${pct}%` }} /></div>
-              <div className="text-[11px] text-[var(--faint)] mt-1 flex items-center gap-1 justify-end"><Zap size={11} /> {(r.effectiveUploadKbps / 1024).toFixed(1)} Mbps {t('repos.cap', 'cap')}</div>
-            </div>
-          )}
         </div>
         {r.description && <p className="text-sm text-[var(--muted)] mt-3">{r.description}</p>}
         {/* Suspended: the repo is FULLY FROZEN — read-only. Every mutation (files,
@@ -162,10 +164,45 @@ function Dashboard({ data, reload }) {
         )}
       </Card>
 
+      {/* Key facts, before any tab: how many files, how full, when it last changed, how fast
+          it can be fed. The four questions an owner opens this page to answer. */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 mb-4">
+        <Card className="p-3.5 flex items-center gap-3 min-w-0">
+          <span className="w-9 h-9 rounded-xl grid place-items-center shrink-0" style={{ background: 'color-mix(in srgb, var(--primary) 14%, var(--bg-solid))', color: 'var(--accent-ink)' }}><Files size={17} /></span>
+          <div className="min-w-0"><div className="text-lg font-extrabold tabular-nums leading-tight">{r.files?.length || 0}</div><div className="text-[11px] text-[var(--muted)]">{t('rd.k.files', 'Files')}</div></div>
+        </Card>
+        {r.hosted ? (
+          <Card className="p-3.5 min-w-0">
+            <div className="flex items-center justify-between gap-2 text-[11px] text-[var(--muted)]"><span className="flex items-center gap-1"><HardDrive size={12} /> {t('rd.k.storage', 'Storage')}</span><span className="tabular-nums">{Math.round(pct)}%</span></div>
+            <div className="text-sm font-semibold tabular-nums mt-1 truncate" title={`${mb(r.used)} MB / ${quotaLabel}`}>{mb(r.used)} MB <span className="text-[var(--muted)] font-normal">/ {quotaLabel}</span></div>
+            <div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden mt-1.5" role="progressbar" aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100} aria-label={t('rd.k.storage', 'Storage')}>
+              <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: `var(--${fill})` }} />
+            </div>
+          </Card>
+        ) : (
+          <Card className="p-3.5 flex items-center gap-3 min-w-0">
+            <span className="w-9 h-9 rounded-xl grid place-items-center shrink-0" style={{ background: 'color-mix(in srgb, var(--primary) 14%, var(--bg-solid))', color: 'var(--accent-ink)' }}><Server size={17} /></span>
+            <div className="min-w-0"><div className="text-sm font-semibold leading-tight">{t('rd.k.external', 'Your own server')}</div><div className="text-[11px] text-[var(--muted)]">{t('rd.k.external.s', 'Files are served from there')}</div></div>
+          </Card>
+        )}
+        <Card className="p-3.5 flex items-center gap-3 min-w-0">
+          <span className="w-9 h-9 rounded-xl grid place-items-center shrink-0" style={{ background: 'color-mix(in srgb, var(--primary) 14%, var(--bg-solid))', color: 'var(--accent-ink)' }}><Clock size={17} /></span>
+          <div className="min-w-0"><div className="text-sm font-semibold leading-tight truncate" title={lastChange ? new Date(lastChange).toLocaleString() : ''}>{lastChange ? timeAgo(lastChange, t) : t('rd.k.never', 'Nothing yet')}</div><div className="text-[11px] text-[var(--muted)]">{t('rd.k.last', 'Last file change')}</div></div>
+        </Card>
+        <Card className="p-3.5 flex items-center gap-3 min-w-0">
+          <span className="w-9 h-9 rounded-xl grid place-items-center shrink-0" style={{ background: 'color-mix(in srgb, var(--primary) 14%, var(--bg-solid))', color: 'var(--accent-ink)' }}>{r.hosted ? <Zap size={17} /> : <Star size={17} />}</span>
+          <div className="min-w-0">
+            {r.hosted
+              ? <><div className="text-sm font-semibold tabular-nums leading-tight">{(r.effectiveUploadKbps / 1024).toFixed(1)} Mbps</div><div className="text-[11px] text-[var(--muted)]">{t('rd.k.upload', 'Upload speed cap')}</div></>
+              : <><div className="text-lg font-extrabold tabular-nums leading-tight">{r.favoriteCount || 0}</div><div className="text-[11px] text-[var(--muted)]">{t('rd.k.favs', 'Favourites')}</div></>}
+          </div>
+        </Card>
+      </div>
+
       {/* tab bar */}
       <div className="flex gap-1 mb-4 border-b border-[var(--line)] overflow-x-auto no-scrollbar">
         {tabs.map(([tid, label, I]) => (
-          <button key={tid} onClick={() => setTab(tid)} className={`press-sm flex items-center gap-1.5 px-3.5 py-2.5 text-sm border-b-2 -mb-px whitespace-nowrap transition-colors ${tab === tid ? 'border-[var(--primary)] text-[var(--text)]' : 'border-transparent text-[var(--muted)] hover:text-[var(--text)]'}`}><I size={15} /> {label}</button>
+          <button key={tid} onClick={() => setTab(tid)} aria-current={tab === tid ? 'page' : undefined} className={`press-sm flex items-center gap-1.5 px-3.5 py-2.5 text-sm border-b-2 -mb-px whitespace-nowrap transition-colors ${tab === tid ? 'border-[var(--primary)] text-[var(--text)]' : 'border-transparent text-[var(--muted)] hover:text-[var(--text)]'}`}><I size={15} /> {label}</button>
         ))}
       </div>
 

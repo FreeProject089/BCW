@@ -3526,6 +3526,9 @@ const DICT = {
     // Dedicated repo dashboard
     'rd.unlocked': 'Déverrouillé.', 'rd.badpw': 'Mauvais mot de passe.', 'rd.unlockfail': 'Déverrouillage impossible.',
     'rd.locked.t': 'Tableau de bord privé', 'rd.locked.s': 'Entrez le mot de passe pour gérer ce dépôt.', 'rd.password': 'Mot de passe', 'rd.unlock': 'Déverrouiller', 'rd.backdash': '← Retour au tableau de bord',
+    // M19 (repo dashboard facts)
+    'rd.k.files': 'Fichiers', 'rd.k.storage': 'Stockage', 'rd.k.external': 'Ton propre serveur', 'rd.k.external.s': 'Les fichiers sont servis depuis là-bas',
+    'rd.k.never': 'Rien pour l’instant', 'rd.k.last': 'Dernier changement de fichier', 'rd.k.upload': 'Débit d’envoi maximal', 'rd.k.favs': 'Favoris',
     'rd.noaccess.t': 'Aucun accès', 'rd.noaccess.s': 'Vous devez être le propriétaire, un email autorisé, ou avoir le mot de passe du tableau de bord.', 'rd.signin': 'Se connecter',
     'rd.lvl.owner': 'Propriétaire', 'rd.lvl.collab': 'Collaborateur', 'rd.lvl.password': 'Accès par mot de passe',
     'rd.favorite': 'favori', 'rd.favorites': 'favoris',
