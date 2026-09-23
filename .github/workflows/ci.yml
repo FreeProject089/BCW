@@ -28,11 +28,18 @@ jobs:
     steps:
       # Full history: the legal-date check asks git when the file last changed, and a shallow
       # clone has no answer — which it reports as unverified, not as fine.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with: { fetch-depth: 0 }
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with: { node-version: '22' }
       - run: npm ci
+      # Some web gates import API modules to read the one true rule (check-site-theme reads
+      # apps/api/src/lib/config-schemas.mjs, which imports zod). Without the API's own
+      # dependencies the lint chain died on ERR_MODULE_NOT_FOUND 'zod' at that gate, on every
+      # run since it was added.
+      - name: api deps (read by web gates)
+        working-directory: BCWEB/apps/api
+        run: npm ci
       # no-undef catches bare JSX identifiers used-but-not-imported (the render crashes).
       - run: npm run lint
       # i18n integrity: fails on duplicate dict keys (silent-override bugs) and, in
@@ -75,8 +82,8 @@ jobs:
       DIRECT_DATABASE_URL: postgresql://postgres:test@localhost:5432/bcwebtest
     defaults: { run: { working-directory: BCWEB/apps/api } }
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with: { node-version: '22' }
       # node --check every API module — catches syntax errors (build never runs the API).
       - name: node --check all API modules
@@ -127,8 +134,8 @@ jobs:
     name: Native addon (Rust) build + native-path tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with: { node-version: '22' }
       - uses: dtolnay/rust-toolchain@stable
         with: { components: 'clippy, rustfmt' }
@@ -166,7 +173,7 @@ jobs:
     name: Caddyfile
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       # Caddy refuses the WHOLE config over one bad directive and exits 1, which takes the
       # reverse proxy down and every site with it — while every other container stays up and
       # healthy, so the symptom is "everything started and the site is gone". That is how
@@ -193,7 +200,7 @@ jobs:
     name: Secret scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       # Fail if a real-looking secret is committed (Stripe live/webhook, Discord bot token,
       # generic private keys). *.example files are allowed to carry placeholders.
       - name: grep for committed secrets
