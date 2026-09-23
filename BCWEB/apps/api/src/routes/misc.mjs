@@ -310,6 +310,10 @@ export const HOME_VARIANTS = {
   v2: { sections: ['status', 'products', 'news'] },
   // For a site whose visitors already know what it is: what is happening, right now.
   v3: { sections: ['status', 'news', 'poll', 'reviews', 'myo'] },
+  // The journey as one path (M2): a short hero, then numbered stops joined by a line that
+  // snakes down the page, then the suite and the news. `myo` decides the last stop: "have it
+  // built" when on, "build on it" when off.
+  v4: { sections: ['status', 'steps', 'products', 'myo', 'news'] },
 };
 export const HOME_VARIANT_KEYS = Object.keys(HOME_VARIANTS);
 
@@ -1308,10 +1312,6 @@ export default async function miscRoutes(app) {
       image: httpUrl(500).optional(),
     }).nullish(),
     enabled: z.boolean().optional(), order: z.number().int().min(0).max(100000).optional(),
-  });
-  app.get('/admin/reviews', { preHandler: requireRole('ADMIN') }, async () => {
-    const p = await db();
-    const [reviews, setting] = await Promise.all([
     // M11: moderating a member's review. Approving also shows it; rejecting also hides it.
     status: z.enum(['approved', 'pending', 'rejected']).optional(),
   });
@@ -1338,7 +1338,7 @@ export default async function miscRoutes(app) {
     ]);
     // sectionOn: the form hides itself when the landing shows no reviews at all.
     return { review: ownView(r), sectionOn: setting?.value?.on !== false };
-      p.review.findMany({ orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] }),
+  });
 
   app.put('/me/review', { preHandler: requireRole(), config: { rateLimit: { max: 5, timeWindow: '1 hour' } } }, async (req, reply) => {
     const b = memberReview.safeParse(req.body);
@@ -1367,6 +1367,10 @@ export default async function miscRoutes(app) {
     return { ok: true };
   });
 
+  app.get('/admin/reviews', { preHandler: requireRole('ADMIN') }, async () => {
+    const p = await db();
+    const [reviews, setting] = await Promise.all([
+      p.review.findMany({ orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] }),
       p.adminSetting.findUnique({ where: { key: 'reviews.enabled' } }),
     ]);
     return { reviews, enabled: setting?.value?.on !== false };
@@ -2699,14 +2703,14 @@ export default async function miscRoutes(app) {
     const q = String(req.query?.q || '').trim();
     const state = CONTACT_STATES.includes(req.query?.state) ? req.query.state : '';
     const kind = String(req.query?.kind || '').trim();
-    // '', 'me', 'none', or an id. A queue nobody can filter by owner is a queue where two
-    // people answer the same message.
-    const assignee = String(req.query?.assignee || '').trim();
-
     // The Messages tab leaves suggestions out (they have their own tab); the state counts
     // below follow the same scope, or a tab would count messages it does not list.
     const exclude = String(req.query?.exclude || '').trim();
     const scope = kind ? { kind } : exclude ? { kind: { not: exclude } } : {};
+    // '', 'me', 'none', or an id. A queue nobody can filter by owner is a queue where two
+    // people answer the same message.
+    const assignee = String(req.query?.assignee || '').trim();
+
     let assignedIds = null;
     if (assignee) {
       const who = assignee === 'me' ? req.user.uid : assignee;

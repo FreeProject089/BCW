@@ -34,8 +34,8 @@ import { defaultFooterConfig, DEFAULT_FOOTER_SOCIALS } from '../ui/footer-defaul
 import { SOCIAL_ICONS, Nav, MobileTabBar, readMobileMenu } from '../App.jsx';
 import PreviewFrame from '../ui/preview-frame.jsx';
 import DomainPanel from '../ui/domain-panel.jsx';
-import { SaveBar } from '../ui/save-bar.jsx'; // D1 (agent-admin-D): one save bar for every editor
 import { BotPlanFields, BotFreeTier, botPlanBody, botPlanSummary } from '../ui/bot-plan-editor.jsx'; // M-plans (agent-plans-M)
+import { SaveBar } from '../ui/save-bar.jsx'; // D1 (agent-admin-D): one save bar for every editor
 import { Laptop as LaptopIcon } from 'lucide-react'; // D2 (agent-admin-D): laptop-width topbar preview
 import SceneTransitionsEditor from './admin-scene-transitions.jsx'; // D4 (agent-admin-D)
 import HomePresetCards from './admin-home-presets.jsx'; // D3 (agent-admin-D)
@@ -5396,16 +5396,16 @@ function AdminReviews() {
   };
   const edit = (rv) => { setEditId(rv.id); setF({ author: rv.author, role: rv.role || '', body: rv.body, bodyFr: rv.bodyFr || '', rating: rv.rating ? String(rv.rating) : '', enabled: rv.enabled, avatar: rv.avatar || null }); };
   const toggleEnabled = (rv) => utog.act(rv.id, { enabled: !rv.enabled }, () => api.patch(`/admin/reviews/${rv.id}`, { enabled: !rv.enabled }), !rv.enabled ? t('arv.shown2', 'Review shown.') : t('arv.hidden2', 'Review hidden.'));
+  // M11: approving shows the review on the landing, rejecting keeps it off (the API sets
+  // `enabled` to match). Both go through the same undo window as the show/hide toggle.
+  const moderate = (rv, status) => utog.act(rv.id, { status, enabled: status === 'approved' }, () => api.patch(`/admin/reviews/${rv.id}`, { status }),
+    status === 'approved' ? t('arv.approved', 'Review approved and shown.') : t('arv.rejected', 'Review rejected.'));
   const del = async (rv) => {
     if (!(await dialog.confirm({ title: t('arv.del', 'Delete review?'), message: rv.author, okLabel: t('common.delete', 'Delete'), danger: true }))) return;
     setPendingDel((p) => new Set(p).add(rv.id));
     const unhide = () => setPendingDel((p) => { const n = new Set(p); n.delete(rv.id); return n; });
     toast.action({
       tone: 'success', duration: 6000, cancelLabel: t('common.undo', 'Undo'),
-  // M11: approving shows the review on the landing, rejecting keeps it off (the API sets
-  // `enabled` to match). Both go through the same undo window as the show/hide toggle.
-  const moderate = (rv, status) => utog.act(rv.id, { status, enabled: status === 'approved' }, () => api.patch(`/admin/reviews/${rv.id}`, { status }),
-    status === 'approved' ? t('arv.approved', 'Review approved and shown.') : t('arv.rejected', 'Review rejected.'));
       msg: t('arv.deleted', 'Review deleted.'),
       onCommit: async () => {
         try { await api.del(`/admin/reviews/${rv.id}`); reload(); }
@@ -8439,12 +8439,12 @@ function AdminHostingPlans() {
       boostsPerPeriod: Number(draft.boostsPerPeriod) || 0,
       boostPeriodMonths: Math.max(1, Number(draft.boostPeriodMonths) || 1),
       boostDays: Math.max(1, Number(draft.boostDays) || 7),
+      ...botPlanBody(draft), // M-plans: kind + Discord bot entitlements
       priceMonthlyCents: draft.priceMonthlyCents === '' || draft.priceMonthlyCents == null
         ? null : Number(draft.priceMonthlyCents),
     };
     const id = draft.id;
     const label = draft.name;
-      ...botPlanBody(draft), // M-plans: kind + Discord bot entitlements
     // A date only means something on an EXISTING plan whose price actually moved. Sent
     // otherwise it would stage a change from a price to itself and mail everyone about
     // nothing.
@@ -8594,13 +8594,13 @@ function AdminHostingPlans() {
               the only situation where "when does this start" is a real question. A new
               plan has no subscribers to notify, and a correction to a plan nobody holds
               should just take effect. */}
+          <BotPlanFields draft={draft} setDraft={setDraft} />
+
           {priceMoved && (
             <div className="rounded-xl border border-[var(--line)] panel p-3 space-y-2">
               <div className="text-sm font-medium flex items-center gap-2">
                 <Calendar size={14} className="text-[var(--accent-ink)]" /> {t('adm.plans.eff.t', 'When does the new price start?')}
               </div>
-          <BotPlanFields draft={draft} setDraft={setDraft} />
-
               <p className="text-xs text-[var(--muted)]">
                 {t('adm.plans.eff.s', 'Pick a date and every current subscriber is emailed now; the price changes on that day and applies from their next renewal. Leave it empty to change the price immediately — right for a correction, wrong for a rise on a plan people are paying for.')}
               </p>
@@ -8669,12 +8669,12 @@ function AdminHostingPlans() {
                   {formatBytes((pl.storageGB || 0) * (1024 ** 3))} · {mbps(pl.uploadLimitKbps)} · {money(pl.priceMonthlyCents)}/mo
                   {pl.boostsPerPeriod > 0 && ` · ${pl.boostsPerPeriod}×${pl.boostDays}${t('adm.plans.boostsuffix', 'd boost')}/${pl.boostPeriodMonths}${t('adm.plans.mo', 'mo')}`}
                 </div>
+                {botPlanSummary(pl, t) && <div className="text-[11px] text-[var(--muted)] mt-0.5">{pl.kind === 'bot' ? `${t('adm.botplan.kind.b', 'Bot only')} · ` : ''}{botPlanSummary(pl, t)}</div>}
                 {/* A change that has been PROMISED to customers is not an editor detail —
                     it is a commitment with a date on it, so it belongs on the row. */}
                 {pl.pendingPriceCents != null && (
                   <div className="text-[11px] text-[var(--accent-ink)] flex items-center gap-1.5 mt-0.5">
                     <Calendar size={11} />
-                {botPlanSummary(pl, t) && <div className="text-[11px] text-[var(--muted)] mt-0.5">{pl.kind === 'bot' ? `${t('adm.botplan.kind.b', 'Bot only')} · ` : ''}{botPlanSummary(pl, t)}</div>}
                     {(pl.pendingApplyExisting
                       ? t('adm.plans.pending', '{p}/mo from {d} · {n} notified')
                       : t('adm.plans.pendingnew', '{p}/mo from {d} · new buyers only'))
@@ -8696,12 +8696,12 @@ function AdminHostingPlans() {
           ))}
         </Card>
       )}
+      <BotFreeTier />
     </div>
   );
 }
 
 function AdminFreeHost() {
-      <BotFreeTier />
   const toast = useToast(); const { t } = useI18n();
   const plans = useAsync(() => api.get('/hosting/plans'), []);
   const [f, setF] = useState({ name: '', ownerEmail: '', planId: '', storageGB: 10, uploadMbps: 8, listed: false, mode: 'multi' });
