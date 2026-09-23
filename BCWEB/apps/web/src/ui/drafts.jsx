@@ -195,11 +195,11 @@ export function DraftBanner({ draft, what, className = '' }) {
         ).replace('{age}', ageLabel(draft.offered.savedAt))}
       </span>
       <button type="button" onClick={draft.restore}
-        className="shrink-0 rounded-lg border border-[var(--line)] px-2 py-1 font-medium hover:bg-[var(--surface-1)] transition">
+        className="shrink-0 rounded-lg border border-[var(--line)] px-2 py-1 font-medium hover:bg-[var(--surface-2)] transition">
         {t('draft.restore', 'Restore it')}
       </button>
       <button type="button" onClick={draft.discard} title={t('draft.discard.h', 'Forget it and keep what is on screen.')}
-        className="shrink-0 rounded-lg p-1 text-[var(--faint)] hover:text-[var(--text)] hover:bg-[var(--surface-1)] transition"
+        className="shrink-0 rounded-lg p-1 text-[var(--faint)] hover:text-[var(--text)] hover:bg-[var(--surface-2)] transition"
         aria-label={t('draft.discard', 'Discard the draft')}>
         <X size={13} />
       </button>

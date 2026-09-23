@@ -6,11 +6,11 @@ import { api, uploadImage } from '../lib/api.js';
 import { useAuth } from './auth.jsx';
 import { useI18n } from '../i18n.jsx';
 import { useToast, useDialog, Button, Card, Badge, Input, Textarea, Select, Field, PageHeader, Spinner, Explain, copyText, ColorInput } from '../ui/ui.jsx';
-import { DiscordIcon, KofiIcon, YoutubeIcon, GithubIcon, GoogleIcon } from '../ui/brand.jsx';
+import { DiscordIcon, KofiIcon, YoutubeIcon, GithubIcon, GoogleIcon, TwitchIcon } from '../ui/brand.jsx';
 import Avatar, { VARIANTS, PALETTES, avatarOf } from '../ui/Avatar.jsx';
 import { Badges } from '../ui/Badges.jsx';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { LayoutDashboard, Copy, RefreshCw, Terminal, Smartphone, Fingerprint, Twitch, Gamepad2, Github, X, Monitor, Tablet, MapPin, LogOut, Globe } from 'lucide-react';
+import { LayoutDashboard, Copy, RefreshCw, Terminal, Smartphone, Fingerprint, X, Monitor, Tablet, MapPin, LogOut, Globe } from 'lucide-react';
 import { stagePending, addLocalAccount, attachBackupCodesBySecret } from '../lib/twofa-lib.js';
 import { TotpQuickFill } from './twofa-fill.jsx';
 
@@ -1397,7 +1397,39 @@ function DiscordLinks() {
    offers. Linking a provider from here rides the normal login start URL — the callback sees
    the session and attaches the provider to it, no e-mail match needed. Unlinking the last
    method is refused server-side; the button says so before it is tried. */
-const SIGNIN_META = [['google', GoogleIcon, 'Google'], ['github', GithubIcon, 'GitHub'], ['discord', DiscordIcon, 'Discord']];
+/* Steam's real mark. The markdown kit carries thirteen brand paths (ui/brand re-exports them)
+   and Steam is not one of them, so this card drew a lucide GAMEPAD where a Steam logo belongs.
+   Same artwork as `simple:steam`, pasted inline rather than fetched: publicprofile.jsx renders
+   that slug through the Simple Icons CDN, and a brand mark that depends on a third-party
+   request is a hole in the card when the request does not arrive. currentColor, one path, the
+   same shape as every other mark here, so the plate below colours it like the rest. */
+const SteamIcon = ({ size = 16, className = '' }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
+    <path d="M11.979 0C5.678 0 .511 4.86.022 11.037l6.432 2.658c.545-.371 1.203-.59 1.912-.59.063 0 .125.004.188.006l2.861-4.142V8.91c0-2.495 2.028-4.524 4.524-4.524 2.494 0 4.524 2.031 4.524 4.527s-2.03 4.525-4.524 4.525h-.105l-4.076 2.911c0 .052.004.105.004.159 0 1.875-1.515 3.396-3.39 3.396-1.635 0-3.016-1.173-3.331-2.727L.436 15.27C1.862 20.307 6.486 24 11.979 24c6.627 0 11.999-5.373 11.999-12S18.605 0 11.979 0zM7.54 18.21l-1.473-.61c.262.543.714.999 1.314 1.25 1.297.539 2.793-.076 3.332-1.375.263-.63.264-1.319.005-1.949s-.75-1.121-1.377-1.383c-.624-.26-1.29-.249-1.878-.03l1.523.63c.956.4 1.409 1.5 1.009 2.455-.397.957-1.497 1.41-2.454 1.012H7.54zm11.415-9.303c0-1.662-1.353-3.015-3.015-3.015-1.665 0-3.015 1.353-3.015 3.015 0 1.665 1.35 3.015 3.015 3.015 1.663 0 3.015-1.35 3.015-3.015zm-5.273-.005c0-1.252 1.013-2.266 2.265-2.266 1.249 0 2.266 1.014 2.266 2.266 0 1.251-1.017 2.265-2.266 2.265-1.253 0-2.265-1.014-2.265-2.265z" />
+  </svg>
+);
+
+/* One plate for every provider row on this page, so the marks are the same size on the same
+   square in the same place whether they come from sign-in or from Social accounts.
+   `colour` is a --brand-* token from index.css, never a raw hex: the marks used to carry a
+   `style={{ color }}` prop that the kit's svg() helper NEVER FORWARDS (it reads only `size`
+   and `className`), so every brand colour on this page was silently dropped and every mark
+   drew in the inherited text colour. Colouring the PLATE works because each mark is drawn
+   with currentColor.
+   Two of the six brand colours cannot be used as ink on both page colours, so they switch
+   per theme in index.css rather than being faked here — see the token block there. */
+function BrandMark({ icon: Ico, colour, muted = false, size = 17 }) {
+  return (
+    <span
+      className={`grid place-items-center w-8 h-8 rounded-lg shrink-0 ${muted ? 'bg-[var(--surface-2)]' : 'bg-[var(--bg-solid)]'}`}
+      style={colour && !muted ? { color: `var(${colour})` } : muted ? { color: 'var(--faint)' } : undefined}
+    >
+      <Ico size={size} />
+    </span>
+  );
+}
+
+const SIGNIN_META = [['google', GoogleIcon, 'Google', null], ['github', GithubIcon, 'GitHub', '--brand-github'], ['discord', DiscordIcon, 'Discord', '--brand-discord']];
 function SignInMethods() {
   const { t } = useI18n(); const toast = useToast();
   const [providers, setProviders] = useState(null);
@@ -1474,9 +1506,9 @@ function SignInMethods() {
           </div>
           {data.hasPassword ? <Badge tone="success">{t('sim.on', 'Active')}</Badge> : <Badge tone="warning">{t('sim.missing', 'Missing')}</Badge>}
         </div>
-        {SIGNIN_META.filter(([k]) => providers[k] || linked[k]).map(([k, Ico, label]) => { const l = linked[k]; return (
+        {SIGNIN_META.filter(([k]) => providers[k] || linked[k]).map(([k, Ico, label, colour]) => { const l = linked[k]; return (
           <div key={k} className="rounded-xl bg-[var(--surface-2)] px-3 py-2.5 flex items-center gap-2.5">
-            <span className="grid place-items-center w-8 h-8 rounded-lg bg-[var(--bg-solid)] shrink-0"><Ico size={17} /></span>
+            <BrandMark icon={Ico} colour={colour} />
             <div className="flex-1 min-w-0">
               <div className="font-medium text-sm">{label}</div>
               <div className="text-[11px] text-[var(--faint)] truncate">{l ? (l.username || t('sim.on', 'Active')) : t('sc.notlinked', 'Not linked')}</div>
@@ -1491,11 +1523,17 @@ function SignInMethods() {
   );
 }
 
+/* Real brand marks, and a --brand-* token instead of the raw hex each row used to pass.
+   Twitch was lucide's outline glyph and Steam was lucide's GAMEPAD; both are now the brand's
+   own mark. The hexes moved to index.css because three of them are unreadable on one of the
+   two page colours (Steam blue is 2.0:1 on white, GitHub black is 1.1:1 on the dark page,
+   Ko-fi coral is 3.0:1 on white) — the token carries the brand's own light/dark variant so
+   every mark clears 3:1 in both themes. */
 const CONN_META = [
-  ['youtube', YoutubeIcon, 'YouTube', '#ff0000', 'oauth'],
-  ['twitch', Twitch, 'Twitch', '#9146ff', 'oauth'],
-  ['steam', Gamepad2, 'Steam', '#66c0f4', 'oauth'],
-  ['kofi', KofiIcon, 'Ko-fi', '#ff5e5b', 'manual'],
+  ['youtube', YoutubeIcon, 'YouTube', '--brand-youtube', 'oauth'],
+  ['twitch', TwitchIcon, 'Twitch', '--brand-twitch', 'oauth'],
+  ['steam', SteamIcon, 'Steam', '--brand-steam', 'oauth'],
+  ['kofi', KofiIcon, 'Ko-fi', '--brand-kofi', 'manual'],
 ];
 function SocialConnections() {
   const { t } = useI18n(); const toast = useToast(); const { user, refresh } = useAuth();
@@ -1564,7 +1602,7 @@ function SocialConnections() {
             lives under Sign-in methods; this row only decides whether the profile shows it. */}
         {discordRow && <div className="rounded-xl bg-[var(--surface-2)] px-3 py-2.5">
           <div className="flex items-center gap-2.5">
-            <span className="grid place-items-center w-8 h-8 rounded-lg bg-[var(--bg-solid)] shrink-0"><DiscordIcon size={17} style={{ color: '#5865f2' }} /></span>
+            <BrandMark icon={DiscordIcon} colour="--brand-discord" />
             <div className="flex-1 min-w-0">
               <div className="font-medium text-sm">Discord</div>
               <div className="text-[11px] text-[var(--faint)] truncate" title={discord?.handle || ''}>{discord ? (discord.handle || t('sim.on', 'Active')) : t('sc.notlinked', 'Not linked')}</div>
@@ -1576,10 +1614,10 @@ function SocialConnections() {
             <button type="button" onClick={() => toggleShow('discord', !show.has('discord'))} aria-pressed={show.has('discord')} aria-label={t('sc.showprofile', 'Show on my profile')} className={`w-10 h-5.5 rounded-full relative shrink-0 transition ${show.has('discord') ? 'bg-[var(--primary)]' : 'bg-[var(--line-strong)]'}`} style={{ height: 22, width: 40 }}><span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${show.has('discord') ? 'left-[20px]' : 'left-0.5'}`} /></button>
           </label>}
         </div>}
-        {configured.map(([k, Ico, label, color, kind]) => { const c = linked[k]; return (
+        {configured.map(([k, Ico, label, colour, kind]) => { const c = linked[k]; return (
           <div key={k} className="rounded-xl bg-[var(--surface-2)] px-3 py-2.5">
             <div className="flex items-center gap-2.5">
-              <span className="grid place-items-center w-8 h-8 rounded-lg bg-[var(--bg-solid)] shrink-0"><Ico size={17} style={{ color }} /></span>
+              <BrandMark icon={Ico} colour={colour} />
               <div className="flex-1 min-w-0">
                 <div className="font-medium text-sm">{label}</div>
                 {c ? <a href={c.url} target="_blank" rel="noreferrer" className="text-[11px] text-[var(--faint)] hover:text-[var(--accent-ink)] truncate block" title={c.handle}>{c.handle}</a>
@@ -1609,7 +1647,7 @@ function SocialConnections() {
         ); })}
         {unconfigured.map(([k, Ico, label]) => (
           <div key={k} className="rounded-xl border border-dashed border-[var(--line)] px-3 py-2.5 flex items-center gap-2.5">
-            <span className="grid place-items-center w-8 h-8 rounded-lg bg-[var(--surface-2)] shrink-0 text-[var(--faint)]"><Ico size={17} /></span>
+            <BrandMark icon={Ico} muted />
             <div className="flex-1 min-w-0">
               <div className="font-medium text-sm text-[var(--muted)]">{label}</div>
               <div className="text-[11px] text-[var(--faint)]">

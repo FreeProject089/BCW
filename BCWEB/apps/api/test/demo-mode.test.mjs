@@ -73,6 +73,53 @@ describe('the dataset is marked by a field, everywhere', () => {
   });
 });
 
+describe('the wider dataset: every screen a demo is asked to show', () => {
+  const session = { id: `dm_${'b'.repeat(32)}`, seed: 99, n: 40, startedAt: '2026-03-01T00:00:00.000Z', expiresAt: '2026-03-01T01:00:00.000Z' };
+  const LISTS = ['users', 'catalog', 'posts', 'analytics', 'repos', 'conversations', 'staffLog'];
+
+  test('the new sections exist, are non-empty, and are tagged like the old ones', () => {
+    const d = demo.buildDemoData(session);
+    for (const list of LISTS) {
+      assert.ok(Array.isArray(d[list]) && d[list].length > 0, `${list} is empty`);
+      for (const r of d[list]) assert.equal(r[DEMO_TAG], true, `${list} record without the tag`);
+    }
+    for (const nested of [d.economy.leaderboard, d.economy.shop, d.economy.transactions, d.moderation.queue, d.hosting.pools, d.hosting.invoices, d.traffic.referrers, d.traffic.countries, d.traffic.devices, d.traffic.topPages]) {
+      assert.ok(nested.length > 0);
+      for (const r of nested) assert.equal(r[DEMO_TAG], true);
+    }
+    for (const c of d.conversations) for (const m of c.messages) assert.equal(m[DEMO_TAG], true);
+    // The totals are the numbers a screen puts in a tile, so they have to be real counts.
+    assert.equal(d.totals.repos, d.repos.length);
+    assert.equal(d.totals.openReports, d.moderation.queue.filter((r) => r.status === 'OPEN').length);
+    assert.equal(d.totals.views30d, d.analytics.reduce((a, x) => a + x.views, 0));
+  });
+
+  test('nothing in it can be mistaken for, or used as, a real row', () => {
+    const d = demo.buildDemoData(session);
+    const ids = [
+      ...d.repos.map((r) => r.id), ...d.hosting.pools.map((r) => r.id), ...d.hosting.invoices.map((r) => r.id),
+      ...d.economy.shop.map((r) => r.id), ...d.economy.transactions.map((r) => r.id),
+      ...d.moderation.queue.map((r) => r.id), ...d.conversations.map((r) => r.id), ...d.staffLog.map((r) => r.id),
+    ];
+    for (const id of ids) assert.match(id, /^demo-[a-z]+-\d+$/, `${id} is not a demo-shaped id`);
+    // Money: a demo invoice must carry no processor id and must say what it is.
+    for (const i of d.hosting.invoices) {
+      assert.equal(i.provider, 'demo');
+      assert.equal(JSON.stringify(i).includes('cs_'), false);
+      assert.doesNotMatch(JSON.stringify(i), /\b(pi|sub|cus|in|price|prod)_[A-Za-z0-9]{8,}/);
+    }
+    // Mail: every address in the dataset is at the RFC 6761 domain that cannot resolve.
+    for (const m of JSON.stringify(d).match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+/g) || []) {
+      assert.match(m, /@demo\.invalid$/, `${m} is a deliverable-looking address`);
+    }
+  });
+
+  test('a reload shows the same site: the whole dataset is a function of the seed', () => {
+    assert.deepEqual(demo.buildDemoData(session), demo.buildDemoData(session));
+    assert.notDeepEqual(demo.buildDemoData(session), demo.buildDemoData({ ...session, seed: 100 }));
+  });
+});
+
 describe('no path from demo mode to Stripe, mail, the bot or the network', () => {
   const importsOf = (src) => [...src.matchAll(/^\s*import\s[^;]*?from\s*'([^']+)'/gms)].map((m) => m[1])
     .concat([...src.matchAll(/import\(\s*'([^']+)'\s*\)/g)].map((m) => m[1]));
@@ -326,6 +373,53 @@ describe('demo mode over HTTP', { skip }, () => {
     assert.equal(r.json().active, false);
     assert.equal(await p.adminSetting.count({ where: { key: { startsWith: 'demo.' } } }), 0);
     assert.equal(demo.overlayCount(), 0);
+  });
+
+  test('RED if "off" hides a leftover: the check NAMES what it found, and finds nothing after a stop', async () => {
+    // Plant one of everything demo mode is able to leave behind: the session itself, two more
+    // keys in its namespace (a future key whose author forgot to clean it up), and a real
+    // in-process action list with entries in it.
+    const started = await call('admin', { method: 'POST', url: '/admin/demo', payload: { minutes: 15, items: 25 } });
+    assert.equal(started.statusCode, 201, started.body);
+    const sid = started.json().session.id;
+    for (const a of ['publish', 'ban', 'refund']) {
+      const r = await call('admin', { method: 'POST', url: '/admin/demo/actions', payload: { session: sid, action: a } });
+      assert.equal(r.statusCode, 201, r.body);
+    }
+    await p.adminSetting.create({ data: { key: 'demo.leftover-a', value: { x: 1 } } });
+    await p.adminSetting.create({ data: { key: 'demo.leftover-b', value: { x: 2 } } });
+
+    // Before: the check must SAY what is there, not merely count it.
+    const dirty = await demo.demoAudit(p);
+    assert.equal(dirty.clean, false);
+    assert.deepEqual(dirty.settingKeys, ['demo.leftover-a', 'demo.leftover-b', DEMO_KEY].sort());
+    assert.equal(dirty.overlayEntries, 3);
+    assert.ok(dirty.leftovers.some((l) => l.what === 'demo.leftover-a' && l.where === 'AdminSetting'));
+    assert.ok(dirty.leftovers.some((l) => l.what.includes(sid)), 'the in-process list is named by its session');
+    for (const l of dirty.leftovers) assert.ok(l.removedBy, `${l.what} does not say how it is removed`);
+    // And it must say where it LOOKED, so a check that found nothing is distinguishable from
+    // a check that looked nowhere.
+    assert.deepEqual(dirty.checked.map((c) => c.where).sort(), ['AdminSetting', 'this API process']);
+
+    // After: one DELETE, then count every place from scratch.
+    const r = await call('admin', { method: 'DELETE', url: '/admin/demo' });
+    assert.equal(r.statusCode, 200, r.body);
+    assert.equal(r.json().removed.settings, 3);
+    assert.equal(r.json().audit.clean, true);
+    assert.deepEqual(r.json().audit.leftovers, []);
+
+    const after = await demo.demoAudit(p);
+    assert.equal(after.clean, true);
+    assert.deepEqual(after.settingKeys, []);
+    assert.deepEqual(after.overlaySessions, []);
+    assert.equal(after.overlayEntries, 0);
+    assert.deepEqual(after.leftovers, []);
+    assert.equal(await p.adminSetting.count({ where: { key: { startsWith: 'demo.' } } }), 0);
+    assert.equal(demo.overlayCount(), 0);
+    // Nothing of the demo reached a content table either: the wider dataset is served, never
+    // written, so the rows it could have created do not exist to be counted.
+    assert.equal(await p.catalogItem.count({ where: { slug: { startsWith: 'demo-' }, createdAt: { gte: new Date(Date.now() - 600_000) } } }), 0);
+    assert.equal(await p.user.count({ where: { email: { endsWith: '@demo.invalid' } } }), 0);
   });
 
   test('a malformed row is treated as off and removed, never served', async () => {

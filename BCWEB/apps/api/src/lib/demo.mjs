@@ -306,15 +306,33 @@ export async function stopDemo(p) {
  * demo mode's and are removed by `npm run clear-demo`, never by `stopDemo`.
  */
 export async function demoAudit(p) {
-  const settings = await p.adminSetting.count({ where: { key: { startsWith: DEMO_PREFIX } } });
+  // The KEYS, not just how many: "off" that says `settings: 1` leaves the admin to go and
+  // find which row, in a table of several hundred. A leftover that is not named is a leftover
+  // nobody removes.
+  const rows = await p.adminSetting.findMany({ where: { key: { startsWith: DEMO_PREFIX } }, select: { key: true } });
+  const settingKeys = rows.map((r) => r.key).sort();
   // The dev seeder's own rows, as IT recorded them (AdminSetting['seed.demoRows']) — not
   // rows that merely look seeded. Read inline rather than imported: this file is the one
   // whose import list a test reads to prove demo mode reaches nothing side-effecting.
   const seedRow = await p.adminSetting.findUnique({ where: { key: 'seed.demoRows' } });
   const seededItems = Array.isArray(seedRow?.value?.itemIds) ? seedRow.value.itemIds.length : 0;
+  const overlaySessions = [...overlays.entries()].map(([id, list]) => ({ id, entries: list.length }));
+  const leftovers = [
+    ...settingKeys.map((key) => ({ where: 'AdminSetting', what: key, count: 1, removedBy: 'DELETE /admin/demo' })),
+    ...overlaySessions.map((o) => ({ where: 'this API process', what: `action list for ${o.id}`, count: o.entries, removedBy: 'DELETE /admin/demo, or a restart' })),
+  ];
   return {
-    clean: settings === 0 && overlays.size === 0,
-    settings, overlays: overlays.size,
+    clean: leftovers.length === 0,
+    settings: settingKeys.length, overlays: overlaySessions.length,
+    settingKeys, overlaySessions,
+    overlayEntries: overlaySessions.reduce((a, o) => a + o.entries, 0),
+    // Every place demo mode is ABLE to put something, each with how it was checked. A check
+    // that lists only what it found cannot be told apart from a check that looked nowhere.
+    checked: [
+      { where: 'AdminSetting', how: `key starts with ${DEMO_PREFIX}`, found: settingKeys.length },
+      { where: 'this API process', how: 'in-memory action lists', found: overlaySessions.length },
+    ],
+    leftovers,
     seededItems,
   };
 }
@@ -388,6 +406,156 @@ export function buildDemoData(session) {
     const base = int(700, 1500) * (weekend ? 0.6 : 1);
     return { ...tag, date: day.toISOString().slice(0, 10), views: Math.round(base), visitors: Math.round(base * (0.4 + rnd() * 0.2)), downloads: Math.round(base * 0.12) };
   });
+  const totalViews = analytics.reduce((a, d) => a + d.views, 0);
+
+
+  // ── The screens the first version could not show ──────────────────────────────────────
+  // Everything below is the same deal as the catalogue: a pure function of the seed, carrying
+  // the tag and a `demo-<kind>-<n>` id, stored nowhere. They exist because a demo that shows
+  // only a catalogue and a traffic chart cannot present the parts of the dashboard people
+  // actually ask about — hosting, the economy, the queue, the inbox.
+
+  // Hosted repositories: what /repos and a repo dashboard show.
+  const REPO_KINDS = ['BMM', 'BSM', 'INDEX'];
+  const repos = Array.from({ length: 9 }, (_, i) => {
+    const bytes = int(40_000_000, 9_000_000_000);
+    return {
+      ...tag,
+      id: `demo-repo-${i}`,
+      name: `${pick(ADJ)}-${pick(NOUN)}`.toLowerCase(),
+      kind: pick(REPO_KINDS),
+      ownerId: pick(users).id,
+      visibility: rnd() < 0.7 ? 'PUBLIC' : 'LINK',
+      plan: pick(['free', 'free', 'small', 'medium', 'large']),
+      bytes,
+      files: int(12, 900),
+      syncs: longTail(9_000),
+      lastSyncAt: new Date(Date.parse(at) - int(0, 240) * 3_600_000).toISOString(),
+      expiresAt: new Date(Date.parse(at) + int(3, 330) * 86_400_000).toISOString(),
+      keyProtected: rnd() < 0.3,
+    };
+  });
+
+  // Storage pools and the paid side of hosting. `provider: 'demo'` throughout: no processor
+  // id exists on any of it, so nothing here can be handed to a checkout route.
+  const pools = Array.from({ length: 3 }, (_, i) => {
+    const capacity = [10, 50, 250][i] * 1_000_000_000;
+    return { ...tag, id: `demo-pool-${i}`, name: ['Community', 'Creators', 'Partners'][i], capacityBytes: capacity, usedBytes: Math.round(capacity * (0.2 + rnd() * 0.65)), repos: int(2, 14) };
+  });
+  const invoices = Array.from({ length: 10 }, (_, i) => ({
+    ...tag,
+    id: `demo-invoice-${i}`,
+    provider: 'demo',
+    userId: pick(users).id,
+    amountCents: pick([500, 900, 1500, 2900, 4900]),
+    currency: 'CHF',
+    status: rnd() < 0.85 ? 'paid' : pick(['open', 'refunded']),
+    kind: pick(['repo hosting', 'catalogue hosting', 'boost', 'marketplace']),
+    at: new Date(Date.parse(at) - i * 3 * 86_400_000).toISOString(),
+  }));
+  const hosting = {
+    ...tag,
+    pools,
+    invoices,
+    activeSubscriptions: int(12, 90),
+    renewalsThisMonth: int(2, 22),
+    note: 'generated; demo mode holds no processor id and calls no payment API',
+  };
+
+  // The Discord economy: the leaderboard, the shop and what people just did with it.
+  const SHOP_KINDS = ['badge', 'role', 'boost', 'pool', 'promo', 'hosting'];
+  const economy = {
+    ...tag,
+    season: { name: `Season ${int(2, 7)}`, endsAt: new Date(Date.parse(at) + int(5, 60) * 86_400_000).toISOString() },
+    pointsInCirculation: longTail(4_000_000) + 120_000,
+    leaderboard: [...users]
+      .map((u) => ({ ...tag, userId: u.id, displayName: u.displayName, level: u.level, points: u.points, messages: longTail(24_000) }))
+      .sort((a, b) => b.points - a.points)
+      .slice(0, 10)
+      .map((r, i) => ({ ...r, place: i + 1 })),
+    shop: Array.from({ length: 8 }, (_, i) => ({
+      ...tag, id: `demo-shopitem-${i}`, kind: pick(SHOP_KINDS),
+      name: `${pick(ADJ)} ${pick(NOUN)}`, price: int(1, 60) * 250,
+      stock: rnd() < 0.3 ? int(1, 12) : null, sold: longTail(400),
+    })),
+    transactions: Array.from({ length: 14 }, (_, i) => ({
+      ...tag, id: `demo-tx-${i}`, userId: pick(users).id,
+      kind: pick(['levelup', 'purchase', 'staff', 'casino', 'gift']),
+      delta: (rnd() < 0.55 ? 1 : -1) * int(20, 4_000),
+      at: new Date(Date.parse(at) - int(0, 72) * 3_600_000).toISOString(),
+    })),
+    casino: { tablesOpen: int(0, 6), biggestWin: longTail(90_000), houseEdgePct: 1.5, note: 'generated; no table is running' },
+  };
+
+  // The moderation queue: reports waiting on somebody, which is the screen an admin is
+  // likeliest to be asked about and the one a clean dev database never has anything in.
+  const REPORT_REASONS = ['spam', 'malware suspected', 'stolen content', 'broken download', 'abusive text', 'wrong category'];
+  const moderation = {
+    ...tag,
+    queue: Array.from({ length: 11 }, (_, i) => ({
+      ...tag, id: `demo-report-${i}`,
+      targetType: pick(['catalog', 'catalog', 'user', 'post', 'comment']),
+      targetId: pick(catalog).id,
+      targetLabel: pick(catalog).name,
+      reason: pick(REPORT_REASONS),
+      reporterId: pick(users).id,
+      status: rnd() < 0.6 ? 'OPEN' : pick(['REVIEWING', 'RESOLVED', 'REJECTED']),
+      at: new Date(Date.parse(at) - int(0, 30) * 86_400_000).toISOString(),
+    })),
+    pendingItems: catalog.filter((c) => c.status === 'PENDING').length,
+    suspendedAccounts: int(0, 4),
+    bannedAccounts: int(0, 2),
+  };
+
+  // The contact inbox: threads, not a mailbox. No address here is deliverable.
+  const SUBJECTS = ['Repo will not sync', 'Invoice question', 'Plugin rejected?', 'Partnership', 'Bug in the installer', 'Account recovery'];
+  const conversations = Array.from({ length: 7 }, (_, i) => {
+    const who = pick(users);
+    const msgs = int(1, 5);
+    return {
+      ...tag,
+      id: `demo-thread-${i}`,
+      subject: pick(SUBJECTS),
+      withUserId: who.id,
+      withName: who.displayName,
+      withEmail: `demo-${i}@${DEMO_MAIL_DOMAIN}`,
+      status: rnd() < 0.5 ? 'OPEN' : pick(['WAITING', 'CLOSED']),
+      unread: rnd() < 0.4,
+      messages: Array.from({ length: msgs }, (_, m) => ({
+        ...tag, id: `demo-msg-${i}-${m}`,
+        fromStaff: m % 2 === 1,
+        body: 'Demo message. Generated for a presentation; it is not stored and no mail is sent.',
+        at: new Date(Date.parse(at) - (msgs - m) * int(1, 20) * 3_600_000).toISOString(),
+      })),
+      lastAt: new Date(Date.parse(at) - int(0, 14) * 86_400_000).toISOString(),
+    };
+  });
+
+  // Analytics beyond the daily bars: what the real analytics screen breaks traffic down by.
+  const share = (names) => {
+    const raw = names.map(() => int(5, 100));
+    const total = raw.reduce((a, b) => a + b, 0);
+    return names.map((name, i) => ({ ...tag, name, share: Math.round((raw[i] / total) * 1000) / 10, visits: Math.round((raw[i] / total) * totalViews) }));
+  };
+  const traffic = {
+    ...tag,
+    referrers: share(['direct', 'google', 'discord', 'github', 'reddit', 'youtube']),
+    countries: share(['CH', 'FR', 'DE', 'US', 'GB', 'CA', 'BE']),
+    devices: share(['desktop', 'mobile', 'tablet']),
+    topPages: ['/', '/catalog', '/blog', '/docs', '/repos', '/u/demo'].map((path) => ({ ...tag, path, views: longTail(60_000) })),
+    // Core Web Vitals, in the units the real panel uses. Good numbers on purpose: a demo is
+    // a presentation, and a red LCP invented by a PRNG is a question nobody can answer.
+    vitals: { lcpMs: int(1200, 2200), inpMs: int(60, 180), cls: Math.round(rnd() * 60) / 1000 },
+  };
+
+  // The staff audit trail, so the tamper-evident log screen has rows in it.
+  const staffLog = Array.from({ length: 12 }, (_, i) => ({
+    ...tag, id: `demo-audit-${i}`,
+    actorId: users[0].id, actorName: users[0].displayName,
+    action: pick(['catalog.publish', 'user.suspend', 'repo.extend', 'settings.update', 'promo.create', 'blog.publish']),
+    detail: 'generated for the demo',
+    at: new Date(Date.parse(at) - i * int(1, 9) * 3_600_000).toISOString(),
+  }));
 
   return {
     ...tag,
@@ -403,7 +571,21 @@ export function buildDemoData(session) {
     discord: { ...tag, connected: false, guildName: 'Demo Community', members: int(400, 9000), online: int(20, 400), note: 'generated; demo mode never connects the bot' },
     // A billing panel with no Stripe behind it: `provider: 'demo'` is not a payment processor.
     billing: { ...tag, provider: 'demo', mrr: int(200, 2400), subscriptions: int(10, 180), note: 'generated; demo mode never calls Stripe' },
-    totals: { users: users.length, catalog: catalog.length, published: catalog.filter((c) => c.status === 'PUBLISHED').length, posts: posts.length },
+    repos,
+    hosting,
+    economy,
+    moderation,
+    conversations,
+    traffic,
+    staffLog,
+    totals: {
+      users: users.length, catalog: catalog.length, published: catalog.filter((c) => c.status === 'PUBLISHED').length, posts: posts.length,
+      repos: repos.length, repoBytes: repos.reduce((a, r) => a + r.bytes, 0),
+      openReports: moderation.queue.filter((r) => r.status === 'OPEN').length,
+      openThreads: conversations.filter((c) => c.status !== 'CLOSED').length,
+      points: economy.pointsInCirculation,
+      views30d: totalViews,
+    },
     overlay: overlays.get(s.id) || [],
   };
 }

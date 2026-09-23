@@ -180,10 +180,18 @@ const GLYPH = {
   import: (x) => { rounded(x, 30, 70, 68, 30, 6); x.fill(); x.lineWidth = 10; x.lineCap = 'round'; x.beginPath(); x.moveTo(64, 26); x.lineTo(64, 70); x.stroke(); x.beginPath(); x.moveTo(46, 54); x.lineTo(64, 72); x.lineTo(82, 54); x.stroke(); },
 };
 
-/** One icon as a 128×128 PNG buffer. */
-export async function renderEmoji(key, iconStyle = {}, override = {}) {
-  const st = iconStyleFor(key, iconStyle, override);
-  if (!st) return null;
+/**
+ * Paint one tile: the shape in its colour, then the glyph on top.
+ *
+ * Split out of `renderEmoji` so an icon an ADMIN added (lib/bot-custom-icons.mjs) draws through
+ * exactly this code rather than through a second copy of it — a custom glyph icon that framed
+ * or scaled differently from a built-in would be visible the moment the two sit side by side
+ * in the same Discord message.
+ * `st` is an already-resolved style: { key, icon, color, fg, shape, scale }.
+ * `fallback(ctx)` runs when the named glyph cannot be loaded; without one the tile is left
+ * with its colour and no glyph rather than with a wrong glyph.
+ */
+export async function renderGlyphTile(st, fallback = null) {
   const { createCanvas } = await import('@napi-rs/canvas');
   const c = createCanvas(128, 128); const x = c.getContext('2d');
   // The tile: rounded (Discord-like), a circle, a square, or none (the glyph alone, in the
@@ -215,11 +223,18 @@ export async function renderEmoji(key, iconStyle = {}, override = {}) {
       }
     } catch { drawn = false; }
   }
-  if (!drawn) {
+  if (!drawn && fallback) {
     x.fillStyle = fg; x.strokeStyle = fg; x.lineJoin = 'round';
-    try { GLYPH[key](x); } catch { /* a glyph that fails leaves the coloured tile */ }
+    try { fallback(x); } catch { /* a glyph that fails leaves the coloured tile */ }
   }
   return c.encode('png');
+}
+
+/** One built-in icon as a 128×128 PNG buffer. */
+export async function renderEmoji(key, iconStyle = {}, override = {}) {
+  const st = iconStyleFor(key, iconStyle, override);
+  if (!st) return null;
+  return renderGlyphTile(st, GLYPH[key] || null);
 }
 
 /** Every icon, as a zip: <key>.png ×N + a README naming each. */

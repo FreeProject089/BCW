@@ -2053,3 +2053,40 @@ body::before {
   .cst-tour-ring { transition: none; }
 }
 /* ════ END: studio previews, device frames, and the first-run tour ══════════════════════════ */
+
+/* ════ Brand mark colours (profile.jsx › Sign-in methods + Social accounts) ══════════════
+   A brand hex is a fill on ONE page colour. Passed as ink on both, three of these six are
+   unreadable — measured against the real page tokens (--bg-solid: #ffffff light, #0e0c09
+   dark), WCAG non-text contrast wants 3:1:
+
+     Steam blue  #66c0f4 →  2.02:1 on white   (fails)     9.68:1 on the dark page
+     GitHub      #181717 → 17.89:1 on white              1.09:1 on the dark page (fails)
+     Ko-fi       #ff5e5b →  3.00:1 on white  (borderline) 6.51:1 on the dark page
+     Twitch      #9146ff →  4.64:1 on white              4.21:1 on the dark page
+     Discord     #5865f2 →  4.61:1 on white              4.24:1 on the dark page
+     YouTube     #ff0000 →  4.00:1 on white              4.88:1 on the dark page
+
+   So each token carries the brand's OWN variant for the theme it has to survive rather than
+   a re-tint we invented: Steam ships a dark-navy mark for light backgrounds and the blue one
+   for dark, GitHub's mark is black-or-white monochrome by its own guidelines, Ko-fi's deeper
+   red is the one from its own dark-on-light lockup. Twitch's light-purple is its documented
+   variant for dark surfaces. Nothing here is a theme colour standing in for a brand: every
+   mark is still the brand's shape in the brand's hue.
+   Google is not listed: its mark is fixed four-colour artwork and carries its own fills. */
+:root, [data-theme="light"] {
+  --brand-discord: #5865f2;
+  --brand-youtube: #ff0000;
+  --brand-twitch:  #9146ff;
+  --brand-steam:   #1b2838;
+  --brand-github:  #181717;
+  --brand-kofi:    #d1403d;
+}
+[data-theme="dark"] {
+  --brand-discord: #5865f2;
+  --brand-youtube: #ff0000;
+  --brand-twitch:  #a970ff;
+  --brand-steam:   #66c0f4;
+  --brand-github:  #ffffff;
+  --brand-kofi:    #ff5e5b;
+}
+/* ════ END: brand mark colours ═════════════════════════════════════════════════════════ */

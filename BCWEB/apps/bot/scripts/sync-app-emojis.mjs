@@ -24,6 +24,11 @@
 //   --api <url>    overrides BCWEB_API_URL
 //   --only a,b     limit the upload to these icon keys
 //
+// The list comes from the SITE (GET /bot/emoji/keys), not from this repository, so it already
+// includes the icons an admin added in the dashboard (Admin -> Discord bot -> Icons on
+// Discord -> Icons of your own). Nothing here has to change for a new icon to be uploaded:
+// that is the point of asking the site rather than reading a list out of the source.
+//
 // Idempotent: an icon already on Discord at its current version (the name carries the version,
 // bc_<key>_<version>) is skipped, so a second run uploads nothing. Rate-limit aware: it waits
 // out Discord's 429s and its per-route bucket instead of failing half-way. Exit code 0 = done,

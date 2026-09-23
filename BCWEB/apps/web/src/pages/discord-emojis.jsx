@@ -11,11 +11,18 @@
 //   3. each icon then shows present / outdated / missing, from GET /admin/bot/emoji-status.
 // One custom emoji is a key → `<:name:id>` entry in economy.icons (the host's config draft,
 // saved with the page): an existing key is overridden, a new key becomes usable as {ic:key}.
+//
+// And an icon OF YOUR OWN, which used to need a code change. The set was `ICONS` in the API's
+// lib/bot-emoji.mjs — a frozen object in the source — so a new picture meant editing that file
+// and redeploying. `Icons of your own` below writes AdminSetting `bot.customIcons` instead: an
+// uploaded image (re-drawn server-side into the 128x128 PNG Discord takes, refused above its
+// 256 KiB) or a glyph from the families the site already draws. It joins /bot/emoji/keys, so
+// the bot uploads it on its next icon sync exactly like a built-in.
 import { useMemo, useRef, useState } from 'react';
-import { Copy, Upload, FileJson, CheckCircle2, AlertTriangle, XCircle, Plus, Trash2, Terminal, RefreshCw, Smile } from 'lucide-react';
+import { Copy, Upload, FileJson, CheckCircle2, AlertTriangle, XCircle, Plus, Trash2, Terminal, RefreshCw, Smile, ImagePlus, Shapes } from 'lucide-react';
 import { useI18n } from '../i18n.jsx';
 import { api } from '../lib/api.js';
-import { Button, Card, Input, Textarea, Field, Explain, Spinner, useToast, copyText } from '../ui/ui.jsx';
+import { Button, Card, Input, Textarea, Field, Explain, Spinner, useToast, useDialog, copyText, ColorInput } from '../ui/ui.jsx';
 import { SP, Panel, Eyebrow } from '../ui/discord-kit.jsx';
 import { useAsync, Loading } from './pages.jsx';
 import { parseEmojiPaste, parseEmojiToken, EMOJI_KEY_RE } from '../lib/app-emojis.js';
@@ -41,6 +48,132 @@ function CommandLine({ cmd }) {
 }
 
 /**
+ * Icons an admin adds - the half of the set that is NOT in the source.
+ *
+ * Two ways in, because they answer different needs: an image you have (a logo, a drawing) and
+ * a glyph the site already ships (any lucide name, or `ph:rocket`) on a tile in a colour you
+ * pick, which is exactly how the built-in icons are drawn.
+ *
+ * The file is read to a data URL here and validated for real on the server: the browser's
+ * `file.type` is what the file is NAMED, and the server sniffs what it IS. The size shown is
+ * the source cap; the server also refuses anything whose 128x128 PNG lands over Discord's own
+ * per-emoji limit, so the refusal happens here rather than mid-upload on Discord.
+ */
+function CustomIcons({ onReload }) {
+  const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
+  const { data, loading, reload } = useAsync(() => api.get('/admin/bot/custom-icons'), []);
+  const [form, setForm] = useState({ key: '', label: '', source: 'glyph', icon: 'sparkles', color: '#5865f2', image: '', filename: '' });
+  const [busy, setBusy] = useState(false);
+  const [issues, setIssues] = useState([]);
+  const fileRef = useRef(null);
+  const icons = data?.icons || [];
+  const maxKiB = data?.maxImageKiB || 2048;
+  const keyOk = EMOJI_KEY_RE.test(form.key);
+  const ready = keyOk && form.label.trim() && (form.source === 'glyph' ? !!form.icon.trim() : !!form.image);
+
+  const pickFile = (file) => {
+    if (!file) return;
+    if (file.size > maxKiB * 1024) { toast.error(t('ci.toobig', 'That image is over {n} KiB.').replace('{n}', maxKiB)); return; }
+    const reader = new FileReader();
+    reader.onload = () => setForm((f) => ({ ...f, image: String(reader.result || ''), filename: file.name, source: 'image', label: f.label || file.name.replace(/\.[a-z0-9]+$/i, '').slice(0, 60) }));
+    reader.onerror = () => toast.error(t('common.failed', 'Failed.'));
+    reader.readAsDataURL(file);
+  };
+
+  const add = async () => {
+    if (!ready) return;
+    setBusy(true); setIssues([]);
+    try {
+      const body = { key: form.key, label: form.label.trim(), source: form.source };
+      if (form.source === 'glyph') { body.icon = form.icon.trim(); body.color = form.color; }
+      else body.image = form.image;
+      await api.post('/admin/bot/custom-icons', body);
+      toast.success(t('ci.added', 'Added. The bot uploads it to Discord at its next icon sync.'));
+      setForm({ key: '', label: '', source: form.source, icon: 'sparkles', color: '#5865f2', image: '', filename: '' });
+      reload(); onReload?.();
+    } catch (x) {
+      setIssues(x?.data?.issues || []);
+      toast.error(t('ci.refused', 'The site refused that icon. The reasons are listed below.'));
+    } finally { setBusy(false); }
+  };
+
+  const remove = async (k) => {
+    const yes = await dialog.confirm({ title: t('ci.rm.t', 'Remove this icon?'), body: t('ci.rm.b', 'It leaves the set the bot uploads. The emoji already on Discord stays until the sync script runs with --prune.'), danger: true });
+    if (!yes) return;
+    // undo: the confirm above is the window. Nothing is lost either way — the emoji stays on
+    // Discord until --prune, and re-adding the icon is the same two fields that created it.
+    try { await api.del(`/admin/bot/custom-icons/${k}`); reload(); onReload?.(); toast.success(t('ci.removed', 'Removed.')); }
+    catch { toast.error(t('common.failed', 'Failed.')); }
+  };
+
+  return (
+    <Panel className={SP.stack}>
+      <Eyebrow>{t('ci.title', 'Icons of your own')}</Eyebrow>
+      <p className="text-[11.5px] text-[var(--muted)]">
+        {t('ci.d', 'An icon added here joins the set the bot puts on Discord, with no code change: it appears in the list above and is uploaded at the next sync. {n} of {m} used.')
+          .replace('{n}', icons.length).replace('{m}', data?.max ?? 50)}
+      </p>
+
+      {loading ? <Loading /> : icons.length > 0 && (
+        <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-2">
+          {icons.map((ic) => (
+            <div key={ic.key} className="flex items-start gap-2.5 rounded-lg border border-[var(--line)] px-2.5 py-2 min-w-0">
+              <img src={`/api/admin/bot/emoji-icon/${ic.key}.png?v=${ic.version}`} alt="" loading="lazy" className="w-6 h-6 rounded shrink-0" />
+              <div className="min-w-0 flex-1">
+                <div className="text-[12px] font-medium break-words">{ic.label}</div>
+                <code className="text-[11px] font-mono text-[var(--faint)] break-all">{`{ic:${ic.key}}`}</code>
+              </div>
+              <button type="button" onClick={() => remove(ic.key)} className="p-1 shrink-0 text-[var(--faint)] hover:text-error" title={t('common.remove', 'Remove')}><Trash2 size={13} /></button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex flex-wrap gap-1.5">
+        {[['glyph', Shapes, t('ci.glyph', 'A glyph on a tile')], ['image', ImagePlus, t('ci.image', 'An image of mine')]].map(([k, I, label]) => (
+          <button key={k} type="button" onClick={() => setForm({ ...form, source: k })} aria-pressed={form.source === k}
+            className={`inline-flex items-center gap-1.5 text-[11.5px] px-2 py-1 rounded-lg border transition-colors ${form.source === k ? 'b-primary tint-primary text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)] hover:border-[var(--line-strong)]'}`}><I size={12} /> {label}</button>
+        ))}
+      </div>
+
+      <div className="grid sm:grid-cols-2 gap-2">
+        <Field label={t('ci.key', 'Key')} hint={t('ci.key.h', 'Used in bot texts as {ic:key}.')}>
+          <Input value={form.key} onChange={(e) => setForm({ ...form, key: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 32) })} placeholder="party" />
+        </Field>
+        <Field label={t('ci.label', 'Name')}>
+          <Input value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value.slice(0, 60) })} placeholder={t('ci.label.ph', 'Party popper')} />
+        </Field>
+      </div>
+
+      {form.source === 'glyph' ? (
+        <div className="grid sm:grid-cols-[minmax(0,1fr)_auto] gap-2 items-end">
+          <Field label={t('ci.icon', 'Glyph')} hint={t('ci.icon.h', 'A lucide name (party-popper), or ph:rocket for Phosphor.')}>
+            <Input value={form.icon} onChange={(e) => setForm({ ...form, icon: e.target.value.slice(0, 200) })} placeholder="party-popper" className="font-mono" />
+          </Field>
+          <Field label={t('ci.color', 'Tile')}>
+            <ColorInput value={form.color} onChange={(v) => setForm({ ...form, color: v })} />
+          </Field>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2">
+          <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/gif,image/webp" className="hidden" onChange={(e) => { pickFile(e.target.files?.[0]); e.target.value = ''; }} />
+          <Button size="sm" variant="ghost" onClick={() => fileRef.current?.click()}><ImagePlus size={13} /> {t('ci.choose', 'Choose an image')}</Button>
+          {form.image
+            ? <span className="inline-flex items-center gap-2 text-[11.5px] text-[var(--muted)] min-w-0"><img src={form.image} alt="" className="w-6 h-6 rounded object-contain shrink-0" /><span className="truncate" title={form.filename}>{form.filename}</span></span>
+            : <span className="text-[11px] text-[var(--faint)]">{t('ci.limits', 'PNG, JPEG, GIF or WebP, up to {n} KiB. It is redrawn as the 128x128 PNG Discord takes.').replace('{n}', maxKiB)}</span>}
+        </div>
+      )}
+
+      {issues.length > 0 && <ul className="text-[11.5px] text-error list-disc ps-5">{issues.map((x) => <li key={x} className="break-words">{x}</li>)}</ul>}
+      {form.key && !keyOk && <p className="text-[11.5px] text-error">{t('em.one.badkey', 'A key is 2 to 32 lower-case letters, digits or _.')}</p>}
+      <div className="flex justify-end">
+        <Button size="sm" variant="primary" disabled={!ready || busy} onClick={add}>{busy ? <Spinner /> : <><Plus size={13} /> {t('ci.add', 'Add to the set')}</>}</Button>
+      </div>
+    </Panel>
+  );
+}
+
+/**
  * `icons` is economy.icons from the host's config draft ({ key: '<:name:id>' }); `onChange(key,
  * value)` writes one entry of it ('' clears it). The host saves it with the page.
  */
@@ -60,6 +193,7 @@ export function BotEmojiSyncCard({ icons = {}, onChange }) {
   const shown = list.filter((s) => (filter === 'all' ? true : filter === 'attention' ? s.status !== 'present' : s.status === filter));
   const iconKeys = new Set(list.map((s) => s.key));
   const custom = Object.entries(icons || {}).filter(([k, v]) => !iconKeys.has(k) && typeof v === 'string' && v.trim());
+  const available = data?.available || [];
 
   const importMap = async () => {
     if (!parsed?.ok) return;
@@ -170,7 +304,7 @@ export function BotEmojiSyncCard({ icons = {}, onChange }) {
                 const { I, cls } = TONE[s.status];
                 return (
                   <div key={s.key} className="flex items-start gap-2.5 rounded-lg border border-[var(--line)] px-2.5 py-2 min-w-0">
-                    <img src={`/api/admin/bot/emoji/${s.key}.png`} alt="" loading="lazy" className="w-6 h-6 rounded shrink-0" />
+                    <img src={`/api/admin/bot/emoji-icon/${s.key}.png`} alt="" loading="lazy" className="w-6 h-6 rounded shrink-0" />
                     <div className="min-w-0 flex-1">
                       <div className="text-[12px] font-medium break-words">{s.label}</div>
                       <div className="text-[11px] font-mono text-[var(--faint)] break-all">{s.status === 'present' ? s.emoji.name : s.want}</div>
@@ -183,6 +317,9 @@ export function BotEmojiSyncCard({ icons = {}, onChange }) {
             </div>
           ) : <p className="text-[11.5px] text-[var(--faint)]">{filter === 'attention' ? t('em.allgood', 'Every icon is on Discord at its current drawing.') : t('em.nothing', 'Nothing here.')}</p>)}
         </div>
+
+        {/* 4. An icon of your own, added to the set without a code change. */}
+        <CustomIcons onReload={reload} />
 
         {/* 4. One emoji of your own. */}
         <Panel className={SP.stack}>
@@ -198,6 +335,24 @@ export function BotEmojiSyncCard({ icons = {}, onChange }) {
             </Field>
             <Button size="sm" variant="primary" disabled={!keyOk || !tokenParsed} onClick={addCustom}><Plus size={13} /> {t('em.one.add', 'Add')}</Button>
           </div>
+          {/* Or pick one the bot already carries. The map the script pushed lists every
+              application emoji; these are the ones that are not ours, so an admin who
+              uploaded an emoji on Discord can claim it for a key without copying a snowflake
+              out of the developer portal by hand. */}
+          {available.length > 0 && (
+            <div className="space-y-1">
+              <div className="text-[11px] text-[var(--faint)]">{t('em.pick', 'Or pick one the bot already has:')}</div>
+              <div className="flex flex-wrap gap-1.5">
+                {available.slice(0, 40).map((e) => (
+                  <button key={e.id} type="button" onClick={() => setNk((n) => ({ key: n.key || e.name.toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 32), token: e.token }))}
+                    className={`inline-flex items-center gap-1.5 text-[11.5px] px-2 py-1 rounded-lg border transition-colors ${nk.token === e.token ? 'b-primary tint-primary text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)] hover:border-[var(--line-strong)]'}`} title={e.token}>
+                    <img src={`https://cdn.discordapp.com/emojis/${e.id}.${e.animated ? 'gif' : 'png'}?size=32`} alt="" width={14} height={14} loading="lazy" className="rounded-sm" />
+                    <span className="max-w-32 truncate" title={e.name}>{e.name}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           {nk.token.trim() && !tokenParsed && <p className="text-[11.5px] text-error">{t('em.one.badtoken', 'That is not a custom emoji. It looks like <:name:123456789012345678>.')}</p>}
           {nk.key && !keyOk && <p className="text-[11.5px] text-error">{t('em.one.badkey', 'A key is 2 to 32 lower-case letters, digits or _.')}</p>}
           {custom.length > 0 && (

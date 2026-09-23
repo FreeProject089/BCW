@@ -16,7 +16,7 @@
 //   404 demo_off              the demo ended (stopped, or its clock ran out: expiry is lazy)
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { PlayCircle, Square, Clock, Users, Package, Newspaper, TrendingUp, Bot, CreditCard, CheckCircle2, AlertTriangle, RefreshCw, Sliders, BookOpen, Boxes, FlaskConical } from 'lucide-react';
+import { PlayCircle, Square, Clock, Users, Package, Newspaper, TrendingUp, Bot, CreditCard, CheckCircle2, AlertTriangle, RefreshCw, Sliders, BookOpen, Boxes, FlaskConical, FolderGit2, HardDrive, Coins, ShieldAlert, Inbox, Globe, ScrollText } from 'lucide-react';
 import { Card, Badge, Button, Input, Field, Spinner, EmptyState, Explain, useToast } from '../ui/ui.jsx';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
@@ -37,6 +37,14 @@ function useSecondsLeft(session) {
   if (!session) return 0;
   return Math.max(0, Math.round(base.current.sec - (now - base.current.at) / 1000));
 }
+
+/** Bytes for a tile. The demo shows storage figures in the units the real panels use. */
+export const fmtBytes = (n) => {
+  const u = ['B', 'kB', 'MB', 'GB', 'TB'];
+  let v = Number(n) || 0; let i = 0;
+  while (v >= 1000 && i < u.length - 1) { v /= 1000; i += 1; }
+  return `${v < 10 && i > 0 ? v.toFixed(1) : Math.round(v)} ${u[i]}`;
+};
 
 export const fmtLeft = (sec) => {
   const h = Math.floor(sec / 3600); const m = Math.floor((sec % 3600) / 60); const s = sec % 60;
@@ -170,6 +178,127 @@ function DemoDataset({ data, onAction, busyAction }) {
           </div>
         </div>
       </div>
+
+      {/* The screens a demo is actually asked about. Each one is the same deal as the
+          catalogue above: generated from the session seed, stored nowhere, and every record
+          in it carries __bcweb_demo__ — so nothing here can be confused with a real row. */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+        <Tile icon={FolderGit2} label={t('demo.t.repos', 'Hosted repos')} value={data.totals.repos} />
+        <Tile icon={HardDrive} label={t('demo.t.storage', 'Stored')} value={fmtBytes(data.totals.repoBytes)} />
+        <Tile icon={ShieldAlert} label={t('demo.t.reports', 'Open reports')} value={data.totals.openReports} />
+        <Tile icon={Inbox} label={t('demo.t.threads', 'Open threads')} value={data.totals.openThreads} />
+      </div>
+
+      <div className="grid lg:grid-cols-2 gap-4">
+        <Card className="p-4 min-w-0">
+          <div className="text-sm font-semibold mb-2 flex items-center gap-2"><FolderGit2 size={15} className="text-[var(--accent-ink)]" /> {t('demo.repos', 'Repositories')}</div>
+          <div className="divide-y divide-[var(--line)]">
+            {data.repos.map((r) => (
+              <div key={r.id} className="py-1.5 flex items-center gap-2 text-xs min-w-0">
+                <span className="truncate flex-1 min-w-0 font-medium" title={r.name}>{r.name}</span>
+                <Badge tone="">{r.kind}</Badge>
+                <Badge tone={r.plan === 'free' ? '' : 'primary'}>{r.plan}</Badge>
+                <span className="tabular-nums text-[var(--muted)] w-16 text-end shrink-0">{fmtBytes(r.bytes)}</span>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        <Card className="p-4 min-w-0">
+          <div className="text-sm font-semibold mb-2 flex items-center gap-2"><HardDrive size={15} className="text-[var(--accent-ink)]" /> {t('demo.pools', 'Storage pools')}</div>
+          <div className="space-y-2">
+            {data.hosting.pools.map((pool) => {
+              const pct = Math.min(100, Math.round((pool.usedBytes / pool.capacityBytes) * 100));
+              return (
+                <div key={pool.id} className="min-w-0">
+                  <div className="flex items-center gap-2 text-xs mb-1">
+                    <span className="truncate flex-1 min-w-0 font-medium" title={pool.name}>{pool.name}</span>
+                    <span className="tabular-nums text-[var(--muted)] shrink-0">{fmtBytes(pool.usedBytes)} / {fmtBytes(pool.capacityBytes)}</span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full rounded-full bg-gradient-to-r from-brand to-brand-2" style={{ width: `${pct}%` }} /></div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="text-[11px] text-[var(--faint)] mt-2">{t('demo.hosting.n', '{s} subscriptions · {r} renew this month. No payment API is called.').replace('{s}', String(data.hosting.activeSubscriptions)).replace('{r}', String(data.hosting.renewalsThisMonth))}</div>
+        </Card>
+
+        <Card className="p-4 min-w-0">
+          <div className="text-sm font-semibold mb-2 flex items-center gap-2 flex-wrap"><Coins size={15} className="text-[var(--accent-ink)]" /> {t('demo.economy', 'Economy')}
+            <span className="text-[11px] font-normal text-[var(--faint)]">{data.economy.season.name} · {t('demo.points', '{n} points in circulation').replace('{n}', data.economy.pointsInCirculation.toLocaleString())}</span></div>
+          <div className="divide-y divide-[var(--line)]">
+            {data.economy.leaderboard.map((r) => (
+              <div key={r.userId} className="py-1 flex items-center gap-2 text-xs min-w-0">
+                <span className="tabular-nums text-[var(--faint)] w-5 shrink-0">{r.place}</span>
+                <span className="truncate flex-1 min-w-0" title={r.displayName}>{r.displayName}</span>
+                <span className="text-[var(--faint)] shrink-0">{t('demo.lvl', 'lvl {n}').replace('{n}', String(r.level))}</span>
+                <span className="tabular-nums text-[var(--muted)] w-16 text-end shrink-0">{r.points.toLocaleString()}</span>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        <Card className="p-4 min-w-0">
+          <div className="text-sm font-semibold mb-2 flex items-center gap-2"><ShieldAlert size={15} className="text-[var(--accent-ink)]" /> {t('demo.mod', 'Moderation queue')}</div>
+          <div className="divide-y divide-[var(--line)]">
+            {data.moderation.queue.map((r) => (
+              <div key={r.id} className="py-1.5 flex items-center gap-2 text-xs min-w-0">
+                <Badge tone="">{r.targetType}</Badge>
+                <span className="truncate flex-1 min-w-0" title={r.targetLabel}>{r.reason}</span>
+                <Badge tone={r.status === 'OPEN' ? 'amber' : r.status === 'REVIEWING' ? 'primary' : r.status === 'RESOLVED' ? 'green' : ''}>{r.status}</Badge>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        <Card className="p-4 min-w-0">
+          <div className="text-sm font-semibold mb-2 flex items-center gap-2"><Inbox size={15} className="text-[var(--accent-ink)]" /> {t('demo.inbox', 'Contact inbox')}</div>
+          <div className="divide-y divide-[var(--line)]">
+            {data.conversations.map((c) => (
+              <div key={c.id} className="py-1.5 flex items-center gap-2 text-xs min-w-0">
+                {c.unread && <span className="w-1.5 h-1.5 rounded-full bg-[var(--primary)] shrink-0" aria-hidden="true" />}
+                <span className="truncate flex-1 min-w-0 font-medium" title={c.subject}>{c.subject}</span>
+                <span className="truncate text-[var(--muted)] max-w-24 shrink-0" title={c.withName}>{c.withName}</span>
+                <Badge tone={c.status === 'OPEN' ? 'amber' : c.status === 'WAITING' ? 'primary' : ''}>{c.status}</Badge>
+              </div>
+            ))}
+          </div>
+          <div className="text-[11px] text-[var(--faint)] mt-2">{t('demo.nomail', 'Generated threads. No address here can receive mail and none is sent.')}</div>
+        </Card>
+
+        <Card className="p-4 min-w-0">
+          <div className="text-sm font-semibold mb-2 flex items-center gap-2"><Globe size={15} className="text-[var(--accent-ink)]" /> {t('demo.where', 'Where the traffic comes from')}</div>
+          <div className="grid sm:grid-cols-2 gap-x-4">
+            {[['demo.ref', 'Referrers', data.traffic.referrers], ['demo.geo', 'Countries', data.traffic.countries]].map(([k, en, rows]) => (
+              <div key={k} className="min-w-0">
+                <div className="text-[11px] text-[var(--faint)] uppercase tracking-wider mb-1">{t(k, en)}</div>
+                {rows.slice(0, 6).map((r) => (
+                  <div key={r.name} className="py-0.5 flex items-center gap-2 text-xs min-w-0">
+                    <span className="truncate flex-1 min-w-0" title={r.name}>{r.name}</span>
+                    <span className="tabular-nums text-[var(--muted)] shrink-0">{r.share}%</span>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+          <div className="text-[11px] text-[var(--faint)] mt-2 tabular-nums">
+            {t('demo.vitals', 'LCP {l} ms · INP {i} ms · CLS {c}').replace('{l}', String(data.traffic.vitals.lcpMs)).replace('{i}', String(data.traffic.vitals.inpMs)).replace('{c}', String(data.traffic.vitals.cls))}
+          </div>
+        </Card>
+      </div>
+
+      <Card className="p-4">
+        <div className="text-sm font-semibold mb-2 flex items-center gap-2"><ScrollText size={15} className="text-[var(--accent-ink)]" /> {t('demo.staff', 'Staff log')}</div>
+        <div className="divide-y divide-[var(--line)]">
+          {data.staffLog.map((e) => (
+            <div key={e.id} className="py-1 flex items-center gap-2 text-xs min-w-0">
+              <span className="text-[var(--faint)] tabular-nums shrink-0">{new Date(e.at).toLocaleString()}</span>
+              <span className="font-medium shrink-0">{e.action}</span>
+              <span className="truncate text-[var(--muted)] min-w-0" title={e.actorName}>{e.actorName}</span>
+            </div>
+          ))}
+        </div>
+      </Card>
 
       {data.overlay?.length > 0 && (
         <Card className="p-4">
@@ -313,6 +442,19 @@ export function AdminDemo() {
           {lastStop.audit?.clean ? <CheckCircle2 size={14} className="text-success" /> : <AlertTriangle size={14} className="text-error" />}
           <span className="font-medium">{lastStop.audit?.clean ? t('demo.clean', 'Clean: nothing demo remains.') : t('demo.dirty', 'Not clean: demo traces remain.')}</span>
           <span className="text-[var(--muted)]">{t('demo.removed', '{s} setting(s) and {o} in-memory list(s) removed').replace('{s}', String(lastStop.removed?.settings ?? 0)).replace('{o}', String(lastStop.removed?.overlays ?? 0))}</span>
+          {/* Where the check LOOKED, always — a clean result that does not say what it
+              examined is indistinguishable from a check that examined nothing. */}
+          <span className="text-[var(--faint)] w-full">
+            {t('demo.checked', 'Checked:')} {(lastStop.audit?.checked || []).map((c) => `${c.where} (${c.how})`).join(' · ')}
+          </span>
+          {/* And, when it is not clean, WHAT is left and how to remove it. */}
+          {(lastStop.audit?.leftovers || []).length > 0 && (
+            <ul className="w-full list-disc ps-5 text-error">
+              {lastStop.audit.leftovers.map((l) => (
+                <li key={`${l.where}-${l.what}`} className="break-words">{l.where} — <code className="font-mono">{l.what}</code> · {t('demo.removedby', 'removed by {h}').replace('{h}', l.removedBy)}</li>
+              ))}
+            </ul>
+          )}
         </Card>
       )}
 
