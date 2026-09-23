@@ -1,0 +1,37 @@
+# ── A (sub-)domain → a program running on the HOST, on a port it already uses ──────────────
+#
+# Use this when the other project is NOT a container of this stack: something started with
+# `npm start`, a systemd service, or another project's own `docker compose` that publishes a
+# port on the host (e.g. `ports: ["8081:3000"]` → port 8081 here).
+#
+# DNS    an `A` record  __DOMAIN__ → this server's public IPv4 (and `AAAA` for IPv6).
+#        Caddy obtains and renews the HTTPS certificate itself once the name resolves here.
+#
+# THE PROGRAM MUST NOT LISTEN ON 80 OR 443. Caddy owns those two ports on this machine — only
+# one process can hold a port — and forwards to the program on its own port instead.
+#
+# `host.docker.internal` is the host machine as seen from inside the caddy container (compose
+# maps it with `extra_hosts: host.docker.internal:host-gateway`). On Linux it is the Docker
+# bridge address, NOT 127.0.0.1, so a program listening ONLY on 127.0.0.1 is unreachable from
+# here and every request is a 502. Make it listen on 0.0.0.0 (and keep the port closed in the
+# firewall) or on the bridge address (usually 172.17.0.1). guides/run/CADDY_SITES_EN.md has
+# the firewall rule when ufw is on.
+#
+#! Template only — lines starting with "#!" are dropped from the file site.mjs writes.
+#! Placeholders: __NAME__ __DOMAIN__ __ADDRESS__ __PORT__. The CLI fills them:
+#!   node infra/caddy/site.mjs add host --domain __DOMAIN__ --port __PORT__
+#! By hand: copy this file to sites.d/<name>.caddy, replace every placeholder, then run
+#!   node infra/caddy/site.mjs apply
+
+__ADDRESS__ {
+	encode gzip zstd
+	header -Server
+
+	reverse_proxy host.docker.internal:__PORT__ {
+		# BetterCommunity's session cookies are scoped to the parent domain (COOKIE_DOMAIN) so
+		# the telemetry sub-domain can read them — which means EVERY sub-domain receives them,
+		# this one included. The program behind this block has no use for them and no business
+		# holding them: they are removed before the request leaves Caddy.
+		header_up Cookie "(^|;\s*)(bcw_session|bcw_elevated|tele_session)=[^;]*" ""
+	}
+}

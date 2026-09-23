@@ -143,15 +143,23 @@
 	# directory listing of a hosted repo and means something different from the file beside
 	# it; the API answers both spellings itself (ignoreTrailingSlash in server.mjs), which is
 	# the right fix for a programmatic client that should not have to follow a redirect.
+	#
+	# An app mounted on a path by a drop-in in paths.d/ is exempt too, for the same reason and
+	# a worse failure: its page lives at `/myapp/`, and stripping that slash sends the visitor
+	# to `/myapp`, which the drop-in redirects back to `/myapp/` — a redirect loop. Each
+	# paths.d file sets the `bc_mount` variable on its own prefix (`vars` runs before `redir`),
+	# so this list never has to be edited to mount something.
 	@tslash_q {
 		path_regexp tslash ^(/.+)/$
 		not path /api/* /hosting/* /og/*
+		not vars {http.vars.bc_mount} yes
 		expression {query} != ""
 	}
 	redir @tslash_q {re.tslash.1}?{query} 308
 	@tslash {
 		path_regexp tslash2 ^(/.+)/$
 		not path /api/* /hosting/* /og/*
+		not vars {http.vars.bc_mount} yes
 	}
 	redir @tslash {re.tslash2.1} 308
 
@@ -179,6 +187,14 @@
 		rewrite * /og?u={uri}
 		import api_upstream
 	}
+
+	# -- Other apps mounted on a PATH of this domain (infra/caddy/paths.d/*.caddy) --
+	# One file per app, written by `node infra/caddy/site.mjs add path …` or by hand from
+	# infra/caddy/templates/path.caddy. This line is the only thing in this block that ever
+	# has to know about them. An app here shares this ORIGIN — cookies, CSP, the lot — so a
+	# sub-domain (sites.d/, below) is the right home for anything not trusted like this site.
+	# No file yet = a warning in the log and nothing else; Caddy does not fail on an empty glob.
+	import paths.d/*.caddy
 
 	# API
 	# The certificate-issuance question is asked by CADDY, over the internal network, at
@@ -416,3 +432,20 @@
 	# API's rewrite decides what that means for a repo versus a catalogue.
 	import api_upstream
 }
+
+# ── Other sites and apps on this server (infra/caddy/sites.d/*.caddy) ─────────────────────
+#
+# Everything that is not BetterCommunity lives in its own file in sites.d/: one sub-domain or
+# domain per file, each a complete site block. Adding one never touches a line above.
+#
+#   node infra/caddy/site.mjs add host --domain shop.example.com --port 8081
+#
+# writes the file from infra/caddy/templates/, validates the WHOLE config, and only then
+# reloads Caddy (guides/run/CADDY_SITES_EN.md). Caddy obtains each name's certificate itself,
+# the same way it does for the site above: the only manual step is the DNS record.
+#
+# Matching is by Host, and the most specific address wins, so a name here is served by its
+# own block even while the customer-domain catch-all above is switched on.
+#
+# No file yet = a warning in the log and nothing else; Caddy does not fail on an empty glob.
+import sites.d/*.caddy

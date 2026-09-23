@@ -1,0 +1,29 @@
+# ── A (sub-)domain → a folder of static files (a landing page, docs, a built SPA) ─────────
+#
+# DNS    an `A` record  __DOMAIN__ → this server's public IPv4 (and `AAAA` for IPv6).
+#        Caddy obtains and renews the HTTPS certificate itself once the name resolves here.
+#
+# FILES  put them in  infra/caddy/static/__DIR__/  on the server (index.html at its top).
+#        Caddy sees that folder as /etc/caddy/static/__DIR__ through the `../caddy:/etc/caddy`
+#        mount; nothing else has to be copied or rebuilt, and a changed file is served at once
+#        with no reload.
+#
+# __SPA__ is either nothing or `try_files {path} /index.html` — the second makes every
+# unknown path answer index.html, which a single-page app needs for its own routes.
+#
+#! Template only — lines starting with "#!" are dropped from the file site.mjs writes.
+#! Placeholders: __NAME__ __DOMAIN__ __ADDRESS__ __DIR__ __SPA__. The CLI fills them:
+#!   node infra/caddy/site.mjs add static --domain __DOMAIN__ --dir __DIR__ [--spa]
+#! By hand: copy this file to sites.d/<name>.caddy, replace every placeholder, then run
+#!   node infra/caddy/site.mjs apply
+
+__ADDRESS__ {
+	encode gzip zstd
+	header {
+		X-Content-Type-Options nosniff
+		-Server
+	}
+	root * /etc/caddy/static/__DIR__
+	__SPA__
+	file_server
+}

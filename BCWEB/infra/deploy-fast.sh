@@ -128,8 +128,13 @@ SERVICES="$(echo "$SERVICES" | xargs || true)"
 if [ -z "$SERVICES" ]; then
   say "No service sources changed"
   echo "  Changed files were outside apps/ and packages/ — docs, guides, or infra config."
-  echo "  Nothing to rebuild. If you changed infra/caddy/Caddyfile, apply it with:"
-  echo "    docker compose -f $COMPOSE up -d caddy"
+  # NOT `docker compose up -d caddy`: compose recreates a container when its CONFIG changes,
+  # and a mounted file's content is not config — that command answers "Running" and Caddy
+  # keeps the old file. A reload re-reads it; site.mjs validates first and keeps a backup.
+  echo "  Nothing to rebuild. If you changed infra/caddy/, validate and reload it with:"
+  echo "    node $SCRIPT_DIR/caddy/site.mjs apply"
+  echo "  (guides/run/CADDY_SITES_EN.md — before the compose change it describes:"
+  echo "    docker compose -f $COMPOSE exec caddy caddy reload --config /etc/caddy/Caddyfile)"
   exit 0
 fi
 

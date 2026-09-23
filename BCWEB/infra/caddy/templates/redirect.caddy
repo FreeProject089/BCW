@@ -1,0 +1,20 @@
+# ── A (sub-)domain that only redirects (www → the bare domain, an old name → the new one) ──
+#
+# DNS    an `A` record  __DOMAIN__ → this server's public IPv4 (and `AAAA` for IPv6).
+#        The redirect is served over HTTPS too, so Caddy needs the name to get its certificate.
+#
+# Without this block a `www.` record pointing here answers an EMPTY 200 — no error, a blank
+# page — because no site block claims that Host.
+#
+# 308 keeps the method and the body, and the path and query are carried over, so
+# `www.example.com/blog?x=1` lands on `__TARGET__/blog?x=1`.
+#
+#! Template only — lines starting with "#!" are dropped from the file site.mjs writes.
+#! Placeholders: __NAME__ __DOMAIN__ __ADDRESS__ __TARGET__. The CLI fills them:
+#!   node infra/caddy/site.mjs add redirect --domain __DOMAIN__ --to __TARGET__
+#! By hand: copy this file to sites.d/<name>.caddy, replace every placeholder, then run
+#!   node infra/caddy/site.mjs apply
+
+__ADDRESS__ {
+	redir __TARGET__{uri} 308
+}

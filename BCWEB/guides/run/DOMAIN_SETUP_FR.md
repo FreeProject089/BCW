@@ -32,7 +32,10 @@ Chez votre fournisseur DNS, créez :
 
 **Ne créez pas `www.`** sans ajouter d'abord le bloc Caddy qui le redirige : le `Caddyfile`
 n'a de bloc que pour le site et la télémétrie, donc `www.` répondrait un 200 vide — pas une
-erreur, une page blanche.
+erreur, une page blanche. Ce bloc tient en une commande :
+`node infra/caddy/site.mjs add redirect --domain www.example.com --to https://example.com`
+— voir [D'autres sites sur le même serveur](CADDY_SITES_FR.md), qui est aussi la façon de
+donner à n'importe quel autre projet un (sous-)domaine en HTTPS sur ce serveur.
 
 **Si vous avez un enregistrement `CAA`**, il doit autoriser `letsencrypt.org`, sinon Caddy ne
 peut pas obtenir de certificat et échouera en boucle :

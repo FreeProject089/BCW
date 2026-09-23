@@ -181,6 +181,13 @@ jobs:
         run: |
           docker run --rm -v "$PWD/BCWEB/infra/caddy:/w:ro" -w /w caddy:2-alpine \
             caddy validate --config Caddyfile --adapter caddyfile
+      # The extra-sites machinery (infra/caddy/site.mjs): every template rendered and put
+      # through the same Caddy, the generated flat file proven to adapt to the SAME JSON as
+      # base + imports, entrypoint.sh's BetterCommunity-only fallback valid, and a broken or
+      # duplicate drop-in proven REFUSED. A template that stops validating would otherwise be
+      # found by the owner, on the server, when `site.mjs add` refuses his new site.
+      - name: extra-site templates + generated Caddyfile (site.mjs selftest)
+        run: node BCWEB/infra/caddy/site.mjs selftest
 
   secret-scan:
     name: Secret scan

@@ -32,7 +32,10 @@ At your DNS provider, create:
 
 **Do not create `www.`** without first adding the Caddy block that redirects it: the
 `Caddyfile` has a block for the site and one for telemetry only, so `www.` would answer an
-empty 200 — not an error, a blank page.
+empty 200 — not an error, a blank page. That block is one command:
+`node infra/caddy/site.mjs add redirect --domain www.example.com --to https://example.com`
+— see [Other sites on the same server](CADDY_SITES_EN.md), which is also how any other
+project gets a (sub-)domain on this server with HTTPS.
 
 **If you have a `CAA` record**, it must allow `letsencrypt.org`, or Caddy cannot get a
 certificate and will fail in a loop:

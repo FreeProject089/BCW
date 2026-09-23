@@ -25,6 +25,7 @@ guides/
 | **Run the Discord bot** (token, intents, every feature, every command, storage, operations) | Discord bot | [EN](run/DISCORD_BOT_EN.md) | [FR](run/DISCORD_BOT_FR.md) |
 | **Know which seed puts what in the database** | Seeds | [EN](run/SEEDS_EN.md) | [FR](run/SEEDS_FR.md) |
 | **Point a domain at it / fix HTTPS** | Domain & HTTPS | [EN](run/DOMAIN_SETUP_EN.md) | [FR](run/DOMAIN_SETUP_FR.md) |
+| **Put another site or app on the same server/domain** (sub-domain, host port, path, static, `www` redirect — HTTPS included) | Other sites | [EN](run/CADDY_SITES_EN.md) | [FR](run/CADDY_SITES_FR.md) |
 | **Understand the Docker setup** (services, volumes, updating prod) | Docker | [EN](run/DOCKER_EN.md) | [FR](run/DOCKER_FR.md) |
 | **Not lose data** (backup, restore, off-site, cron) | Backup & restore | [EN](run/BACKUP_EN.md) | [FR](run/BACKUP_FR.md) |
 | **Decide how many machines** (1 VPS, DB on its own, several web hosts) | Topology | [EN](run/TOPOLOGY_EN.md) | [FR](run/TOPOLOGY_FR.md) |

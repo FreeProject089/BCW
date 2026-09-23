@@ -1,0 +1,38 @@
+# ── A PATH of the BetterCommunity domain → another app (e.g. example.com__PATH__/) ──────────
+#
+# This file is imported INSIDE the BetterCommunity site block, so it holds directives, not a
+# site block.
+#
+# DNS    nothing: the name is the site's own, and so is its certificate.
+#
+# READ BEFORE CHOOSING THIS OVER A SUB-DOMAIN. An app on a path shares the site's ORIGIN:
+#   - its JavaScript runs with the same origin as BetterCommunity, so it can call /api with
+#     the visitor's session. A flaw in that app is a flaw in BetterCommunity.
+#   - it inherits the site's headers, the Content-Security-Policy included: an app that loads
+#     scripts from another host will be refused by the browser.
+#   - the app must be built for a base path (every link and asset under __PATH__/). An app
+#     that links to `/style.css` fetches BetterCommunity's `/style.css` instead.
+# A sub-domain (templates/service.caddy or host.caddy) has none of these problems.
+#
+# How it works: `vars` marks the prefix so the site's trailing-slash rule leaves it alone
+# (otherwise `__PATH__/` → `__PATH__` → `__PATH__/` loops), the bare `__PATH__` is sent to
+# `__PATH__/`, and `handle_path` strips the prefix, so the app sees `/` for `__PATH__/`.
+#
+#! Template only — lines starting with "#!" are dropped from the file site.mjs writes.
+#! Placeholders: __NAME__ __PATH__ __UPSTREAM__. The CLI fills them:
+#!   node infra/caddy/site.mjs add path --path __PATH__ --to __UPSTREAM__
+#! By hand: copy this file to paths.d/<name>.caddy, replace every placeholder, then run
+#!   node infra/caddy/site.mjs apply
+
+@bc_mount___NAME__ path __PATH__ __PATH__/*
+vars @bc_mount___NAME__ bc_mount yes
+redir __PATH__ __PATH__/ 308
+handle_path __PATH__/* {
+	reverse_proxy __UPSTREAM__ {
+		# The app learns where it is mounted from this header, if it reads it.
+		header_up X-Forwarded-Prefix __PATH__
+		# Same origin, so the browser sends the session cookie here too. The app has no use
+		# for it; it is removed before the request leaves Caddy.
+		header_up Cookie "(^|;\s*)(bcw_session|bcw_elevated|tele_session)=[^;]*" ""
+	}
+}

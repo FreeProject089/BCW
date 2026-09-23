@@ -144,7 +144,16 @@ run dc up -d --no-deps bot telemetry provisioner
 
 # Caddy: reload, never restart. `caddy reload` applies a changed Caddyfile with no dropped
 # connections; when nothing changed it is a no-op.
+#
+# Reload the file Caddy RUNS: live/Caddyfile once `infra/caddy/site.mjs apply` has installed
+# one (entrypoint.sh starts on it), the base otherwise. Reloading the base over a live file
+# would quietly swap the reviewed config for base + whatever sits in sites.d/ right now.
+# A pull that changed the base itself reaches a live file only through `site.mjs apply`,
+# which shows the diff first — said below rather than done here, because it asks a question.
 say "caddy reload (graceful)"
-run dc exec -T caddy caddy reload --config /etc/caddy/Caddyfile 2>/dev/null || say "  caddy reload skipped (container busy or config unchanged)"
+run dc exec -T caddy sh -c 'c=/etc/caddy/live/Caddyfile; [ -f "$c" ] || c=/etc/caddy/Caddyfile; caddy reload --config "$c" --adapter caddyfile' 2>/dev/null || say "  caddy reload skipped (container busy or config unchanged)"
+if [ -f "$SCRIPT_DIR/caddy/live/Caddyfile" ]; then
+  say "  extra sites: if this pull changed infra/caddy/, run  node infra/caddy/site.mjs diff  then  apply"
+fi
 
 say "done — at no point did the site have zero serving containers"

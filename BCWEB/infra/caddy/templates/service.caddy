@@ -1,0 +1,33 @@
+# ── A (sub-)domain → a container Caddy can reach by NAME ───────────────────────────────────
+#
+# Use this when the other project runs as a container on the same Docker network as Caddy:
+#   - a service you added to infra/compose/docker-compose.yml, or
+#   - a container of ANOTHER compose project that joined this stack's network, `bcweb_default`
+#     (guides/run/CADDY_SITES_EN.md shows the four lines that other project needs).
+# The container then needs no published port at all — nothing on the host listens for it,
+# so nothing can clash with 80/443 or with any other program.
+#
+# DNS    an `A` record  __DOMAIN__ → this server's public IPv4 (and `AAAA` for IPv6).
+#        Caddy obtains and renews the HTTPS certificate itself once the name resolves here.
+#
+# __UPSTREAM__ is `<service-or-container-name>:<port INSIDE the container>` — the port the
+# program listens on, not a port mapping.
+#
+#! Template only — lines starting with "#!" are dropped from the file site.mjs writes.
+#! Placeholders: __NAME__ __DOMAIN__ __ADDRESS__ __UPSTREAM__. The CLI fills them:
+#!   node infra/caddy/site.mjs add service --domain __DOMAIN__ --to __UPSTREAM__
+#! By hand: copy this file to sites.d/<name>.caddy, replace every placeholder, then run
+#!   node infra/caddy/site.mjs apply
+
+__ADDRESS__ {
+	encode gzip zstd
+	header -Server
+
+	reverse_proxy __UPSTREAM__ {
+		# BetterCommunity's session cookies are scoped to the parent domain (COOKIE_DOMAIN) so
+		# the telemetry sub-domain can read them — which means EVERY sub-domain receives them,
+		# this one included. The app behind this block has no use for them and no business
+		# holding them: they are removed before the request leaves Caddy.
+		header_up Cookie "(^|;\s*)(bcw_session|bcw_elevated|tele_session)=[^;]*" ""
+	}
+}

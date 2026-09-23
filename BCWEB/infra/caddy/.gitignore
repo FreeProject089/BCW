@@ -1,0 +1,14 @@
+# What lives on ONE server and is not part of the platform: the extra sites the owner added,
+# the Caddyfile generated from them, its backups, and the files a static site serves.
+# The folders themselves are kept (.gitkeep) so the base Caddyfile's imports always resolve to
+# a real directory. To version your own drop-ins, delete the two `*.d/*` lines.
+sites.d/*
+!sites.d/.gitkeep
+paths.d/*
+!paths.d/.gitkeep
+static/*
+!static/.gitkeep
+live/
+backups/
+generated/
+.selftest-*/
