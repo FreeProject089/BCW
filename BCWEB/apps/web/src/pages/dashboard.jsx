@@ -367,18 +367,12 @@ function NotificationsPanel() {
   const list = items || [];
   const unread = list.filter((n) => !n.readAt).length;
   const stamp = () => new Date().toISOString();
-  // Deferred + undoable: the rows go read immediately (and vanish from the unread filter), but
-  // the write only fires when the undo window closes — so "Undo" is a plain restore, nothing to
-  // reverse server-side. The bell/centre update live when the commit broadcasts.
-  const markAll = () => {
-    const prev = items;
+  // Immediate, no undo toast: the same as the notification centre (pages/notifications.jsx).
+  // Marking read is not destructive, and a toast after every "mark all read" was the kind of
+  // noise the centre was simplified to remove (B8). The bell and centre hear the broadcast.
+  const markAll = async () => {
     setItems((s) => (s || []).map((x) => ({ ...x, readAt: x.readAt || stamp() })));
-    toast.action({
-      tone: 'success', cancelLabel: t('common.undo', 'Undo'),
-      msg: t('dash.notif.markedAll', 'Marked all read.'),
-      onCommit: async () => { try { await markAllNotifsRead(); } catch { reload(); } },
-      onCancel: () => setItems(prev),
-    });
+    try { await markAllNotifsRead(); } catch { reload(); }
   };
   // Marking read AND going where it points. Read-only rows made every notification a dead end:
   // the one telling you an ownership transfer is waiting could not take you to it.
