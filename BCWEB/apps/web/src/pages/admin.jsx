@@ -19,6 +19,7 @@ import { PointsHistoryTable } from '../ui/points-history.jsx';
 import { AppLogo } from '../ui/brand.jsx';
 import Markdown, { IconGlyph, ShowcaseIcon } from '../ui/md.jsx';
 import IconPicker from '../editor/icon-picker.jsx';
+import ProjectCatalogsPanel from './admin-project-catalogs.jsx'; // G4 (agent-catalog-G)
 import ProjectConfigEditor from '../editor/project-config-editor.jsx';
 import { createRoot } from 'react-dom/client';
 import { KofiIcon, DiscordIcon } from '../ui/brand.jsx';
@@ -9885,6 +9886,10 @@ function AdminProjects() {
         <div className="flex items-center justify-between gap-2 px-4 py-2.5 code-chrome flex-wrap">
           <div className="flex items-center gap-2 text-sm font-medium text-[var(--text)]"><M.icon size={15} className="text-orange-400" /> {M.name}</div>
           <div className="flex items-center gap-2">
+      {/* G4 (agent-catalog-G): this project's own catalogues. Every editor of the project, not
+          only managers: the server asks canEditProject / canEditShowcase, and the panel hides
+          itself on a 403. */}
+      <ProjectCatalogsPanel scope={isShowcase ? 'showcase' : 'project'} refKey={isShowcase ? active.slice(3) : active} />
             {/* Visual form is the default; raw JSON stays as an advanced escape hatch. */}
             <div className="inline-flex rounded-lg border border-[var(--line)] p-0.5 text-xs">
               {[['form', t('su.visual', 'Visual')], ['json', 'JSON']].map(([m, label]) => (

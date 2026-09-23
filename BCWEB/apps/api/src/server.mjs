@@ -15,6 +15,7 @@ import { recordServerError, redactPath } from './lib/errorlog.mjs';
 import authRoutes from './routes/auth.mjs';
 import catalogRoutes from './routes/catalog.mjs';
 import communityCatalogRoutes from './routes/catalogs.mjs';
+import projectCatalogRoutes from './routes/project-catalogs.mjs';
 import miscRoutes from './routes/misc.mjs';
 import contentBackupRoutes from './routes/content-backup.mjs';
 import historyRoutes from './routes/history.mjs';
@@ -380,6 +381,7 @@ registerApiUsageHook(app);
 await app.register(authRoutes);
 await app.register(catalogRoutes);
 await app.register(communityCatalogRoutes);
+await app.register(projectCatalogRoutes); // G4: a project's own catalogues (lib/project-catalogs.mjs)
 await app.register(miscRoutes);
 await app.register(contentBackupRoutes);
 await app.register(historyRoutes);

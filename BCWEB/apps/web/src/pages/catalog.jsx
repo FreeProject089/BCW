@@ -8,16 +8,49 @@ import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { markCatalogSeen } from '../lib/prefs.js';
 import FeedLink, { FeedMenu } from '../ui/feed-link.jsx';
-import { useAsync, Loading, KIND_ICON, kindLabel, ALL_KINDS } from './pages.jsx';
+import { useAsync, Loading, KIND_ICON, kindLabel, ALL_KINDS, kindsFor, CATALOG_PROJECTS } from './pages.jsx';
+import { ProjectPicker, ProjectLogo, TagFilter, projectId, tagText } from '../ui/catalog-pickers.jsx';
+import { IconGlyph } from '../ui/md.jsx';
 
 /* ─────────────────────────  Catalog  ───────────────────────── */
 const SORTS = [['recent', 'Newest'], ['popular', 'Most popular'], ['month', 'Popular this month'], ['views', 'Most viewed']];
+
+/**
+ * The picker's list: what /project-catalogs reports, plus the established publishers
+ * (CATALOG_PROJECTS) even before they have a published item, so BMM and BSM never vanish from
+ * the picker on an empty database. Their kinds are the union of what pages.jsx knows they
+ * publish and what the server saw published or declared.
+ */
+function pickerProjects(data) {
+  const list = (data?.projects || []).map((pr) => (pr.official ? { ...pr, officialKinds: [...new Set([...kindsFor(pr.ref), ...(pr.officialKinds || [])])] } : pr));
+  for (const k of [...CATALOG_PROJECTS].reverse()) {
+    if (!list.some((pr) => pr.official && pr.ref === k)) list.unshift({ scope: 'project', ref: k, official: true, name: k.toUpperCase(), icon: null, officialKinds: kindsFor(k), items: 0, catalogs: [] });
+  }
+  return list;
+}
+
 export function Catalog() {
   const toast = useToast(); const { t } = useI18n();
   const [sp, setSp] = useSearchParams();
   const project = sp.get('project') || '', kind = sp.get('kind') || '', q = sp.get('q') || '', sort = sp.get('sort') || 'recent';
-  const { data, loading } = useAsync(() => api.get(`/catalog?${new URLSearchParams({ project, kind, q, sort })}`), [project, kind, q, sort]);
+  const showcase = sp.get('showcase') || '', tag = sp.get('tag') || '';
+  // An other project has no official items: its page is its own catalogues, not the grid.
+  const { data, loading } = useAsync(() => (showcase ? Promise.resolve({ items: [] }) : api.get(`/catalog?${new URLSearchParams({ project, kind, q, sort, tag })}`)), [project, kind, q, sort, tag, showcase]);
+  const { data: pcs } = useAsync(() => api.get('/project-catalogs').catch(() => ({ projects: [], builtinTags: [] })), []);
+  const projects = pickerProjects(pcs);
+  const current = showcase ? projects.find((pr) => !pr.official && pr.ref === showcase) || null : project ? projects.find((pr) => pr.official && pr.ref === project) || null : null;
+  // The tags a filter offers: the selected project's vocabulary (its own on top of the
+  // built-in set), else the built-in set.
+  const scopeRef = showcase ? `showcase/${encodeURIComponent(showcase)}` : project ? `project/${encodeURIComponent(project)}` : '';
+  const { data: pdet } = useAsync(() => (scopeRef ? api.get(`/project-catalogs/${scopeRef}`).catch(() => null) : Promise.resolve(null)), [scopeRef]);
+  const tags = pdet?.tags || pcs?.builtinTags || [];
   const set = (k, v) => { const n = new URLSearchParams(sp); v ? n.set(k, v) : n.delete(k); setSp(n); };
+  const pickProject = (pr) => {
+    const n = new URLSearchParams(sp);
+    for (const k of ['project', 'showcase', 'kind', 'tag']) n.delete(k);
+    if (pr?.official) n.set('project', pr.ref); else if (pr) n.set('showcase', pr.ref);
+    setSp(n);
+  };
   // Reaching this page is the whole of "browse". The home page's second step reads it back.
   useEffect(markCatalogSeen, []);
   const [sel, setSel] = useState(new Set());
@@ -36,43 +69,49 @@ export function Catalog() {
   // filtered list is a link to something else. `project` and `kind` default the way the
   // endpoint defaults, so an empty filter still produces a URL that works.
   const feedPath = `/api/catalog.json?${new URLSearchParams({ project: project || 'bmm', kind: (kind || 'APP').toUpperCase() })}`;
+  const kinds = current?.official ? (current.officialKinds?.length ? current.officialKinds : kindsFor(current.ref)) : ALL_KINDS;
+  const extra = (pdet?.catalogs || current?.catalogs || []).filter((c) => !(c.format === 'bmm' && c.source === 'official'));
   return (
     <div>
-      <PageHeader icon={LayoutGrid} title={`${t('cat.title', 'Catalog')}${project ? ` · ${project.toUpperCase()}` : ''}`} subtitle={t('cat.sub', 'Community apps, plugins, themes and presets.')}
-        actions={<div className="flex items-center gap-2 flex-wrap">
+      <PageHeader icon={LayoutGrid} title={`${t('cat.title', 'Catalog')}${current ? ` · ${current.name}` : ''}`} subtitle={t('cat.sub', 'Community apps, plugins, themes and presets.')}
+        actions={showcase ? null : <div className="flex items-center gap-2 flex-wrap">
           <FeedLink path={feedPath} label={t('cat.feed', 'This list as JSON')}
             hint={t('cat.feed.h', 'The exact list you are looking at, as the feed BMM reads. Copy it into BMM → add a source.')} />
           {/* Beside it, not instead of it: one is this list, the other is the standing
               address that keeps being right when new catalogues appear. */}
           <FeedMenu project={project} kind={kind} />
         </div>} />
-      {/* Filter bar: project switcher · search · kind pills · sort — grouped into one
-          tidy card instead of a loose flex row. */}
+      {/* Filter bar: project picker · sort · search · tag · kind pills. The picker replaced a
+          row of three hard-coded buttons (All / BMM / BSM): a project added later, or an other
+          project with a catalogue of its own, had no way onto this page. */}
       <div className="rounded-2xl border border-[var(--line)] panel p-3 mb-5 space-y-3">
         <div className="flex items-center gap-2 flex-wrap">
-          {[['', t('cat.allprojects', 'All')], ['bmm', 'BMM'], ['bsm', 'BSM']].map(([pk, l]) => (
-            <button key={pk} onClick={() => { set('project', pk); if (kind) set('kind', ''); }} className={`px-4 py-1.5 min-h-[24px] max-lg:min-h-[44px] rounded-lg text-sm font-medium transition ${project === pk ? 'bg-gradient-to-br from-brand to-brand-2 text-[var(--on-primary)] shadow-sm' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{l}</button>
-          ))}
+          <ProjectPicker value={projectId(current)} onChange={pickProject} projects={projects} />
           <div className="flex-1" />
-          <Select className="!w-auto" value={sort} onChange={(e) => set('sort', e.target.value)}>{SORTS.map(([v, l]) => <option key={v} value={v}>{t(`cat.sort.${v}`, l)}</option>)}</Select>
+          {!showcase && <Select className="!w-auto" value={sort} onChange={(e) => set('sort', e.target.value)}>{SORTS.map(([v, l]) => <option key={v} value={v}>{t(`cat.sort.${v}`, l)}</option>)}</Select>}
         </div>
-        <div className="flex flex-wrap gap-2 items-center">
+        {!showcase && <div className="flex flex-wrap gap-2 items-center">
           <div className="relative flex-1 min-w-[220px] max-w-sm">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" />
             <Input className="!ps-9" placeholder={t('cat.search', 'Search mods, plugins, themes & presets…')} defaultValue={q} onKeyDown={(e) => e.key === 'Enter' && set('q', e.target.value)} />
           </div>
+          <TagFilter value={tag} onChange={(v) => set('tag', v)} tags={tags} />
           {/* Kinds are project-scoped. PRESET is BOTH a BSM audio preset and a BMM scheduler
               automation — one enum value, two meanings, separated by the project. The comment
               here used to say presets were "a BSM thing", which is how BMM ended up unable to
               browse its own. kindLabel() is what keeps the word honest on screen. */}
           <div className="flex gap-1.5 flex-wrap">
-            {(project === 'bsm' ? ['', 'PRESET'] : ['', ...ALL_KINDS]).map((k) => {
+            {['', ...kinds].map((k) => {
               const I = k ? (KIND_ICON[k] || Package) : Package;
               return <button key={k} onClick={() => set('kind', k)} className={`flex items-center gap-1.5 px-3 py-1.5 min-h-[24px] max-lg:min-h-[44px] rounded-lg text-sm border transition ${kind === k ? 'border-[var(--primary)] panel text-[var(--accent-ink)] font-medium' : 'border-[var(--line)] panel text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--line-strong)]'}`}><I size={14} /> {k ? kindLabel(k, project) : t('cat.all', 'All')}</button>;
             })}
           </div>
-        </div>
+        </div>}
       </div>
+      {extra.length > 0 && current && <ProjectCatalogsStrip project={current} catalogs={extra} />}
+      {showcase && !extra.length && (
+        <EmptyState icon={Inbox} title={t('pcat.none.t', 'No catalogue here yet')} sub={t('pcat.none.s', 'This project has not published a catalogue.')} />
+      )}
       {multi && sel.size > 0 && (
         <div className="flex items-center gap-3 mb-4 p-3 rounded-xl border border-[var(--primary)] bg-orange-500/5">
           <span className="text-sm font-medium">{t('cat.selected', '{n} selected').replace('{n}', sel.size)}</span>
@@ -80,7 +119,7 @@ export function Catalog() {
           <Button size="sm" variant="ghost" onClick={() => setSel(new Set())}>{t('cat.clear', 'Clear')}</Button>
         </div>
       )}
-      {loading ? <SkeletonGrid count={6} /> : (items.length ? (
+      {showcase ? null : loading ? <SkeletonGrid count={6} /> : (items.length ? (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {items.map((it) => { const I = KIND_ICON[it.kind] || Package; const checked = sel.has(it.slug); return (
             <div key={it.id} className="relative">
@@ -93,6 +132,7 @@ export function Catalog() {
                 <div className="flex items-center justify-between"><div className={`grid place-items-center w-9 h-9 rounded-lg bg-[var(--surface-2)] border border-[var(--line)] ${multi ? 'ms-6' : ''}`}><I size={17} className="text-[var(--accent-ink)]" /></div><Badge>v{it.version}</Badge></div>
                 <div className="font-semibold mt-3">{it.name}</div>
                 <div className="text-sm text-[var(--muted)] mt-1 line-clamp-2">{it.description || t('cat.nodesc', 'No description.')}</div>
+                {it.tags?.length > 0 && <TagChips keys={it.tags} tags={tags} />}
                 <div className="text-xs text-[var(--faint)] mt-3 flex items-center gap-3 flex-wrap">
                   <span className="flex items-center gap-1"><Users size={12} /> {it.owner?.displayName}</span>
                   <span className="flex items-center gap-1"><Eye size={12} /> {it.views ?? 0}</span>
@@ -104,7 +144,59 @@ export function Catalog() {
       ) : <EmptyState icon={Inbox} title={t('cat.empty.t2', 'This catalogue is empty')}
         sub={t('cat.empty.s2', 'Apps, plugins, themes and presets people publish show up here, and nobody has published one yet.')}
         action={{ label: t('sub.title', 'Submit content'), to: `/submit?project=${project}`, icon: Package }} />)}
-      <CommunityCatalogsStrip project={project} q={q} />
+      {!showcase && <CommunityCatalogsStrip project={project} q={q} />}
+    </div>
+  );
+}
+
+/** A card's tags, each with the icon its vocabulary gives it (a plain tag icon otherwise). */
+export function TagChips({ keys = [], tags = [], max = 4 }) {
+  const { lang } = useI18n();
+  const byKey = Object.fromEntries(tags.map((x) => [x.key, x]));
+  return (
+    <div className="flex flex-wrap gap-1 mt-2">
+      {keys.slice(0, max).map((k) => { const x = byKey[k]; const label = x ? tagText(x, lang) : k; return (
+        <span key={k} className="inline-flex items-center gap-1 rounded-md border border-[var(--line)] bg-[var(--surface-2)] px-1.5 py-0.5 text-[11px] text-[var(--muted)] max-w-full">
+          {x ? <IconGlyph name={x.icon} size={11} className="text-[var(--accent-ink)] shrink-0" /> : <Tag size={11} className="shrink-0" />}
+          <span className="truncate" title={label}>{label}</span>
+        </span>
+      ); })}
+      {keys.length > max && <span className="text-[11px] text-[var(--faint)] px-1 py-0.5">+{keys.length - max}</span>}
+    </div>
+  );
+}
+
+/** The icon of a project catalogue: its own, else its kind's, else a grid. */
+function CatalogGlyph({ c, size = 17 }) {
+  if (c.icon) return <IconGlyph name={c.icon} size={size} />;
+  const I = (c.kind && KIND_ICON[c.kind]) || LayoutGrid;
+  return <I size={size} />;
+}
+
+// A project's own catalogues (G4), above the community strip: official projects may carry
+// some beside their official grid, and they are all an other project has.
+function ProjectCatalogsStrip({ project, catalogs }) {
+  const { t } = useI18n();
+  return (
+    <div className="mb-8">
+      <div className="flex items-center gap-2 mb-3">
+        <ProjectLogo project={project} size={18} />
+        <h2 className="font-semibold min-w-0 truncate" title={project.name}>{t('pcat.strip.t', 'Catalogues of {p}').replace('{p}', project.name)}</h2>
+        <Badge tone="">{catalogs.length}</Badge>
+      </div>
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {catalogs.map((c) => (
+          <Link key={c.id} to={`/catalog/${project.scope}/${encodeURIComponent(project.ref)}/${c.id}`}><Card hover className="p-4 h-full">
+            <div className="flex items-center justify-between gap-2">
+              <div className="grid place-items-center w-9 h-9 rounded-lg bg-[var(--surface-2)] border border-[var(--line)] text-[var(--accent-ink)]"><CatalogGlyph c={c} /></div>
+              <Badge tone="">{c.format === 'custom' ? t('pcat.fmt.custom', 'Custom format') : kindLabel(c.kind, project.official ? project.ref : 'bmm')}</Badge>
+            </div>
+            <div className="font-semibold mt-3 truncate" title={c.name}>{c.name}</div>
+            <div className="text-sm text-[var(--muted)] mt-1 line-clamp-2">{c.description || t('cat.nodesc', 'No description.')}</div>
+            {c.count != null && <div className="text-xs text-[var(--faint)] mt-3">{t('pcat.entries', '{n} entries').replace('{n}', c.count)}</div>}
+          </Card></Link>
+        ))}
+      </div>
     </div>
   );
 }

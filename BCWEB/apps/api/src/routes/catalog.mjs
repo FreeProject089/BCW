@@ -241,6 +241,10 @@ export default async function catalogRoutes(app) {
     const where = { status: 'PUBLISHED', ...(await notInvalid()) };
     if (project) where.project = { key: project };
     if (kind && KINDS.includes(kind)) where.kind = kind;
+    // G4: the tag dropdown. A tag is a short key (the submit form's picker writes those); anything
+    // longer than a tag can be is not one, and is ignored rather than turned into a query.
+    const tag = String(req.query?.tag || '').trim();
+    if (tag && tag.length <= 24) where.tags = { has: tag };
     if (q) where.OR = [{ name: { contains: String(q), mode: 'insensitive' } }, { description: { contains: String(q), mode: 'insensitive' } }];
     const limit = Math.min(Number(take) || 60, 100);
 
@@ -745,7 +749,7 @@ export default async function catalogRoutes(app) {
     // REJECTED one, which is theirs to fix and send back). Staff can still act on it.
     if (item.status === 'SUSPENDED' && req.user.role === 'USER') return reply.code(403).send({ error: 'item_suspended' });
     const patch = z.object({
-      description: z.string().max(4000).optional(), version: z.string().max(24).optional(), tags: z.array(z.string()).optional(),
+      description: z.string().max(4000).optional(), version: z.string().max(24).optional(), tags: z.array(z.string().max(24)).max(12).optional(), // same bounds as a new submission
       payloadKey: z.string().optional(), payloadSize: z.number().int().positive().optional(), meta: z.record(z.any()).optional(),
     }).parse(req.body || {});
     // A replacement payloadKey must be one the caller uploaded (`uploads/<uid>/…`).

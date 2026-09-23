@@ -1564,14 +1564,17 @@ function SocialConnections() {
     }
   }, []); // eslint-disable-line
   if (!providers) return null;
-  const configured = CONN_META.filter(([k]) => providers[k]);
-  // Staff see what this server could offer and what it takes to switch it on; members only
-  // ever see what works.
+  const linked = Object.fromEntries(conns.map((c) => [c.provider, c]));
+  // A provider this server cannot use is not offered (G1). One the member ALREADY linked stays,
+  // with its Disconnect: hiding it would leave a link on their public profile that they can no
+  // longer see nor remove.
+  const configured = CONN_META.filter(([k]) => providers[k] || linked[k]);
+  // Staff get a folded one-liner saying what is hidden and what switches it on, instead of a
+  // dashed row per provider that made the card look unconfigured to the person reading it.
   const staff = user?.role === 'ADMIN' || user?.role === 'SUPERADMIN';
-  const unconfigured = staff ? CONN_META.filter(([k, , , , kind]) => kind === 'oauth' && !providers[k]) : [];
+  const unconfigured = staff ? CONN_META.filter(([k, , , , kind]) => kind === 'oauth' && !providers[k] && !linked[k]) : [];
   const discordRow = !!discord || signinDiscord;
   if (configured.length === 0 && !discordRow && unconfigured.length === 0) return null;
-  const linked = Object.fromEntries(conns.map((c) => [c.provider, c]));
   const show = new Set(user?.showConnections || []);
   // Disconnecting is one click and reconnecting is a whole OAuth round trip through another
   // site — the asymmetry is the reason this one earns a window rather than a confirm dialog.
@@ -1622,9 +1625,10 @@ function SocialConnections() {
                 <div className="font-medium text-sm">{label}</div>
                 {c ? <a href={c.url} target="_blank" rel="noreferrer" className="text-[11px] text-[var(--faint)] hover:text-[var(--accent-ink)] truncate block" title={c.handle}>{c.handle}</a>
                   : <div className="text-[11px] text-[var(--faint)]">{t('sc.notlinked', 'Not linked')}</div>}
+                {c && !providers[k] && <div className="text-[11px] text-[var(--faint)]">{t('sc.gone', 'No longer offered on this server. You can still disconnect it.')}</div>}
               </div>
               {c ? <button onClick={() => disconnect(k)} className="text-[var(--faint)] hover:text-error p-1" title={t('sc.disconnect', 'Disconnect')}><X size={16} /></button>
-                : kind === 'oauth' ? <Button size="sm" variant="default" onClick={() => { window.location.href = `/api/auth/connect/${k}/start`; }}>{t('sc.connect', 'Connect')}</Button> : null}
+                : kind === 'oauth' && providers[k] ? <Button size="sm" variant="default" onClick={() => { window.location.href = `/api/auth/connect/${k}/start`; }}>{t('sc.connect', 'Connect')}</Button> : null}
             </div>
             {/* Manual Ko-fi entry when not yet linked — a prefixed input (paste a handle or a
                 full ko-fi.com link) with a live preview of the resulting URL. */}
@@ -1641,21 +1645,20 @@ function SocialConnections() {
             {/* Inline "show on my profile" toggle, Discord-style. */}
             {c && <label className="flex items-center justify-between gap-2 mt-2 pt-2 border-t border-[var(--line)] text-sm cursor-pointer">
               <span className="text-[var(--muted)]">{t('sc.showprofile', 'Show on my profile')}</span>
-              <button type="button" onClick={() => toggleShow(k, !show.has(k))} aria-pressed={show.has(k)} className={`w-10 h-5.5 rounded-full relative shrink-0 transition ${show.has(k) ? 'bg-[var(--primary)]' : 'bg-[var(--line-strong)]'}`} style={{ height: 22, width: 40 }}><span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${show.has(k) ? 'left-[20px]' : 'left-0.5'}`} /></button>
+              <button type="button" onClick={() => toggleShow(k, !show.has(k))} aria-pressed={show.has(k)} aria-label={t('sc.showprofile', 'Show on my profile')} className={`w-10 h-5.5 rounded-full relative shrink-0 transition ${show.has(k) ? 'bg-[var(--primary)]' : 'bg-[var(--line-strong)]'}`} style={{ height: 22, width: 40 }}><span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${show.has(k) ? 'left-[20px]' : 'left-0.5'}`} /></button>
             </label>}
           </div>
         ); })}
-        {unconfigured.map(([k, Ico, label]) => (
-          <div key={k} className="rounded-xl border border-dashed border-[var(--line)] px-3 py-2.5 flex items-center gap-2.5">
-            <BrandMark icon={Ico} muted />
-            <div className="flex-1 min-w-0">
-              <div className="font-medium text-sm text-[var(--muted)]">{label}</div>
-              <div className="text-[11px] text-[var(--faint)]">
-                {t('sc.unconf', 'Hidden from members: not configured on this server. Set')} <code className="break-all">{CONN_ENV[k]}</code>
-              </div>
-            </div>
-          </div>
-        ))}
+        {unconfigured.length > 0 && (
+          <details className="text-[11px] text-[var(--faint)] px-1 pt-1">
+            <summary className="cursor-pointer select-none">{t('sc.hiddenN', '{n} provider(s) hidden: not configured on this server (staff only)').replace('{n}', unconfigured.length)}</summary>
+            <ul className="mt-1.5 space-y-1">
+              {unconfigured.map(([k, , label]) => (
+                <li key={k}>{label} : {t('sc.unconf', 'Hidden from members: not configured on this server. Set')} <code className="break-all">{CONN_ENV[k]}</code></li>
+              ))}
+            </ul>
+          </details>
+        )}
       </div>
     </Card>
   );

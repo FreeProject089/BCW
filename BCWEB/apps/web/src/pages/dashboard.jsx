@@ -33,6 +33,7 @@ const MyReports = lazyNamed(() => import('./admin.jsx'), 'MyReports');
 const MyThreads = lazyNamed(() => import('./threads.jsx'), 'MyThreads');
 const MyTeams = lazyNamed(() => import('./teams.jsx'), 'MyTeams');
 import { KofiIcon } from '../ui/brand.jsx';
+import { ItemTagPicker } from '../ui/catalog-pickers.jsx'; // G4 (agent-catalog-G): tags as a dropdown with icons
 import { useAsync, Loading, statusTone, KIND_ICON, fmtRemaining, JsonEditor, SideDash, startOwnershipTransfer } from './pages.jsx';
 
 /* ─────────────────────────  Dashboard  ───────────────────────── */
@@ -1320,7 +1321,7 @@ function ItemEditModal({ open, item, onClose, onDone }) {
   useEffect(() => {
     if (item) {
       const { validation, _prevStatus, ...cleanMeta } = item.meta || {}; // hide server-computed fields
-      setForm({ description: item.description || '', version: item.version || '', tags: (item.tags || []).join(', '), meta: JSON.stringify(cleanMeta, null, 2) });
+      setForm({ description: item.description || '', version: item.version || '', tags: item.tags || [], meta: JSON.stringify(cleanMeta, null, 2) });
       setFile(null); setConfirmDel(false);
     }
   }, [item]);
@@ -1336,7 +1337,7 @@ function ItemEditModal({ open, item, onClose, onDone }) {
     let meta; try { meta = JSON.parse(form.meta || '{}'); } catch { return toast.error(t('ie.metajson', 'Metadata must be valid JSON.')); }
     setBusy(true);
     try {
-      const patch = { description: form.description, version: form.version, tags: form.tags.split(',').map((s) => s.trim()).filter(Boolean), meta };
+      const patch = { description: form.description, version: form.version, tags: form.tags, meta };
       if (file) { patch.payloadKey = await uploadPayload(item.kind, file); patch.payloadSize = file.size; }
       const res = await api.post(`/catalog/${item.id}/update`, patch);
       // A re-upload past the free tier is billed by size → finish payment first;
@@ -1414,7 +1415,7 @@ function ItemEditModal({ open, item, onClose, onDone }) {
         <Field label={t('sub.version', 'Version')}><Input value={form.version} onChange={(e) => setForm({ ...form, version: e.target.value })} /></Field>
       </div>
       <div className="mt-3"><Field label={t('sub.desc', 'Description')}><Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field></div>
-      <div className="mt-3"><Field label={t('repos.f.tags', 'Tags')} hint={t('repos.f.tags.hint', 'Comma-separated.')}><Input value={form.tags} onChange={(e) => setForm({ ...form, tags: e.target.value })} placeholder="backup, utility" /></Field></div>
+      <div className="mt-3"><Field label={t('repos.f.tags', 'Tags')}><ItemTagPicker id="ie-tags" value={form.tags} onChange={(v) => setForm({ ...form, tags: v })} /></Field></div>
 
       {ourHosted && (
         <div className="mt-3">

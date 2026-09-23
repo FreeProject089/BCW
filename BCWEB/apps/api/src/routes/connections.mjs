@@ -158,14 +158,20 @@ export async function exchangeConnect(p, { name, code, uid }) {
   });
 }
 
-function providerStatus() {
-  return {
-    github: !!(env('GITHUB_CLIENT_ID') && env('GITHUB_CLIENT_SECRET')),
-    twitch: !!(env('TWITCH_CLIENT_ID') && env('TWITCH_CLIENT_SECRET')),
-    youtube: !!(env('GOOGLE_CLIENT_ID') && env('GOOGLE_CLIENT_SECRET')),
-    steam: !!env('STEAM_API_KEY'),
-    kofi: true, // manual link — no OAuth credentials needed
-  };
+/** Is this connect provider usable on this server? ONE rule, read by the public status list
+ *  below AND by /start: the list used to spell the env names out a second time, so a provider
+ *  could be listed while /start answered 503 (or the other way round) the day one side moved. */
+export function connectConfigured(name) {
+  if (name === 'kofi') return true; // manual link — no OAuth credentials needed
+  if (name === 'steam') return !!env('STEAM_API_KEY');
+  const prov = Object.hasOwn(OAUTH, name) ? OAUTH[name] : null; // not `OAUTH[name]`: '__proto__' is truthy there
+  return !!(prov && prov.id() && prov.secret());
+}
+
+/** Public, non-secret: a boolean per provider, never a value. The profile hides every provider
+ *  that is false here (a row a member cannot use is noise), except one they already linked. */
+export function providerStatus() {
+  return Object.fromEntries(['github', 'twitch', 'youtube', 'steam', 'kofi'].map((k) => [k, connectConfigured(k)]));
 }
 
 export default async function connectionRoutes(app) {
@@ -218,7 +224,7 @@ export default async function connectionRoutes(app) {
     if (name === 'steam') return steamStart(req, reply);
     const prov = OAUTH[name];
     if (!prov) return reply.code(404).send({ error: 'unknown_provider' });
-    if (!prov.id() || !prov.secret()) return reply.code(503).send({ error: 'not_configured' });
+    if (!connectConfigured(name)) return reply.code(503).send({ error: 'not_configured' });
     const url = new URL(prov.authUrl);
     url.searchParams.set('client_id', prov.id());
     // Reuse the already-registered login callback where possible (avoids requiring a second
@@ -251,7 +257,7 @@ export default async function connectionRoutes(app) {
 
   // ── Steam (OpenID 2.0) ──
   async function steamStart(req, reply) {
-    if (!env('STEAM_API_KEY')) return reply.code(503).send({ error: 'not_configured' });
+    if (!connectConfigured('steam')) return reply.code(503).send({ error: 'not_configured' });
     const returnTo = `${redirectUri('steam')}?s=${encodeURIComponent(sign({ uid: req.user.uid, connect: 'steam', bind: bindConnect(reply) }))}`;
     const url = new URL(STEAM_OP);
     url.searchParams.set('openid.ns', 'http://specs.openid.net/auth/2.0');

@@ -132,6 +132,7 @@ const MyoRequestPage = named(() => import('./pages/myo.jsx'), 'MyoRequestPage');
 const Faq = lazyChunk(() => import('./pages/faq.jsx'));
 const Submit = named(() => import('./pages/submit.jsx'), 'Submit');
 const CommunityCatalogPage = lazyChunk(() => import('./pages/catalogpage.jsx'));
+const ProjectCatalogPage = lazyChunk(() => import('./pages/project-catalog.jsx'));
 const RepoPublicPage = lazyChunk(() => import('./pages/repopublic.jsx'));
 const Hosting = named(() => import('./pages/hosting.jsx'), 'Hosting');
 const Legal = named(() => import('./pages/legal.jsx'), 'Legal');
@@ -1703,6 +1704,7 @@ export default function App() {
               <Route path="/catalog" element={<Catalog />} />
               <Route path="/submit" element={<Submit />} />
               <Route path="/c/:slug" element={<CommunityCatalogPage />} />
+              <Route path="/catalog/:scope/:ref/:id" element={<ProjectCatalogPage />} />
               <Route path="/r/:id" element={<RepoPublicPage />} />
               <Route path="/item/:slug" element={<ItemDetail />} />
               <Route path="/giveaways" element={<Giveaways />} />

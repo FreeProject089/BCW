@@ -7,7 +7,8 @@ import { useI18n } from '../i18n.jsx';
 import { useToast } from '../ui/ui.jsx';
 import { useAuth } from './auth.jsx';
 import { api, uploadPayload } from '../lib/api.js';
-import { kindLabel, kindsFor, DOCUMENT_KINDS, DOCUMENT_KIND_FIELD, isDocumentKind } from './pages.jsx';
+import { kindLabel, kindsFor, DOCUMENT_KINDS, DOCUMENT_KIND_FIELD, isDocumentKind, useAsync, CATALOG_PROJECTS } from './pages.jsx';
+import { TagPicker, ProjectPicker, projectId } from '../ui/catalog-pickers.jsx';
 
 // BMM publishes automations as PRESET too — the same enum value BSM uses for an audio
 // preset, told apart by the project. Leaving it out of this list meant a BMM user had no
@@ -15,7 +16,19 @@ import { kindLabel, kindsFor, DOCUMENT_KINDS, DOCUMENT_KIND_FIELD, isDocumentKin
 //
 // kindsFor, not a local map: this screen knew that and the admin's official-catalog picker
 // did not, so an official BMM automation catalog was unpublishable from the admin.
-const KINDS = { bmm: kindsFor('bmm'), bsm: kindsFor('bsm') };
+//
+// G4: the list of projects is no longer these two. /project-catalogs reports every official
+// project that publishes (items of a kind, or an official catalogue an editor declared), and
+// its kinds join the ones kindsFor knows.
+const officialProjects = (data) => {
+  const list = (data?.projects || []).filter((pr) => pr.official)
+    .map((pr) => ({ ...pr, officialKinds: [...new Set([...kindsFor(pr.ref), ...(pr.officialKinds || [])])] }))
+    .filter((pr) => pr.officialKinds.length);
+  for (const k of [...CATALOG_PROJECTS].reverse()) {
+    if (!list.some((pr) => pr.ref === k)) list.unshift({ scope: 'project', ref: k, official: true, name: k.toUpperCase(), icon: null, officialKinds: kindsFor(k), items: 0, catalogs: [] });
+  }
+  return list;
+};
 // A local copy of the kind labels used to live here, which meant a BMM submission was
 // offered as "Preset" — the BSM word for a settings bundle — for a file that can ask to
 // run PowerShell. kindLabel() is project-aware and shared, so the two screens cannot drift.
@@ -76,8 +89,14 @@ function catalogEntries(json, projectKey) {
 // ── Path 1: propose to the OFFICIAL catalog (free, moderated) ──
 function OfficialSubmit({ onBack }) {
   const { t } = useI18n(); const toast = useToast(); const navigate = useNavigate();
-  const [projectKey, setProjectKey] = useState('bmm');
+  const [projectKey, setProjectKey] = useState(() => new URLSearchParams(location.search).get('project') || 'bmm');
   const [kind, setKind] = useState('APP');
+  const [tags, setTags] = useState([]);
+  const { data: pcs } = useAsync(() => api.get('/project-catalogs').catch(() => null), []);
+  const projects = officialProjects(pcs);
+  // The vocabulary of the chosen project: the built-in tags plus the ones its editors added.
+  const { data: pdet } = useAsync(() => api.get(`/project-catalogs/project/${encodeURIComponent(projectKey)}`).catch(() => null), [projectKey]);
+  const vocab = pdet?.tags || pcs?.builtinTags || [];
   const [form, setForm] = useState({ name: '', version: '1.0.0', description: '' });
   const [file, setFile] = useState(null);
   const [meta, setMeta] = useState('{}');
@@ -85,7 +104,7 @@ function OfficialSubmit({ onBack }) {
   const [bulk, setBulk] = useState(null); // { entries:[...] } when a catalog.json was dropped
   const [busy, setBusy] = useState(false);
 
-  const kinds = KINDS[projectKey] || ['APP'];
+  const kinds = projects.find((pr) => pr.ref === projectKey)?.officialKinds || kindsFor(projectKey);
   useEffect(() => { if (!kinds.includes(kind)) setKind(kinds[0]); }, [projectKey]); // eslint-disable-line
 
   const onFile = async (f) => {
@@ -147,7 +166,7 @@ function OfficialSubmit({ onBack }) {
       const { solvePow } = await import('../lib/pow.js');
       const pow = await solvePow(() => api.get('/auth/pow'));
       let payloadKey; if (file) payloadKey = await uploadPayload(kind, file);
-      const res = await api.post('/catalog', { projectKey, kind, name: form.name.trim(), version: form.version.trim() || '1.0.0', description: form.description.trim(), tags: [], meta: metaObj, payloadKey, payloadSize: file?.size, pow });
+      const res = await api.post('/catalog', { projectKey, kind, name: form.name.trim(), version: form.version.trim() || '1.0.0', description: form.description.trim(), tags, meta: metaObj, payloadKey, payloadSize: file?.size, pow });
       if (res?.checkoutUrl) { window.location.href = res.checkoutUrl; return; }
       toast.success(t('sub.sent', 'Submitted for review.'));
       navigate('/dashboard');
@@ -187,7 +206,7 @@ function OfficialSubmit({ onBack }) {
       ) : (
         <Card className="p-5 space-y-3">
           <div className="grid grid-cols-2 gap-3">
-            <Field label={t('sub.project', 'Project')}><Select value={projectKey} onChange={(e) => setProjectKey(e.target.value)}><option value="bmm">BMM</option><option value="bsm">BSM</option></Select></Field>
+            <Field label={t('sub.project', 'Project')}><ProjectPicker value={projectId(projects.find((pr) => pr.ref === projectKey))} onChange={(pr) => pr && setProjectKey(pr.ref)} projects={projects} allowAll={false} /></Field>
             <Field label={t('sub.type', 'Type')}><Select value={kind} onChange={(e) => setKind(e.target.value)}>{kinds.map((k) => <option key={k} value={k}>{kindLabel(k, projectKey)}</option>)}</Select></Field>
             {/* A Server-Repo is NOT a catalogue item — it is a running service with hosting,
                 verification and a public feed of its own, and CatalogKind has no value for
@@ -201,6 +220,7 @@ function OfficialSubmit({ onBack }) {
             <Field label={t('sub.version', 'Version')}><Input value={form.version} onChange={(e) => setForm({ ...form, version: e.target.value })} /></Field>
           </div>
           <Field label={t('sub.desc', 'Description')}><Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
+          <Field label={t('sub.tags', 'Tags')} hint={t('sub.tags.h', 'Up to 12. They drive the tag filter of the catalogue.')}><TagPicker id="sub-tags" value={tags} onChange={setTags} tags={vocab} /></Field>
           <Field label={t('sub2.file', 'File')} hint={t('sub2.filehint', 'Drop a .bmmplug, theme/preset .json, or a whole catalog.json for bulk import. Uploaded files are auto-parsed.')}>
             <Input type="file" onChange={(e) => onFile(e.target.files?.[0] || null)} /></Field>
           {file && <div className="text-xs text-[var(--faint)] flex items-center gap-1.5"><Package size={12} /> {file.name} ({(file.size / 1e6).toFixed(1)} MB)</div>}
