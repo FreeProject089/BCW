@@ -686,6 +686,9 @@ if (typeof window !== 'undefined') {
 }
 
 export function DialogProvider({ children }) {
+  // The default labels are the site's, not English: a French page asked "Retirer ?" with a
+  // "Cancel" beside it whenever a caller left cancelLabel out.
+  const { t } = useI18n();
   const [state, setState] = useState(null); // { kind, opts, resolve }
   const [value, setValue] = useState('');
   const [reveal, setReveal] = useState(false); // show/hide for password prompts
@@ -711,11 +714,11 @@ export function DialogProvider({ children }) {
     <DialogCtx.Provider value={api}>
       {children}
       <Modal open={!!state} onClose={() => close(state?.kind === 'confirm' || state?.kind === 'prompt' ? false : undefined)}
-        title={o.title || 'Confirm'} icon={Icon}
+        title={o.title || t('common.confirm', 'Confirm')} icon={Icon}
         footer={<>
-          {state?.kind !== 'alert' && <Button variant="ghost" onClick={() => close(false)}>{o.cancelLabel || 'Cancel'}</Button>}
+          {state?.kind !== 'alert' && <Button variant="ghost" onClick={() => close(false)}>{o.cancelLabel || t('common.cancel', 'Cancel')}</Button>}
           <Button variant={danger ? 'danger' : 'primary'}
-            onClick={() => close(state?.kind === 'prompt' ? (value || '') : true)}>{o.okLabel || 'OK'}</Button>
+            onClick={() => close(state?.kind === 'prompt' ? (value || '') : true)}>{o.okLabel || t('common.ok', 'OK')}</Button>
         </>}>
         {o.message && <p className="text-sm text-[var(--muted)] leading-relaxed">{o.message}</p>}
         {/* Said HERE, in the thing it skips. A shortcut nobody is told about is not a
@@ -766,6 +769,8 @@ const ToastCtx = createContext(null);
 export const useToast = () => useContext(ToastCtx);
 
 export function ToastProvider({ children }) {
+  // `tr`, not `t`: below, `t` is the toast being drawn.
+  const { t: tr } = useI18n();
   const [items, setItems] = useState([]);
   // Per-toast control: the pending timer + optional commit/cancel callbacks. `done`
   // guards against a toast being resolved twice (timer AND click racing).
@@ -864,7 +869,7 @@ const PREVIEW_CLASS = { remove: 'undo-going', add: 'undo-arriving' };
                   cancel as well, which made closing a notification quietly revert the work
                   you had just done — the one gesture everybody makes to tidy their screen
                   was the one that undid their action, with nothing on screen to say so. */}
-              {t.action && <button onClick={() => finalize(t.id, 'cancel')} className="shrink-0 flex items-center gap-1 text-[13px] font-bold rounded-lg px-2.5 py-1.5 transition hover:bg-[color-mix(in_srgb,var(--text)_10%,transparent)]" style={{ color: tone }}><Undo2 size={13} /> {t.cancelLabel || 'Cancel'}</button>}
+              {t.action && <button onClick={() => finalize(t.id, 'cancel')} className="shrink-0 flex items-center gap-1 text-[13px] font-bold rounded-lg px-2.5 py-1.5 transition hover:bg-[color-mix(in_srgb,var(--text)_10%,transparent)]" style={{ color: tone }}><Undo2 size={13} /> {t.cancelLabel || tr('common.cancel', 'Cancel')}</button>}
               <button onClick={() => finalize(t.id, 'commit')}
                 aria-label={t.action ? 'Apply now and dismiss' : 'Dismiss'}
                 title={t.action ? 'Apply now' : undefined}

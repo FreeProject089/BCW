@@ -2302,7 +2302,7 @@ const DICT = {
     'proj.overview.empty.s': 'Les mises en avant, le suivi d’avancement et les dernières nouveautés apparaîtront ici à mesure que le projet prend forme. Voir les autres onglets pour en savoir plus.',
     'proj.nocontrib': 'Pas encore de contributeurs', 'proj.messages': 'Messages de la communauté',
     'proj.blog': 'Blog', 'proj.noposts': 'Pas encore d’articles',
-    'common.loading': 'Chargement…', 'common.cancel': 'Annuler',
+    'common.loading': 'Chargement…', 'common.cancel': 'Annuler', 'common.confirm': 'Confirmer', 'common.ok': 'OK',
     'common.failed': 'Échec.', 'common.deleted': 'Supprimé.', 'common.saved': 'Enregistré.', 'common.removed': 'Retiré.', 'common.copied': 'Copié.', 'common.learnmore': 'En savoir plus', 'common.savefail': 'Échec de l’enregistrement.', 'common.loadfail': 'Échec du chargement.', 'common.invalidjson': 'JSON invalide.',
 
     // ── Admin : config des projets ──
