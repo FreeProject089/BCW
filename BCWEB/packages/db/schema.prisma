@@ -843,6 +843,10 @@ model ProjectPermission {
   showcaseProjectId String?
   projectKey        String?
   allShowcase       Boolean     @default(false)
+  // WHAT the grant allows on its target: 'pages' (edit the page's content, what a grant always
+  // meant) and/or 'studio' (draw its studio pages, PLAN-STUDIO-2026 3.1). The default is the
+  // old meaning, so no grant that existed before this column gives the studio.
+  rights            String[]    @default(["pages"])
   grantedBy         String // admin userId — audit trail only
   createdAt         DateTime    @default(now())
 

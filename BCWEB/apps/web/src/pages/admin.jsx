@@ -13,6 +13,7 @@ import { PartyPopper, ThumbsUp,
 import { Bug as BugIcon } from 'lucide-react';
 // The `all` sub-tab on Hosting settings; nothing else here needs a plain list glyph.
 import { List, FlaskConical } from 'lucide-react';
+import { LayoutTemplate } from 'lucide-react'; // studio phase 2: the manage_studio capability
 import { Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, EmptyState, Spinner, Modal, ActionBar, ByteSize, formatBytes, useDialog, useToast, copyText, ColorInput, Explain } from '../ui/ui.jsx';
 import { PointsHistoryTable } from '../ui/points-history.jsx';
 import { AppLogo } from '../ui/brand.jsx';
@@ -4743,6 +4744,10 @@ const ADMIN_CAPS = [
   { id: 'manage_repos', cat: 'ops', icon: Server, label: 'Manage server repos', labelFr: 'Gérer les dépôts serveur', desc: 'Review, verify and moderate hosted repos.', descFr: 'Vérifier, valider et modérer les dépôts hébergés.' },
   { id: 'manage_docs', cat: 'content', icon: BookOpen, label: 'Manage the docs', labelFr: 'Gérer la doc', desc: 'Write and organise the documentation pages and their categories.', descFr: 'Rédiger et organiser les pages de documentation et leurs catégories.' },
   { id: 'manage_legal', cat: 'content', icon: Scale, label: 'Manage the legal pages', labelFr: 'Gérer les pages légales', desc: 'Edit the policy pages and publish a new version of them. Not the acceptances themselves.', descFr: 'Modifier les pages de politique et en publier une nouvelle version. Pas les acceptations elles-mêmes.' },
+  // Drawing pages is not editing their words (PLAN-STUDIO-2026 3.1): the studio on every page,
+  // the home page included, and on a page whose studio is off (D2). The per-page `studio`
+  // right is granted beside the page permission below.
+  { id: 'manage_studio', cat: 'content', icon: LayoutTemplate, label: 'Use the studio everywhere', labelFr: 'Utiliser le studio partout', desc: 'Draw the studio pages of every project, other project and the home page, including a page whose studio is switched off. Not the page text, which stays with Manage projects.', descFr: 'Dessiner les pages studio de chaque projet, autre projet et de l’accueil, y compris une page dont le studio est désactivé. Pas le texte des pages, qui reste à Gérer les projets.' },
   { id: 'manage_bot', cat: 'ops', icon: Bot, label: 'Manage the Discord bot', labelFr: 'Gérer le bot Discord', desc: 'The bot dashboard: config, features, servers, logs — and two broad ones: exporting the member database, and DMing every member. Not its token, and not the economy.', descFr: 'Le tableau de bord du bot : config, fonctionnalités, serveurs, journaux — et deux gros : exporter la base des membres, et envoyer un MP à tout le monde. Pas son token, ni l’économie.' },
   { id: 'manage_economy', cat: 'ops', icon: Coins, label: 'Manage the economy', labelFr: 'Gérer l’économie', desc: 'Grant and reset points, read the ledger, deliver a shop purchase by hand. Points buy things, grant it as you would grant money.', descFr: 'Créditer et remettre à zéro les points, lire le registre, livrer un achat à la main. Les points achètent des choses — accorde-le comme tu accorderais de l’argent.' },
   { id: 'manage_hosting', cat: 'ops', icon: Cloud, label: 'Manage hosting', labelFr: 'Gérer l’hébergement', desc: 'Plans, storage pools, capacity and free-hosting grants.', descFr: 'Formules, pools de stockage, capacité et hébergements gratuits accordés.' },
@@ -4839,6 +4844,8 @@ function AdminAccess({ isSuperAdmin }) {
   const [pscopeSel, setPscopeSel] = useState('all');
   const scopes = useAsync(() => api.get('/blog/my-scopes'), []);
   const grants = useAsync(() => api.get('/admin/blog-permissions'), []);
+  // What a per-project grant allows: the page's content, its studio (PLAN-STUDIO-2026 3.1), or both.
+  const [prightsSel, setPrightsSel] = useState(['pages']);
   // Custom roles are SUPERADMIN-managed; other admins never load the list.
   const roles = useAsync(() => isSuperAdmin ? api.get('/admin/custom-roles') : Promise.resolve({ roles: [] }), [isSuperAdmin]);
   const projGrants = useAsync(() => api.get('/admin/project-permissions'), []);
@@ -4940,15 +4947,17 @@ function AdminAccess({ isSuperAdmin }) {
   const grantProject = async () => {
     setBusy(true);
     try {
-      const body = { userId: picked.id };
+      // Granting a target the person already holds SETS its rights to the ticked boxes.
+      const body = { userId: picked.id, rights: prightsSel.length ? prightsSel : ['pages'] };
       if (pscopeSel === 'all') body.allShowcase = true;
       else { const [kind, val] = pscopeSel.split(':'); if (kind === 'project') body.projectKey = val; else body.showcaseSlug = val; }
       await api.post('/admin/project-permissions', body);
       toast.success(t('acc.proj.granted', 'Granted project-edit access to {name}.').replace('{name}', picked.displayName)); projGrants.reload();
-    } catch (x) { toast.error(x.data?.error || t('acc.failed', 'Failed.')); } finally { setBusy(false); }
+    } catch (x) { toast.error(x.data?.error === 'cannot_grant_self' ? t('acc.proj.self', 'You cannot grant yourself a permission.') : x.data?.error === 'cannot_grant_unheld_right' ? t('acc.proj.unheld', 'You cannot grant a right you do not hold on this page.') : x.data?.error || t('acc.failed', 'Failed.')); } finally { setBusy(false); }
   };
   const revokeProject = (g) => undoProj.del(g.id, () => api.del(`/admin/project-permissions/${g.id}`), t('acc.revoked', 'Revoked.'));
   const projScopeLabel = (g) => g.allShowcase ? t('acc.proj.all', 'All other-projects') : g.showcase ? t('acc.proj.custom', 'Other · {name}').replace('{name}', g.showcase.name) : g.projectKey ? t('acc.proj.project', 'Project · {key}').replace('{key}', g.projectKey.toUpperCase()) : '';
+  const projRightsLabel = (g) => (g.rights || ['pages']).map((r) => (r === 'studio' ? t('acc.proj.r.studio', 'studio') : t('acc.proj.r.pages', 'page'))).join(' + ');
   const allProjGrants = (projGrants.data?.grants || []).filter((g) => !undoProj.pending.has(g.id));
   const userProjGrants = picked ? allProjGrants.filter((g) => g.user?.id === picked.id) : [];
   const scopeLabel = (g) => g.showcase ? t('acc.scope.custom', 'Custom · {name}').replace('{name}', g.showcase.name) : g.projectKey ? t('acc.scope.project', 'Project · {key}').replace('{key}', g.projectKey.toUpperCase()) : t('acc.scope.global', 'Global (all blogs)');
@@ -5060,7 +5069,7 @@ function AdminAccess({ isSuperAdmin }) {
             ) : (<>
               <p className="text-xs text-[var(--muted)] mb-2.5">{t('acc.proj.desc', "Let this user edit a project's page content from the dashboard — one project, several, or all other-projects. They still can't pin, publish or change a project's visibility (that needs the “Manage other projects” capability).")}</p>
               {userProjGrants.length > 0 && <div className="flex flex-wrap gap-1.5 mb-2">
-                {userProjGrants.map((g) => <span key={g.id} className="inline-flex items-center gap-1.5 text-xs ps-2.5 pe-1 py-1 rounded-full border border-[var(--line)] bg-[var(--surface-2)]"><Settings2 size={11} className="text-[var(--accent-ink)]" /> {projScopeLabel(g)} <button onClick={() => revokeProject(g)} className="opacity-60 hover:opacity-100 hover:text-error" title={t('acc.revoke.title', 'Revoke')}><X size={11} /></button></span>)}
+                {userProjGrants.map((g) => <span key={g.id} className="inline-flex items-center gap-1.5 text-xs ps-2.5 pe-1 py-1 rounded-full border border-[var(--line)] bg-[var(--surface-2)]"><Settings2 size={11} className="text-[var(--accent-ink)]" /> {projScopeLabel(g)} <span className="text-[var(--faint)]">· {projRightsLabel(g)}</span> <button onClick={() => revokeProject(g)} className="opacity-60 hover:opacity-100 hover:text-error" title={t('acc.revoke.title', 'Revoke')}><X size={11} /></button></span>)}
               </div>}
               <div className="flex flex-wrap items-center gap-2">
                 <Select className="!w-auto" value={pscopeSel} onChange={(e) => setPscopeSel(e.target.value)}>
@@ -5070,6 +5079,15 @@ function AdminAccess({ isSuperAdmin }) {
                 </Select>
                 <Button size="sm" variant="primary" disabled={busy} onClick={grantProject}>{busy ? <Spinner /> : <><Plus size={14} /> {t('acc.grant', 'Grant')}</>}</Button>
               </div>
+                {/* What the grant allows there. Two rights, granted apart: editing the page's
+                    words, and drawing its studio pages (PLAN-STUDIO-2026 3.1). At least one. */}
+                {[['pages', t('acc.proj.r.pages.l', 'Page content'), t('acc.proj.r.pages.h', 'Edit the page: overview, presentation, timeline, config. Not publishing or visibility.')], ['studio', t('acc.proj.r.studio.l', 'Studio'), t('acc.proj.r.studio.h', 'Draw the studio pages of this page, while an administrator has its studio switched on.')]].map(([id, label, h]) => (
+                  <label key={id} className="inline-flex items-center gap-1.5 text-xs cursor-pointer" title={h}>
+                    <input type="checkbox" checked={prightsSel.includes(id)}
+                      onChange={() => setPrightsSel((r) => (r.includes(id) ? (r.length > 1 ? r.filter((x) => x !== id) : r) : [...r, id]))} />
+                    {label}
+                  </label>
+                ))}
             </>)}
           </div>
 
@@ -5120,7 +5138,7 @@ function AdminAccess({ isSuperAdmin }) {
             <Card key={g.id} className="p-3 flex items-center gap-3">
               <Avatar user={g.user} size={32} />
               <div className="flex-1 min-w-0"><div className="font-medium truncate">{g.user?.displayName || t('acc.deleted', '(deleted)')}</div><div className="text-xs text-[var(--faint)] truncate" title={g.user?.email}>{g.user?.email}</div></div>
-              <Badge tone="primary">{projScopeLabel(g)}</Badge>
+              <Badge tone="primary">{projScopeLabel(g)} · {projRightsLabel(g)}</Badge>
               <Button size="sm" variant="ghost" className="!text-error" onClick={() => revokeProject(g)}><Trash2 size={13} /></Button>
             </Card>
           ))}
@@ -5215,7 +5233,7 @@ function RoleManager({ roles }) {
           <Card key={r.id} className="p-3 flex items-center gap-3">
             <RoleBadge color={r.color}>{r.name}</RoleBadge>
             <div className="flex-1 min-w-0 text-xs text-[var(--faint)] truncate">
-              {r.scope && <Badge tone="amber" className="me-1.5"><Lock size={10} /> {(r.scope.rights || ['pages']).map((x) => x === 'blog' ? t('rm.scope.r.blog.s', 'blog') : x === 'market' ? t('rm.scope.r.market.s', 'shop') : x === 'inbox' ? t('rm.scope.r.inbox.s', 'inbox') : t('rm.scope.r.pages.s', 'page')).join(' + ')} · {r.scope.allShowcase ? t('rm.scope.allsc', 'every other project') : [...(r.scope.projectKeys || []), ...(r.scope.showcases || []).map((x) => x.name)].join(', ') || t('rm.scope.some', 'some elements')}</Badge>}
+              {r.scope && <Badge tone="amber" className="me-1.5"><Lock size={10} /> {(r.scope.rights || ['pages']).map((x) => x === 'blog' ? t('rm.scope.r.blog.s', 'blog') : x === 'market' ? t('rm.scope.r.market.s', 'shop') : x === 'inbox' ? t('rm.scope.r.inbox.s', 'inbox') : x === 'studio' ? t('rm.scope.r.studio.s', 'studio') : t('rm.scope.r.pages.s', 'page')).join(' + ')} · {r.scope.allShowcase ? t('rm.scope.allsc', 'every other project') : [...(r.scope.projectKeys || []), ...(r.scope.showcases || []).map((x) => x.name)].join(', ') || t('rm.scope.some', 'some elements')}</Badge>}
               {(r.capabilities || []).length ? r.capabilities.map((id) => (ADMIN_CAPS.find((c) => c.id === id) ? capLabel(ADMIN_CAPS.find((c) => c.id === id)) : id)).join(' · ') : t('rm.nocaps', 'No capabilities yet')}
             </div>
             <span className="text-xs text-[var(--faint)] shrink-0">{t('rm.members', '{n} members').replace('{n}', r.memberCount || 0)}</span>

@@ -141,7 +141,7 @@ describe('where the studio loads and saves', async () => {
     assert.equal(typeof lib.studioLoadPath, 'function', 'studioLoadPath is not exported');
     assert.equal(lib.studioLoadPath('project', 'bmm'), '/admin/projects/bmm/studio');
     assert.equal(lib.studioLoadPath('showcase', 'my slug'), '/admin/showcase/my%20slug/studio');
-    assert.equal(lib.studioLoadPath('home', 'home'), '/admin/site/home');
+    assert.equal(lib.studioLoadPath('home', 'home'), '/admin/studio/home');
     for (const k of ['project', 'showcase', 'home']) assert.ok(!lib.studioLoadPath(k, 'x').startsWith('/projects/'), `${k} loads through the public route`);
   });
   test('a page is saved by id, alone', () => {
@@ -149,7 +149,7 @@ describe('where the studio loads and saves', async () => {
     const cv = { id: 'c1', blocks: [] };
     assert.deepEqual(lib.studioSaveRequest('project', 'bmm', 'c1', cv, 'r1'), { path: '/admin/projects/bmm/studio/pages/c1', body: { canvas: cv, base: 'r1' } });
     assert.equal(lib.studioSaveRequest('showcase', 'ck123', 'c 2', cv, '').path, '/admin/showcase/ck123/studio/pages/c%202');
-    assert.deepEqual(lib.studioSaveRequest('home', 'home', 'sec-1', cv, 'r2'), { path: '/admin/site/home', body: { studioSection: { id: 'sec-1', canvas: cv, base: 'r2' } } });
+    assert.deepEqual(lib.studioSaveRequest('home', 'home', 'sec-1', cv, 'r2'), { path: '/admin/studio/home/sections/sec-1', body: { canvas: cv, base: 'r2' } });
     // Never the whole config: a save carries one page and the revision it started from.
     for (const k of ['project', 'showcase', 'home']) assert.ok(!('config' in lib.studioSaveRequest(k, 'x', 'p', cv, '').body), `${k} still sends a whole config`);
   });

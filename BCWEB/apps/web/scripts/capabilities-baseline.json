@@ -93,6 +93,9 @@
     "manage_showcase": [
       "/admin/showcase"
     ],
+    "manage_studio": [
+      "/admin/studio"
+    ],
     "manage_tasks": [
       "/admin/tasks"
     ],

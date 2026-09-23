@@ -1780,11 +1780,12 @@ export default function App() {
               <Route path="/refunds" element={<Navigate to="/legal/refunds" replace />} />
               <Route path="/dashboard" element={<Protected><Dashboard /></Protected>} />
               <Route path="/admin" element={<Protected role={['MOD', 'ADMIN']}><Admin /></Protected>} />
-              {/* The studio on its own surface (pages/studio.jsx): the page it edits is
-                  admin-gated, so the same gate as /admin — a role, or a project grant. It
-                  draws itself over the shell (position: fixed), so it sits inside <main>
+              {/* The studio on its own surface (pages/studio.jsx). Signed-in only here; WHO may
+                  draw is the page's own guard (lib/roles.js canUseStudio, then the server):
+                  the admin's role gate let any MOD or page grantee in (PLAN-STUDIO-2026 1.5).
+                  It draws itself over the shell (position: fixed), so it sits inside <main>
                   like every other route without needing a second layout. */}
-              <Route path="/studio/:kind/:id/:index?" element={<Protected role={['MOD', 'ADMIN']}><StudioPage /></Protected>} />
+              <Route path="/studio/:kind/:id/:index?" element={<Protected><StudioPage /></Protected>} />
               <Route path="*" element={<NotFound />} />
             </Routes>
             )}

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { db, requireRole, logAudit, clientIp, clearUserCache, CAPABILITIES, SCOPE_RIGHTS } from '../lib/lib.mjs';
+import { db, requireRole, logAudit, clientIp, clearUserCache, CAPABILITIES, SCOPE_RIGHTS, GRANT_RIGHTS, grantRights, hasCap, canEditProject, canEditShowcase, projectGrants, studioGrants, holdsStudioRight } from '../lib/lib.mjs';
 import { KEY_SHAPE } from '../lib/project-keys.mjs';
 
 // Custom roles + per-project edit grants.
@@ -130,8 +130,35 @@ export default async function roleRoutes(app) {
     const scIds = [...new Set(grants.filter((g) => g.showcaseProjectId).map((g) => g.showcaseProjectId))];
     const showcases = scIds.length ? await p.showcaseProject.findMany({ where: { id: { in: scIds } }, select: { id: true, slug: true, name: true } }) : [];
     const byId = Object.fromEntries(showcases.map((s) => [s.id, s]));
-    return { grants: grants.map((g) => ({ id: g.id, user: g.user, projectKey: g.projectKey, allShowcase: g.allShowcase, showcase: g.showcaseProjectId ? byId[g.showcaseProjectId] || null : null, createdAt: g.createdAt })) };
+    return { grants: grants.map((g) => ({ id: g.id, user: g.user, projectKey: g.projectKey, allShowcase: g.allShowcase, showcase: g.showcaseProjectId ? byId[g.showcaseProjectId] || null : null, rights: grantRights(g), createdAt: g.createdAt })) };
   });
+
+  // NON-ESCALATION, the rule of lib/tasks.mjs applied to these grants: a grant is only ever of
+  // something the granter already holds ON THAT TARGET, and never to themselves.
+  //   · `pages`  needs what editing that page needs (canEditProject / canEditShowcase, or for
+  //              every other-project page manage_showcase or a blanket grant);
+  //   · `studio` needs the studio right there (holdsStudioRight: manage_studio, or a studio
+  //              grant on it). The switch being off does not matter: granting is not drawing.
+  // Today only ADMIN reaches these routes and ADMIN holds everything (D8), so for ADMIN this
+  // never refuses; it is written down so that the day these routes take a capability, handing
+  // out the studio still needs the studio.
+  async function mayGrant(user, target, rights) {
+    for (const r of rights) {
+      if (r === 'pages') {
+        const ok = target.allShowcase
+          ? (hasCap(user, 'manage_showcase') || (await projectGrants(user.uid)).allShowcase)
+          : target.showcaseProjectId ? await canEditShowcase(user, target.showcaseProjectId) : await canEditProject(user, target.projectKey);
+        if (!ok) return false;
+      } else if (r === 'studio') {
+        const ok = target.allShowcase
+          ? (hasCap(user, 'manage_studio') || (await studioGrants(user.uid)).allShowcase)
+          : await holdsStudioRight(user, target.showcaseProjectId ? 'showcase' : 'project', target.showcaseProjectId || target.projectKey);
+        if (!ok) return false;
+      } else return false;
+    }
+    return true;
+  }
+  const rightsOf = (list) => [...new Set(list && list.length ? list : ['pages'])];
 
   const projGrant = z.object({
     userId: z.string().min(1),
@@ -141,11 +168,17 @@ export default async function roleRoutes(app) {
     projectKey: z.string().regex(KEY_SHAPE).optional().nullable(),
     showcaseSlug: z.string().max(80).optional().nullable(),
     allShowcase: z.boolean().optional().default(false),
+    // What the grant allows there: the page's content, its studio, or both. Absent = `pages`,
+    // what a grant always meant (PLAN-STUDIO-2026 3.1).
+    rights: z.array(z.enum(GRANT_RIGHTS)).min(1).max(GRANT_RIGHTS.length).optional(),
   }).refine((v) => v.allShowcase || v.projectKey || v.showcaseSlug, { message: 'no_scope' });
   app.post('/admin/project-permissions', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
     const b = projGrant.safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
+    // Nobody grants themselves anything here: an admin already holds every right, so for them
+    // it is not a grant, and for anybody else it would be the escalation this file exists to stop.
+    if (b.data.userId === req.user.uid) return reply.code(400).send({ error: 'cannot_grant_self' });
     const user = await p.user.findUnique({ where: { id: b.data.userId }, select: { id: true } });
     if (!user) return reply.code(404).send({ error: 'user_not_found' });
     const allShowcase = !!b.data.allShowcase;
@@ -155,10 +188,20 @@ export default async function roleRoutes(app) {
       if (b.data.showcaseSlug) { const sp = await p.showcaseProject.findUnique({ where: { slug: b.data.showcaseSlug }, select: { id: true } }); if (!sp) return reply.code(400).send({ error: 'unknown_page' }); showcaseProjectId = sp.id; }
       projectKey = b.data.projectKey || null;
     }
+    const rights = rightsOf(b.data.rights);
+    if (!(await mayGrant(req.user, { allShowcase, showcaseProjectId, projectKey }, rights))) return reply.code(403).send({ error: 'cannot_grant_unheld_right' });
+    const what = `${allShowcase ? 'all other-projects' : showcaseProjectId ? `showcase ${b.data.showcaseSlug}` : `project ${projectKey}`} [${rights.join(', ')}]`;
+    // One row per person and target: granting again SETS its rights (the screen sends the
+    // ticked boxes), rather than answering with the old row as if the new boxes were applied.
     const existing = await p.projectPermission.findFirst({ where: { userId: user.id, showcaseProjectId, projectKey, allShowcase } });
-    if (existing) return { grant: existing };
-    const grant = await p.projectPermission.create({ data: { userId: user.id, showcaseProjectId, projectKey, allShowcase, grantedBy: req.user.uid } });
-    await logAudit(p, req.user.uid, 'project_permission.grant', `${user.id}: ${allShowcase ? 'all other-projects' : showcaseProjectId ? `showcase ${b.data.showcaseSlug}` : `project ${projectKey}`}`, clientIp(req));
+    if (existing) {
+      if (JSON.stringify(grantRights(existing).slice().sort()) === JSON.stringify(rights.slice().sort())) return { grant: existing };
+      const grant = await p.projectPermission.update({ where: { id: existing.id }, data: { rights } });
+      await logAudit(p, req.user.uid, 'project_permission.rights', `${user.id}: ${what}`, clientIp(req));
+      return { grant };
+    }
+    const grant = await p.projectPermission.create({ data: { userId: user.id, showcaseProjectId, projectKey, allShowcase, rights, grantedBy: req.user.uid } });
+    await logAudit(p, req.user.uid, 'project_permission.grant', `${user.id}: ${what}`, clientIp(req));
     return reply.code(201).send({ grant });
   });
   app.delete('/admin/project-permissions/:id', { preHandler: requireRole('ADMIN') }, async (req) => {

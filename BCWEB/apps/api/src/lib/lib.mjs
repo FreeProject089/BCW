@@ -381,6 +381,11 @@ export const CAPABILITIES = [
   'manage_users', 'manage_repos', 'manage_analytics', 'manage_newsletter', 'manage_faq', 'manage_catalogs', 'manage_reports',
   // Content elements
   'manage_projects', 'manage_showcase', 'manage_announcements', 'manage_docs',
+  // The studio on EVERY page (projects, other projects, the home page) and on a page whose
+  // studio is switched off (decision D2: only this capability prepares one). Not implied by
+  // manage_projects / manage_showcase: editing a page's words is not drawing it
+  // (PLAN-STUDIO-2026 3.1). ADMIN and SUPERADMIN hold it through hasCap (D8).
+  'manage_studio',
   // Growth elements
   'manage_events', 'manage_promotions',
   // Services
@@ -453,7 +458,9 @@ export function isScopedRole(r) {
 // 'inbox': read and answer the contact inbox of these projects (lib/project-contact.mjs).
 // Its own right, not implied by 'pages': the person who edits a page's wording is not
 // automatically the person who should read what visitors write to the project.
-const SCOPE_RIGHTS = ['pages', 'blog', 'market', 'inbox'];
+// 'studio': draw the studio pages of these projects (PLAN-STUDIO-2026 3.1). Its own right, not
+// implied by 'pages': the page's words and its hand-drawn layout are granted apart.
+const SCOPE_RIGHTS = ['pages', 'blog', 'market', 'inbox', 'studio'];
 export function scopeRights(r) {
   const rights = Array.isArray(r?.scope?.rights) ? r.scope.rights.filter((x) => SCOPE_RIGHTS.includes(x)) : [];
   return rights.length ? rights : ['pages'];
@@ -580,8 +587,11 @@ export async function projectGrants(uid) {
   if (!uid) return out;
   try {
     const p = await db();
-    const gs = await p.projectPermission.findMany({ where: { userId: uid }, select: { showcaseProjectId: true, projectKey: true, allShowcase: true } });
+    const gs = await p.projectPermission.findMany({ where: { userId: uid }, select: { showcaseProjectId: true, projectKey: true, allShowcase: true, rights: true } });
     for (const g of gs) {
+      // A direct grant carries its rights (ProjectPermission.rights, default ['pages']): a
+      // studio-only grant draws the page and does not edit its words.
+      if (!grantRights(g).includes('pages')) continue;
       if (g.allShowcase) out.allShowcase = true;
       if (g.showcaseProjectId) out.showcaseIds.add(g.showcaseProjectId);
       if (g.projectKey) out.projectKeys.add(g.projectKey);
@@ -601,6 +611,114 @@ export async function projectGrants(uid) {
   } catch { /* no grants on error */ }
   return out;
 }
+/** What a DIRECT grant may carry. A scoped role carries more (blog, market, inbox), which have
+ *  their own direct grants elsewhere (BlogPermission) or none. */
+export const GRANT_RIGHTS = ['pages', 'studio'];
+/** The rights a direct ProjectPermission row carries. Same allowlist idea as a scoped role's:
+ *  an unknown string grants nothing, and an empty or missing list means `pages`, the only
+ *  thing a grant meant before the column existed. */
+export function grantRights(g) {
+  const rights = Array.isArray(g?.rights) ? g.rights.filter((x) => GRANT_RIGHTS.includes(x)) : [];
+  return rights.length ? rights : ['pages'];
+}
+
+// ── The studio right (PLAN-STUDIO-2026 3.1) ─────────────────────────────────────────
+// Who may DRAW a page, as opposed to edit its words. Same shape as projectGrants, from the
+// same two sources: direct grants whose rights include 'studio', and scoped roles with the
+// 'studio' right. Never implied by 'pages', by manage_projects or by manage_showcase.
+export async function studioGrants(uid) {
+  const out = { allShowcase: false, showcaseIds: new Set(), projectKeys: new Set() };
+  if (!uid) return out;
+  try {
+    const p = await db();
+    const gs = await p.projectPermission.findMany({ where: { userId: uid }, select: { showcaseProjectId: true, projectKey: true, allShowcase: true, rights: true } });
+    for (const g of gs) {
+      if (!grantRights(g).includes('studio')) continue;
+      if (g.allShowcase) out.allShowcase = true;
+      if (g.showcaseProjectId) out.showcaseIds.add(g.showcaseProjectId);
+      if (g.projectKey) out.projectKeys.add(g.projectKey);
+    }
+    const u = await p.user.findUnique({ where: { id: uid }, select: { customRoleIds: true } });
+    if (u?.customRoleIds?.length) {
+      const roles = await p.customRole.findMany({ where: { id: { in: u.customRoleIds } }, select: { scope: true } });
+      for (const r of roles) {
+        if (!isScopedRole(r) || !scopeRights(r).includes('studio')) continue;
+        if (r.scope.allShowcase) out.allShowcase = true;
+        for (const id of r.scope.showcaseIds || []) out.showcaseIds.add(id);
+        for (const k of r.scope.projectKeys || []) out.projectKeys.add(k);
+      }
+    }
+  } catch { /* no grants on error */ }
+  return out;
+}
+/** Does this user hold the studio right on this target, whatever its switch says? This is
+ *  what "may they GRANT it" asks (routes/roles.mjs); opening asks canUseStudio below. */
+export async function holdsStudioRight(user, kind, id) {
+  if (!user) return false;
+  if (hasCap(user, 'manage_studio')) return true;
+  if (kind !== 'project' && kind !== 'showcase') return false;
+  const g = await studioGrants(user.uid);
+  return kind === 'project' ? g.projectKeys.has(id) : (g.allShowcase || g.showcaseIds.has(id));
+}
+/**
+ * May this user OPEN and SAVE the studio of this target? The one question every studio door
+ * asks (the studio routes, the config PUTs through guardStudioContent, the public GET's
+ * drafts). `kind` is 'project' (id = key), 'showcase' (id = row id) or 'home'.
+ *
+ *   · manage_studio (ADMIN / SUPERADMIN implicitly, D8): everything, the home page included,
+ *     and a page whose studio is switched off (D2: only this capability prepares one);
+ *   · otherwise the `studio` right on THIS target, and only while its switch is on. The
+ *     config is required for that: without it the answer is no, the safe direction;
+ *   · a suspended account draws nothing, whatever it holds: a studio page is public content.
+ */
+export async function canUseStudio(user, kind, id, config) {
+  return (await studioChecker(user))(kind, id, config);
+}
+/**
+ * canUseStudio for MANY targets at once: the lookups once, then a synchronous predicate
+ * `(kind, id, config) => boolean`. The public list (GET /projects) asks it for every project;
+ * one query per project would be the price of a rule, and a rule that costs too much gets
+ * written a second, cheaper time — which is how two copies of it start to disagree.
+ *
+ * The role and capabilities are read LIVE (currentUser), because optionalAuth hands over the
+ * token's claims, which carry no capabilities and may carry a stale role.
+ */
+export async function studioChecker(user) {
+  const no = () => false;
+  if (!user?.uid) return no;
+  if (await accountLock(user.uid, 'service')) return no;
+  const cur = await currentUser(user.uid);
+  if (cur.exists === false) return no;
+  const live = { uid: user.uid, role: cur.role || user.role, perms: cur.perms || user.perms || [] };
+  if (hasCap(live, 'manage_studio')) return () => true;
+  const g = await studioGrants(user.uid);
+  return (kind, id, config) => {
+    if (kind !== 'project' && kind !== 'showcase') return false;
+    if (!config || typeof config !== 'object' || config.studioEnabled !== true) return false;
+    return kind === 'project' ? g.projectKeys.has(id) : (g.allShowcase || g.showcaseIds.has(id));
+  };
+}
+/** The error a studio door answers with when canUseStudio said no: `studio_off` for somebody
+ *  who holds the right on this page while its switch is off (D2), so the screen can say why;
+ *  `forbidden` for everybody else, the same word whether or not the page exists for them. */
+export async function studioRefusal(user, kind, id) {
+  if (user?.uid && !(await accountLock(user.uid, 'service')) && (await holdsStudioRight(user, kind, id))) return 'studio_off';
+  return 'forbidden';
+}
+/**
+ * Who may READ a config's studio drafts on a public GET: exactly who could open them in the
+ * studio (studioChecker), and only with 2FA on, like every door of the studio. Everybody else
+ * gets withoutStudioDrafts. `req.user` is optionalAuth's (null when signed out).
+ */
+export async function draftReader(req) {
+  const no = () => false;
+  if (!req?.user?.uid) return no;
+  const check = await studioChecker(req.user);
+  const p = await db();
+  const u = await p.user.findUnique({ where: { id: req.user.uid }, select: { totpEnabled: true } }).catch(() => null);
+  return u?.totpEnabled ? check : no;
+}
+
 // May this user edit this ONE other-project's content? True for managers (all projects)
 // or a matching per-project / allShowcase grant. `user` is req.user ({ uid, role, perms }).
 export async function canEditShowcase(user, showcaseId) {
@@ -1449,4 +1567,61 @@ export function guardStudioFlag(incoming, current, mayToggle) {
   if (was === undefined) delete next.studioEnabled;
   else next.studioEnabled = was;
   return next;
+}
+
+/**
+ * The studio's CONTENT, on the config routes: the same idea as guardStudioFlag above.
+ *
+ * `canvases` travel inside the free-form config, so without this the `pages` right would be
+ * the studio right by another door: PUT the config with a canvas added, reordered, removed or
+ * redrawn. For a caller without the studio right (canUseStudio) the stored pages are put
+ * back, whatever was sent; everything else in the config is theirs to change. An ABSENT
+ * `canvases` is "not touched" for everybody: the config editor of a non-holder loads the
+ * public config, which carries no drafts, and saving it must not erase them.
+ */
+export function guardStudioContent(incoming, current, mayStudio) {
+  const next = { ...(incoming && typeof incoming === 'object' ? incoming : {}) };
+  const cur = current && typeof current === 'object' ? current : {};
+  if (mayStudio && Array.isArray(next.canvases)) return next;
+  if (cur.canvases === undefined) delete next.canvases;
+  else next.canvases = cur.canvases;
+  return next;
+}
+/** The same for the home page's custom sections: each section's drawing (`canvas`) and its
+ *  written-or-drawn switch (`mode: 'canvas'`) are studio content; the rest is the section's. */
+export function guardStudioSections(incoming, current, mayStudio) {
+  if (!Array.isArray(incoming) || mayStudio) return incoming;
+  const byId = new Map((Array.isArray(current) ? current : []).filter((s) => s && typeof s.id === 'string').map((s) => [s.id, s]));
+  return incoming.map((s) => {
+    if (!s || typeof s !== 'object') return s;
+    const was = typeof s.id === 'string' ? byId.get(s.id) : null;
+    const out = { ...s };
+    if (was && was.canvas !== undefined) out.canvas = was.canvas; else delete out.canvas;
+    if (was && was.mode !== undefined) out.mode = was.mode;
+    else if (out.mode === 'canvas') out.mode = 'md';
+    return out;
+  });
+}
+/**
+ * What a VISITOR receives of a config's studio pages: the ones the public page shows (studio
+ * on, an id, a title, at least one block: the web's canvasTabsFor), nothing else. A page being
+ * prepared, or every page of a studio that is off, is a draft and stays out of the public GET
+ * (PLAN-STUDIO-2026 S7). The editor gets the whole list through the studio routes.
+ */
+export function withoutStudioDrafts(config) {
+  if (!config || typeof config !== 'object' || !Array.isArray(config.canvases)) return config;
+  const shown = config.studioEnabled === true
+    ? config.canvases.filter((cv) => cv && typeof cv === 'object' && cv.id && String(cv.title || '').trim() && Array.isArray(cv.blocks) && cv.blocks.length)
+    : [];
+  return { ...config, canvases: shown };
+}
+/** The same for the home page: a section that is off, or not drawn, keeps no drawing. */
+export function sectionsWithoutDrafts(sections) {
+  if (!Array.isArray(sections)) return sections;
+  return sections.map((s) => {
+    if (!s || typeof s !== 'object' || s.canvas === undefined) return s;
+    if (s.enabled !== false && s.mode === 'canvas') return s;
+    const { canvas: _drop, ...rest } = s;
+    return rest;
+  });
 }

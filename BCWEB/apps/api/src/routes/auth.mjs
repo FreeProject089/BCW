@@ -2,7 +2,7 @@ import { z } from 'zod';
 import jwt from 'jsonwebtoken';
 import argon2 from 'argon2';
 import crypto from 'node:crypto';
-import { db, issueSession, clearSession, requireRole, optionalAuth, safeEqual, clearAccountLockCache, projectGrants, logAudit, isScopedRole } from '../lib/lib.mjs';
+import { db, issueSession, clearSession, requireRole, optionalAuth, safeEqual, clearAccountLockCache, projectGrants, studioGrants, logAudit, isScopedRole } from '../lib/lib.mjs';
 import { emailHash } from './closure.mjs';
 import { generateSecret, verifyTotp, otpauthUri, generateRecoveryCodes } from '../lib/totp.mjs';
 import { userBcId } from '../lib/repofingerprint.mjs';
@@ -536,7 +536,13 @@ export default async function authRoutes(app) {
     // A scoped role's capabilities are per element (see projectGrants), never site-wide.
     const effectivePermissions = [...new Set([...(user.permissions || []), ...customRoles.filter((r) => !isScopedRole(r)).flatMap((r) => r.capabilities || [])])];
     const g = await projectGrants(user.id);
-    return { user: { ...user, bcId: userBcId(user.id), customRoles, effectivePermissions, projectGrants: { allShowcase: g.allShowcase, showcaseIds: [...g.showcaseIds], projectKeys: [...g.projectKeys] } } };
+    // The studio right, apart from the page right (PLAN-STUDIO-2026 3.1), so the web draws an
+    // "Open the studio" button only where it opens (lib/roles.js canUseStudio). Showcase pages
+    // by id AND slug: the config editor knows a page by its slug. A convenience only: every
+    // studio request is answered again by canUseStudio on the server.
+    const sg = await studioGrants(user.id);
+    const sgSlugs = sg.showcaseIds.size ? (await p.showcaseProject.findMany({ where: { id: { in: [...sg.showcaseIds] } }, select: { slug: true } }).catch(() => [])).map((r) => r.slug) : [];
+    return { user: { ...user, bcId: userBcId(user.id), customRoles, effectivePermissions, projectGrants: { allShowcase: g.allShowcase, showcaseIds: [...g.showcaseIds], projectKeys: [...g.projectKeys] }, studioGrants: { allShowcase: sg.allShowcase, showcaseIds: [...sg.showcaseIds], showcaseSlugs: sgSlugs, projectKeys: [...sg.projectKeys] } } };
   });
 
   // ── Signed-in devices ────────────────────────────────────────────────────────

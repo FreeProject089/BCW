@@ -9,6 +9,7 @@ import { Button, Input, Textarea, Field, Badge, Spinner, Select, Modal } from '.
 import { useDialog, useToast } from '../ui/ui.jsx';
 import { useI18n } from '../i18n.jsx';
 import { useAuth } from '../pages/auth.jsx';
+import { canUseStudio } from '../lib/roles.js';
 import { api, uploadMedia } from '../lib/api.js';
 import { MarkdownEditor } from './markdown-editor.jsx';
 import { CANVAS_PRESETS, presetBlocks } from '../lib/canvas.js';
@@ -481,6 +482,11 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
   const mayToggleStudio = !!me && ['ADMIN', 'SUPERADMIN'].includes(me.role);
   const toast = useToast(); const { t, lang } = useI18n();
   const c = value || {};
+  // Who may DRAW these pages: the studio right on this page, or manage_studio (and, with the
+  // switch off, manage_studio only: D2). The mirror of the server's canUseStudio; a person
+  // with the page right alone sees the pages visitors see and cannot change them here either
+  // (the server puts the stored ones back: guardStudioContent).
+  const mayStudio = canUseStudio(me, isShowcase ? 'showcase' : 'project', slug, c);
   const set = (patch) => onChange({ ...c, ...patch });
   const setIn = (key, patch) => onChange({ ...c, [key]: { ...(c[key] || {}), ...patch } });
 
@@ -1148,7 +1154,16 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
                   whatever width was left in a settings column — a page designed at 1200px,
                   edited at 600 — and several of them stacked made the form unnavigable. A
                   canvas is a page; it wants a page's worth of room. */}
-              {c.studioEnabled === true && list.map((cv, i) => (
+              {c.studioEnabled === true && !mayStudio && (
+                <p className="text-xs text-[var(--muted)]">{t('pce.studio.noright', 'You can edit this page but not draw its studio pages: that needs the studio right on this page, which an administrator grants.')}</p>
+              )}
+              {c.studioEnabled === true && !mayStudio && list.map((cv, i) => (
+                <div key={cv.id || i} className="rounded-xl border border-[var(--line)] p-3 flex items-center gap-2">
+                  <span className="flex-1 min-w-0 truncate text-sm">{cv.title || t('pce.canvases.untitled', 'Untitled page')}</span>
+                  <span className="text-[11px] text-[var(--faint)] tabular-nums whitespace-nowrap">{t('pce.canvases.n', '{n} block(s)').replace('{n}', (cv.blocks || []).length)}</span>
+                </div>
+              ))}
+              {mayStudio && list.map((cv, i) => (
                 <div key={cv.id || i} className="rounded-xl border border-[var(--line)] p-3 flex items-center gap-2 flex-wrap">
                   <Input className="flex-1 min-w-[140px]" value={cv.title || ''} onChange={(e) => patch(i, { title: e.target.value })} placeholder={t('pce.canvases.title', 'Tab title')} />
                   <span className="text-[11px] text-[var(--faint)] tabular-nums whitespace-nowrap">
@@ -1161,12 +1176,12 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
                   <Button size="sm" variant="ghost" className="!text-error" onClick={() => put(list.filter((_, n) => n !== i))} title={t('common.remove', 'Remove')}>×</Button>
                 </div>
               ))}
-              {c.studioEnabled === true && list.length > 0 && (
+              {mayStudio && list.length > 0 && (
                 <p className="text-[11px] text-[var(--faint)]">{t('pce.canvases.saveapart', 'The studio saves its own page. Save this form too if you changed anything else here.')}</p>
               )}
               {/* Start from something. A blank canvas is the worst thing to hand somebody who
                   has never used one — every preset is ordinary blocks the moment it lands. */}
-              {c.studioEnabled === true && (
+              {mayStudio && (
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-[11px] text-[var(--faint)]">{t('pce.canvases.start', 'Start from:')}</span>
                   {CANVAS_PRESETS.map((pr) => (

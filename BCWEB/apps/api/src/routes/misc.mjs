@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { sectionsStudioProblems, studioDocError, sectionRevs, parsePageSave, replaceSectionCanvas } from '../lib/studio-doc.mjs';
-import { db, requireRole, requireCap, hasCap, optionalAuth, slugify, logAudit, notify, notifyAll, clearAccountLockCache, clearUserCache, CAPABILITIES, NOTIF_CATEGORIES, currentUser, httpUrl } from '../lib/lib.mjs';
+import { db, requireRole, requireCap, hasCap, optionalAuth, slugify, logAudit, notify, notifyAll, clearAccountLockCache, clearUserCache, CAPABILITIES, NOTIF_CATEGORIES, currentUser, httpUrl, canUseStudio, guardStudioSections, sectionsWithoutDrafts } from '../lib/lib.mjs';
 import { isDemoKey } from '../lib/demo.mjs';
 import { SECRET_SETTING_KEYS } from '../lib/secret-guard.mjs';
 import { suspendOwned, restoreOwned, cancelSubscriptions, anonymiseAccount } from './closure.mjs';
@@ -882,7 +882,10 @@ export default async function miscRoutes(app) {
     const p = await db();
     const row = await p.adminSetting.findUnique({ where: { key: HOME_KEY } });
     reply.header('Cache-Control', 'public, max-age=60');
-    return homeConfig(row);
+    // Drafts stay home (PLAN-STUDIO-2026 S7): a section that is off, or written, carries no
+    // drawing to visitors. The studio reads the whole list through GET /admin/studio/home.
+    const cfg = homeConfig(row);
+    return { ...cfg, customSections: sectionsWithoutDrafts(cfg.customSections) };
   });
 
 
@@ -1024,30 +1027,56 @@ export default async function miscRoutes(app) {
     return { ...cfg, variants: HOME_VARIANTS, studioRevs: await sectionRevs(cfg.customSections) };
   });
 
+  // The studio saving ONE drawn section of the home page: only that section is replaced, from
+  // the revision the studio opened, and the rest of the home config is what is stored now
+  // (lib/studio-doc.mjs, replaceSectionCanvas). Both doors below call this, after asking
+  // canUseStudio('home'): manage_studio, which ADMIN and SUPERADMIN hold (D8).
+  async function saveHomeSection(req, reply, sectionId, body) {
+    if (!(await canUseStudio(req.user, 'home'))) return reply.code(403).send({ error: 'forbidden' });
+    const b = parsePageSave(body);
+    if (!b.ok || typeof sectionId !== 'string' || !sectionId) return reply.code(400).send({ error: b.ok ? 'invalid_input' : b.error });
+    const p = await db();
+    const row = await p.adminSetting.findUnique({ where: { key: HOME_KEY } });
+    const current = homeConfig(row);
+    const r = await replaceSectionCanvas(current.customSections, sectionId.slice(0, 60), b.canvas, b.base);
+    if (r.status) return reply.code(r.status).send(r.body);
+    const value = { ...(row?.value && typeof row.value === 'object' ? row.value : {}), ...current, customSections: r.sections };
+    await p.adminSetting.upsert({ where: { key: HOME_KEY }, create: { key: HOME_KEY, value }, update: { value } });
+    await logAudit(p, req.user.uid, 'site.home', `studio section=${sectionId.slice(0, 60)}`);
+    return { ok: true, rev: r.rev };
+  }
+
+  // ── The studio's own door to the home page (PLAN-STUDIO-2026 phase 2) ────────────────
+  // manage_studio, not the ADMIN role: drawing the landing page is a job that can be handed
+  // out without handing out the rest of the home screen (its wording, its variant). The
+  // capability opens the drawing and nothing else here.
+  app.get('/admin/studio/home', { preHandler: requireCap('manage_studio') }, async (req, reply) => {
+    if (!(await canUseStudio(req.user, 'home'))) return reply.code(403).send({ error: 'forbidden' });
+    const p = await db();
+    const cfg = homeConfig(await p.adminSetting.findUnique({ where: { key: HOME_KEY } }));
+    return { ...cfg, studioRevs: await sectionRevs(cfg.customSections) };
+  });
+  app.put('/admin/studio/home/sections/:sectionId', { preHandler: requireCap('manage_studio'), bodyLimit: 600 * 1024 }, async (req, reply) => (
+    saveHomeSection(req, reply, String(req.params.sectionId || ''), req.body)
+  ));
+
   app.put('/admin/site/home', { preHandler: requireRole('ADMIN'), bodyLimit: 1024 * 1024 }, async (req, reply) => {
-    // The studio saving ONE drawn section: `{ studioSection: { id, canvas, base } }`. Same
-    // route (and guard) as the home screen, because it is the same setting; only that section
-    // is replaced, from the revision the studio opened, and the rest of the home config is
-    // what is stored now (lib/studio-doc.mjs, replaceSectionCanvas).
+    // The studio's older door, kept for a tab opened before the one above existed:
+    // `{ studioSection: { id, canvas, base } }`. Same rule, same function.
     if (req.body && typeof req.body === 'object' && req.body.studioSection) {
       const sec = req.body.studioSection;
-      const b = parsePageSave(sec);
-      if (!b.ok || typeof sec.id !== 'string') return reply.code(400).send({ error: b.ok ? 'invalid_input' : b.error });
-      const p = await db();
-      const row = await p.adminSetting.findUnique({ where: { key: HOME_KEY } });
-      const current = homeConfig(row);
-      const r = await replaceSectionCanvas(current.customSections, sec.id.slice(0, 60), b.canvas, b.base);
-      if (r.status) return reply.code(r.status).send(r.body);
-      const value = { ...(row?.value && typeof row.value === 'object' ? row.value : {}), ...current, customSections: r.sections };
-      await p.adminSetting.upsert({ where: { key: HOME_KEY }, create: { key: HOME_KEY, value }, update: { value } });
-      await logAudit(p, req.user.uid, 'site.home', `studio section=${sec.id.slice(0, 60)}`);
-      return { ok: true, rev: r.rev };
+      return saveHomeSection(req, reply, typeof sec?.id === 'string' ? sec.id : '', sec);
     }
     const b = HOME_BODY.safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
     const row = await p.adminSetting.findUnique({ where: { key: HOME_KEY } });
     const current = homeConfig(row);
+    // A section's drawing is studio content: without the studio right the stored drawings
+    // are put back, whatever was sent (guardStudioSections). Today only ADMIN reaches this
+    // route and ADMIN holds the right, so it changes nothing yet; it is here so that moving
+    // this route to a capability one day cannot quietly make the home screen a studio door.
+    if (b.data.customSections != null) b.data.customSections = guardStudioSections(b.data.customSections, current.customSections, await canUseStudio(req.user, 'home'));
     // A drawn section is a studio document: checked on the way in (lib/studio-doc.mjs).
     if (b.data.customSections != null) {
       const problems = sectionsStudioProblems(b.data.customSections, current.customSections);

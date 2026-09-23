@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { db, requireCap, requireEditor, optionalAuth, slugify, pageVisibilitySchema, pageAccountEntrySchema, canViewPage, applyScheduledUpdate, canManageShowcase, canEditShowcase, projectGrants , guardStudioFlag} from '../lib/lib.mjs';
+import { db, requireCap, requireEditor, optionalAuth, slugify, pageVisibilitySchema, pageAccountEntrySchema, canViewPage, applyScheduledUpdate, canManageShowcase, canEditShowcase, projectGrants , guardStudioFlag, hasCap, canUseStudio, studioRefusal, studioChecker, guardStudioContent, withoutStudioDrafts, draftReader } from '../lib/lib.mjs';
 import { configStudioProblems, studioDocError, configRevs, parsePageSave, replaceConfigPage } from '../lib/studio-doc.mjs';
 import { computeActivity, releaseMarkers } from '../lib/git-activity.mjs';
 
@@ -56,7 +56,9 @@ function isAnnouncing(row) {
 }
 
 export default async function showcaseRoutes(app) {
-  const pub = (p) => ({ id: p.id, slug: p.slug, name: p.name, short: p.short, icon: p.icon || null, tagline: p.config?.tagline || '', config: p.config || {}, showBlogTab: p.showBlogTab === true });
+  // `drafts`: may this reader see the studio pages being prepared (draftReader)? Everybody
+  // else gets the ones the public page shows (PLAN-STUDIO-2026 S7).
+  const pub = (p, drafts = false) => ({ id: p.id, slug: p.slug, name: p.name, short: p.short, icon: p.icon || null, tagline: p.config?.tagline || '', config: (drafts ? p.config : withoutStudioDrafts(p.config)) || {}, showBlogTab: p.showBlogTab === true });
   // The countdown block a page carries — shared by the full-takeover teaser and the
   // "first tab" (announceShowPage) mode. Button can point anywhere (blog/docs/URL).
   const countdownOf = (r) => ({
@@ -95,13 +97,14 @@ export default async function showcaseRoutes(app) {
     //  • takeover (default): the countdown IS the page — return it alone.
     //  • showPage: the real page renders too, with the countdown as a first tab —
     //    return BOTH (still gated by visibility, since the page is really shown).
+    const drafts = (await draftReader(req))('showcase', row.id, row.config);
     if (isAnnouncing(row)) {
       if (!row.announceShowPage) return { project: null, announcement: countdownOf(row) };
       if (!(await canViewPage(p, row, req))) return reply.code(403).send({ error: 'no_access' });
-      return { project: pub(row), announcement: countdownOf(row), announcementInline: true };
+      return { project: pub(row, drafts), announcement: countdownOf(row), announcementInline: true };
     }
     if (!(await canViewPage(p, row, req))) return reply.code(403).send({ error: 'no_access' });
-    return { project: pub(row) };
+    return { project: pub(row, drafts) };
   });
 
   // Progress tracker (remote progress.json or inline config.progressData).
@@ -187,10 +190,15 @@ export default async function showcaseRoutes(app) {
       const g = await projectGrants(req.user.uid);
       if (!g.allShowcase) rows = rows.filter((r) => g.showcaseIds.has(r.id));
     }
+    // The studio pages of a config are the studio right's: somebody who may edit the page's
+    // words but not draw it gets the pages visitors see, and saving puts the stored ones back
+    // (guardStudioContent). One lookup for the whole list.
+    const mayStudio = await studioChecker(req.user);
     return {
       canManage: manage, // client hides pin/visibility/announce/publish when false
       projects: rows.map((r) => ({
-        id: r.id, slug: r.slug, name: r.name, short: r.short, icon: r.icon, published: r.published, order: r.order, config: r.config,
+        id: r.id, slug: r.slug, name: r.name, short: r.short, icon: r.icon, published: r.published, order: r.order,
+        config: mayStudio('showcase', r.id, r.config) ? r.config : withoutStudioDrafts(r.config),
         showOnHomeNews: r.showOnHomeNews, showBlogTab: r.showBlogTab,
         visibility: r.visibility, visibilityWhitelist: r.visibilityWhitelist, pinTopbar: r.pinTopbar,
         announceEnabled: r.announceEnabled, announceTitle: r.announceTitle, announceLogo: r.announceLogo, announceMarkdown: r.announceMarkdown, announceRevealAt: r.announceRevealAt,
@@ -229,6 +237,8 @@ export default async function showcaseRoutes(app) {
   app.post('/admin/showcase', { preHandler: requireCap('manage_showcase') }, async (req, reply) => {
     const b = upsertSchema.safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input', details: b.error.flatten() });
+    // A new page has no studio switch yet (it is off): only manage_studio draws on it (D2).
+    b.data.config = guardStudioContent(b.data.config, null, hasCap(req.user, 'manage_studio'));
     const born = configStudioProblems(b.data.config, null);
     if (born.length) return reply.code(400).send(studioDocError(born));
     const p = await db();
@@ -255,6 +265,9 @@ export default async function showcaseRoutes(app) {
     // be defended too, or a grantee turns it on for themselves by hand-crafting the body.
     if (data.config !== undefined) {
       const cur = await p.showcaseProject.findUnique({ where: { id: req.params.id }, select: { config: true } }).catch(() => null);
+      // The studio pages are the studio right's (PLAN-STUDIO-2026 3.1): without it the stored
+      // ones are put back, whatever was sent. Asked against the STORED switch (D2).
+      data.config = guardStudioContent(data.config, cur?.config, await canUseStudio(req.user, 'showcase', req.params.id, cur?.config));
       // Studio pages are checked on the way in, with the path of the field (lib/studio-doc.mjs).
       const problems = configStudioProblems(data.config, cur?.config);
       if (problems.length) return reply.code(400).send(studioDocError(problems));
@@ -289,8 +302,10 @@ export default async function showcaseRoutes(app) {
   app.get('/admin/showcase/:id/studio', { preHandler: requireEditor() }, async (req, reply) => {
     const p = await db();
     const row = await studioRow(p, req.params.id);
-    // Unknown and forbidden answer alike for a non-editor: the id space is not an oracle.
-    if (!row || !(await canEditShowcase(req.user, row.id))) return reply.code(row ? 403 : 404).send({ error: row ? 'forbidden' : 'not_found' });
+    // canUseStudio, not canEditShowcase (phase 2): the `studio` right on THIS page, or
+    // manage_studio. A holder whose page has the studio off is told so (studio_off, D2).
+    if (!row) return reply.code(404).send({ error: 'not_found' });
+    if (!(await canUseStudio(req.user, 'showcase', row.id, row.config))) return reply.code(403).send({ error: await studioRefusal(req.user, 'showcase', row.id) });
     const config = row.config || {};
     return {
       config, revs: await configRevs(config),
@@ -298,12 +313,12 @@ export default async function showcaseRoutes(app) {
     };
   });
   app.put('/admin/showcase/:id/studio/pages/:pageId', { preHandler: requireEditor(), bodyLimit: 600 * 1024 }, async (req, reply) => {
-    if (!(await canEditShowcase(req.user, req.params.id))) return reply.code(403).send({ error: 'forbidden' });
+    const p = await db();
+    const cur = await p.showcaseProject.findUnique({ where: { id: String(req.params.id).slice(0, 80) }, select: { config: true } }).catch(() => null);
+    if (!cur) return reply.code(404).send({ error: 'not_found' });
+    if (!(await canUseStudio(req.user, 'showcase', req.params.id, cur.config))) return reply.code(403).send({ error: await studioRefusal(req.user, 'showcase', req.params.id) });
     const b = parsePageSave(req.body);
     if (!b.ok) return reply.code(400).send({ error: b.error });
-    const p = await db();
-    const cur = await p.showcaseProject.findUnique({ where: { id: req.params.id }, select: { config: true } }).catch(() => null);
-    if (!cur) return reply.code(404).send({ error: 'not_found' });
     const r = await replaceConfigPage(cur.config, String(req.params.pageId), b.canvas, b.base);
     if (r.status) return reply.code(r.status).send(r.body);
     const row = await p.showcaseProject.update({ where: { id: req.params.id }, data: { config: r.config } });
@@ -337,8 +352,9 @@ export default async function showcaseRoutes(app) {
     const row = await p.showcaseProject.findUnique({ where: { slug: req.params.slug }, select: { id: true, published: true, config: true } });
     if (!row || !row.published) return reply.code(404).send({ error: 'not_found' });
     const snap = await p.projectVersion.findUnique({ where: { target_version: { target: `sc:${row.id}`, version: req.params.version } } });
-    if (snap) return { version: snap.version, createdAt: snap.createdAt, config: snap.config };
-    if (String(row.config?.version || '').trim() === req.params.version) return { version: req.params.version, createdAt: null, config: row.config };
+    // Public: the studio pages visitors saw, never the drafts (PLAN-STUDIO-2026 S7).
+    if (snap) return { version: snap.version, createdAt: snap.createdAt, config: withoutStudioDrafts(snap.config) };
+    if (String(row.config?.version || '').trim() === req.params.version) return { version: req.params.version, createdAt: null, config: withoutStudioDrafts(row.config) };
     return reply.code(404).send({ error: 'not_found' });
   });
 
@@ -348,6 +364,9 @@ export default async function showcaseRoutes(app) {
   app.put('/admin/showcase/:id/schedule', { preHandler: requireCap('manage_showcase') }, async (req, reply) => {
     if (req.body?.next?.config && typeof req.body.next.config === 'object') {
       const cur = await (await db()).showcaseProject.findUnique({ where: { id: req.params.id }, select: { config: true } }).catch(() => null);
+      // A staged config is a config save that lands later: its studio pages are the studio
+      // right's, now and at the scheduled time (guardStudioContent, asked against the stored switch).
+      req.body.next.config = guardStudioContent(req.body.next.config, cur?.config, await canUseStudio(req.user, 'showcase', req.params.id, cur?.config));
       const problems = configStudioProblems(req.body.next.config, cur?.config);
       if (problems.length) return reply.code(400).send(studioDocError(problems));
     }

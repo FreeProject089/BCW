@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { db, requireCap, requireEditor, optionalAuth, pageVisibilitySchema, pageAccountEntrySchema, canViewPage, canManageProjects, canEditProject, projectGrants, logAudit, clientIp , guardStudioFlag, httpUrl } from '../lib/lib.mjs';
+import { db, requireCap, requireEditor, optionalAuth, pageVisibilitySchema, pageAccountEntrySchema, canViewPage, canManageProjects, canEditProject, projectGrants, logAudit, clientIp , guardStudioFlag, httpUrl, canUseStudio, studioRefusal, guardStudioContent, withoutStudioDrafts, draftReader } from '../lib/lib.mjs';
 import { toCurrentShape } from '../lib/project-config.mjs';
 import { computeActivity, computeActivityFromCommits, computeActivityFromCounts, parseGitLog, releaseMarkers } from '../lib/git-activity.mjs';
 import { safeFetch } from '../lib/net.mjs';
@@ -285,7 +285,14 @@ export default async function projectRoutes(app) {
     const out = {};
     // If a schedule just swapped config, re-read those keys' settings rows.
     const settingRows = due.length ? await p.adminSetting.findMany({ where: { key: { in: (await KEYS()).map(settingKey) } } }) : rows;
-    for (const r of settingRows) out[r.key.replace('project.', '')] = r.value;
+    // Studio drafts (a page being prepared, every page of a studio that is off) only for who
+    // could open them in the studio; everybody else gets what the public page shows (S7). The
+    // admin config editor reads this list, which is why a holder still gets the whole thing.
+    const drafts = await draftReader(req);
+    for (const r of settingRows) {
+      const k = r.key.replace('project.', '');
+      out[k] = drafts('project', k, r.value) ? r.value : withoutStudioDrafts(r.value);
+    }
     // Kept separate from `out` (the free-form config JSON the admin edits as raw
     // text) so it never gets mixed into — or accidentally stripped from — that blob.
     const homeNews = Object.fromEntries((await KEYS()).map((k) => [k, byKey[k]?.showOnHomeNews !== false]));
@@ -312,7 +319,8 @@ export default async function projectRoutes(app) {
     if (!cfg) return reply.code(404).send({ error: 'not_configured' });
     const row = await p.project.findUnique({ where: { key: req.params.key }, select: { showBlogTab: true, visibility: true, visibilityWhitelist: true } });
     if (row && req.params.key !== 'community' && !(await canViewPage(p, row, req))) return reply.code(403).send({ error: 'no_access' });
-    return { config: cfg, showBlogTab: row?.showBlogTab === true };
+    const drafts = await draftReader(req);
+    return { config: drafts('project', req.params.key, cfg) ? cfg : withoutStudioDrafts(cfg), showBlogTab: row?.showBlogTab === true };
   });
 
   /**
@@ -487,6 +495,9 @@ export default async function projectRoutes(app) {
     // NOW, against what is stored, like any other save (PLAN-STUDIO-2026 phase 0).
     if (b.success && b.data.next?.config) {
       const stored = await getConfig(await db(), req.params.key).catch(() => null);
+      // Its studio pages are studio content, whoever stages them (guardStudioContent):
+      // manage_projects alone does not draw a page, now or at the scheduled time.
+      b.data.next.config = guardStudioContent(b.data.next.config, stored, await canUseStudio(req.user, 'project', req.params.key, stored));
       const problems = configStudioProblems(b.data.next.config, stored);
       if (problems.length) return reply.code(400).send(studioDocError(problems));
     }
@@ -559,7 +570,9 @@ export default async function projectRoutes(app) {
     const p = await db();
     const row = await p.projectVersion.findUnique({ where: { target_version: { target: req.params.key, version: req.params.version } } });
     if (!row) return reply.code(404).send({ error: 'not_found' });
-    return { version: row.version, createdAt: row.createdAt, config: row.config };
+    const live = await getConfig(p, req.params.key);
+    const mayStudio = await canUseStudio(req.user, 'project', req.params.key, live);
+    return { version: row.version, createdAt: row.createdAt, config: mayStudio ? row.config : withoutStudioDrafts(row.config) };
   });
 
   // Rewrite what a version holds.
@@ -577,6 +590,14 @@ export default async function projectRoutes(app) {
     const b = z.object({ config: z.record(z.any()) }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_config' });
     const p = await db();
+    // A snapshot is public (GET /projects/:key/versions/:version renders it): its studio pages
+    // are studio content, and a stored snapshot is checked like a stored config.
+    const snap = await p.projectVersion.findUnique({ where: { target_version: { target: req.params.key, version: req.params.version } } });
+    if (!snap) return reply.code(404).send({ error: 'not_found' });
+    const live = await getConfig(p, req.params.key);
+    b.data.config = guardStudioContent(b.data.config, snap.config, await canUseStudio(req.user, 'project', req.params.key, live));
+    const problems = configStudioProblems(b.data.config, snap.config);
+    if (problems.length) return reply.code(400).send(studioDocError(problems));
     const done = await p.projectVersion.updateMany({
       where: { target: req.params.key, version: req.params.version },
       data: { config: b.data.config },
@@ -916,12 +937,16 @@ export default async function projectRoutes(app) {
     // The studio switch is an admin decision; a per-project grantee editing their own page
     // must not be able to grant it to themselves through the free-form config.
     const cur = await p.adminSetting.findUnique({ where: { key: k } }).catch(() => null);
+    // The studio pages are the STUDIO right's, not the page right's (PLAN-STUDIO-2026 3.1):
+    // without it, the stored pages are put back whatever was sent — added, removed, reordered
+    // or redrawn. Asked against the STORED switch (D2), before the flag guard below.
+    const guarded = guardStudioContent(b.data.config, cur?.value, await canUseStudio(req.user, 'project', req.params.key, cur?.value));
     // The studio pages inside the config are author-written documents a visitor's browser
     // renders: a hostile href, colour, id or position is refused here, with the path of the
     // field (lib/studio-doc.mjs). A value already stored is tolerated, see there.
-    const problems = configStudioProblems(b.data.config, cur?.value);
+    const problems = configStudioProblems(guarded, cur?.value);
     if (problems.length) return reply.code(400).send(studioDocError(problems));
-    const cfg = guardStudioFlag(b.data.config, cur?.value, canManageProjects(req.user));
+    const cfg = guardStudioFlag(guarded, cur?.value, canManageProjects(req.user));
     await p.adminSetting.upsert({ where: { key: k }, create: { key: k, value: cfg }, update: { value: cfg } });
     await snapshotVersion(p, req.params.key, cfg);
     await snapshotConfigRevision(p, req.params.key, cfg, req.user?.uid);
@@ -932,10 +957,14 @@ export default async function projectRoutes(app) {
   // Loading a page FOR EDITING asks the same question as saving it. The studio used to read
   // the config through the public GET above, so a grantee of project A opened, and edited,
   // project B's studio; only the save answered 403 (PLAN-STUDIO-2026 section 1.5).
+  //
+  // The question is canUseStudio, not canEditProject (phase 2): the `studio` right on THIS
+  // project, or manage_studio; a `pages` grant, manage_projects or a grant on another project
+  // opens nothing here. A holder whose page has the studio off is told so (studio_off, D2).
   app.get('/admin/projects/:key/studio', { preHandler: requireEditor() }, async (req, reply) => {
     if (!(await isProjectKey(req.params.key))) return reply.code(404).send({ error: 'unknown_project' });
-    if (!(await canEditProject(req.user, req.params.key))) return reply.code(403).send({ error: 'forbidden' });
     const config = (await getConfig(await db(), req.params.key)) || {};
+    if (!(await canUseStudio(req.user, 'project', req.params.key, config))) return reply.code(403).send({ error: await studioRefusal(req.user, 'project', req.params.key) });
     return { config, revs: await configRevs(config) };
   });
 
@@ -945,12 +974,12 @@ export default async function projectRoutes(app) {
   // the stored page, never a silent overwrite.
   app.put('/admin/projects/:key/studio/pages/:pageId', { preHandler: requireEditor(), bodyLimit: 600 * 1024 }, async (req, reply) => {
     if (!(await isProjectKey(req.params.key))) return reply.code(404).send({ error: 'unknown_project' });
-    if (!(await canEditProject(req.user, req.params.key))) return reply.code(403).send({ error: 'forbidden' });
-    const b = parsePageSave(req.body);
-    if (!b.ok) return reply.code(400).send({ error: b.error });
     const p = await db();
     const k = settingKey(req.params.key);
     const cur = await p.adminSetting.findUnique({ where: { key: k } }).catch(() => null);
+    if (!(await canUseStudio(req.user, 'project', req.params.key, cur?.value))) return reply.code(403).send({ error: await studioRefusal(req.user, 'project', req.params.key) });
+    const b = parsePageSave(req.body);
+    if (!b.ok) return reply.code(400).send({ error: b.error });
     const r = await replaceConfigPage(cur?.value, String(req.params.pageId), b.canvas, b.base);
     if (r.status) return reply.code(r.status).send(r.body);
     await p.adminSetting.upsert({ where: { key: k }, create: { key: k, value: r.config }, update: { value: r.config } });
@@ -1022,9 +1051,11 @@ export default async function projectRoutes(app) {
     const p = await db();
     if (!(await assertVisible(p, req, reply))) return;
     const row = await p.projectVersion.findUnique({ where: { target_version: { target: req.params.key, version: req.params.version } } });
-    if (row) return { version: row.version, createdAt: row.createdAt, config: row.config };
+    // A snapshot is the config of its day, studio drafts included: visitors get the pages the
+    // public page showed, like the live config (S7).
+    if (row) return { version: row.version, createdAt: row.createdAt, config: withoutStudioDrafts(row.config) };
     const cfg = await getConfig(p, req.params.key);
-    if (cfg && String(cfg.version || '').trim() === req.params.version) return { version: req.params.version, createdAt: null, config: cfg };
+    if (cfg && String(cfg.version || '').trim() === req.params.version) return { version: req.params.version, createdAt: null, config: withoutStudioDrafts(cfg) };
     return reply.code(404).send({ error: 'not_found' });
   });
 

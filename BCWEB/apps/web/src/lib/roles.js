@@ -62,3 +62,39 @@ export function canEditProject(user, projectKey) {
   const keys = user?.projectGrants?.projectKeys;
   return Array.isArray(keys) ? keys.includes(projectKey) : !!keys?.has?.(projectKey);
 }
+
+/**
+ * May this person draw THIS page in the studio?
+ *
+ * The client's half of the server's `canUseStudio` (api lib.mjs, PLAN-STUDIO-2026 3.1), read
+ * from /me: manage_studio (ADMIN and SUPERADMIN hold it, D8), or the `studio` right on this
+ * target (`user.studioGrants`, by project key, showcase id or showcase slug). The `pages`
+ * right, manage_projects and manage_showcase draw nothing. The home page needs manage_studio.
+ *
+ * `config`, when the caller has it, adds the page's switch (D2): off, only manage_studio
+ * prepares the page. Left out (the studio route, before anything is loaded), the switch is
+ * the server's to answer.
+ *
+ * Like canEditProject above, this decides what is DRAWN, never what is allowed: the server
+ * asks again on every studio request.
+ */
+export function hasStudioCap(user) {
+  if (!user || accountLocked(user)) return false;
+  return user.role === 'ADMIN' || user.role === 'SUPERADMIN' || effectiveCaps(user).includes('manage_studio');
+}
+export function canUseStudio(user, kind, ref, config) {
+  if (!user || accountLocked(user)) return false;
+  if (hasStudioCap(user)) return true;
+  if (kind !== 'project' && kind !== 'showcase') return false;
+  if (config !== undefined && config?.studioEnabled !== true) return false;
+  const g = user.studioGrants;
+  if (!g) return false;
+  const has = (list) => Array.isArray(list) && list.includes(ref);
+  return kind === 'project' ? has(g.projectKeys) : (!!g.allShowcase || has(g.showcaseIds) || has(g.showcaseSlugs));
+}
+/** A suspension (or ban) that is still running: the server's accountLock('service'). */
+function accountLocked(user) {
+  if (!user?.status || user.status === 'active') return false;
+  const until = user.moderationUntil ? new Date(user.moderationUntil).getTime() : null;
+  return until == null || until > Date.now();
+}

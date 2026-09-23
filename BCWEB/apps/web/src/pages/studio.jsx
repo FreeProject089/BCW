@@ -18,8 +18,13 @@
 //
 //   Unsaved: every change is kept as a draft in sessionStorage for this tab, restored on the
 //   next open with a way to discard it, and leaving with unsaved changes asks first.
+//
+//   Who: the route is not the admin's role gate any more (PLAN-STUDIO-2026 phase 2). Before
+//   anything is requested, the page asks lib/roles.js canUseStudio, the mirror of the
+//   server's rule (manage_studio, or the `studio` right on THIS page); somebody without it
+//   sees "access denied" and nothing is loaded. The server asks again on every request.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams, Link } from 'react-router-dom';
+import { useNavigate, useParams, Link, Navigate } from 'react-router-dom';
 import { LayoutTemplate, ShieldCheck, AlertTriangle } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
@@ -28,6 +33,8 @@ import CanvasStudio from '../editor/canvas-studio.jsx';
 import { parseStudioParams, handoffKey, draftKey, canvasAt, blankCanvasAt, withCanvasAt, saveState, studioPath, studioLoadPath, studioSaveRequest, pageIdAt } from '../lib/studio-page.js';
 import StudioPageFrame from '../editor/studio-page-frame.jsx';
 import { framedPreviewUrl, previewReasons } from '../lib/studio-preview.js';
+import { canUseStudio } from '../lib/roles.js';
+import { useAuth } from './auth.jsx';
 
 const readJson = (key) => { try { const raw = sessionStorage.getItem(key); return raw ? JSON.parse(raw) : null; } catch { return null; } };
 const writeJson = (key, v) => { try { sessionStorage.setItem(key, JSON.stringify(v)); } catch { /* quota, private mode */ } };
@@ -58,6 +65,10 @@ export default function StudioPage() {
   const dialog = useDialog();
   const toast = useToast();
   const { kind, id, index } = parseStudioParams(params);
+  const { user, loading: authLoading } = useAuth();
+  // The client's half of canUseStudio: decides whether anything is REQUESTED at all. The
+  // switch (D2) is not known before loading; the server answers `studio_off` for it.
+  const allowed = !!user && !!user.totpEnabled && !!kind && !!id && canUseStudio(user, kind, id);
 
   const [target, setTarget] = useState(null);     // { config, saveId, back, name }
   const [err, setErr] = useState(null);
@@ -69,7 +80,7 @@ export default function StudioPage() {
 
   // Load: the editor's handoff first, the API otherwise.
   useEffect(() => {
-    if (!kind || !id) return undefined;
+    if (!kind || !id || !allowed) return undefined;
     let alive = true;
     setErr(null); setTarget(null); setCanvas(null);
     const hand = readJson(handoffKey(kind, id));
@@ -97,7 +108,7 @@ export default function StudioPage() {
       })
       .catch((e) => { if (alive) setErr(e); });
     return () => { alive = false; };
-  }, [kind, id, index]);
+  }, [kind, id, index, allowed]);
 
   const dirty = !!canvas && JSON.stringify(canvas) !== JSON.stringify(savedCanvas);
 
@@ -236,7 +247,35 @@ export default function StudioPage() {
   if (!kind || !id || (index != null && Number.isNaN(index))) {
     return <EmptyState icon={LayoutTemplate} title={t('cst.route.bad', 'This is not a studio address')} sub={t('cst.route.bad.h', 'Open the studio from a page’s settings in the admin.')} />;
   }
+  // Who may be here, before anything is loaded. Signed out: the sign-in page. No 2FA: said so,
+  // as the admin says it. No studio right on this page: access denied, and no request went out.
+  if (authLoading) return <div className="flex items-center gap-2 text-[var(--muted)] py-10"><Spinner /> {t('common.loading', 'Loading…')}</div>;
+  if (!user) return <Navigate to="/auth" replace />;
+  if (!user.totpEnabled) {
+    return (
+      <EmptyState icon={ShieldCheck} title={t('admin.2fa.title', 'Two-factor authentication required')} sub={t('cst.denied.2fa', 'The studio requires 2FA on your account. Enable it in your profile to continue.')}>
+        <Link to="/profile"><Button size="sm" variant="primary">{t('admin.2fa.cta', 'Go to profile')}</Button></Link>
+      </EmptyState>
+    );
+  }
+  if (!allowed) {
+    return (
+      <EmptyState icon={ShieldCheck} title={t('cst.denied.title', 'Access denied')}
+        sub={kind === 'home' ? t('cst.denied.home', 'Drawing the home page needs the “Use the studio everywhere” permission.') : t('cst.denied.sub', 'You do not have the studio right on this page. An administrator can grant it next to the page permission.')}>
+        <Link to="/"><Button size="sm" variant="ghost">{t('common.back', 'Back')}</Button></Link>
+      </EmptyState>
+    );
+  }
   if (err) {
+    // A holder of the right on a page whose studio is switched off (decision D2).
+    if (err.status === 403 && err.data?.error === 'studio_off') {
+      return (
+        <EmptyState icon={ShieldCheck} title={t('cst.off.title', 'The studio is off for this page')}
+          sub={t('pce.studio.off', 'The studio is off for this page. An administrator can turn it on.')}>
+          <Link to="/"><Button size="sm" variant="ghost">{t('common.back', 'Back')}</Button></Link>
+        </EmptyState>
+      );
+    }
     const forbidden = err.status === 403 || err.status === 401;
     return (
       <EmptyState icon={forbidden ? ShieldCheck : AlertTriangle}

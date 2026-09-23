@@ -8255,6 +8255,17 @@ const DICT = {
     'cst.leave.title': 'Modifications non enregistrées',
     'cst.leave.msg': 'Cette page a des modifications non enregistrées. Elles restent en brouillon dans cet onglet, et disparaissent quand l’onglet se ferme. Quitter quand même ?',
     'cst.leave.go': 'Quitter',
+    // ── Studio phase 2 : le droit studio par projet (PLAN-STUDIO-2026 3.1) ──
+    'cst.denied.title': 'Accès refusé', 'cst.denied.sub': 'Tu n’as pas le droit studio sur cette page. Un administrateur peut l’accorder à côté de la permission de page.',
+    'cst.denied.home': 'Dessiner l’accueil demande la permission « Utiliser le studio partout ».', 'cst.denied.2fa': 'Le studio demande la 2FA sur ton compte. Active-la dans ton profil pour continuer.',
+    'cst.off.title': 'Le studio est désactivé pour cette page',
+    'pce.studio.noright': 'Tu peux modifier cette page mais pas dessiner ses pages studio : il faut pour cela le droit studio sur cette page, qu’un administrateur accorde.',
+    'acc.proj.self': 'Tu ne peux pas t’accorder une permission.', 'acc.proj.unheld': 'Tu ne peux pas accorder un droit que tu n’as pas sur cette page.',
+    'acc.proj.r.pages': 'page', 'acc.proj.r.studio': 'studio', 'acc.proj.r.pages.l': 'Contenu de la page', 'acc.proj.r.studio.l': 'Studio',
+    'acc.proj.r.pages.h': 'Modifier la page : aperçu, présentation, chronologie, config. Pas la publication ni la visibilité.',
+    'acc.proj.r.studio.h': 'Dessiner les pages studio de cette page, tant qu’un administrateur y laisse le studio activé.',
+    'rm.scope.r.studio': 'Dessiner ses pages studio', 'rm.scope.r.studio.s': 'studio',
+    'rm.scope.r.studio.h': 'Ouvrir le studio sur ces projets et dessiner leurs pages studio, tant que leur studio est activé. Pas le texte de la page.',
     // Studio: le dock (panneaux déplaçables), la feuille de raccourcis et les outils ajoutés.
     'cst.dock.panels': 'Panneaux', 'cst.dock.panels.h': 'Quels panneaux sont ouverts, et où ils se placent',
     'cst.dock.left': 'Panneaux de gauche', 'cst.dock.right': 'Panneaux de droite', 'cst.dock.bottom': 'Panneaux du bas',

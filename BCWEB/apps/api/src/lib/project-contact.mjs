@@ -127,7 +127,11 @@ export async function inboxWhere(p, user) {
  */
 export async function inboxRecipients(p, proj, s) {
   const ids = new Set(s.inboxUserIds);
-  const editorWhere = proj.official ? { projectKey: proj.projectKey } : { OR: [{ showcaseProjectId: proj.showcaseProjectId }, { allShowcase: true }] };
+  // Editors = holders of the `pages` right. A studio-only grant (rights: ['studio']) draws the
+  // page and is not told about its inbox, like a scoped role with only the studio right below.
+  const editorWhere = proj.official
+    ? { projectKey: proj.projectKey, rights: { has: 'pages' } }
+    : { rights: { has: 'pages' }, OR: [{ showcaseProjectId: proj.showcaseProjectId }, { allShowcase: true }] };
   if (s.editorsSeeInbox) {
     for (const g of await p.projectPermission.findMany({ where: editorWhere, select: { userId: true } }).catch(() => [])) ids.add(g.userId);
   }

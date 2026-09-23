@@ -120,18 +120,18 @@ export function saveState({ dirty, saving, error }) {
 
 /** Where the studio reads a target FOR EDITING. Never the public route. */
 export function studioLoadPath(kind, id) {
-  // The home page is ONE setting, read by its own ADMIN route, which carries `studioRevs`.
-  if (kind === 'home') return '/admin/site/home';
+  // The home page is ONE setting; the studio reads it through its own door, which asks for
+  // manage_studio (not the ADMIN role) and carries `studioRevs`.
+  if (kind === 'home') return '/admin/studio/home';
   const ref = encodeURIComponent(String(id));
   return kind === 'showcase' ? `/admin/showcase/${ref}/studio` : `/admin/projects/${ref}/studio`;
 }
 
 /** The PUT that saves ONE page: `{ path, body }`. `saveId` is the showcase row id (the URL
- *  may carry its slug). The home page's section rides on the home route, whose guard it
- *  shares: `{ studioSection: { id, canvas, base } }`. */
+ *  may carry its slug). A home section is saved through the studio's home door, by section id. */
 export function studioSaveRequest(kind, saveId, pageId, canvas, base) {
   const pid = encodeURIComponent(String(pageId));
-  if (kind === 'home') return { path: '/admin/site/home', body: { studioSection: { id: String(pageId), canvas, base } } };
+  if (kind === 'home') return { path: `/admin/studio/home/sections/${pid}`, body: { canvas, base } };
   const ref = encodeURIComponent(String(saveId));
   const path = kind === 'showcase' ? `/admin/showcase/${ref}/studio/pages/${pid}` : `/admin/projects/${ref}/studio/pages/${pid}`;
   return { path, body: { canvas, base } };
