@@ -180,6 +180,11 @@ e-mail, et les envois sont déclenchés par admin uniquement (pas d'auto-envoi �
 | Méthode | Chemin | Auth | But |
 |---|---|---|---|
 | GET | `/hosting/plans` · `/capacity` · `/price` · `/feature-price` | — | Plans, capacité, aperçu de prix en direct. |
+| GET | `/hosting/bot-plans` | — | Plans du bot Discord en vente, plans de stockage qui en incluent un (offres groupées), offre gratuite et vocabulaire des fonctions et limites. |
+| POST | `/hosting/bot-plans/checkout` | utilisateur | `{ planId, guildId?, acceptedTerms: true }` → session d’abonnement Stripe `{ url }`. L’attribution est écrite par le webhook (`type: bot_plan`), jamais ici. |
+| GET | `/me/bot-plans` | utilisateur | Mes abonnements qui donnent des droits sur le bot, et les serveurs que je gère. |
+| PUT | `/me/bot-plans/:id/guilds` | utilisateur | `{ guildIds }` : les serveurs visés par le plan (au plus `bot.guilds`, chacun géré par moi ; sinon 400 `too_many_servers` / 403 `not_your_server`). |
+| GET · PUT | `/admin/hosting/bot-entitlements` | `manage_hosting` | L’offre gratuite du bot `{ free: { features, limits }, unlimitedGuildIds }`. Une fonction absente de l’offre gratuite est payante. |
 | POST | `/hosting/checkout` | user | Stripe Checkout pour un repo hébergé unique (supporte `autoRenew`). |
 | POST | `/repos/:id/feature/checkout` | user | Checkout pour un feature/boost de repo (one-time ou `autoRenew`). |
 | POST | `/hosting/cart/quote` | user | Chiffrer un **panier** (repos + boosts) en direct, en validant/combinant les codes promo empilés — sans effet de bord. |

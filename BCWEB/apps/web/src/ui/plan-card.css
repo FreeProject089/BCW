@@ -1,0 +1,13 @@
+/* The offer card (ui/plan-card.jsx).
+
+   The band: a 4px strip of the plan's own colour along the top edge, drawn inside the card's
+   rounded clip (the card is overflow-hidden) so it follows the corners instead of a border-top
+   that would square them off. It is a FILL, never text, so any accent can go there; the one
+   piece of coloured text on the card (the "recommended" flag) uses --accent-ink, which is the
+   token made to be read on a light surface. */
+.plan-card .plan-band {
+  height: 4px;
+  background: var(--plan-accent, var(--line-strong));
+  flex: none;
+}
+.plan-card .plan-flag { color: var(--accent-ink); }

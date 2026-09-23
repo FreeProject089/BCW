@@ -4,6 +4,8 @@ import { randomInt } from 'node:crypto';
 import { db, requireRole, requireCap, logAudit, safeEqual, botAuth, BOT_SECRET, notify, httpUrl } from '../lib/lib.mjs';
 import { recordPendingCheckout } from '../lib/pending-checkout.mjs';
 import { canConfigureGuild, patchFromDiscord } from '../lib/bot-guild-access.mjs';
+// M-plans (agent-plans-M): Discord bot plans, enforced where the config is written and read.
+import { loadEntitlementContext, gateGuildPatch, applyEntitlementsToConfig, limitPerGuild } from '../lib/bot-entitlements.mjs';
 import { issueWarn } from '../lib/warns.mjs';
 import { memberCapacity, capacityStatus, logModeration, memberPolicy, inactiveWhere, evictForRoom } from '../lib/discord-storage.mjs';
 import { buyShopItem, listPurchases, visibleShopItems, SHOP_KINDS, soldCount, itemTag, revealPurchase, giftPurchase, giftPoints, listLedger, movePoints, ledger, resolveUser, deliverGiveawayPrize } from '../lib/economy-shop.mjs';
@@ -631,7 +633,13 @@ export default async function botRoutes(app) {
     const style = cfg.economy?.iconStyle || {};
     const appMap = appEmojiRow?.value && typeof appEmojiRow.value === 'object' ? appEmojiRow.value : null;
     const appIcons = appMap?.emojis ? appIconTokens(Object.keys(BOT_ICONS).map((key) => ({ key, version: iconVersion(key, style) })), appMap.emojis, appMap.animated) : {};
-    return { config: { ...cfg, guildLanguages, guildLogChannels, i18n, appIcons }, restartAt: row?.value?.at || null };
+    // M-plans: the bot is served only what each guild's plan (or the free tier) allows. The
+    // SERVED copy is filtered, never the stored one: a guild that renews gets its saved
+    // settings back on the next poll, untouched (lib/bot-entitlements.mjs, decision 5).
+    const known = (await p.botGuild.findMany({ select: { guildId: true } }).catch(() => [])).map((g) => g.guildId);
+    const { entOf } = await loadEntitlementContext(p);
+    const served = applyEntitlementsToConfig(cfg, known, entOf);
+    return { config: { ...served, guildLanguages, guildLogChannels, i18n, appIcons }, restartAt: row?.value?.at || null };
   });
 
   // Public: the bot's invite URL, built from its own application id. A bot's client_id is not
@@ -660,7 +668,10 @@ export default async function botRoutes(app) {
     const cfg = await getBotConfig(p);
     const stateRow = await p.adminSetting.findUnique({ where: { key: 'bot.rolePanelState' } });
     const state = stateRow?.value || {};
-    const panels = (cfg.rolePanels || []).filter((x) => x && x.id && x.channelId);
+    // M-plans: a guild's panels count against its plan, in saved order (the admin's own,
+    // with no guildId, are never cut).
+    const { entOf } = await loadEntitlementContext(p);
+    const panels = limitPerGuild((cfg.rolePanels || []).filter((x) => x && x.id && x.channelId), 'rolePanels', 'rolePanels', entOf);
     return {
       // Every panel, so the bot can answer a button press on an OLD message too — a member
       // clicking a panel from last month must still get their role.
@@ -2645,6 +2656,9 @@ export default async function botRoutes(app) {
       // when paid, whether THIS guild is unlocked and at what price.
       bannerPolicy: (() => { const b = { allowed: true, paid: false, priceCents: 0, unlocked: [], ...(cfg.welcomeBanner || {}) }; return { allowed: !!b.allowed, paid: !!b.paid, priceCents: b.priceCents || 0, unlocked: (b.unlocked || []).map(String).includes(String(g.guildId)) }; })(),
       roles: gEntry?.roles || [], channels: gEntry?.channels || [],
+      // M-plans: what this server may use (free tier ∪ its plans), so the dashboard can show
+      // a locked feature as locked instead of letting the save fail.
+      entitlements: (await loadEntitlementContext(p)).entOf(g.guildId),
     };
   });
 
@@ -2894,6 +2908,13 @@ export default async function botRoutes(app) {
     const bannerPol = { allowed: true, paid: false, priceCents: 0, unlocked: [], ...(rawCfg0.welcomeBanner || {}) };
     const oldBg = isMediaPath(rawCfg0.guilds?.[cur.guildId]?.welcome?.bgImage) ? rawCfg0.guilds[cur.guildId].welcome.bgImage : '';
     let oldBgToDelete = null;
+    // M-plans: the guild's plan decides what may be turned on and how many of each. Checked
+    // before ANY write, so a refused save changes nothing. 402 + the feature's name, so the
+    // dashboard can say which plan unlocks it; turning a feature off always passes.
+    const { entOf } = await loadEntitlementContext(p);
+    const ent = entOf(cur.guildId);
+    const refused = gateGuildPatch({ welcome, joinToCreate, gating, moderation, logs, rolePanels, blog }, rawCfg0.guilds?.[cur.guildId] || {}, ent, { oldBgImage: oldBg });
+    if (refused) return reply.code(402).send(refused);
     // `moderation` runs bans/kicks and MUST log somewhere — same refusal as the admin path.
     // memberMode is not a choice a server makes any more (the database is global) — it is
     // accepted for old clients and dropped.
@@ -2913,7 +2934,8 @@ export default async function botRoutes(app) {
       // may set one. An unchanged banner, or clearing it, is always allowed.
       if (w.bgImage !== undefined && w.bgImage && w.bgImage !== oldBg) {
         if (!bannerPol.allowed) return reply.code(403).send({ error: 'banner_disabled' });
-        if (bannerPol.paid && !(bannerPol.unlocked || []).map(String).includes(String(cur.guildId))) {
+        // A bot plan that includes the banner counts as having bought it (M-plans).
+        if (bannerPol.paid && !(bannerPol.unlocked || []).map(String).includes(String(cur.guildId)) && !ent.planFeatures.includes('welcomeBanner')) {
           return reply.code(402).send({ error: 'banner_locked', priceCents: bannerPol.priceCents || 0 });
         }
       }
@@ -2995,6 +3017,9 @@ export default async function botRoutes(app) {
     const changed = Object.keys(patch).filter((k) => patch[k]);
     if (!changed.length) return { ok: true, changed: [] };
     const raw = (await p.adminSetting.findUnique({ where: { key: 'bot.config' } }))?.value || {};
+    // M-plans: the same plan gate as the dashboard, so Discord is not a way around it.
+    const refused = gateGuildPatch(patch, raw.guilds?.[g.guildId] || {}, (await loadEntitlementContext(p)).entOf(g.guildId));
+    if (refused) return reply.code(402).send(refused);
     const guilds = { ...(raw.guilds || {}) };
     const gc = { ...(guilds[g.guildId] || {}) };
     for (const k of changed) gc[k] = { ...(gc[k] || {}), ...patch[k] };

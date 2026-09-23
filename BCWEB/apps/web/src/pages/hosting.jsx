@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Upload, CheckCircle2, XCircle, HardDrive, Gauge, Sliders, Receipt, Plus, Mail, RefreshCw, X, ChevronDown, AlertTriangle, Ticket, CreditCard, Gift, Layers, ShoppingCart, Save, MessageSquare, Server, Boxes, Check, Globe, Star, CalendarClock, Anchor, AppWindow, ChevronsUp
+import { Upload, CheckCircle2, XCircle, HardDrive, Gauge, Sliders, Receipt, Plus, Mail, RefreshCw, X, ChevronDown, AlertTriangle, Ticket, CreditCard, Gift, Layers, ShoppingCart, Save, MessageSquare, Server, Boxes, Check, Globe, Star, CalendarClock, Anchor, AppWindow, ChevronsUp, Bot
 } from 'lucide-react';
 import { Button, Card, Badge, Input, Select, PageHeader, Spinner, Modal, bestByteUnit, bytesInUnit, useDialog, useToast, Explain } from '../ui/ui.jsx';
 import { api } from '../lib/api.js';
@@ -14,6 +14,9 @@ import PlanCard from '../ui/plan-card.jsx';
 import Accordion from '../ui/accordion.jsx';
 import { DomainGuide } from '../ui/domain-panel.jsx';
 import { useI18n } from '../i18n.jsx';
+// M21: the Discord bot plans section (#bot), and the name a bundle's bot part goes by.
+import HostingBotPlans, { useBotPlans } from './hosting-bot.jsx';
+import { HandNote } from '../ui/marker.jsx'; // M3 (agent-landing-M)
 
 // Local helpers (small hooks duplicated across a few page modules).
 function useAsync(fn, deps = []) {
@@ -58,7 +61,7 @@ function TermControl({ months, setMonths, term, sample, t }) {
         <div className="min-w-0">
           <div className="flex items-baseline justify-between gap-3 text-sm mb-2">
             <span className="text-[var(--muted)] flex items-center gap-1.5"><CalendarClock size={14} /> {t('hosting.term', 'Billing term')}</span>
-            <span className="font-semibold tabular-nums">{label(months)}{disc > 0 && <span className="ms-2 text-[10.5px] font-bold text-success bg-success-bg border border-success-border rounded-full px-1.5 py-0.5 leading-none align-middle">−{disc}%</span>}</span>
+            <span className="font-semibold tabular-nums">{label(months)}{disc > 0 && <span className="ms-2 text-[12px] font-semibold text-success">−{disc}%</span>}</span>
           </div>
           <input type="range" min={min} max={max} step={step} value={months} className="bcw-range"
             aria-label={t('hosting.term', 'Billing term')} aria-valuetext={label(months)}
@@ -87,15 +90,20 @@ function TermControl({ months, setMonths, term, sample, t }) {
   );
   return (
     <div>
+      {/* ONE segmented control (the monthly / yearly switch of every pricing page, with the
+          admin's other terms beside them), not a row of separate pills: a set of choices where
+          exactly one is on reads as a switch, five bordered chips read as five badges. The
+          saving is text under the length, green only where there is one. */}
       {presets.length > 1 ? (
-        <div className="flex flex-wrap gap-2" role="group" aria-label={t('hosting.term.presets', 'Common terms')}>
+        <div className="inline-flex flex-wrap max-w-full rounded-xl border border-[var(--line)] bg-[var(--surface-2)] p-1 gap-1" role="group" aria-label={t('hosting.term.presets', 'Common terms')}>
           {presets.map((m) => {
             const d = Math.round(discountFor(tiers, m) * 100);
             const active = m === months;
             return (
               <button key={m} type="button" aria-pressed={active} onClick={() => pick(m)}
-                className={`tap-44 rounded-full border px-3.5 py-2 text-[13px] leading-none transition-colors tabular-nums ${active ? 'border-[var(--primary)] tint-primary-soft text-[var(--accent-ink)] font-semibold' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
-                {m} {t('hosting.mo', 'mo')}{d > 0 && <span className={`ms-1 ${active ? '' : 'text-success'}`}>−{d}%</span>}
+                className={`tap-44 min-w-[4.5rem] rounded-lg px-3.5 py-1.5 text-[13px] leading-tight transition-colors tabular-nums flex flex-col items-center ${active ? 'bg-[var(--bg-solid)] shadow-sm font-semibold text-[var(--text)]' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>
+                <span>{m === 1 ? t('hosting.term.monthly', 'Monthly') : m === 12 ? t('hosting.term.yearly', 'Yearly') : `${m} ${t('hosting.mo', 'mo')}`}</span>
+                <span className={`text-[11px] font-semibold ${d > 0 ? 'text-success' : 'invisible'}`}>{d > 0 ? `−${d}%` : '·'}</span>
               </button>
             );
           })}
@@ -325,6 +333,7 @@ export function Hosting() {
   const location = useLocation();
   const plans = useAsync(() => api.get('/hosting/plans'), []);
   const cap = useAsync(() => api.get('/hosting/capacity'), []);
+  const botPlans = useBotPlans();
   // Every purchase is now a storage POOL you fill freely with repos and/or catalogs —
   // the single-repo layout toggle was removed. `mode` stays 'multi' throughout.
   const [mode] = useState('multi');
@@ -408,7 +417,9 @@ export function Hosting() {
   // The plan the page recommends, and the one the term control prices its example against:
   // the 25 GB one when there is one (the size most people end up with), else the middle of
   // the range. One decision, used by the pill on the card AND the sentence above it.
-  const samplePlan = paidPlans.find((pl) => pl.storageGB === 25) || paidPlans[Math.floor((paidPlans.length - 1) / 2)] || null;
+  // A bundle (a storage plan that also carries a bot plan) is never the one recommended: the
+  // recommendation is about size, and a 25 GB bundle would otherwise take the pill from 25 GB.
+  const samplePlan = paidPlans.find((pl) => pl.storageGB === 25 && !(pl.bot && (pl.bot.features || []).length)) || paidPlans[Math.floor((paidPlans.length - 1) / 2)] || null;
   const c = cap.data?.capacity;
   // Is the free plan actually TAKEABLE right now? Three separate ways it is not: no free
   // plan exists at all (an admin can delete it), the free ceiling is full, or the disk is.
@@ -427,7 +438,7 @@ export function Hosting() {
           the question it answers. The button goes to the plans, which is where the price
           lives now. */}
       <HostingHero freePlan={freePlan} freeOffered={freeOffered} />
-      <HostingNav />
+      <HostingNav hasBot={!!(botPlans && (botPlans.plans?.length || botPlans.bundles?.length))} />
 
       {soldOut && (
         <div className="rounded-xl border border-error-border bg-error-bg p-4 mb-6 flex items-start gap-3">
@@ -465,7 +476,7 @@ export function Hosting() {
           a long plan name is the one thing in here that can push a grid track wider than
           its column, and it is the one thing an admin types freely. */}
       {plans.loading ? <Loading /> : <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 lg:gap-6 items-stretch">
-        {paidPlans.map((pl) => {
+        {paidPlans.map((pl, idx) => {
           // A plan can be individually unavailable (not enough free space for ITS
           // size) even while the pool isn't fully soldOut — disable just that card.
           const planDisabled = soldOut || (!!c && pl.storageGB > c.freeGB);
@@ -504,6 +515,9 @@ export function Hosting() {
             [Star, boosts || t('hosting.card.noboosts', 'Boosts bought separately'), !!boosts, t('hosting.card.boostis', 'At the top of the public lists, for as long as it lasts')],
             [Globe, t('hosting.card.domain', 'Your own domain, per repo or catalogue'), true],
             [Gift, freeLine[0], freeLine[1]],
+            // A bundle: this storage plan also carries a Discord bot plan (M21).
+            ...(pl.bot && ((pl.bot.features || []).length || Object.values(pl.bot.limits || {}).some((n) => n > 0))
+              ? [[Bot, t('hosting.card.bot', 'A Discord bot plan included'), true, t('hosting.card.bot.n', 'On {n} of your servers, see the bot plans below').replace('{n}', pl.bot.guilds || 1)]] : []),
           ];
           // The recommended card stands FORWARD (PlanCard: a ring, a lift and a shadow, from lg
           // only and never on a card that cannot be bought): four cards where one is tinted is
@@ -511,9 +525,15 @@ export function Hosting() {
           return (
             <PlanCard key={pl.id} name={pl.name} pill={recommended ? t('hosting.popular2', 'RECOMMENDED') : ''}
               featured={recommended} disabled={planDisabled}
+              // The band that tells the cards apart at a glance: the recommended one in the
+              // brand colour, the others in the calmer status tones, in order of size.
+              accent={recommended ? 'var(--primary)' : PLAN_ACCENTS[idx % PLAN_ACCENTS.length]}
+              // The second door on every card: none of the four sizes has to be THE size, the
+              // configurator further down builds any other one at the same rates.
+              secondary={<a href="#custom" className="text-[var(--accent-ink)] font-medium hover:underline">{t('hosting.card.custom', 'Or pick another size')}</a>}
               price={{
                 now: `$${eff.toFixed(2)}`, per: t('hosting.permo', '/mo'),
-                was: save > 0 ? `$${base.toFixed(2)}` : '', save: save > 0 ? `−${save}%` : '',
+                was: save > 0 ? `$${base.toFixed(2)}` : '', save: save > 0 ? t('hosting.card.save', 'Save {pct}%').replace('{pct}', save) : '',
               }}
               // Prepaid, so "$X /mo" is the effective rate and this line is what is actually
               // charged, once, for the term chosen above.
@@ -578,9 +598,12 @@ export function Hosting() {
       {/* The other half of the offer: none of the four fits, so build one. Given its own
           heading instead of being a second card under the grid — it is an alternative to
           the sizes above, not an extra on top of them. */}
-      <SubLead icon={Sliders}
-        title={t('hosting.cfg.title', 'Pick your size, the price follows')}
-        sub={t('hosting.cfg.sub', 'One pool, filled with whatever you like: one repo, several, catalogs, or a mix. Resize the split whenever you want.')} />
+      {/* `#custom`: the second link on every plan card lands here. */}
+      <div id="custom" className="scroll-mt-24">
+        <SubLead icon={Sliders}
+          title={t('hosting.cfg.title', 'Pick your size, the price follows')}
+          sub={t('hosting.cfg.sub', 'One pool, filled with whatever you like: one repo, several, catalogs, or a mix. Resize the split whenever you want.')} />
+      </div>
       <PoolConfigurator months={months} tiers={term.tiers} soldOut={soldOut} capacity={c}
         onAdd={(custom) => addHosting({ custom, label: t('cart.custom', 'Custom {gb} GB').replace('{gb}', custom.storageGB) })} />
 
@@ -593,21 +616,14 @@ export function Hosting() {
       </>)}
       </section>
 
-      {/* How to put a repo or catalogue on your own name. It was one sentence at the bottom of
-          the FAQ, and nowhere on the site said what the DNS records actually are. The records
-          shown are built by the API (GET /domains/guide), from the same helper that hands an
-          owner their real ones. */}
-      <section id="domains" className="scroll-mt-24">
-        <SectionLead
-          title={t('hosting.dom.title', 'Your own domain, step by step')}
-          sub={t('hosting.dom.sub', 'Included with every paid pool: one hostname per repo or catalogue, served over HTTPS.')} />
-        <Card className="p-5 sm:p-7">
-          <DomainGuide />
-        </Card>
-      </section>
+      {/* "Your own domain, step by step" was a section of its own here. It is now the answer
+          to "Can I use my own domain?" in the questions below (the owner's call: a guide most
+          visitors never need should not cost everyone a screen of scrolling). `#domains`
+          still lands on it: the FAQ opens that question when the hash asks for it. */}
+      <HostingBotPlans data={botPlans} />
 
       <section id="compare" className="scroll-mt-24"><HostingCompare freePlan={freePlan} /></section>
-      <section id="faq" className="scroll-mt-24"><HostingFaq /></section>
+      <section id="faq" className="scroll-mt-24"><HostingFaq openDomains={location.hash === '#domains'} /></section>
 
       {/* Talk to us — THREE doors, not one.
           It used to be a single "Contact us" under one paragraph that tried to cover a
@@ -954,7 +970,10 @@ function SubLead({ icon: Icon, title, sub }) {
 }
 
 /** The sections a link can land on (`/hosting#domains` from the domain panel, and so on). */
-const HOSTING_ANCHORS = ['plans', 'domains', 'compare', 'faq', 'talk'];
+const HOSTING_ANCHORS = ['plans', 'custom', 'bot', 'domains', 'compare', 'faq', 'talk'];
+
+/** The coloured band on the plan cards that are not the recommended one, smallest first. */
+const PLAN_ACCENTS = ['var(--info)', 'var(--success)', 'color-mix(in srgb, var(--info) 55%, var(--primary))', 'var(--warning)'];
 
 /**
  * Where things are on this page, as a row of links under the hero.
@@ -964,23 +983,27 @@ const HOSTING_ANCHORS = ['plans', 'domains', 'compare', 'faq', 'talk'];
  * use my own domain". Plain anchors: they work without script, with the middle button, and
  * the effect in Hosting() re-scrolls once the plans have arrived.
  */
-function HostingNav() {
+function HostingNav({ hasBot = false }) {
   const { t } = useI18n();
   // Objects, not `['plans', Icon, …]` rows: this file also builds /contact?topic= links from
   // rows of that shape, and check-contact-topics reads every such row as a topic.
   const links = [
     { id: 'plans', Icon: Layers, label: t('hosting.nav.plans', 'Plans and prices') },
     { id: 'domains', Icon: Globe, label: t('hosting.nav.domains', 'Your own domain') },
+    ...(hasBot ? [{ id: 'bot', Icon: Bot, label: t('hosting.nav.bot', 'Discord bot') }] : []),
     { id: 'compare', Icon: CheckCircle2, label: t('hosting.nav.compare', 'What changes') },
     { id: 'faq', Icon: MessageSquare, label: t('hosting.nav.faq', 'Questions') },
     { id: 'talk', Icon: Mail, label: t('hosting.nav.talk', 'Talk to us') },
   ];
+  // One quiet strip with hairline separators, not a row of pill cards: five bordered pills
+  // under the hero were read as badges, and a contents row should be the calmest thing on the
+  // page, not a second set of buttons competing with the hero's.
   return (
     <nav aria-label={t('hosting.nav.l', 'On this page')} className="-mt-4 mb-4">
-      <ul className="flex flex-wrap justify-center gap-2">
+      <ul className="card flex flex-wrap justify-center w-fit max-w-full mx-auto rounded-xl px-1.5 lg:divide-x divide-[var(--line)]">
         {links.map(({ id, Icon, label }) => (
-          <li key={id}>
-            <a href={`#${id}`} className="card inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 min-h-[36px] max-lg:min-h-[44px] text-[13px] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--line-strong)] transition-colors">
+          <li key={id} className="min-w-0">
+            <a href={`#${id}`} className="inline-flex items-center gap-1.5 px-3.5 py-2.5 min-h-[40px] max-lg:min-h-[44px] text-[13px] font-medium text-[var(--muted)] hover:text-[var(--text)] transition-colors">
               <Icon size={14} className="shrink-0 text-[var(--accent-ink)]" aria-hidden /> {label}
             </a>
           </li>
@@ -1059,6 +1082,8 @@ function HostingHero({ freePlan, freeOffered }) {
           <p className="text-[var(--muted)] mt-4 text-[15.5px] leading-relaxed max-w-xl">
             {t('hosting.hero.sub', 'You buy a space. You fill it with whatever you like, we keep it up, you decide what goes in it.')}
           </p>
+          {/* M3 (agent-landing-M): the site's handwritten aside, pointing down at the plans. */}
+          <p className="mt-3"><HandNote arrow="down">{t('hosting.hero.note', 'The plans and their prices are just below')}</HandNote></p>
 
           <ul className="mt-7 flex flex-col gap-2.5">
             {facts.map(([Icon, label]) => (
@@ -1084,11 +1109,9 @@ function HostingHero({ freePlan, freeOffered }) {
 
         <PoolDiagram />
       </div>
-      {/* A cue, at the bottom of the screen rather than under the buttons: the buttons say
-          where the plans are, this says there IS a below. Decorative, so hidden from readers. */}
-      <a href="#plans" aria-hidden tabIndex={-1} className="absolute left-1/2 -translate-x-1/2 bottom-2 hidden sm:flex flex-col items-center gap-1 text-[var(--faint)] hover:text-[var(--muted)] transition text-[11px]">
-        <ChevronDown size={16} className="animate-bounce" />
-      </a>
+      {/* No bouncing "scroll down" chevron any more: the owner asked for it gone. The two
+          buttons already say where the plans are, and a bouncing arrow on a pricing page read
+          as a landing-page gimmick. */}
     </div>
   );
 }
@@ -1238,7 +1261,7 @@ function HostingCompare({ freePlan }) {
 }
 
 /** The questions people ask, including the one nobody puts on a pricing page. */
-function HostingFaq() {
+function HostingFaq({ openDomains = false }) {
   const { t } = useI18n();
   const qs = [
     // Checked against the code, not the previous answer. The sweeper (lib/sweeper.mjs)
@@ -1264,11 +1287,18 @@ function HostingFaq() {
     [t('hosting.faq.q5b', 'Can you host my site, or my Discord bot?'),
      t('hosting.faq.a5b', 'No. What is sold here is storage and delivery: we serve files over HTTPS and we do not run your code — no process, no container, no database. Ask anyway with the last card on this page, because that is how we will find out whether enough people want it to be worth building.')],
     // The question this page gets most often after the price one, now that it has an answer.
+    // The whole step-by-step guide lives in this answer now (it was a section of its own).
+    // The records it shows are built by the API (GET /domains/guide), from the same helper
+    // that hands an owner their real ones, so what is printed here is what they will type.
     [t('hosting.faq.q7', 'Can I use my own domain?'),
      <>
-       {t('hosting.faq.a7b', 'Yes, with a paid pool, one hostname per repo or catalogue. You point a subdomain at us with a CNAME and add one TXT record so we can check the name is yours; from then on it is served over HTTPS on your name, with the certificate obtained on the first visit. The free plan keeps its bettercommunity address.')}
-       {' '}<a href="#domains" className="text-[var(--accent-ink)] underline">{t('hosting.faq.a7.more', 'The exact records, step by step')}</a>
-     </>],
+       {/* A span, not a <p>: this is an accordion answer, already folded (check-wall-of-text reads a bare <p> as always on). */}
+       <span className="block">{t('hosting.faq.a7b', 'Yes, with a paid pool: one hostname per repo or catalogue. Point a subdomain at us with a CNAME and add one TXT record that proves the name is yours; it is then served over HTTPS, the certificate obtained on the first visit. The free plan keeps its bettercommunity address.')}</span>
+       <div className="mt-5 pt-5 border-t border-[var(--line)] text-[var(--text)]">
+         <div className="font-semibold text-[14.5px] mb-4">{t('hosting.dom.title', 'Your own domain, step by step')}</div>
+         <DomainGuide />
+       </div>
+     </>, 'domains'],
   ];
   // Two columns from lg: the heading (and the way out, for a question that is not here) stays
   // beside the list while it is read, instead of a heading stacked over seven full-width bars.
@@ -1283,7 +1313,11 @@ function HostingFaq() {
           <MessageSquare size={14} className="shrink-0" /> {t('hosting.faq.other', 'Another question? Ask us')}
         </a>
       </div>
-      <Accordion items={qs.map(([q, a], i) => ({ id: String(i), q, a }))} />
+      {/* Keyed on the hash so `/hosting#domains` (a link from the domain panel, or a pasted
+          one) opens the domain question even when the page is already mounted. */}
+      <Accordion key={openDomains ? 'dom' : 'all'} variant="list"
+        defaultOpen={openDomains ? String(qs.findIndex((x) => x[2] === 'domains')) : null}
+        items={qs.map(([q, a, anchor], i) => ({ id: String(i), q, a, anchor }))} />
     </div>
   );
 }

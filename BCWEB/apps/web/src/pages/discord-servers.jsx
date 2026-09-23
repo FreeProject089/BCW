@@ -6,6 +6,7 @@ import { ChannelPicker, RolePicker, CHANNEL_TYPES } from './discord-pickers.jsx'
 import { DiscordIcon } from '../ui/brand.jsx';
 import { SP, Panel, Head, Eyebrow } from '../ui/discord-kit.jsx';
 import { api, uploadImage } from '../lib/api.js';
+import { planErrorText } from '../ui/bot-plan-labels.js'; // M-plans (agent-plans-M)
 import { useI18n } from '../i18n.jsx';
 import { Card, Button, Badge, Input, Field, Spinner, EmptyState, useToast, useDialog, Textarea, Select, ColorInput, Explain } from '../ui/ui.jsx';
 
@@ -266,9 +267,10 @@ function GuildConfig({ guildId, onSaved }) {
       toast.success(t('ds.saved', 'Saved.'));
       onSaved?.();
     } catch (x) {
-      toast.error(x?.data?.error === 'log_channel_required' ? t('ds.needchannel', 'Set a log channel first.')
+      // M-plans: a 402 names the feature or the limit the server's plan does not cover.
+      toast.error(planErrorText(t, x?.data) || (x?.data?.error === 'log_channel_required' ? t('ds.needchannel', 'Set a log channel first.')
         : x?.data?.error === 'not_found' ? t('ds.gone', 'You can no longer manage this server')
-        : t('common.failed', 'Failed.'));
+        : t('common.failed', 'Failed.')));
     } finally { setBusy(false); }
   };
   // The dashboard is a set of SECTIONS you switch between, not one long scroll — you pick the

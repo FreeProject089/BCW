@@ -616,6 +616,37 @@ export async function dispatchStripeEvent({ p, stripe, event, log = console }) {
         return { received: true };
       }
 
+      // M-plans (agent-plans-M): a Discord bot plan. The GRANT is the Subscription row: the
+      // bot's entitlements are computed from active subscriptions (lib/bot-entitlements.mjs),
+      // so writing the row is the whole delivery and deleting nothing is ever needed to revoke.
+      // Keyed on the Stripe subscription id (unique): a replayed event, or the reconciler
+      // finishing a session the live webhook already did, finds the row and stops. Placed
+      // BEFORE the generic tail below, which would otherwise provision a storage pool for it.
+      if (meta.type === 'bot_plan' && meta.planId && meta.userId) {
+        if (s.payment_status && s.payment_status !== 'paid' && s.payment_status !== 'no_payment_required') return { received: true };
+        const stripeSubId = typeof s.subscription === 'string' ? s.subscription : (s.subscription?.id || null);
+        const plan = await p.hostingPlan.findUnique({ where: { id: meta.planId } });
+        if (!plan || !stripeSubId) return { received: true };
+        if (await p.subscription.findUnique({ where: { stripeSubId } })) return { received: true };
+        let sub = null;
+        try {
+          sub = await p.subscription.create({ data: {
+            userId: meta.userId, planId: plan.id, stripeSubId, status: 'active',
+            currentPeriodEnd: new Date(Date.now() + 31 * 864e5),
+            botGuildIds: /^\d{1,32}$/.test(meta.guildId || '') ? [meta.guildId] : [],
+          } });
+        } catch (e) {
+          // Two overlapping deliveries: the unique index refused the second. Done already.
+          if (e?.code === 'P2002') return { received: true };
+          throw e;
+        }
+        await p.payment.create({ data: { userId: meta.userId, kind: 'BOT_PLAN', description: `${plan.name} (Discord bot plan)`, amountCents: s.amount_total ?? plan.priceMonthlyCents, currency: s.currency || 'usd', stripeSessionId: s.id } }).catch(() => {});
+        await notify(p, meta.userId, 'hosting_started', sub.botGuildIds.length
+          ? `Your Discord bot plan "${plan.name}" is active on your server.`
+          : `Your Discord bot plan "${plan.name}" is active. Choose the server it applies to in your dashboard.`, { href: '/dashboard?s=discord' }).catch(() => {});
+        return { received: true };
+      }
+
       const { userId, planId, repoName } = meta;
       const plan = await p.hostingPlan.findUnique({ where: { id: planId } });
       if (plan && userId) {
@@ -810,6 +841,11 @@ export async function dispatchStripeEvent({ p, stripe, event, log = console }) {
       const sub = await p.subscription.findUnique({ where: { stripeSubId: subId } });
       if (sub) {
         await p.subscription.update({ where: { id: sub.id }, data: { status: 'canceled' } });
+        // M-plans: a bot-only plan anchors to no repo and no pool; marking it canceled IS the
+        // revoke (entitlements are computed from active rows). The owner is told which one.
+        if (!sub.hostingGroupId && !sub.serverRepoId && sub.botGuildIds?.length && sub.status !== 'canceled') {
+          await notify(p, sub.userId, 'hosting_stopped', 'Your Discord bot plan has ended. Your server keeps its settings; the features the plan added are switched off until you subscribe again.', { href: '/hosting#bot' }).catch(() => {});
+        }
         // A pool sub: recompute the pool from remaining ACTIVE subs — a single-sub pool
         // drops to 0 and its content is suspended/hidden; a merged pool just shrinks.
         // A legacy repo sub suspends just that repo.

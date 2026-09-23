@@ -53,6 +53,17 @@ const plans = [
   { name: 'Pool 25 GB', storageGB: 25, uploadLimitKbps: 8192, cpuShare: 0.75, priceMonthlyCents: 1000, boostsPerPeriod: 1, boostPeriodMonths: 1, boostDays: 7 },
   { name: 'Pool 50 GB', storageGB: 50, uploadLimitKbps: 16384, cpuShare: 1.0, priceMonthlyCents: 1800, boostsPerPeriod: 3, boostPeriodMonths: 1, boostDays: 7 },
 ];
+// M-plans: Discord bot plans (lib/bot-entitlements.mjs). PLACEHOLDER prices, and every one
+// created SWITCHED OFF (active: false): what they cost is the owner's decision, made in
+// Admin → Hosting plans, and nothing is on sale until he turns one on. A bundle is a hosting
+// plan that also carries bot entitlements.
+const BOT_PLUS = { guilds: 1, features: ['welcomeBanner', 'joinToCreate', 'rolePanels', 'blog', 'automod', 'logRouting'], limits: { joinToCreateLobbies: 10, gatingRules: 15, rolePanels: 10, blogRoutes: 10, automodWords: 300 } };
+const BOT_PRO = { guilds: 3, features: ['welcome', 'welcomeBanner', 'joinToCreate', 'gating', 'rolePanels', 'blog', 'automod', 'logRouting'], limits: { joinToCreateLobbies: 20, gatingRules: 30, rolePanels: 20, blogRoutes: 20, automodWords: 500 } };
+plans.push(
+  { name: 'Bot Plus', kind: 'bot', storageGB: 0, uploadLimitKbps: 0, cpuShare: 0, priceMonthlyCents: 300, active: false, bot: BOT_PLUS },
+  { name: 'Bot Pro', kind: 'bot', storageGB: 0, uploadLimitKbps: 0, cpuShare: 0, priceMonthlyCents: 800, active: false, bot: BOT_PRO },
+  { name: 'Pool 25 GB + Bot Plus', storageGB: 25, uploadLimitKbps: 8192, cpuShare: 0.75, priceMonthlyCents: 1200, active: false, boostsPerPeriod: 1, boostPeriodMonths: 1, boostDays: 7, bot: BOT_PLUS },
+);
 for (const plan of plans) {
   const found = await p.hostingPlan.findFirst({ where: { name: plan.name } });
   if (!found) await p.hostingPlan.create({ data: plan });

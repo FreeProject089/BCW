@@ -1354,7 +1354,7 @@ export default async function repoRoutes(app) {
     let storageGB = b.data.storageGB, uploadKbps = b.data.uploadMbps ? Math.round(b.data.uploadMbps * 1024) : undefined, cpuShare = b.data.cpuShare;
     if (b.data.planId) {
       const plan = await p.hostingPlan.findUnique({ where: { id: b.data.planId } });
-      if (!plan) return reply.code(404).send({ error: 'unknown_plan' });
+      if (!plan || plan.kind === 'bot') return reply.code(404).send({ error: 'unknown_plan' });
       storageGB = plan.storageGB; uploadKbps = plan.uploadLimitKbps; cpuShare = plan.cpuShare;
     }
     storageGB = storageGB || 10; uploadKbps = uploadKbps ?? 8192; cpuShare = cpuShare ?? 0.5;

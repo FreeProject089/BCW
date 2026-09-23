@@ -35,6 +35,7 @@ import { SOCIAL_ICONS, Nav, MobileTabBar, readMobileMenu } from '../App.jsx';
 import PreviewFrame from '../ui/preview-frame.jsx';
 import DomainPanel from '../ui/domain-panel.jsx';
 import { SaveBar } from '../ui/save-bar.jsx'; // D1 (agent-admin-D): one save bar for every editor
+import { BotPlanFields, BotFreeTier, botPlanBody, botPlanSummary } from '../ui/bot-plan-editor.jsx'; // M-plans (agent-plans-M)
 import { Laptop as LaptopIcon } from 'lucide-react'; // D2 (agent-admin-D): laptop-width topbar preview
 import SceneTransitionsEditor from './admin-scene-transitions.jsx'; // D4 (agent-admin-D)
 import HomePresetCards from './admin-home-presets.jsx'; // D3 (agent-admin-D)
@@ -8390,7 +8391,7 @@ function AdminHostingPlans() {
 
   // priceMonthlyCents starts EMPTY, not 0. Empty means "use the Hosting settings rate";
   // zero would mean "free", and a new plan defaulting to free is the wrong accident.
-  const blank = { name: '', storageGB: 5, uploadLimitKbps: 1024, cpuShare: 0.25, priceMonthlyCents: '', active: true, boostsPerPeriod: 0, boostPeriodMonths: 1, boostDays: 7 };
+  const blank = { name: '', storageGB: 5, uploadLimitKbps: 1024, cpuShare: 0.25, priceMonthlyCents: '', active: true, boostsPerPeriod: 0, boostPeriodMonths: 1, boostDays: 7, kind: 'hosting', bot: {} };
   // Default notice period. 30 days is what the Payments policy describes, and a default
   // is what makes "give notice" the easy path rather than the conscientious one.
   const in30Days = () => { const d = new Date(); d.setDate(d.getDate() + 30); return d.toISOString().slice(0, 10); };
@@ -8443,6 +8444,7 @@ function AdminHostingPlans() {
     };
     const id = draft.id;
     const label = draft.name;
+      ...botPlanBody(draft), // M-plans: kind + Discord bot entitlements
     // A date only means something on an EXISTING plan whose price actually moved. Sent
     // otherwise it would stage a change from a price to itself and mail everyone about
     // nothing.
@@ -8597,6 +8599,8 @@ function AdminHostingPlans() {
               <div className="text-sm font-medium flex items-center gap-2">
                 <Calendar size={14} className="text-[var(--accent-ink)]" /> {t('adm.plans.eff.t', 'When does the new price start?')}
               </div>
+          <BotPlanFields draft={draft} setDraft={setDraft} />
+
               <p className="text-xs text-[var(--muted)]">
                 {t('adm.plans.eff.s', 'Pick a date and every current subscriber is emailed now; the price changes on that day and applies from their next renewal. Leave it empty to change the price immediately — right for a correction, wrong for a rise on a plan people are paying for.')}
               </p>
@@ -8670,6 +8674,7 @@ function AdminHostingPlans() {
                 {pl.pendingPriceCents != null && (
                   <div className="text-[11px] text-[var(--accent-ink)] flex items-center gap-1.5 mt-0.5">
                     <Calendar size={11} />
+                {botPlanSummary(pl, t) && <div className="text-[11px] text-[var(--muted)] mt-0.5">{pl.kind === 'bot' ? `${t('adm.botplan.kind.b', 'Bot only')} · ` : ''}{botPlanSummary(pl, t)}</div>}
                     {(pl.pendingApplyExisting
                       ? t('adm.plans.pending', '{p}/mo from {d} · {n} notified')
                       : t('adm.plans.pendingnew', '{p}/mo from {d} · new buyers only'))
@@ -8696,6 +8701,7 @@ function AdminHostingPlans() {
 }
 
 function AdminFreeHost() {
+      <BotFreeTier />
   const toast = useToast(); const { t } = useI18n();
   const plans = useAsync(() => api.get('/hosting/plans'), []);
   const [f, setF] = useState({ name: '', ownerEmail: '', planId: '', storageGB: 10, uploadMbps: 8, listed: false, mode: 'multi' });

@@ -5,6 +5,7 @@ import { flagEnabled } from '../lib/flags.mjs';
 import { statfsSync } from 'node:fs';
 import { db, requireRole, notify, hasFreeTierClaim, recordFreeTierClaim, grantPlan, GRANT_PLAN_NAME, logAudit, clientIp, hostingGrace, requireCap } from '../lib/lib.mjs';
 import { recordPendingCheckout } from '../lib/pending-checkout.mjs';
+import { normalizePlanBot } from '../lib/bot-entitlements.mjs';
 import { sendMail, mailShell, escapeHtml } from '../lib/mail.mjs';
 import { validatePromo, redeemPromoAtomic } from './promo.mjs';
 import { getActiveCampaign, applyCampaign } from './campaigns.mjs';
@@ -161,8 +162,9 @@ export async function capacityStatus(p) {
  * offered anywhere, so it cannot collide with anything.
  */
 export function secondFreePlan(plan, others) {
-  if (!plan || plan.active !== true || Number(plan.priceMonthlyCents) !== 0) return null;
-  return (others || []).find((o) => o.active === true && Number(o.priceMonthlyCents) === 0) || null;
+  // A bot plan is not "the free hosting plan" and never collides with it (M-plans).
+  if (!plan || plan.kind === 'bot' || plan.active !== true || Number(plan.priceMonthlyCents) !== 0) return null;
+  return (others || []).find((o) => o.kind !== 'bot' && o.active === true && Number(o.priceMonthlyCents) === 0) || null;
 }
 
 export function priceCents(s, storageGB, uploadMbps, cpuShare) {
@@ -391,6 +393,16 @@ export const planShape = {
   boostsPerPeriod: z.number().int().min(0).max(50).default(0),
   boostPeriodMonths: z.number().int().min(1).max(24).default(1),
   boostDays: z.number().int().min(1).max(365).default(7),
+  // M-plans (agent-plans-M): Discord bot plans. `kind` 'bot' = a bot-only plan; `bot` = the
+  // entitlements the plan grants ({} = none; on a hosting plan, set = a bundle). Cleaned by
+  // normalizePlanBot before it is stored, so an unknown feature or a limit past the hard cap
+  // never reaches the column. Optional (not defaulted): a PATCH that omits them leaves them.
+  kind: z.enum(['hosting', 'bot']).optional(),
+  bot: z.object({
+    guilds: z.number().int().min(1).max(100).optional(),
+    features: z.array(z.string().max(40)).max(40).optional(),
+    limits: z.record(z.string().max(40), z.number().int().min(0).max(1_000_000)).optional(),
+  }).optional(),
 };
 
 export default async function hostingRoutes(app) {
@@ -449,13 +461,17 @@ export default async function hostingRoutes(app) {
       if (dup) return reply.code(409).send({ error: 'duplicate_plan', existing: dup });
     }
     data.name = data.name.trim();
+    // M-plans: entitlements cleaned before storage; a bot plan has no storage to derive a
+    // price from, so its price is never "whatever the settings say" (that would be $0).
+    if (data.bot !== undefined) data.bot = normalizePlanBot(data.bot) || {};
+    if (data.kind === 'bot' && data.priceMonthlyCents == null) return reply.code(400).send({ error: 'price_required' });
     // Empty price → derive it. The column is NOT NULL, so what is stored is the computed
     // number; `autoPriced` tells the caller it came from the settings rather than from them.
     const autoPriced = data.priceMonthlyCents == null;
     if (autoPriced) data.priceMonthlyCents = await autoPriceCents(p, data);
     // Checked AFTER the auto-price, because "leave it empty" can itself compute to zero.
     const clash = secondFreePlan(data, await p.hostingPlan.findMany({
-      where: { active: true, priceMonthlyCents: 0 }, select: { id: true, name: true, active: true, priceMonthlyCents: true },
+      where: { active: true, priceMonthlyCents: 0 }, select: { id: true, name: true, active: true, priceMonthlyCents: true, kind: true },
     }));
     if (clash) return reply.code(409).send({ error: 'free_plan_exists', existing: { id: clash.id, name: clash.name } });
     const plan = await p.hostingPlan.create({ data });
@@ -488,6 +504,8 @@ export default async function hostingRoutes(app) {
     const data = { ...rest };
     const current = await p.hostingPlan.findUnique({ where: { id: req.params.id } });
     if (!current) return reply.code(404).send({ error: 'not_found' });
+    if (data.bot !== undefined) data.bot = normalizePlanBot(data.bot) || {};
+    if ((data.kind || current.kind) === 'bot' && 'priceMonthlyCents' in data && data.priceMonthlyCents == null) return reply.code(400).send({ error: 'price_required' });
     if ('priceMonthlyCents' in data && data.priceMonthlyCents == null) {
       // Explicitly cleared → fall back to the computed price, using the specs as they will
       // be AFTER this edit rather than as they were before it.
@@ -499,7 +517,7 @@ export default async function hostingRoutes(app) {
     const next = { ...current, ...data };
     const freeClash = secondFreePlan(next, await p.hostingPlan.findMany({
       where: { active: true, priceMonthlyCents: 0, id: { not: current.id } },
-      select: { id: true, name: true, active: true, priceMonthlyCents: true },
+      select: { id: true, name: true, active: true, priceMonthlyCents: true, kind: true },
     }));
     if (freeClash) return reply.code(409).send({ error: 'free_plan_exists', existing: { id: freeClash.id, name: freeClash.name } });
 
@@ -622,7 +640,9 @@ export default async function hostingRoutes(app) {
     const p = await db();
     const bounds = termBounds(await settings(p));
     return {
-      plans: await p.hostingPlan.findMany({ where: { active: true }, orderBy: { storageGB: 'asc' } }),
+      // Storage plans only: bot plans are listed by GET /hosting/bot-plans (M-plans). A bundle
+      // (a hosting plan with `bot`) stays here, its card says what it adds on Discord.
+      plans: await p.hostingPlan.findMany({ where: { active: true, kind: 'hosting' }, orderBy: { storageGB: 'asc' } }),
       // The term the page lets people pick — bounds from the admin, tiers from the code.
       term: { ...bounds, presets: termPresets(bounds), tiers: TERM_DISCOUNT_TIERS.map(([from, off]) => ({ from, off })) },
     };
@@ -925,7 +945,8 @@ export default async function hostingRoutes(app) {
       } });
     } else {
       plan = await p.hostingPlan.findUnique({ where: { id: b.data.planId } });
-      if (!plan || !plan.active) return reply.code(404).send({ error: 'unknown_plan' });
+      // A bot plan has no storage to provision; it is bought through /hosting/bot-plans/checkout.
+      if (!plan || !plan.active || plan.kind === 'bot') return reply.code(404).send({ error: 'unknown_plan' });
     }
     // Refuse if provisioning this plan would eat into the reserved free margin.
     if (cap.allocatedGB + plan.storageGB > cap.usableGB) return reply.code(409).send({ error: 'capacity_full', freeGB: cap.freeGB });
@@ -1141,7 +1162,7 @@ export default async function hostingRoutes(app) {
           plan = persistPlans ? await p.hostingPlan.create({ data: planData }) : { id: null, ...planData };
         } else {
           plan = await p.hostingPlan.findUnique({ where: { id: it.planId } });
-          if (!plan || !plan.active) return { error: 'unknown_plan' };
+          if (!plan || !plan.active || plan.kind === 'bot') return { error: 'unknown_plan' };
         }
         neededStorageGB += plan.storageGB;
         const baseCents = termTotalCents(plan.priceMonthlyCents, it.months, cf.priceMult);

@@ -173,6 +173,11 @@ and sends are admin-triggered only (no auto-send on publish).
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
 | GET | `/hosting/plans` · `/capacity` · `/price` · `/feature-price` | — | Plans, capacity, live price preview. |
+| GET | `/hosting/bot-plans` | — | Discord bot plans on sale, the storage plans that include one (bundles), the free tier and the feature/limit vocabulary. |
+| POST | `/hosting/bot-plans/checkout` | user | `{ planId, guildId?, acceptedTerms: true }` → Stripe subscription session `{ url }`. The grant is written by the webhook (`type: bot_plan`), never here. |
+| GET | `/me/bot-plans` | user | My subscriptions that grant bot entitlements, and the servers I manage. |
+| PUT | `/me/bot-plans/:id/guilds` | user | `{ guildIds }`: the servers the plan applies to (at most `bot.guilds`, each one I manage; else 400 `too_many_servers` / 403 `not_your_server`). |
+| GET · PUT | `/admin/hosting/bot-entitlements` | `manage_hosting` | The bot free tier `{ free: { features, limits }, unlimitedGuildIds }`. A feature not in the free tier is paid. |
 | POST | `/hosting/checkout` | user | Stripe Checkout for a single hosted repo (supports `autoRenew`). |
 | POST | `/repos/:id/feature/checkout` | user | Checkout for a repo feature/boost (one-time or `autoRenew`). |
 | POST | `/hosting/cart/quote` | user | Price a **shopping cart** (repos + boosts) live, validating/combining stacked promo codes — no side effects. |

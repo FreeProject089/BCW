@@ -32,6 +32,7 @@ import newsletterRoutes from './routes/newsletter.mjs';
 import uploadRoutes from './routes/uploads.mjs';
 import platformAssetRoutes from './routes/platform-assets.mjs';
 import hostingRoutes from './routes/hosting.mjs';
+import botPlanRoutes from './routes/bot-plans.mjs'; // M-plans: Discord bot plans
 import marketplaceRoutes from './routes/marketplace.mjs';
 import paymentsAdminRoutes from './routes/payments-admin.mjs';
 import stripeWebhook from './routes/stripe-webhook.mjs';
@@ -398,6 +399,7 @@ await app.register(newsletterRoutes);
 await app.register(uploadRoutes);
 await app.register(platformAssetRoutes);
 await app.register(hostingRoutes);
+await app.register(botPlanRoutes); // Discord bot plans: list, checkout, servers, free tier
 await app.register(marketplaceRoutes);
 await app.register(paymentsAdminRoutes);
 await app.register(analyticsRoutes);

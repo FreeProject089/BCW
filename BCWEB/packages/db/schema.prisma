@@ -1227,6 +1227,15 @@ model HostingPlan {
   boostsPerPeriod   Int      @default(0)
   boostPeriodMonths Int      @default(1)
   boostDays         Int      @default(7)
+  /// M21 Discord bot plans (lib/bot-entitlements.mjs has the design). "hosting" = a storage
+  /// plan, as every row was before; "bot" = a bot-only plan (no storage, a recurring
+  /// subscription). A hosting plan whose `bot` is set is a BUNDLE: its subscription grants the
+  /// same bot entitlements a bot plan does.
+  kind              String   @default("hosting")
+  /// { guilds, features: string[], limits: { key: n } }; {} = grants nothing on the bot.
+  /// NOT NULL with a {} default on purpose: backups, seeds and the config import write plan
+  /// rows back whole, and Prisma refuses a bare `null` for a nullable Json column.
+  bot               Json     @default("{}")
 }
 
 model ServerRepo {
@@ -2130,6 +2139,10 @@ model Subscription {
   /// grant had nothing to anchor a period to -- and anchoring to the calendar would hand
   /// somebody who bought on the 28th a second month of boosts three days later.
   createdAt        DateTime      @default(now())
+  /// M21: the Discord servers this subscription's bot entitlements apply to, chosen by its
+  /// owner among the servers they manage (at most plan.bot.guilds). Empty on a plan without
+  /// bot entitlements. A bot-only subscription anchors to neither a repo nor a pool.
+  botGuildIds      String[]      @default([])
 
   @@index([hostingGroupId])
   boostCredits      BoostCredit[]
@@ -3016,6 +3029,8 @@ enum PaymentKind {
   SHOWCASE_LISTING
   /// One more team than the admin's limit allows — a one-off payment, appended last.
   TEAM_SLOT
+  /// M21: a Discord bot plan (bot-only subscription), appended last.
+  BOT_PLAN
 }
 
 // Billing history / invoices (one-time feature promotions, hosting charges…).
