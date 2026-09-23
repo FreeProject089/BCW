@@ -264,7 +264,10 @@ export function Admin() {
     isMod && { id: 'needs', label: t('adm.tab.needs', 'Needs attention'), icon: BellIcon },
     // Beside the queues, because it is one: the difference is that the rows on this one
     // have somebody's name on them.
-    isMod && { id: 'tasks', label: t('adm.tab.tasks', 'Tasks'), icon: TASKS_TAB_ICON },
+    // Not isMod alone: view_tasks / manage_tasks / manage_teams can be granted to a USER, and
+    // the server lets that USER read and dispatch the board -- a tab hidden from them made the
+    // grant look broken. The server still decides what each row shows.
+    (isMod || can('view_tasks') || can('manage_tasks') || can('manage_teams')) && { id: 'tasks', label: t('adm.tab.tasks', 'Tasks'), icon: TASKS_TAB_ICON },
     isMod && { id: 'moderation', label: t('adm.tab.moderation', 'Moderation'), icon: ShieldAlert,
       sub: [
         { id: 'moderation', label: t('adm.tab.submissions', 'Submissions'), icon: Inbox, badge: queue.length || undefined },
