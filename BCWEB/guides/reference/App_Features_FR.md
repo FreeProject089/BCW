@@ -396,6 +396,13 @@
 - **Squelettes de chargement** — les pages en liste/grille (dépôts, catalogue, blog, tableau de
   bord) affichent des cartes fantômes de la forme du contenu pendant le chargement, au lieu
   d'un spinner centré.
+- **Versions, Docs et Légal des projets** : chaque projet (fixe ou Autre projet) a un onglet
+  **Versions** (frise filtrable par canal : date, points forts, changements cassants, notes B.MD,
+  téléchargements avec taille et empreinte, liens vers l'article et la release GitHub, import des
+  releases GitHub), un onglet **Docs** (pages « Haut / Sous », import du markdown d'un dépôt) et de
+  **vraies pages légales** affichées sur le site, dans chaque langue du site avec repli sur l'anglais.
+  Les éditeurs du projet les écrivent sur la page même ; elles sont séparées des docs et des pages
+  légales du site, qu'un éditeur de projet ne peut pas toucher. Voir OTHER_PROJECTS_GUIDE, section 6b.
 - **Pages projet** — l'aperçu porte des **mises en avant** (updates, vidéos, directs et annonces
   — embed YouTube/Twitch/mp4) et un **compteur en tête** optionnel, au-dessus du média et du
   suivi d'avancement ; l'onglet Activité montre les **avatars** des contributeurs et un

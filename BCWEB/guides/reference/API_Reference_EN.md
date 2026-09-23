@@ -115,6 +115,13 @@ and sends are admin-triggered only (no auto-send on publish).
 | GET | `/projects` · `/projects/:key` | — | Project config pages (BMM/BSM/…). |
 | GET | `/projects/:key/community` · `/progress` · `/releases` | — | Project sub-tab data. |
 | PUT | `/projects/:key` | admin | Edit project config. |
+| GET | `/projects/:key/content` · `/project/:slug/content` | — (visibility) | G2 + G3: counts of the project's releases, docs and legal pages, and `canEdit` for the caller. |
+| GET | `/projects/:key/changelog` · `/project/:slug/changelog` | — (visibility) | The Versions tab: release entries (channel, date, per-language title / highlights / notes / breaking, assets with size + checksum, blog + GitHub links) merged with the page snapshots and the live version. Drafts only for editors. |
+| PUT/DELETE | `/projects/:key/changelog/:version` · `/project/:slug/changelog/:version` | editor of THIS project + 2FA | Write (`rename` moves it) or delete one entry. |
+| POST | `/projects/:key/changelog/import` · `/project/:slug/changelog/import` | editor + 2FA | Add the project's GitHub releases the history lacks (`{ github? }`); never overwrites. |
+| GET | `/projects/:key/pages/:kind` · `/project/:slug/pages/:kind` (+ `/:pslug`) | — (visibility) | The project's own docs (`kind=doc`) or legal pages (`kind=legal`): list, then one page with every language. |
+| POST/PUT/DELETE | `/projects/:key/pages/:kind` · `/project/:slug/pages/:kind` (+ `/:pslug`) | editor + 2FA | Create, edit (`baseVersion` → 409 on a concurrent save), delete. Separate from `/docs` and `/admin/legal` (the site's), which stay `manage_docs` / `manage_legal`. |
+| POST | `/projects/:key/pages/:kind/import` · `/project/:slug/pages/:kind/import` | editor + 2FA | Read a GitHub `.md` file or folder and return drafts; saves nothing. |
 | GET | `/admin/projects` | admin | Admin project list. |
 | PUT | `/admin/projects/:key/blog-tab` · `/home-news` · `/visibility` · `/schedule` | admin | Per-project toggles + scheduled update. |
 | POST | `/admin/projects/flush-cache` | admin | Flush the GitHub/showcase cache. |

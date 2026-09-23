@@ -2606,6 +2606,71 @@ model ProjectVersion {
   @@index([target])
 }
 
+// What a release SAID, beside the page snapshot above (G2, PLAN-SEPT23). ProjectVersion holds
+// the page config as it was; this holds the release itself: channel, date, highlights, notes,
+// breaking changes, the files with their size and checksum, and where it was announced.
+//
+// A separate table on purpose. A snapshot can be "put live" from the admin; a release entry
+// imported from GitHub has no page behind it, and filing one as an empty config would make that
+// button wipe the page. Joined to ProjectVersion by (target, version) when both exist.
+//
+// `target` is the project key, or `sc:<showcaseId>` for an Other project, exactly as in
+// ProjectVersion. `content` is per language: { en: { title, highlights[], notes, breaking[] },
+// fr: {...}, <runtime locale>: {...} }, English being the fallback.
+model ProjectRelease {
+  id          String   @id @default(cuid())
+  target      String
+  version     String
+  /// stable | beta | alpha | rc | nightly
+  channel     String   @default("stable")
+  date        DateTime @default(now())
+  content     Json     @default("{}")
+  /// [{ label, url, size (bytes), checksum ("sha256:…"), platform }]
+  assets      Json     @default("[]")
+  /// { blog: "/blog/<slug>" | https URL, github: https URL }
+  links       Json     @default("{}")
+  published   Boolean  @default(true)
+  /// "github" when imported from GitHub releases, null when written here.
+  source      String?
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([target, version])
+  @@index([target, date])
+}
+
+// A project's OWN docs and legal pages (G3, PLAN-SEPT23), written by the project's editors.
+//
+// Deliberately NOT DocPage / LegalSection: those are the SITE's docs and the SITE's legal
+// pages, gated on manage_docs / manage_legal. A project editor holds neither and must never
+// reach them (pentest R10), so project pages live in their own table behind their own routes,
+// and nothing here can name a site row. `kind` is "doc" or "legal", nothing else.
+//
+// `content` is per language: { en: { title, category, body }, fr: {...}, ... }. `category` is
+// the site docs' "Top / Sub" path. Bodies are B.MD, stored as written and rendered through the
+// same sanitising renderer as the blog and the site docs.
+model ProjectDoc {
+  id          String   @id @default(cuid())
+  target      String
+  kind        String
+  slug        String
+  icon        String?
+  order       Int      @default(0)
+  published   Boolean  @default(true)
+  content     Json     @default("{}")
+  /// { url, importedAt } when the page came from a repository's markdown.
+  source      Json?
+  /// Optimistic-concurrency counter, like DocPage.version.
+  version     Int      @default(1)
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([target, kind, slug])
+  @@index([target, kind])
+}
+
 // Platform-hosted assets served at stable public URLs (/api/assets/<key>): app download
 // files (BMM/BSM/BI installers), auto-update manifests, and JSON configs (links.json,
 // contributors.json). A `file` asset lives in object storage (storageKey); a `json` asset

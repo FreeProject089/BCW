@@ -148,6 +148,18 @@ Chaque Autre projet peut avoir son propre espace blog :
 - **Afficher dans « Dernières news » de l'accueil** — si ses articles remontent aussi dans le fil de l'accueil (ils s'affichent toujours sur /blog).
 - Poste dedans depuis l'admin Blog en choisissant la « page personnalisée » du projet comme espace de l'article.
 
+## 6b. Versions, Docs et pages légales (tous les projets)
+
+Ces trois onglets marchent pareil sur les projets fixes (BMM, BSM, BetterInstaller…) et sur les Autres projets. Quiconque peut modifier la page du projet (la capacité `manage_projects` / `manage_showcase`, ou un droit sur ce projet, avec la 2FA activée) les modifie **directement sur la page du projet** : les boutons apparaissent pour lui et pour personne d'autre.
+
+- **Versions** : l'historique des versions en frise, la plus récente en haut. Chaque version a un **canal** (stable, bêta, version candidate, alpha, nightly), une **date**, un titre, des **points forts**, des **changements cassants**, des **notes complètes** (B.MD), ses **téléchargements** avec taille et empreinte (`sha256:…`), et des liens vers son **article de blog** et sa **release GitHub**. Les lecteurs filtrent par canal, cherchent, ou n'affichent que les versions avec des changements cassants. **Importer depuis GitHub** ajoute chaque release publiée du dépôt du projet (son dépôt de notes de version, sinon son lien GitHub) qui manque encore à l'historique, avec la taille des fichiers et les empreintes sha256 de GitHub ; une entrée écrite à la main n'est jamais écrasée. Les instantanés de page déjà gardés (voir « Historique des versions » dans l'admin) restent visibles, et **La page à cette version** en ouvre un. Cliquer le badge de version dans l'en-tête ouvre cet onglet.
+- **Docs** : la documentation du projet, écrite ici : des pages avec un titre, une catégorie « Haut / Sous » (comme les docs du site), une icône et un corps en B.MD. **Importer depuis un dépôt** lit un fichier `.md` GitHub, un dossier, ou le dossier `docs/` du dépôt et liste ce qu'il a trouvé ; rien n'est enregistré tant que tu n'as pas choisi les pages à créer (elles arrivent en brouillon sauf si tu coches « Publier tout de suite »). L'onglet apparaît dès qu'une page est publiée, et toujours pour les éditeurs.
+- **Légal** : les **vraies pages légales** du projet (politique de confidentialité, conditions, licence, CLUF, cookies, mentions des tiers…), affichées sur ce site. Les cartes de liens externes de la config restent affichées en dessous. Ce sont les pages du projet, rangées à part des pages légales du site : un éditeur de projet ne peut pas modifier les pages `/legal` du site, seule la capacité `manage_legal` le peut.
+
+**Langues.** Chaque entrée et chaque page peut être écrite dans chaque langue du site (anglais, français et les langues ajoutées dans Langues). Un lecteur reçoit sa langue, sinon l'anglais, et il est prévenu quand la page n'est pas encore traduite ; une page de docs ou légale écrite en plusieurs langues affiche aussi un sélecteur de langue.
+
+**Brouillons et suppressions.** Décoche « Publié » pour réserver une version ou une page aux éditeurs. Une suppression laisse quelques secondes pour l'annuler.
+
 ## 7. Notes sur le cache
 
 Les réponses de `progressSource`, `releaseNotes` et `contributorsUrl` passent par un cache

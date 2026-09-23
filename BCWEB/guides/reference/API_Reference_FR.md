@@ -119,6 +119,13 @@ e-mail, et les envois sont déclenchés par admin uniquement (pas d'auto-envoi �
 | GET | `/projects` · `/projects/:key` | — | Pages de config des projets (BMM/BSM/…). |
 | GET | `/projects/:key/community` · `/progress` · `/releases` | — | Données des sous-onglets de projet. |
 | PUT | `/projects/:key` | admin | Éditer la config du projet. |
+| GET | `/projects/:key/content` · `/project/:slug/content` | — (visibilité) | G2 + G3 : nombre de releases, de docs et de pages légales du projet, et `canEdit` pour l'appelant. |
+| GET | `/projects/:key/changelog` · `/project/:slug/changelog` | — (visibilité) | L'onglet Versions : les entrées de release (canal, date, titre / points forts / notes / changements cassants par langue, fichiers avec taille et empreinte, liens blog et GitHub) fusionnées avec les instantanés de page et la version en ligne. Brouillons pour les éditeurs seulement. |
+| PUT/DELETE | `/projects/:key/changelog/:version` · `/project/:slug/changelog/:version` | éditeur de CE projet + 2FA | Écrire (`rename` la déplace) ou supprimer une entrée. |
+| POST | `/projects/:key/changelog/import` · `/project/:slug/changelog/import` | éditeur + 2FA | Ajoute les releases GitHub du projet qui manquent à l'historique (`{ github? }`) ; n'écrase rien. |
+| GET | `/projects/:key/pages/:kind` · `/project/:slug/pages/:kind` (+ `/:pslug`) | — (visibilité) | Les docs (`kind=doc`) ou les pages légales (`kind=legal`) propres au projet : la liste, puis une page avec toutes ses langues. |
+| POST/PUT/DELETE | `/projects/:key/pages/:kind` · `/project/:slug/pages/:kind` (+ `/:pslug`) | éditeur + 2FA | Créer, modifier (`baseVersion` → 409 sur un enregistrement concurrent), supprimer. Séparé de `/docs` et `/admin/legal` (ceux du site), qui restent `manage_docs` / `manage_legal`. |
+| POST | `/projects/:key/pages/:kind/import` · `/project/:slug/pages/:kind/import` | éditeur + 2FA | Lit un fichier `.md` ou un dossier GitHub et renvoie des brouillons ; n'enregistre rien. |
 | GET | `/admin/projects` | admin | Liste des projets admin. |
 | PUT | `/admin/projects/:key/blog-tab` · `/home-news` · `/visibility` · `/schedule` | admin | Toggles par projet + màj planifiée. |
 | POST | `/admin/projects/flush-cache` | admin | Vider le cache GitHub/vitrine. |

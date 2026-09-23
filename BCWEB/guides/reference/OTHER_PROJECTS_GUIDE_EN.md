@@ -125,6 +125,18 @@ Each Other Project can have its own blog space:
 - **Show in home "Latest news"** — whether its posts also surface on the homepage feed (they always show on /blog).
 - Post to it from the Blog admin by picking the project's "custom page" as the post's space.
 
+## 6b. Versions, Docs and legal pages (every project)
+
+These three tabs work the same on the fixed projects (BMM, BSM, BetterInstaller…) and on Other projects. Whoever may edit the project's page (the `manage_projects` / `manage_showcase` capability, or a grant on that project, with 2FA on) edits them **on the project page itself**: the buttons appear for them and for nobody else.
+
+- **Versions** — the version history as a timeline, newest first. Each version has a **channel** (stable, beta, release candidate, alpha, nightly), a **date**, a title, **highlights**, **breaking changes**, **full notes** (B.MD), its **downloads** with size and checksum (`sha256:…`), and links to its **blog post** and its **GitHub release**. Readers filter by channel, search, or show only the versions with breaking changes. **Import from GitHub** adds every published release of the project's repository (its release-notes repo, else its GitHub link) that the history does not have yet, with the assets' sizes and GitHub's sha256 digests; an entry somebody has written is never overwritten. The page snapshots the history already kept (see "Version history" in the admin) still show, and **The page at this version** opens one. Clicking the version badge in the header opens this tab.
+- **Docs** — the project's own documentation, written here: pages with a title, a "Top / Sub" category (like the site docs), an icon and a B.MD body. **Import from a repository** reads a GitHub `.md` file, a folder, or the repository's `docs/` folder and lists what it found; nothing is saved until you pick the pages to create (they arrive as drafts unless you tick "Publish right away"). The tab appears once a page is published, and always for editors.
+- **Legal** — the project's **real legal pages** (privacy policy, terms, licence, EULA, cookies, third-party notices…), rendered on this site. The external link cards of the config still show under them. These are the project's pages, stored apart from the site's own legal pages: a project editor cannot change the site's `/legal` pages, only `manage_legal` can.
+
+**Languages.** Every entry and every page can be written in each language of the site (English, French and the languages added under Languages). A reader gets their language, else English, and is told when the page is not translated yet; a docs or legal page written in several languages also shows a language switch.
+
+**Drafts and deletions.** Untick "Published" to keep a version or a page to the editors. A deletion leaves a few seconds to undo it.
+
 ## 7. Caching notes
 
 `progressSource`, `releaseNotes` and `contributorsUrl` responses are proxied through a shared 5-minute GitHub cache. Raw-URL fetches are sha-versioned, so file edits on GitHub usually appear immediately; if something looks stale, use **Projects config → Refresh site caches**.

@@ -39,6 +39,8 @@ import { Button, Card, Badge, PageHeader, EmptyState, Spinner, Modal, Input, Tex
 import { useDraft, DraftBanner } from '../ui/drafts.jsx';
 import { ProjectContactBar } from '../ui/project-contact.jsx';
 import { useFramedDraft, canvasTabsFor } from '../lib/studio-preview.js';
+// G2 + G3: the version timeline, the project's own docs and its legal pages (PLAN-SEPT23).
+import { ProjectVersions, ProjectPages, ProjectLegalTab, useProjectContent } from './project-content.jsx';
 
 // Which tab is actually shown. A `?tab=` naming one that is switched OFF must not render it:
 // hiding the link while still serving the content means an admin who turns a tab off has not
@@ -201,7 +203,7 @@ function DownloadMenu({ downloads = [], children, pkey }) {
 // Version-history modal — click a project's version badge to browse past versions and
 // open the page's info + downloads as they were at that version. `endpoint` is the
 // project's API base ('/projects/bmm' or '/project/<slug>'); works for every project.
-function VersionHistoryModal({ endpoint, currentVersion, onClose }) {
+function VersionHistoryModal({ endpoint, currentVersion, onClose, initial = null }) {
   const { t, lang } = useI18n();
   const [versions, setVersions] = useState(null);
   const [sel, setSel] = useState(null);       // { version, createdAt, config }
@@ -211,6 +213,8 @@ function VersionHistoryModal({ endpoint, currentVersion, onClose }) {
     api.get(`${endpoint}/versions`).then((r) => { if (on) setVersions(r.versions || []); }).catch(() => on && setVersions([]));
     return () => { on = false; };
   }, [endpoint]);
+  // Opened from a version of the Versions tab: show that one, not the empty picker.
+  useEffect(() => { if (initial) open(initial); }, [initial]); // eslint-disable-line react-hooks/exhaustive-deps
   const open = async (v) => {
     setLoadingSel(true);
     try { const r = await api.get(`${endpoint}/versions/${encodeURIComponent(v)}`); setSel(r); }
@@ -341,6 +345,10 @@ export default function ProjectPage({ preview: previewProp = null }) {
   // The project's marketplace — the tab only appears when it actually sells something.
   const market = useFetch(() => api.get(`/marketplace/products?projectKey=${encodeURIComponent(key)}`).catch(() => ({ products: [] })), [key]);
   const marketProducts = market.data?.products || [];
+  // What the project wrote beside its page (G2 + G3). Not in the studio's preview: that
+  // renders a draft config, and these live in their own tables.
+  const extra = useProjectContent(preview ? null : `/projects/${key}`);
+  const ex = extra.data || {};
   if (loading) return <div className="flex items-center gap-2 text-[var(--muted)] py-10"><Spinner /> {t('common.loading')}</div>;
   if (err?.status === 403) return <EmptyState icon={Lock} title={t('proj.notAvailable', 'Not available')} sub={t('proj.noAccess', "You don't have access to this page.")}
     action={{ label: t('proj.err.a', 'See the projects'), to: '/projects', icon: Boxes }} />;
@@ -358,7 +366,10 @@ export default function ProjectPage({ preview: previewProp = null }) {
   const canvasTabs = canvasTabsFor(c, preview ? preview.tab : null, t('pce.canvases.untitled', 'Untitled page'));
   const tabs = [
     ['overview', t('proj.overview'), ListTodo],
+    // The project's own docs: shown once a page exists, and to its editors so they can write the first.
+    (ex.docs > 0 || ex.canEdit) && ['docs', t('proj.docs', 'Docs'), BookOpen],
     c.releaseNotes && ['releases', t('proj.releases'), ScrollText],
+    (c.version || ex.releases > 0 || ex.canEdit) && ['versions', t('proj.versions', 'Versions'), Clock],
     ['community', t('proj.community'), Users],
     // The admin switch AND something to draw — see stackTabEnabled, which both kinds of
     // project page share so the rule cannot drift between them.
@@ -381,7 +392,7 @@ export default function ProjectPage({ preview: previewProp = null }) {
           ? <img src={APP_LOGO[key]} alt="" className="logo-plate w-16 h-16 rounded-2xl object-contain shrink-0 bg-[var(--surface-2)] border border-[var(--line)] p-1.5" />
           : <div className="grid place-items-center w-16 h-16 rounded-2xl bg-gradient-to-br from-brand to-brand-2 shrink-0"><span className="text-2xl font-extrabold text-[var(--on-primary)]">{c.name?.[0] || 'B'}</span></div>}
         <div className="flex-1 on-backdrop">
-          <div className="flex items-center gap-3 flex-wrap"><h1 className="text-3xl font-extrabold">{c.name}</h1>{c.version && <button onClick={() => setShowVersions(true)} title={t('ver.open', 'Version history')} className="press-sm"><Badge tone="primary"><Clock size={11} /> v{c.version}</Badge></button>}</div>
+          <div className="flex items-center gap-3 flex-wrap"><h1 className="text-3xl font-extrabold">{c.name}</h1>{c.version && <button onClick={() => (preview ? setShowVersions(true) : setSp((p) => { const n = new URLSearchParams(p); n.set('tab', 'versions'); return n; }))} title={t('ver.open', 'Version history')} className="press-sm"><Badge tone="primary"><Clock size={11} /> v{c.version}</Badge></button>}</div>
           <p className="text-[var(--muted)] mt-1">{c.tagline}</p>
         </div>
         <div className="flex flex-wrap items-start gap-2">
@@ -409,7 +420,7 @@ export default function ProjectPage({ preview: previewProp = null }) {
         </div>
       </div>
 
-      {showVersions && <VersionHistoryModal endpoint={`/projects/${key}`} currentVersion={c.version} onClose={() => setShowVersions(false)} />}
+      {showVersions && <VersionHistoryModal endpoint={`/projects/${key}`} currentVersion={c.version} initial={typeof showVersions === 'string' ? showVersions : null} onClose={() => setShowVersions(false)} />}
 
       {/* links row */}
       <LinksRow links={c.links} />
@@ -431,6 +442,8 @@ export default function ProjectPage({ preview: previewProp = null }) {
       {tab === 'overview' && <Overview c={c} pkey={key} />}
       {tab === 'activity' && <ProjectActivity endpoint={`/projects/${key}/activity`} timeline={c.timeline} githubUrl={c.links?.github} />}
       {tab === 'releases' && <Releases pkey={key} />}
+      {tab === 'versions' && <ProjectVersions base={`/projects/${key}`} onOpenSnapshot={(v) => setShowVersions(v)} />}
+      {tab === 'docs' && <ProjectPages base={`/projects/${key}`} kind="doc" />}
       {tab === 'community' && <Community c={c} communityUrl={contribUrlOf(c) ? `/projects/${key}/community` : null} />}
       {tab === 'stack' && (
         <>
@@ -449,7 +462,8 @@ export default function ProjectPage({ preview: previewProp = null }) {
       )}
       {tab === 'blog' && <ProjectBlogTab project={key} />}
       {tab === 'market' && <Marketplace pkey={key} products={marketProducts} onChanged={market.refetch} />}
-      {tab === 'legal' && <Legal c={c} />}
+      {tab === 'legal' && (preview ? <Legal c={c} />
+        : <ProjectLegalTab base={`/projects/${key}`}><Legal c={c} quiet={ex.legal > 0} /></ProjectLegalTab>)}
       {tab.startsWith('c-') && (() => {
         const cv = canvasTabs.find((x) => `c-${x.id}` === tab);
         return cv ? <CanvasView canvas={cv} /> : null;
@@ -1057,7 +1071,7 @@ function Community({ c, communityUrl }) {
 // A legal card's icon name (as stored by toCurrentShape) to a component.
 const LEGAL_ICON = { ShieldCheck, Scale: ShieldCheck, FileText, ScrollText, BookOpen };
 
-function Legal({ c }) {
+function Legal({ c, quiet = false }) {
   const { t } = useI18n();
   const { lang } = useI18n();
   const pick = (en, fr) => (lang === 'fr' && fr) ? fr : en;
@@ -1078,6 +1092,8 @@ function Legal({ c }) {
     ].filter(Boolean);
   // The license summary card only applies to the legacy object shape.
   const legacyLicense = obj.license;
+  // The project's own legal pages are drawn above: an empty list of links is not "no legal documents".
+  if (!docs.length && quiet) return null;
   if (!docs.length) return <EmptyState icon={ShieldCheck} title={t('proj.legal.none', 'No legal documents')}
     sub={t('proj.legal.none.s', 'The licence, terms, privacy policy and README for this project appear here, and none have been published yet.')}
     hint={t('proj.legal.noneSub', 'License / ToS / Privacy / README are set in the admin dashboard.')} />;
@@ -1416,9 +1432,10 @@ function ShowcaseCommunity({ cfg, c, slug }) {
   return <Community c={c} communityUrl={c.contributorsUrl ? `/showcase/${slug}/community` : null} />;
 }
 
-function ShowcaseLegal({ legal, lang }) {
+function ShowcaseLegal({ legal, lang, quiet = false }) {
   const { t } = useI18n();
   const pick = (v) => (v && typeof v === 'object' && !Array.isArray(v)) ? (v[lang] ?? v.en ?? Object.values(v)[0]) : v;
+  if (!legal.length && quiet) return null;
   if (!legal.length) return <EmptyState icon={ShieldCheck} title={t('proj.legal.none', 'No legal documents')}
     sub={t('proj.legal.none.s', 'The licence, terms, privacy policy and README for this project appear here, and none have been published yet.')}
     hint={t('proj.legal.noneSub', 'License / ToS / Privacy / README are set in the admin dashboard.')} />;
@@ -1462,6 +1479,9 @@ export function ShowcaseProjectPage({ preview: previewProp = null }) {
     ? api.get(`/marketplace/products?showcaseProjectId=${encodeURIComponent(scId)}`).catch(() => ({ products: [] }))
     : Promise.resolve({ products: [] })), [scId]);
   const marketProducts = market.data?.products || [];
+  // G2 + G3, as on the fixed projects. Waits for the page, so a countdown takeover asks nothing.
+  const extra = useProjectContent(!previewProject && data?.project ? `/project/${slug}` : null);
+  const ex = extra.data || {};
   if (loading) return <div className="flex items-center gap-2 text-[var(--muted)] py-10"><Spinner /> {t('common.loading')}</div>;
   if (err?.status === 403) return <EmptyState icon={Lock} title={t('proj.notAvailable', 'Not available')} sub={t('proj.noAccess', "You don't have access to this page.")}
     action={{ label: t('proj.err.a', 'See the projects'), to: '/projects', icon: Boxes }} />;
@@ -1490,14 +1510,16 @@ export function ShowcaseProjectPage({ preview: previewProp = null }) {
   const tabs = [
     inlineCountdown && ['countdown', t('proj.countdown', 'Countdown'), Clock],
     ['overview', t('proj.overview'), ListTodo],
+    (ex.docs > 0 || ex.canEdit) && ['docs', t('proj.docs', 'Docs'), BookOpen],
     (T.releases && cfg.releaseNotes?.owner) && ['releases', t('proj.releases'), ScrollText],
+    (cfg.version || ex.releases > 0 || ex.canEdit) && ['versions', t('proj.versions', 'Versions'), Clock],
     T.community && ['community', t('proj.community'), Users],
     proj.showBlogTab && ['blog', t('proj.blog'), Newspaper],
     // Same rule as the built-in projects below: the admin switch decides, and a switch that
     // is on with nothing described would show an empty tab.
     stackTabEnabled(cfg.stack, T) && ['stack', cfg.stack.title || t('proj.stack', 'How it runs'), Network],
     (cfg.releaseNotes?.owner || cfg.links?.github || cfg.timeline?.length) && ['activity', t('proj.activity', 'Activity'), CalendarDays],
-    T.legal && ['legal', t('proj.legal'), ShieldCheck],
+    (T.legal || ex.legal > 0 || ex.canEdit) && ['legal', t('proj.legal'), ShieldCheck],
     // Custom tabs. The eight above are the ones the platform knows how to build; these are the
     // ones a project needs and nobody anticipated — a title, an icon and a B.MD document. They
     // come last so adding one never moves a tab somebody has linked to, and an empty one is not
@@ -1514,14 +1536,14 @@ export function ShowcaseProjectPage({ preview: previewProp = null }) {
         {proj.icon
           ? <div className="grid place-items-center w-16 h-16 rounded-2xl bg-[var(--surface-2)] border border-[var(--line)] shrink-0 p-2 text-[var(--accent-ink)]"><ShowcaseIcon icon={proj.icon} size={44} rounded={10} /></div>
           : <div className="grid place-items-center w-16 h-16 rounded-2xl bg-gradient-to-br from-brand to-brand-2 shrink-0"><span className="text-xl font-extrabold text-[var(--on-primary)]">{proj.short}</span></div>}
-        <div className="flex-1 on-backdrop"><div className="flex items-center gap-3 flex-wrap"><h1 className="text-3xl font-extrabold">{proj.name}</h1>{cfg.version && <button onClick={() => setShowVersions(true)} title={t('ver.open', 'Version history')} className="press-sm"><Badge tone="primary"><Clock size={11} /> v{cfg.version}</Badge></button>}</div>{cfg.tagline && <p className="text-[var(--muted)] mt-1">{cfg.tagline}</p>}</div>
+        <div className="flex-1 on-backdrop"><div className="flex items-center gap-3 flex-wrap"><h1 className="text-3xl font-extrabold">{proj.name}</h1>{cfg.version && <button onClick={() => (preview ? setShowVersions(true) : setSp((p) => { const n = new URLSearchParams(p); n.set('tab', 'versions'); return n; }))} title={t('ver.open', 'Version history')} className="press-sm"><Badge tone="primary"><Clock size={11} /> v{cfg.version}</Badge></button>}</div>{cfg.tagline && <p className="text-[var(--muted)] mt-1">{cfg.tagline}</p>}</div>
         <div className="flex flex-wrap items-start gap-2">
           <DownloadMenu downloads={cfg.downloads} />
           {!preview && <ProjectContactBar projectRef={`sc:${slug}`} />}
         </div>
       </div>
 
-      {showVersions && <VersionHistoryModal endpoint={`/project/${slug}`} currentVersion={cfg.version} onClose={() => setShowVersions(false)} />}
+      {showVersions && <VersionHistoryModal endpoint={`/project/${slug}`} currentVersion={cfg.version} initial={typeof showVersions === 'string' ? showVersions : null} onClose={() => setShowVersions(false)} />}
 
       <LinksRow links={cfg.links} />
 
@@ -1541,13 +1563,16 @@ export function ShowcaseProjectPage({ preview: previewProp = null }) {
       {activeTab === 'countdown' && inlineCountdown && <CountdownPanel announcement={inlineCountdown} onReveal={refetch} />}
       {activeTab === 'overview' && <Overview c={c} pkey={slug} progressUrl={`/showcase/${slug}/progress`} />}
       {activeTab === 'releases' && <Releases releasesUrl={`/showcase/${slug}/releases`} />}
+      {activeTab === 'versions' && <ProjectVersions base={`/project/${slug}`} onOpenSnapshot={(v) => setShowVersions(v)} />}
+      {activeTab === 'docs' && <ProjectPages base={`/project/${slug}`} kind="doc" />}
       {activeTab === 'activity' && <ProjectActivity endpoint={`/showcase/${slug}/activity`} timeline={cfg.timeline} />}
       {activeTab === 'community' && <ShowcaseCommunity cfg={cfg} c={c} slug={slug} />}
       {activeTab === 'blog' && <ProjectBlogTab page={slug} />}
       {/* A showcase page has no code snapshot of its own — those are keyed on the fixed
           projects, so the map is only offered there. */}
       {activeTab === 'stack' && <StackMap stack={cfg.stack} t={t} />}
-      {activeTab === 'legal' && <ShowcaseLegal legal={cfg.legal || []} lang={lang} />}
+      {activeTab === 'legal' && (preview ? <ShowcaseLegal legal={cfg.legal || []} lang={lang} />
+        : <ProjectLegalTab base={`/project/${slug}`}><ShowcaseLegal legal={cfg.legal || []} lang={lang} quiet={ex.legal > 0} /></ProjectLegalTab>)}
       {activeTab === 'market' && <Marketplace pkey={slug} products={marketProducts} onChanged={market.refetch} />}
       {activeTab.startsWith('c-') && (() => {
         const cv = canvasTabs.find((x) => `c-${x.id}` === activeTab);

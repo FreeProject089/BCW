@@ -37,6 +37,7 @@ import paymentsAdminRoutes from './routes/payments-admin.mjs';
 import stripeWebhook from './routes/stripe-webhook.mjs';
 import analyticsRoutes from './routes/analytics.mjs';
 import projectRoutes from './routes/projects.mjs';
+import projectContentRoutes from './routes/project-content.mjs'; // G2 + G3: a project's releases, docs, legal pages
 import blogRoutes from './routes/blog.mjs';
 import docRoutes from './routes/docs.mjs';
 import faqRoutes from './routes/faq.mjs';
@@ -401,6 +402,7 @@ await app.register(hostingRoutes);
 await app.register(marketplaceRoutes);
 await app.register(paymentsAdminRoutes);
 await app.register(analyticsRoutes);
+await app.register(projectContentRoutes);
 await app.register(projectRoutes);
 await app.register(blogRoutes);
 await app.register(docRoutes);

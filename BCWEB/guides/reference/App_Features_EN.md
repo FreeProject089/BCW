@@ -356,6 +356,13 @@
   the auto-derived set.
 - **Loading skeletons** — list and grid pages (repos, catalogue, blog, the dashboard) show
   placeholder cards shaped like their content while loading, instead of a centred spinner.
+- **Project Versions, Docs and Legal** — every project (fixed or Other project) has a **Versions**
+  tab (a timeline filtered by channel: date, highlights, breaking changes, B.MD notes, downloads
+  with size and checksum, links to the blog post and the GitHub release, import of the GitHub
+  releases), a **Docs** tab ("Top / Sub" pages, import of a repository's markdown) and **real legal
+  pages** rendered on the site, in every site language with English as the fallback. The project's
+  editors write them on the page itself; they are kept apart from the site's docs and legal pages,
+  which a project editor cannot touch. See OTHER_PROJECTS_GUIDE, section 6b.
 - **Project pages** — the Overview carries **highlights** (featured updates, videos, live
   streams and announcements — YouTube/Twitch/mp4 embed inline) and an optional **headline
   counter**, above the media frame and progress tracker; the Activity tab shows contributor

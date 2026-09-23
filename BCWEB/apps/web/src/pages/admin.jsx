@@ -9307,6 +9307,10 @@ function ProjectVersionHistory({ projectKey, onApply, onSchedule, refreshKey = 0
 
       {/* The live version with no stored snapshot behind it. It shows on the public list
           already (that list falls back to the live config), so leaving it out here would
+      {/* G2 (agent-projects-G23): what a release SAID lives on the page's Versions tab, edited there. */}
+      <Link to={`/p/${projectKey}?tab=versions`} className="inline-flex items-center gap-1 text-xs text-[var(--accent-ink)] hover:underline mb-3">
+        <History size={12} /> {t('apv.relnotes', 'Notes, downloads and channel of each version: on the project page, Versions tab')}
+      </Link>
           mean a version the reader can see and the admin cannot find. */}
       {data?.liveUnrecorded && (
         <div className="rounded-lg border border-dashed border-[var(--line-strong)] px-3 py-2 mb-2 flex items-center gap-2 text-[13px]">
