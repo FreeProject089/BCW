@@ -88,6 +88,24 @@ export function verifyCreatorProof(token, expectedAud, nowSeconds = Math.floor(D
   catch { return null; }
 }
 
+/**
+ * The one spelling of a creator id, for every place that COMPARES one.
+ *
+ * A creator id is the hex of an ed25519 public key. `abcd…` and `ABCD…` are the same key,
+ * and BMM writes it lower case — but an admin pasting one out of a bug report, a Discord
+ * message or a screenshot may not. Every proof path already agrees on lower case
+ * (`verifyCreatorProof` lowercases, `acceptCreatorProof` pins the lowercased id, the admin
+ * tool lowercases what it is handed); the lists that do not go through a proof did not.
+ *
+ * `siteban.mjs` lower-cased its IP and User-Agent entries and NOT its creator ids, and
+ * `accessListMatches` compared the raw `X-Creator-ID` header against the stored string. So
+ * a ban entry recorded in any other spelling than the client's simply never fired: not a
+ * refusal, not a log line, a ban that quietly did nothing. Written once, used by both.
+ */
+export function normaliseCreatorId(v) {
+  return String(v ?? '').trim().toLowerCase();
+}
+
 /** The origin a proof must be addressed to for this deployment. */
 export function expectedProofAudience() {
   try { return new URL(process.env.SITE_URL || 'https://bettercommunity.ch').origin; }

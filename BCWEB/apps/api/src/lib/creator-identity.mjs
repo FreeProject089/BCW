@@ -29,6 +29,39 @@ export const FINGERPRINT_RETENTION_DAYS = 180;
 export const FP_COMPONENTS = ['board', 'os', 'disk', 'canvas'];
 
 /**
+ * How many DIFFERENT values of one component we will ever store for one creator id.
+ *
+ * A real machine produces one value per component and changes it when the hardware or a
+ * driver changes — three or four over a laptop's life. The hashes are asserted by the
+ * client, though, and every path that accepts a proof (`/link/upgrade`, `/link/request`)
+ * is unauthenticated and takes a self-minted id, so a caller can write a fresh row on
+ * every request for as long as it likes. This is the ceiling on that: past it the id's
+ * existing rows still tick over, but no new value is recorded and `stabilityOf` reports a
+ * machine that never sits still — which is the honest reading of a client sending twenty
+ * different board serials.
+ */
+export const FP_MAX_VALUES_PER_COMPONENT = 8;
+
+/**
+ * Above this many DISTINCT creator ids carrying one hash, that hash stops being evidence.
+ *
+ * Two ways a hash ends up on many ids, and neither is "these are the same person":
+ *
+ *   · firmware that never had its serials programmed. BMM now refuses to hash a group with
+ *     no real serial in it (`creator_v5::is_placeholder`), but rows recorded before that
+ *     fix, and any future group that collapses, land on one shared constant;
+ *   · deliberate flooding. Minting a creator id costs one ed25519 keygen, so anybody can
+ *     register any number of ids all asserting the SAME hash, and drown the one match that
+ *     mattered in a list of throwaways.
+ *
+ * Either way the analyser used to answer with 25 arbitrary ids sorted by a score they all
+ * tied on. It now leaves an over-shared hash out of the ranking and SAYS SO, because a
+ * moderator reading "shared with 400 ids" reaches the right conclusion and a moderator
+ * reading a confident list of 25 strangers does not.
+ */
+export const FP_SHARED_MAX = 20;
+
+/**
  * Accept a creator proof (v1 or v5) for this server, with memory.
  *
  * Returns `{ ok: true, version, cid, kid, seq, fp, pinned }` or `{ ok: false, error }`, never
@@ -109,17 +142,30 @@ export async function creatorProofGate(p, claimedId, proof, aud, opts = {}) {
   return { ok: true, version: null, cid: claimed, pinned: false };
 }
 
-/** Upsert each hashed component. Best-effort: a failure here never fails the request. */
+/**
+ * Upsert each hashed component. Best-effort: a failure here never fails the request.
+ *
+ * A KNOWN value is always updated, however many an id has — refusing to tick over a hash
+ * we already hold would only blind the stability score. A NEW value is refused once the id
+ * is at FP_MAX_VALUES_PER_COMPONENT, which is what stops an unauthenticated caller with a
+ * self-minted id writing rows for ever.
+ */
 export async function recordFingerprint(p, cid, fp, at = new Date()) {
   for (const component of FP_COMPONENTS) {
     const hash = fp?.[component];
     if (!hash) continue;
     try {
-      await p.creatorFingerprint.upsert({
+      const known = await p.creatorFingerprint.findUnique({
         where: { creatorId_component_hash: { creatorId: cid, component, hash } },
-        create: { creatorId: cid, component, hash, firstSeenAt: at, lastSeenAt: at },
-        update: { count: { increment: 1 }, lastSeenAt: at },
+        select: { id: true },
       });
+      if (known) {
+        await p.creatorFingerprint.update({ where: { id: known.id }, data: { count: { increment: 1 }, lastSeenAt: at } });
+        continue;
+      }
+      if (await p.creatorFingerprint.count({ where: { creatorId: cid, component } }) >= FP_MAX_VALUES_PER_COMPONENT) continue;
+      await p.creatorFingerprint.create({ data: { creatorId: cid, component, hash, firstSeenAt: at, lastSeenAt: at } })
+        .catch((e) => { if (e?.code !== 'P2002') throw e; }); // raced with another proof for the same id
     } catch { /* the proof was accepted; the history is a convenience */ }
   }
 }
@@ -186,14 +232,39 @@ export async function creatorAnalysis(p, cid, { canSeeBans = false, similarLimit
     p.creatorFingerprint.findMany({ where: { creatorId: id }, orderBy: [{ component: 'asc' }, { lastSeenAt: 'desc' }] }),
   ]);
 
+  // How WIDELY each of this id's hashes is shared, before anything is read as evidence.
+  //
+  // This count is the difference between "these two machines are the same box" and "these
+  // four hundred people have the same CPU". It is asked first, per hash, over the whole
+  // table — not inferred from a page of results — and a hash above FP_SHARED_MAX is left
+  // out of the matching below and reported as `overshared` instead. A `take: 500` over an
+  // unranked set used to decide this silently and arbitrarily: 501 ids tie on the same
+  // score, twenty-five of them are printed, and the one that mattered may not be among
+  // them. See FP_SHARED_MAX for the two ways a hash gets that wide.
+  const shareCounts = new Map(); // `${component}:${hash}` -> ids carrying it, this id included
+  if (fps.length) {
+    const grouped = await p.creatorFingerprint.groupBy({
+      by: ['component', 'hash'],
+      where: { OR: fps.map((r) => ({ component: r.component, hash: r.hash })) },
+      _count: { creatorId: true },
+    }).catch(() => []);
+    for (const g of grouped) shareCounts.set(`${g.component}:${g.hash}`, g._count.creatorId);
+  }
+  const shareOf = (r) => shareCounts.get(`${r.component}:${r.hash}`) || 1;
+  const discriminating = fps.filter((r) => shareOf(r) <= FP_SHARED_MAX);
+  const overshared = fps.filter((r) => shareOf(r) > FP_SHARED_MAX)
+    .map((r) => ({ component: r.component, hash: r.hash, ids: shareOf(r) }));
+
   // Other ids that presented one of this id's hashes. Matching on the same component only:
   // a board hash equal to a canvas hash would be a coincidence of formats, not of machines.
   const matches = new Map();
-  if (fps.length) {
+  if (discriminating.length) {
     const others = await p.creatorFingerprint.findMany({
-      where: { creatorId: { not: id }, OR: fps.map((r) => ({ component: r.component, hash: r.hash })) },
+      where: { creatorId: { not: id }, OR: discriminating.map((r) => ({ component: r.component, hash: r.hash })) },
       select: { creatorId: true, component: true, lastSeenAt: true },
-      take: 500,
+      // Bounded by FP_SHARED_MAX per hash now, not by an arbitrary page: at most
+      // FP_SHARED_MAX ids can match each of the id's own rows.
+      take: FP_SHARED_MAX * FP_MAX_VALUES_PER_COMPONENT * FP_COMPONENTS.length,
     });
     for (const o of others) {
       const m = matches.get(o.creatorId) || { creatorId: o.creatorId, components: new Set(), lastSeenAt: o.lastSeenAt };
@@ -229,7 +300,15 @@ export async function creatorAnalysis(p, cid, { canSeeBans = false, similarLimit
     account: link ? { id: link.user.id, displayName: link.user.displayName, status: link.user.status, linkedAt: link.linkedAt } : null,
     claims,
     bans: canSeeBans ? await banStateOf(p, id) : undefined,
-    fingerprints: fps.map((r) => ({ component: r.component, hash: r.hash, count: r.count, firstSeenAt: r.firstSeenAt, lastSeenAt: r.lastSeenAt })),
+    fingerprints: fps.map((r) => ({
+      component: r.component, hash: r.hash, count: r.count,
+      firstSeenAt: r.firstSeenAt, lastSeenAt: r.lastSeenAt,
+      // Shown beside every hash, not only the excluded ones: "1" is what makes the rest of
+      // this page mean anything, and it is the number a moderator needs before acting.
+      sharedWithIds: shareOf(r), discriminating: shareOf(r) <= FP_SHARED_MAX,
+    })),
+    // Hashes too widely shared to be evidence, left out of `similar` on purpose.
+    overshared,
     stability: stabilityOf(fps),
     similar,
   };

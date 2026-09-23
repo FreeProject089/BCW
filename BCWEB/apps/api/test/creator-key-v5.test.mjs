@@ -17,6 +17,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   verifyCreatorProof, verifyCreatorProofV5, verifyAnyCreatorProof, verifyKeyChain, inspectCreatorToken, MAX_CHAIN,
+  normaliseCreatorId,
 } from '../src/lib/creator-proof.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -131,6 +132,31 @@ describe('v4 and v5 together', () => {
     assert.equal(inspectCreatorToken(c.cid.toUpperCase(), AUD, NOW).cid, c.cid);
     assert.equal(inspectCreatorToken('hello', AUD, NOW).kind, 'unknown');
   });
+  // ── pentest card 8 (2026-09-23): the spelling of a creator id ─────────────────────────
+  //
+  // A creator id is the hex of an ed25519 public key, so `abcd…` and `ABCD…` are the same
+  // key and the same person. Every path that goes through a PROOF already agreed on lower
+  // case. The two lists that do not — the site-wide ban hook and the repo/global access
+  // policies — compared the stored string to the raw `X-Creator-ID` header, so a ban entry
+  // recorded in any other spelling than the one the client happened to send never fired:
+  // no refusal, no log line, a ban that quietly did nothing.
+  test('an access list matches a creator id in any spelling, on either side', async () => {
+    const { accessListMatches, policyBans, policyWhitelist } = await import('../src/lib/lib.mjs');
+    const cid = crypto.randomBytes(32).toString('hex');
+    const UP = cid.toUpperCase();
+    assert.equal(normaliseCreatorId(`  ${UP}  `), cid, 'one spelling, whitespace included');
+
+    // The entry is stored upper case (an admin pasted it out of a report); the client sends
+    // lower case, as BMM does.
+    assert.equal(policyBans({ bannedKeys: [UP] }, { creatorId: cid }), true, 'an UPPER-CASE ban entry still bans');
+    // …and the mirror image: the client sends upper case at a ban stored lower case.
+    assert.equal(policyBans({ bannedKeys: [cid] }, { creatorId: UP }), true, 'an UPPER-CASE header does not evade a ban');
+    assert.equal(policyWhitelist({ whitelistKeys: [UP] }, { creatorId: cid }), true, 'and a whitelist entry is not a silent lock-out');
+    assert.equal(accessListMatches({ accounts: [{ type: 'creator', id: UP }] }, { creatorId: cid }), true);
+    // Still nobody else's id.
+    assert.equal(policyBans({ bannedKeys: [cid] }, { creatorId: crypto.randomBytes(32).toString('hex') }), false);
+  });
+
   test('stability: one value per component is 1, two equal values is 0.5', async () => {
     // Imported here, not at the top: creator-identity pulls in lib.mjs, which reads
     // JWT_SECRET when it loads, and the database tests below set it first.
@@ -252,6 +278,10 @@ describe('the v4 → v5 upgrade carries links, claims and bans', { skip }, () =>
 
     // …and nothing moved: the same id is still banned, still linked, still holds its claim.
     assert.equal((await appBans.inject({ url: '/ping', headers: { 'x-creator-id': c.cid } })).statusCode, 403, 'still banned as v5');
+    // The same key, written the other way. The hook compared the raw header to the raw
+    // stored string, so the spelling an admin happened to paste decided whether the ban
+    // worked at all — and the IP and User-Agent lists beside it were already lower-cased.
+    assert.equal((await appBans.inject({ url: '/ping', headers: { 'x-creator-id': c.cid.toUpperCase() } })).statusCode, 403, 'UPPER-CASE is the same key');
     const a = await CI.creatorAnalysis(p, c.cid, { canSeeBans: true });
     assert.equal(a.account.id, owner.id);
     assert.equal(a.claims.length, 1);
@@ -274,6 +304,53 @@ describe('the v4 → v5 upgrade carries links, claims and bans', { skip }, () =>
     const ok = await appLinks.inject({ method: 'POST', url: '/link/request', payload: { creatorId: v5.cid, proof: mintV5(v5, { aud }) } });
     assert.equal(ok.statusCode, 200, ok.body);
     assert.ok(ok.json().code);
+  });
+
+  // ── pentest card 8 (2026-09-23) ───────────────────────────────────────────────────────
+  //
+  // The fingerprint is ASSERTED by the client, and minting a creator id costs one ed25519
+  // keygen, so "these two ids share a board hash" is only evidence while the hash is rare.
+  // `/link/upgrade` takes a self-minted id with no account behind it, so anybody could
+  // register any number of ids all claiming the SAME hash and drown the one match that
+  // mattered: the analyser answered with 25 ids out of a `take: 500` page, all tied on the
+  // same score, sorted arbitrarily. It now counts how wide each hash is FIRST.
+  test('a hash flooded across many ids is reported as such, not ranked as evidence', async () => {
+    const aud = new URL(process.env.SITE_URL).origin;
+    const board = crypto.randomBytes(16).toString('hex');
+    const banned = track(creator());
+    await CI.acceptCreatorProof(p, mintV5(banned, { aud, fp: { board } }), aud);
+    const suspect = track(creator());
+    await CI.acceptCreatorProof(p, mintV5(suspect, { aud, fp: { board } }), aud);
+    // Before the flood the match is exactly what it looks like.
+    assert.deepEqual((await CI.creatorAnalysis(p, suspect.cid)).similar.map((x) => x.creatorId), [banned.cid]);
+
+    // The flood: throwaway ids, each claiming the same board hash. No account, no link.
+    for (let i = 0; i < CI.FP_SHARED_MAX; i++) {
+      const junk = track(creator());
+      await CI.acceptCreatorProof(p, mintV5(junk, { aud, fp: { board } }), aud);
+    }
+    const a = await CI.creatorAnalysis(p, suspect.cid);
+    const row = a.fingerprints.find((r) => r.hash === board);
+    assert.ok(row.sharedWithIds > CI.FP_SHARED_MAX, `the hash is on ${row.sharedWithIds} ids`);
+    assert.equal(row.discriminating, false, 'a hash this wide is not evidence and must say so');
+    assert.deepEqual(a.overshared.map((o) => o.hash), [board]);
+    assert.deepEqual(a.similar, [], 'and it must not produce a confident list of strangers');
+  });
+
+  // The same lever, pointed at storage: an unauthenticated caller writing a new hash on
+  // every request, for ever, against an id that costs a keygen to mint.
+  test('one id cannot record an unbounded number of values for a component', async () => {
+    const aud = new URL(process.env.SITE_URL).origin;
+    const c = track(creator());
+    for (let i = 0; i < CI.FP_MAX_VALUES_PER_COMPONENT + 6; i++) {
+      await CI.acceptCreatorProof(p, mintV5(c, { aud, fp: { board: crypto.randomBytes(16).toString('hex') } }), aud);
+    }
+    const rows = await p.creatorFingerprint.count({ where: { creatorId: c.cid, component: 'board' } });
+    assert.equal(rows, CI.FP_MAX_VALUES_PER_COMPONENT);
+    // A value already held still ticks over — refusing that would blind the stability score.
+    const known = await p.creatorFingerprint.findFirst({ where: { creatorId: c.cid, component: 'board' } });
+    await CI.acceptCreatorProof(p, mintV5(c, { aud, fp: { board: known.hash } }), aud);
+    assert.equal((await p.creatorFingerprint.findUnique({ where: { id: known.id } })).count, known.count + 1);
   });
 
   test('ids sharing a hashed component are listed as similar', async () => {

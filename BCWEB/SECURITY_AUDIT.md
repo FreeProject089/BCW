@@ -2543,3 +2543,204 @@ a parse escape. This app is a client-rendered SPA; there is no SSR path where th
   memory-safety bug in the underlying Rust decoders is a supply-chain question (card 10).
 * **No HTTP-level parallel harness was run against a live API.** The giveaway and warn concurrency
   was exercised at the library level against the real database, which is where both races live.
+
+---
+
+# Pentest 2026-09-22 — Card 8: creator key v5 (L), the BCWEB half
+
+Run 2026-09-23. Surface: `apps/api/src/lib/creator-proof.mjs`, `lib/creator-identity.mjs`,
+`routes/admin-fingerprint.mjs`, the creator parts of `routes/links.mjs`, and the two places
+outside them that compare a creator id (`lib/siteban.mjs`, `accessListMatches` in `lib/lib.mjs`).
+BMM's half — the proof minter, the fingerprint groups, the brute-force cost — is in
+`.Assets/.md/CWE_REMEDIATION_PLAN.md`, section "Carte 8".
+
+Angles attacked: **forgery and replay** (audience binding, the nonce across a restart and a
+shared database, chain forks/loops/length, clock skew at both ends), **downgrade and ban
+evasion** (v5 back to v4 in every spelling of the id, `/link/upgrade` twice or by someone else,
+whether a ban / free-tier claim / site policy can be shed), **fingerprint privacy** (is the salt
+per-site, can one site ask for another site's, can a hash be cracked), and **the admin
+analyser** (gating, what it shows to whom, whether its ranking deanonymises). Two further rounds
+after F8-1 added nothing.
+
+## F8-1 — The similarity ranking could be drowned, and it said nothing about it (FIXED)
+
+**CWE-807 (reliance on an untrusted input in a security decision) + CWE-770 (allocation without
+limits).** Medium. **CVSS 3.1 5.8** — `AV:N/AC:L/PR:N/UI:R/S:C/C:N/I:L/A:N`. Changed scope,
+because the damage lands on a THIRD PARTY: the id that a moderator bans instead.
+
+**Trigger.** The fingerprint in a v5 proof is entirely client-asserted (the module says so), and
+a creator id costs one ed25519 keygen to mint. `POST /api/link/upgrade` takes a self-minted id
+with **no account, no link and no authentication** — it only has to carry a valid v5 proof,
+which the attacker signs with their own root key. Every accepted proof writes up to four
+`CreatorFingerprint` rows with hashes the caller chose. So:
+
+```
+for i in 1..N:                       # 20/min/IP, i.e. ~28 800 a day from one address
+    k    = new ed25519 key           # a fresh creator id
+    POST /api/link/upgrade { proof: v5(k, aud, fp={board: H}) }
+```
+
+`creatorAnalysis` then looked for other ids carrying `H` with `take: 500`, scored every match
+by `weight.board = 4`, sorted, and printed the top 25. With 501 ids tied on the same score the
+25 it printed were **arbitrary** — the one match that mattered might not be among them, and
+nothing in the answer said so. An evader who had already read their own hash out of their own
+proof (it is base64url in plain sight) could pre-empt exactly this.
+
+The same lever pointed at storage: nothing capped how many distinct values one id could record,
+so an unauthenticated caller could write rows for as long as it liked, retained 180 days.
+
+**Fix** (`lib/creator-identity.mjs`):
+
+1. `FP_MAX_VALUES_PER_COMPONENT = 8`. A known hash is always ticked over — refusing that would
+   only blind `stabilityOf` — but a NEW value is refused once an id holds eight of a component.
+   A real machine has one to three over its life.
+2. `FP_SHARED_MAX = 20`. Before anything is read as evidence, one `groupBy` counts how many
+   **distinct ids** carry each of this id's hashes. A hash above the threshold is left out of
+   the matching and reported as `overshared: [{component, hash, ids}]`, and every row now
+   carries `sharedWithIds` and `discriminating`. `take` is no longer an arbitrary page: it is
+   `FP_SHARED_MAX × FP_MAX_VALUES_PER_COMPONENT × 4`, which is the true bound once the wide
+   hashes are gone.
+
+**Why it holds.** The ranking now only ever sorts matches that are *rare*, so a score cannot be
+manufactured by volume — flooding a hash pushes it over `FP_SHARED_MAX` and takes it out of the
+ranking entirely, with the count on screen. That is the honest answer: "400 ids carry this hash"
+is a sentence a moderator acts on correctly, and a confident list of 25 strangers is not. The
+storage lever is bounded per id. The remaining growth (one id, eight values, per component) is
+bounded by the rate limit and the 180-day sweep.
+
+A second, independent cause of the same collision — firmware with no serial programmed, where
+the whole `board` group hashed to a constant shared by every such machine on earth — was fixed
+on the BMM side in the same run (C8-A). `FP_SHARED_MAX` is what protects the rows recorded
+before that fix, and any future group that collapses.
+
+**Tests** (`apps/api/test/creator-key-v5.test.mjs`):
+`a hash flooded across many ids is reported as such, not ranked as evidence` and
+`one id cannot record an unbounded number of values for a component`.
+**Both measured RED first**: with the two fixes reverted, the first fails on `discriminating`
+still being true and `similar` still listing strangers, the second counts 14 rows where 8 is the
+cap. Green after.
+
+## F8-2 — A creator id was banned in one spelling and matched in another (FIXED)
+
+**CWE-178 (improper handling of case sensitivity).** Low. **CVSS 3.1 3.7** —
+`AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:L/A:N`.
+
+**Trigger.** A creator id is the hex of an ed25519 public key, so `abcd…` and `ABCD…` are the
+same key and the same person. Everything that goes through a PROOF already agreed on lower case
+(`verifyCreatorProof` lowercases, `acceptCreatorProof` pins the lowercased id, the admin tool
+lowercases what it is handed, and `/link/request` was fixed to look the link up case-insensitively
+earlier this month). The two lists that do **not** go through a proof did not:
+
+* `lib/siteban.mjs` — `compile()` lower-cased its IP entries and its User-Agent entries and
+  **not** its creator ids, and the `onRequest` hook did `c.creators.has(String(cid))` on the raw
+  header;
+* `accessListMatches` in `lib/lib.mjs` — `(list.keys || []).includes(creatorId)` against the raw
+  `X-Creator-ID`, which is what the site-wide `GlobalAccessPolicy`, every owner's
+  `UserAccessPolicy` and every repo's own policy are matched with.
+
+So a ban entry recorded in any spelling other than the one the client happened to send never
+fired. Not a refusal, not a log line — a ban that quietly did nothing, and a whitelist entry
+that was quietly a lock-out.
+
+**Refuted first, and this is why it is Low, not High.** As an *evasion* primitive it is worth
+nothing: the site-ban hook is `if (cid && …)`, so simply **omitting** the header evades it too,
+and the access policies then match nothing either way, and `resolveClientIdentity` finds no
+CreatorLink for the upper-case spelling so no account-based entry matches. Every downstream
+check treats "upper case" exactly as it treats "no header". `/link/request` and `/link/upgrade`
+were checked separately and are **not** affected — `creatorProofGate` lowercases before it looks
+for a key pin, so no spelling of an upgraded id gets a bare-v4 answer. The real exposure is the
+other direction: **an admin's ban, silently inert**, which is the failure mode nobody audits
+because the screen says the ban is there.
+
+**Fix.** `normaliseCreatorId()` in `creator-proof.mjs` (trim + lower case), written once and
+used on **both sides** of every comparison: `siteban.mjs`'s `compile()` and its hook,
+`accessListMatches`'s `keys` and its `{type:'creator'}` accounts. Nothing stored is rewritten,
+so no migration and no behaviour change for the lower-case spelling everyone already uses.
+
+**Tests:** `an access list matches a creator id in any spelling, on either side` (pure, both
+directions, plus a negative so it cannot pass by matching everything) and, through the real
+`installSiteBans` hook against the real database, one line added to
+`a banned v4 id stays banned after upgrading…`. **Measured RED first** (`UPPER -> 200` where
+`lower -> 403`), green after.
+
+## Angles that found nothing
+
+* **Audience binding.** A proof names `aud` inside the signed bytes and `expectedProofAudience()`
+  comes from this deployment's `SITE_URL`, never from the token. A proof for site A presented to
+  site B is refused before the signature is even checked. Trailing slashes are normalised on both
+  sides, so `https://x` and `https://x/` are one audience and not a bypass.
+* **Replay.** The nonce is burned in `CreatorProofNonce` (primary key), so it survives a restart
+  and is shared by every replica on the same database — the two cases an in-memory set would
+  miss. It is burned **after** the stateless checks, so an unauthenticated caller cannot fill the
+  table with nonces from unsigned garbage, and **before** the pin is written, so a proof that was
+  accepted has been used. Rows expire at the proof's own `exp` and `pruneCreatorIdentity` sweeps
+  them (wired in `lib/sweeper.mjs`).
+* **Downgrade.** A bare `bmmc1` proof for a pinned id is `upgraded_key_required` in every
+  spelling: `verifyCreatorProof` lowercases `cid`, the hex regex admits no whitespace or
+  alternative encoding, and the pin is stored and looked up lower-cased. A v5 proof cannot be
+  relabelled `bmmc1.` because v5 signs `"bmmc5." + segment` and v1 verifies the bare segment
+  (existing test), and the reverse fails for the same reason.
+* **Chain forks and loops.** `verifyKeyChain` requires `prev` = the previous key, `seq` = i+1,
+  a constant `cid`, and a signature by `prev`; `acceptCreatorProof` then requires the pinned key
+  to sit in the chain **at the position it was pinned at**, so a second chain started from the
+  root is `key_fork` and an older key is `key_retired`. A chain that loops or re-uses a retired
+  key buys nothing: building one already needs the current key. `MAX_CHAIN = 8` on both sides
+  bounds the work at 8 ed25519 verifies, and the whole token at 8 KiB.
+* **`/link/upgrade` run twice, or by someone else.** It is idempotent in the only sense that
+  matters — a second proof with a higher `seq` through the pinned key moves the pin, anything
+  else is refused — and it can only ever pin an id whose ROOT key the caller holds, because the
+  first chain link must be signed by the cid itself. It carries nothing across: bans,
+  `FreeTierClaim` and `CreatorLink` are keyed on the Creator ID, which v5 does not change, which
+  is the whole compatibility argument and is covered by an existing test.
+* **The admin analyser's gating.** Reading is `manage_users`; the ban sections need
+  `manage_sanctions` and are `undefined` without it; resetting a pin is `manage_sanctions`; every
+  lookup writes an audit line naming the id. Anonymous 401, member 403, moderator 200-without-bans,
+  admin 200-with-bans, and no e-mail address anywhere in the answer — all asserted by the existing
+  test, all still green. *Noted, not changed:* `similar` shows a moderator that two ACCOUNTS
+  share a machine, which is a fact the users list does not contain even though each field in it
+  is one that list already shows. That is the tool's purpose and `manage_users` is the right
+  gate, but it is the one place where the tool tells a moderator something genuinely new about a
+  person, and it belongs in the owner-facing summary (H1) rather than being silently fine.
+* **Fingerprint privacy, server side.** Only `/^[0-9a-f]{32}$/` survives `cleanFingerprint`;
+  everything else a client puts in `fp` is dropped, including a raw serial. Nothing raw ever
+  reaches the database. The per-site salt and the real cost of cracking a hash are measured in
+  the BMM sink (C8-B): the short version is that the salt is public, so the hashes are a slow
+  hash and not a MAC, confirming a *guessed* machine costs one hash, and cross-site correlation
+  stays closed for every group that still has a real serial in it.
+
+## Open — not changed, with the reason
+
+* **Any caller can create `CreatorFingerprint` rows for an id nobody owns.** F8-1 bounds it per
+  id and neuters its effect on the ranking, but the rows still exist, and the honest way to close
+  it is to record a fingerprint only for a cid with a `CreatorLink` — which costs an account.
+  That would also blind the tool for exactly the unlinked evaders it is aimed at. **Owner
+  decision**, written here rather than taken.
+* **`FP_ROUNDS = 20 000` in BMM against `200 000` in the v4 KDF**, for a *lower*-entropy input.
+  Raising it is ~20 ms once per session and ten times the attacker's cost, but it invalidates
+  every `CreatorFingerprint` row already stored. A data migration, not a code fix. See C8-B.
+* **A first-pin land-grab.** For an upgraded install the root is still the hardware-derivable v4
+  key, so somebody who can read a machine's serials can pin that id to their own key before the
+  owner's BMM does; the owner is then refused `key_fork` for ever, and BMM says nothing because
+  `registerKeyV5` swallows the error. The recovery exists here
+  (`DELETE /me/creator-links/:id/key-pin`, owner-only, and the staff reset). The missing half is
+  BMM telling the user — filed as C8-C in the BMM sink, in another agent's file this run.
+
+## Verification run for this card
+
+* `node --check` on every file touched (`creator-identity.mjs`, `creator-proof.mjs`, `lib.mjs`,
+  `siteban.mjs`, `links.mjs`, `admin-fingerprint.mjs`, the test file): clean.
+* `creator-key-v5.test.mjs`: **20 / 20** (17 existing + 3 new, plus one assertion added to the
+  existing ban test). Each of the four new checks was **measured RED** with only its fix lines
+  reverted (from file copies, not git), then green with them restored.
+* `npm test` the CI way (`DATABASE_URL` set, `REDIS_URL` unset): **1929 tests, 1928 pass, 1 fail,
+  0 skipped.** The failure is unrelated and pre-existing: `legal-freshness.test.mjs` says *"The
+  legal pages changed on 2026-09-23 but still say last updated 2026-09-22"*. That is
+  `apps/web/src/pages/legal.jsx`, committed today by the UX sweep (`5311c4cd`), in another
+  agent's files and outside this card. It needs `LEGAL_UPDATED` bumped.
+* **An incident worth knowing, because it looked like a regression:** partway through, the whole
+  `bcweb-*` compose stack had been stopped (clean exit 0) and an unrelated `ofd` stack started. The
+  v5 file then reported 11 failures out of 21. Those were every database test timing out on
+  `Can't reach database server at 127.0.0.1:5432`, plus the file's `after()` hook. They were not
+  test failures. Only `bcweb-db-1` was started to run this suite (no api, no bot; the compose file
+  was not touched), and it was stopped again afterwards. Fixtures are removed by the suite's own
+  `after()`, and the ban policy is saved and restored around the run.

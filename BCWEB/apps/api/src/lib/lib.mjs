@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { pubkeyFromOpenssh } from './keyauth.mjs';
 import { userBcId } from './repofingerprint.mjs';
 import { boundedSet } from './boundedmap.mjs';
+import { normaliseCreatorId } from './creator-proof.mjs';
 // NOTE: clientIp is deliberately NOT imported — this module already exports its own,
 // and the two differ (`req.ip` here vs `req.ip || '0.0.0.0'` there). That split predates
 // this feature; changing either return value would ripple through callers that test it
@@ -1246,13 +1247,18 @@ export async function resolveClientIdentity(p, req) {
 // to a bcweb account (userId) at save time, so runtime matching stays id-based.
 export function accessListMatches(list, identity) {
   if (!list) return false;
-  const { ip, creatorId, userId, discordId } = identity;
+  const { ip, userId, discordId } = identity;
+  // Creator ids are compared in ONE spelling, on both sides. They are the hex of a public
+  // key, `X-Creator-ID` is whatever the client typed, and the stored entry is whatever an
+  // admin pasted — so an exact string compare made an upper-case ban entry a silent no-op
+  // and an upper-case whitelist entry an equally silent lock-out. See normaliseCreatorId.
+  const creatorId = normaliseCreatorId(identity.creatorId);
   if (ip && (list.ips || []).includes(ip)) return true;
-  if (creatorId && (list.keys || []).includes(creatorId)) return true;
+  if (creatorId && (list.keys || []).some((k) => normaliseCreatorId(k) === creatorId)) return true;
   return (list.accounts || []).some((a) =>
     (a.type === 'bcweb' && userId && a.id === userId)
     || (a.type === 'discord' && discordId && a.id === discordId)
-    || (a.type === 'creator' && creatorId && a.id === creatorId));
+    || (a.type === 'creator' && creatorId && normaliseCreatorId(a.id) === creatorId));
 }
 // Adapt a GlobalAccessPolicy/UserAccessPolicy (banned*/whitelist* fields) to the
 // {ips,keys,accounts} shape accessListMatches expects.

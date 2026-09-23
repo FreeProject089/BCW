@@ -9,6 +9,7 @@
 // The repo access policy (GlobalAccessPolicy) is a different thing: it decides who may
 // read HOSTED CONTENT. This decides who is answered at all.
 import { db } from './lib.mjs';
+import { normaliseCreatorId } from './creator-proof.mjs';
 
 export const BANS_KEY = 'security.bans';
 const DEFAULTS = Object.freeze({ ips: [], uas: [], creators: [], shield: { enabled: true, after429: 30, minutes: 30, blockNoUA: false } });
@@ -62,7 +63,9 @@ function compile(pol) {
   return {
     exact, ranges, prefixes,
     uas: pol.uas.filter(alive).map((e) => e.v.toLowerCase()),
-    creators: new Set(pol.creators.filter(alive).map((e) => e.v)),
+    // Lower-cased, like the IP and User-Agent entries above and unlike this line until
+    // now: a creator id is hex and the client chooses its spelling. See normaliseCreatorId.
+    creators: new Set(pol.creators.filter(alive).map((e) => normaliseCreatorId(e.v))),
   };
 }
 export function isBannedIp(ip, c = cache.c) {
@@ -131,8 +134,8 @@ export function installSiteBans(app) {
     const ua = String(req.headers['user-agent'] || '').toLowerCase();
     if (ua && c.uas.length && c.uas.some((u) => ua.includes(u))) { reply.code(403).send({ error: 'banned' }); return; }
     if (!ua && cache.v.shield.blockNoUA && req.method === 'GET' && String(req.headers.accept || '').includes('text/html')) { reply.code(403).send({ error: 'forbidden' }); return; }
-    const cid = req.headers['x-creator-id'];
-    if (cid && c.creators.size && c.creators.has(String(cid))) { reply.code(403).send({ error: 'banned' }); return; }
+    const cid = normaliseCreatorId(req.headers['x-creator-id']);
+    if (cid && c.creators.size && c.creators.has(cid)) { reply.code(403).send({ error: 'banned' }); return; }
     done();
   });
   // The shield: a 429 is counted; too many in the window and the address is blocked outright.
