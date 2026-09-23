@@ -1764,6 +1764,8 @@ const DICT = {
     'acck.malformed': "Cela ne ressemble pas à une ligne de clé publique OpenSSH (ssh-ed25519 / ssh-rsa / ecdsa-sha2-… AAAA… commentaire).",
     'oc.access': "Accès",
     'oc.traffic': 'Trafic en direct', 'oc.domain': 'Domaine personnalisé',
+    // M19: the catalogue dashboard
+    'oc.k.cats': 'Catalogues', 'oc.k.items': 'Éléments', 'oc.k.dl': 'Téléchargements', 'oc.k.views': 'Vues', 'oc.k.storage': 'Stockage', 'oc.settings': 'Réglages', 'oc.close': 'Fermer', 'oc.manage': 'Gérer', 'oc.openpage': 'Ouvrir la page',
     'oca.allow': "Qui peut télécharger",
     'oca.priv': "Ce catalogue est privé : seules les listes ci-dessous (ou le lien de partage) peuvent le lire.",
     'oca.pub': "Ce catalogue est public, ces listes d'autorisation ne s'appliquent donc pas. Passez-le en privé pour qu'elles prennent effet. Les bannissements, le mot de passe et une clé exigée s'appliquent toujours.",

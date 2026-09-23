@@ -21329,19 +21329,29 @@ function OwnerCatalogAccess({ catalog, onChange }) {
 export function OwnerCatalogs() {
   const { t } = useI18n(); const toast = useToast();
   const { data, loading, reload } = useAsync(() => api.get('/me/catalogs'), []);
-  const [openId, setOpenId] = useState(null);
-  const [accessId, setAccessId] = useState(null);
-  const [trafficId, setTrafficId] = useState(null); // the catalogue whose live traffic is open
-  const [domainId, setDomainId] = useState(null); // the catalogue whose custom-domain panel is open
+  // M19: one catalogue open at a time, on one tab, both in the URL (?cat=&ctab=). It used to
+  // be four independent toggles (items, access, traffic, domain) that stacked under the card
+  // in click order, so "Access" could open below a full traffic table, off screen, and a
+  // reload closed everything. The URL makes a link to "my catalogue's access" possible too.
+  const [sp, setSp] = useSearchParams();
+  const openCat = sp.get('cat');
+  const openTab = sp.get('ctab');
+  const setOpen = (id, tab) => {
+    const n = new URLSearchParams(sp);
+    if (id) n.set('cat', id); else n.delete('cat');
+    if (id && tab) n.set('ctab', tab); else n.delete('ctab');
+    setSp(n, { replace: true });
+  };
   const [hidden, setHidden] = useState(() => new Set()); // optimistically-removed during the undo window
   const cats = (data?.catalogs || []).filter((c) => !hidden.has(c.id));
+  const total = (k) => cats.reduce((n, c) => n + (Number(c[k]) || 0), 0);
   const patch = async (c, body) => { try { await api.patch(`/me/catalogs/${c.id}`, body); reload(); } catch (x) { toast.error(x.data?.error || t('acc.failed', 'Failed.')); } };
   const rotate = async (c) => { try { const r = await api.post(`/me/catalogs/${c.id}/rotate-key`); navigator.clipboard?.writeText(`${location.origin}/c/${c.slug}?k=${r.shareKey}`); toast.success(t('oc.keyrotated', 'New share link copied.')); reload(); } catch { toast.error(t('acc.failed', 'Failed.')); } };
   // Optimistic delete with an undo window: hide the card now and count down; the catalog
   // is only removed when the timer elapses (Undo restores it, nothing is deleted).
   const del = (c) => {
     setHidden((s) => new Set(s).add(c.id));
-    if (openId === c.id) setOpenId(null);
+    if (openCat === c.id) setOpen(null);
     const unhide = () => setHidden((s) => { const n = new Set(s); n.delete(c.id); return n; });
     toast.action({
       tone: 'success', duration: 6000, cancelLabel: t('common.undo', 'Undo'),
@@ -21360,8 +21370,32 @@ export function OwnerCatalogs() {
           <p className="text-sm text-[var(--muted)]">{t('oc.desc', 'Catalogs you host. Share the /c link or add them in BMM. Managed catalogs draw from a storage pool.')}</p></div>
         <Link to="/submit"><Button size="sm" variant="primary"><Plus size={14} /> {t('oc.new', 'New catalog')}</Button></Link>
       </div>
+      {/* M19: the totals first, the four numbers an owner opens this tab to see. */}
+      {cats.length > 0 && <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+        {[[Boxes, cats.length, t('oc.k.cats', 'Catalogs')], [Package, total('itemCount'), t('oc.k.items', 'Items')],
+          [Download, total('downloads'), t('oc.k.dl', 'Downloads')], [Eye, total('views'), t('oc.k.views', 'Views')]].map(([I, n, label]) => (
+          <Card key={label} className="p-3.5 flex items-center gap-3 min-w-0">
+            <span className="w-9 h-9 rounded-xl grid place-items-center shrink-0" style={{ background: 'color-mix(in srgb, var(--primary) 14%, var(--bg-solid))', color: 'var(--accent-ink)' }}><I size={17} /></span>
+            <div className="min-w-0"><div className="text-lg font-extrabold tabular-nums leading-tight">{Number(n).toLocaleString()}</div><div className="text-[11px] text-[var(--muted)]">{label}</div></div>
+          </Card>
+        ))}
+      </div>}
       {loading ? <Loading /> : cats.length ? <div className="space-y-2">
-        {cats.map((c) => (
+        {cats.map((c) => {
+          const isOpen = openCat === c.id;
+          // Items first for a managed catalogue (that is the work); a raw one has no items
+          // here, so it opens on its settings.
+          const tabs = [
+            c.mode === 'managed' && ['items', t('oc.items', 'Items'), Package],
+            ['settings', t('oc.settings', 'Settings'), Settings2],
+            ['access', t('oc.access', 'Access'), ShieldCheck],
+            ['traffic', t('oc.traffic', 'Live traffic'), Activity],
+            ['domain', t('oc.domain', 'Custom domain'), Globe],
+          ].filter(Boolean);
+          const tab = tabs.some(([id]) => id === openTab) ? openTab : tabs[0][0];
+          const quota = c.storageQuotaBytes || 0; const used = c.storageUsedBytes || 0;
+          const pct = quota ? Math.min(100, (used / quota) * 100) : 0;
+          return (
           <Card key={c.id} className="p-4">
             {/* Content, then actions on their own row — the same shape as the repo cards.
                 The actions can't share a row with the title: ActionBar sizes itself from its
@@ -21375,18 +21409,29 @@ export function OwnerCatalogs() {
                 <span className="flex items-center gap-1"><Eye size={11} /> {c.views ?? 0}</span>
                 <a href={`/c/${c.slug}`} target="_blank" rel="noreferrer" className="underline truncate max-w-full">/c/{c.slug}</a>
               </div>
+              {/* A managed catalogue draws from a pool: how much of its share is used. */}
+              {c.mode === 'managed' && quota > 0 && <div className="mt-2 max-w-sm">
+                <div className="flex items-center justify-between text-[11px] text-[var(--muted)]"><span className="flex items-center gap-1"><HardDrive size={11} /> {fmtBytes(used)} / {fmtBytes(quota)}</span><span className="tabular-nums">{Math.round(pct)}%</span></div>
+                <div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden mt-1" role="progressbar" aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100} aria-label={t('oc.k.storage', 'Storage')}>
+                  <div className="h-full rounded-full" style={{ width: `${pct}%`, background: `var(--${pct >= 97 ? 'error' : pct >= 85 ? 'warning' : 'primary'})` }} />
+                </div>
+              </div>}
             </div>
             <div className="mt-3">
               <ActionBar actions={[
+                { key: 'manage', label: isOpen ? t('oc.close', 'Close') : t('oc.manage', 'Manage'), icon: isOpen ? ChevronUp : ChevronDown, onClick: () => setOpen(isOpen ? null : c.id, isOpen ? null : openTab) },
                 { key: 'feed', label: t('oc.feed', 'Feed URL'), icon: Copy, onClick: () => copyFeed(c) },
-                c.mode === 'managed' && { key: 'items', label: t('oc.items', 'Items'), icon: Package, onClick: () => setOpenId(openId === c.id ? null : c.id) },
-                { key: 'access', label: t('oc.access', 'Access'), icon: ShieldCheck, onClick: () => setAccessId(accessId === c.id ? null : c.id) },
-                { key: 'traffic', label: t('oc.traffic', 'Live traffic'), icon: Activity, onClick: () => setTrafficId(trafficId === c.id ? null : c.id) },
-                { key: 'domain', label: t('oc.domain', 'Custom domain'), icon: Globe, onClick: () => setDomainId(domainId === c.id ? null : c.id) },
+                { key: 'open', label: t('oc.openpage', 'Open page'), icon: ExternalLink, onClick: () => window.open(`/c/${c.slug}`, '_blank', 'noopener') },
                 { key: 'del', label: t('common.delete', 'Delete'), icon: Trash2, danger: true, onClick: () => del(c) },
-              ].filter(Boolean)} />
+              ]} />
             </div>
-            <div className="flex items-center gap-3 mt-3 pt-3 border-t border-[var(--line)] flex-wrap text-sm">
+            {isOpen && <>
+            <div className="flex gap-1 mt-3 border-b border-[var(--line)] overflow-x-auto" role="tablist">
+              {tabs.map(([tid, label, I]) => (
+                <button key={tid} role="tab" aria-selected={tab === tid} onClick={() => setOpen(c.id, tid)} className={`press-sm flex items-center gap-1.5 px-3 py-2 text-sm border-b-2 -mb-px whitespace-nowrap transition-colors ${tab === tid ? 'border-[var(--primary)] text-[var(--text)]' : 'border-transparent text-[var(--muted)] hover:text-[var(--text)]'}`}><I size={14} /> {label}</button>
+              ))}
+            </div>
+            {tab === 'settings' && <div className="flex items-center gap-3 mt-3 flex-wrap text-sm">
               <label className="flex items-center gap-1.5 text-[var(--muted)]">{t('oc.visibility', 'Visibility')}
                 <Select className="!w-auto" value={c.visibility} onChange={(e) => patch(c, { visibility: e.target.value })}><option value="public">{t('sub2.public', 'Public')}</option><option value="private">{t('sub2.private', 'Private')}</option></Select></label>
               {c.visibility === 'public' && <label className="flex items-center gap-1.5 text-[var(--muted)] cursor-pointer"><input type="checkbox" checked={c.listed} onChange={(e) => patch(c, { listed: e.target.checked })} /> {t('oc.listed', 'Listed publicly')}</label>}
@@ -21405,16 +21450,18 @@ export function OwnerCatalogs() {
               </label>
               {c.visibility === 'private' && <Button size="sm" variant="ghost" onClick={() => rotate(c)}><RefreshCw size={12} /> {t('oc.sharelink', 'Copy share link')}</Button>}
               <CatalogSyncPassword catalog={c} onChange={reload} />
-            </div>
-            {openId === c.id && <OwnerCatalogItems catalog={c} onChange={reload} />}
-            {accessId === c.id && <OwnerCatalogAccess catalog={c} onChange={reload} />}
+            </div>}
+            {tab === 'items' && <OwnerCatalogItems catalog={c} onChange={reload} />}
+            {tab === 'access' && <OwnerCatalogAccess catalog={c} onChange={reload} />}
             {/* Feed fetches and item downloads, private share-link hits included (marked with a
                 key): the owner route, never the staff one. */}
-            {trafficId === c.id && <LiveTraffic bare url={`/me/catalogs/${c.id}/traffic`} />}
+            {tab === 'traffic' && <div className="mt-3"><LiveTraffic bare url={`/me/catalogs/${c.id}/traffic`} /></div>}
             {/* The API always accepted `catalogs` here (routes/domains.mjs); only repos had the panel. */}
-            {domainId === c.id && <div className="mt-3"><DomainPanel kind="catalogs" id={c.id} /></div>}
+            {tab === 'domain' && <div className="mt-3"><DomainPanel kind="catalogs" id={c.id} /></div>}
+            </>}
           </Card>
-        ))}
+          );
+        })}
       </div> : <EmptyState icon={Boxes} title={t('mycat.none.t', 'No catalogs yet')} sub={t('mycat.none.s', 'Host your own catalog of plugins, themes or apps.')}
         action={{ label: t('oc.new', 'New catalog'), icon: Plus, to: '/submit' }} />}
     </div>
