@@ -216,3 +216,31 @@ export function potTotalCents(pot) {
   const gifts = (pot?.contributions || []).reduce((n, c) => n + Math.max(0, Math.round(c.amountCents || 0)), 0);
   return { orgContribCents: org, communityCents: gifts, totalCents: org + gifts };
 }
+
+/**
+ * The public record of past months, for the /charity page's "where the money went".
+ *
+ * `pots` are CharityPot rows with `contributions: { amountCents }` included. What travels:
+ * the month, where it went, the two streams and their sum, how many gifts made up the
+ * community half, and, once paid, the proof link and the date. NOT who gave: a contribution
+ * row carries a userId, and nobody agreed to be listed. `proofNote` is admin-facing and
+ * stays out, as it does in charityCurrent.
+ *
+ * Newest first. The current month is left out on purpose: it is still moving, and the page
+ * shows it from /charity/current in its own card.
+ */
+export function charityHistoryView(pots, currentMonth) {
+  return (pots || [])
+    .filter((p) => p && p.month && p.month !== currentMonth)
+    .sort((a, b) => (a.month < b.month ? 1 : a.month > b.month ? -1 : 0))
+    .map((p) => ({
+      month: p.month,
+      association: p.association || '',
+      status: p.status || 'open',
+      currency: p.currency || 'chf',
+      proofUrl: p.status === 'paid' ? (p.proofUrl || '') : '',
+      paidAt: p.status === 'paid' && p.paidAt ? new Date(p.paidAt).toISOString() : null,
+      gifts: (p.contributions || []).length,
+      ...potTotalCents(p),
+    }));
+}

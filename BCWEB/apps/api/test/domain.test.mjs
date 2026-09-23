@@ -5,7 +5,7 @@
 // us. Every case below is something that would otherwise be a way to make us issue one.
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { normaliseHost, isServableHost, isOurOwnHost, domainEligible, txtMatches, genVerifyToken } from '../src/lib/domain.mjs';
+import { normaliseHost, isServableHost, isOurOwnHost, domainEligible, txtMatches, genVerifyToken, dnsRecordsFor, pointsAtUs } from '../src/lib/domain.mjs';
 
 describe('normaliseHost', () => {
   test('folds case and drops the trailing dot', () => {
@@ -140,5 +140,38 @@ describe('genVerifyToken', () => {
     const t = genVerifyToken();
     assert.match(t, /^bcwv_[0-9a-f]{32}$/);
     assert.equal(new Set(Array.from({ length: 100 }, genVerifyToken)).size, 100);
+  });
+});
+
+// The records the owner is told to create. One helper serves the panel and the /hosting
+// guide, so these pin the shape both of them print.
+describe('dnsRecordsFor', () => {
+  test('the proof is a TXT under the prefix, carrying the token', () => {
+    const r = dnsRecordsFor('Mods.Example.com.', 'bcwv_abc', 'community.example.com');
+    assert.deepEqual(r.proof, { type: 'TXT', name: '_bcw-verify.mods.example.com', value: 'bcwv_abc' });
+  });
+  test('the pointer is a CNAME from the host to our own name', () => {
+    const r = dnsRecordsFor('mods.example.com', 't', 'https://community.example.com/');
+    assert.deepEqual(r.pointer, { type: 'CNAME', name: 'mods.example.com', value: 'community.example.com' });
+  });
+  test('no site host means no pointer, never a CNAME to nothing', () => {
+    assert.equal(dnsRecordsFor('mods.example.com', 't', '').pointer, null);
+  });
+});
+
+describe('pointsAtUs', () => {
+  const ours = { target: 'community.example.com', addrs: ['203.0.113.7'] };
+  test('a CNAME to our name counts', () => {
+    assert.equal(pointsAtUs({ cnames: ['Community.Example.com.'], addrs: [] }, ours), true);
+  });
+  test('an A record on our address counts (flattened apex, or a CNAME the resolver followed)', () => {
+    assert.equal(pointsAtUs({ cnames: [], addrs: ['203.0.113.7'] }, ours), true);
+  });
+  test('somewhere else does not', () => {
+    assert.equal(pointsAtUs({ cnames: ['elsewhere.example.net'], addrs: ['198.51.100.1'] }, ours), false);
+  });
+  test('nothing resolved, or no site host, is a no', () => {
+    assert.equal(pointsAtUs({}, ours), false);
+    assert.equal(pointsAtUs({ addrs: ['203.0.113.7'] }, { target: '', addrs: ['203.0.113.7'] }), false);
   });
 });

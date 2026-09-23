@@ -11,7 +11,7 @@
 // off — so every piece here renders nothing at all until an admin turns it on.
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Heart, Vote, Info, ArrowRight, Check } from 'lucide-react';
+import { Heart, Vote, Info, Check, CalendarDays, Coins, FileCheck, Receipt, ShieldCheck, HandCoins, Landmark, ExternalLink } from 'lucide-react';
 import { Button, Card, Badge, Modal, Input, useToast } from '../ui/ui.jsx';
 import { api } from '../lib/api.js';
 // The SAME sanitiser the studio's page CSS goes through — one filter, tested in one place
@@ -19,6 +19,8 @@ import { api } from '../lib/api.js';
 import { scopeCss, safeClasses } from '../lib/css-scope.js';
 import { useI18n } from '../i18n.jsx';
 import { useAsync } from './pages.jsx';
+// The same question list /hosting uses (ui/accordion.jsx).
+import Accordion from '../ui/accordion.jsx';
 
 // cents → "12.50 CHF". Currency codes are 3-letter ISO; upper-cased for display.
 function money(cents, currency) {
@@ -377,43 +379,241 @@ export function CharityWidget() {
   );
 }
 
+// ── /charity ───────────────────────────────────────────────────────────────────────────────
+// The long version of the card: this month's pot, where the money goes, and what every past
+// month did. Rebuilt for trust rather than for decoration: every number on it comes from the
+// API (/charity/current, /charity/history), nothing is a target the site invented, and the
+// page says plainly what it does NOT publish (who gave). The payment path is the same modal
+// the landing card opens (ContributeModal above), untouched.
+
+/** "2026-09" → "September 2026", in the reader's language. UTC, so the 1st never slips back. */
+function monthLabel(month, lang) {
+  const d = new Date(`${month}-01T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return month;
+  return d.toLocaleDateString(lang || undefined, { month: 'long', year: 'numeric', timeZone: 'UTC' });
+}
+
+/** Days left in the current calendar month, and how far through it we are (0-1). */
+function monthClock(now = new Date()) {
+  const start = new Date(now.getFullYear(), now.getMonth(), 1);
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const left = Math.max(0, Math.ceil((end - now) / 86400000));
+  return { left, done: Math.min(1, Math.max(0, (now - start) / (end - start))) };
+}
+
+/** A month's state, as a badge: sent (with proof), being sent, or still collecting. */
+function StatusBadge({ status, t }) {
+  if (status === 'paid') return <Badge tone="success"><Check size={11} /> {t('ch.st.paid', 'Sent')}</Badge>;
+  if (status === 'closing') return <Badge tone="warning"><CalendarDays size={11} /> {t('ch.st.closing', 'Being sent')}</Badge>;
+  return <Badge><Coins size={11} /> {t('ch.st.open', 'Collecting')}</Badge>;
+}
+
+/** The two streams as one stacked bar, with a legend that carries the amounts. */
+function Streams({ pot, t }) {
+  const total = pot.totalCents || 0;
+  const orgPct = total > 0 ? Math.round((pot.orgContribCents / total) * 100) : 0;
+  const rows = [
+    [t('ch.stream.org', 'From BetterCommunity'), pot.orgContribCents, 'var(--primary)'],
+    [t('ch.stream.com', 'From the community'), pot.communityCents, 'color-mix(in srgb, var(--primary-2) 55%, var(--surface-2))'],
+  ];
+  return (
+    <div className="mt-5">
+      <div className="h-3 rounded-full bg-[var(--surface-2)] overflow-hidden flex" role="img"
+        aria-label={t('ch.stream.aria', '{a}% from BetterCommunity, {b}% from the community').replace('{a}', String(orgPct)).replace('{b}', String(total > 0 ? 100 - orgPct : 0))}>
+        {total > 0 && rows.map(([label, cents, bg]) => (
+          cents > 0 ? <i key={label} className="block h-full" style={{ width: `${(cents / total) * 100}%`, background: bg }} /> : null
+        ))}
+      </div>
+      <dl className="mt-3 grid gap-2 text-[13px]">
+        {rows.map(([label, cents, bg]) => (
+          <div key={label} className="flex items-center gap-2.5 min-w-0">
+            <i aria-hidden className="block w-2.5 h-2.5 rounded-[3px] shrink-0" style={{ background: bg }} />
+            <dt className="flex-1 min-w-0 text-[var(--muted)]">{label}</dt>
+            <dd className="font-semibold tabular-nums">{money(cents, pot.currency)}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
 export default function CharityPage() {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const { data, loading } = useAsync(() => api.get('/charity/current').catch(() => null), []);
+  const { data: hist } = useAsync(() => api.get('/charity/history').catch(() => null), []);
   const [giving, setGiving] = useState(false);
   const enabled = data && data.enabled !== false;
-  return (
-    <div className="max-w-2xl mx-auto space-y-6">
-      <div className="plate">
-        <h1 className="text-3xl font-extrabold tracking-tight flex items-center gap-2"><Heart className="text-[var(--accent-ink)]" /> {t('ch.title', 'Community Charity')}</h1>
-        <p className="text-[var(--muted)] mt-2">{t('ch.page.intro', 'Each month, a share of BetterCommunity’s eligible revenue — plus voluntary gifts from the community — is pooled and donated to an association the Discord community votes for.')}</p>
-      </div>
+  const clock = monthClock();
+  const past = hist?.months || [];
 
-      {loading ? null : enabled ? (
-        <Card className="p-6 text-center">
-          <PotSummary pot={data} t={t} />
-          <div className="flex flex-wrap gap-2 justify-center mt-5">
-            <Button variant="primary" onClick={() => setGiving(true)}><Heart size={15} /> {t('ch.give.cta', 'Increase the pot')}</Button>
-            <Link to={data.poll?.id ? `/polls/${data.poll.id}` : '/polls'}><Button><Vote size={15} /> {t('ch.vote', 'Vote')}</Button></Link>
+  // What the page promises, each one something the code actually does.
+  const trust = [
+    [Vote, t('ch.trust.vote', 'The association is chosen by a community vote')],
+    [FileCheck, t('ch.trust.proof', 'Proof of every donation is published')],
+    [Receipt, t('ch.trust.fees', 'Card fees are shown before you pay')],
+    [ShieldCheck, t('ch.trust.names2', 'Who gave is never published')],
+  ];
+  // The four steps, in the words the page has always used for them.
+  const flow = [
+    [Coins, t('ch.flow.1', 'Two sources'), t('ch.how.1', 'Each month BetterCommunity sets aside a percentage (up to 50%) of its eligible recurring revenue, what remains after recurring costs.')],
+    [HandCoins, t('ch.flow.2', 'One pot'), t('ch.how.2', 'You can add to the pot at any time. Your gifts and BetterCommunity’s share are tracked as two separate amounts and shown together in one pot.')],
+    [Vote, t('ch.flow.3', 'A vote'), t('ch.how.3', 'The community votes on which association receives the month’s pot.')],
+    [Landmark, t('ch.flow.4', 'The donation, and its proof'), t('ch.how.4', 'At the end of the month an admin sends the donation manually and posts the proof.')],
+  ];
+  const faq = [
+    { id: 'fee', q: t('ch.faq.fee.q', 'Why does a little less than I give reach the pot?'),
+      a: t('ch.faq.fee.a', 'The card processor keeps a fee on every payment. The gift form shows the estimate before you pay, and the pot is credited with the exact fee once the payment goes through.') },
+    { id: 'refund', q: t('ch.faq.refund.q', 'Can a gift be refunded?'),
+      a: t('ch.faq.refund.a', 'No. Gifts are final: once it is in the pot, it goes to the month’s association. Nothing is charged until you confirm on the secure payment page.') },
+    { id: 'share', q: t('ch.faq.share.q', 'How is BetterCommunity’s share worked out?'),
+      a: data?.percent > 0
+        ? t('ch.faq.share.a2', 'It is {n}% of the month’s eligible recurring revenue, meaning what remains after recurring costs. It is frozen when the month closes, so it cannot change afterwards.').replace('{n}', String(data.percent))
+        : t('ch.faq.share.a', 'It is a percentage (at most 50%) of the month’s eligible recurring revenue, meaning what remains after recurring costs. It is frozen when the month closes, so it cannot change afterwards.') },
+    { id: 'names', q: t('ch.faq.names.q', 'Is my name shown anywhere?'),
+      a: t('ch.faq.names.a', 'No. The page shows the totals and how many gifts made them up, never who gave or how much any one person gave.') },
+  ];
+
+  return (
+    <div className="max-w-5xl mx-auto">
+      <header className="plate max-w-3xl">
+        <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight flex items-center gap-2.5">
+          <Heart className="text-[var(--accent-ink)] shrink-0" /> {t('ch.title', 'Community Charity')}
+        </h1>
+        <p className="text-[var(--muted)] mt-3 text-[15.5px] leading-relaxed">{t('ch.page.intro', 'Each month, a share of BetterCommunity’s eligible revenue — plus voluntary gifts from the community — is pooled and donated to an association the Discord community votes for.')}</p>
+      </header>
+      <ul className="mt-6 grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
+        {trust.map(([Icon, label]) => (
+          <li key={label} className="card flex items-start gap-2.5 px-3.5 py-3 text-[13px] leading-snug min-w-0">
+            <Icon size={16} className="text-[var(--accent-ink)] shrink-0 mt-px" aria-hidden /> <span className="min-w-0">{label}</span>
+          </li>
+        ))}
+      </ul>
+
+      {/* This month. */}
+      <section className="mt-8" aria-labelledby="ch-now">
+        {loading ? <Card className="p-6 min-h-[16rem]" aria-busy="true" /> : enabled ? (
+          <Card className="overflow-hidden">
+            <div className="grid md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
+              <div className="p-6 sm:p-8 min-w-0">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <h2 id="ch-now" className="text-[13px] font-semibold uppercase tracking-wider text-[var(--muted)]">
+                    {t('ch.now', 'The pot for {m}').replace('{m}', monthLabel(data.month, lang))}
+                  </h2>
+                  <StatusBadge status={data.status} t={t} />
+                </div>
+                <div className="mt-3 text-4xl sm:text-5xl font-extrabold tabular-nums tracking-tight">{money(data.totalCents, data.currency)}</div>
+                <Streams pot={data} t={t} />
+                <div className="mt-5 pt-5 border-t border-[var(--line)] text-[13.5px] flex items-start gap-2.5">
+                  <Landmark size={16} className="shrink-0 mt-px text-[var(--accent-ink)]" aria-hidden />
+                  <div className="min-w-0">
+                    {data.association
+                      ? <span>{t('ch.for', 'This month’s association:')} <b>{data.association}</b></span>
+                      : <span className="text-[var(--muted)]">{t('ch.voting', 'The association is being chosen by community vote.')}</span>}
+                    {data.poll && !data.association && (
+                      <div className="text-[12.5px] text-[var(--muted)] mt-1">{data.poll.question}{data.poll.open ? '' : ` · ${t('ch.voteclosed', 'vote closed')}`}</div>
+                    )}
+                  </div>
+                </div>
+                {data.percent > 0 && <p className="text-[12px] text-[var(--muted)] mt-3">{t('ch.projected', 'Up to {n}% of eligible monthly revenue is added by BetterCommunity.').replace('{n}', data.percent)}</p>}
+                {data.status === 'paid' && (
+                  <div className="mt-4 rounded-lg bg-[var(--surface-2)] px-3 py-2.5 text-sm flex items-center gap-2 flex-wrap">
+                    <Check size={15} className="text-success shrink-0" />
+                    <span>{t('ch.sent', 'This month’s donation has been sent.')}</span>
+                    {data.proofUrl && <a href={data.proofUrl} target="_blank" rel="noreferrer" className="underline text-[var(--accent-ink)] inline-flex items-center gap-1">{t('ch.proof', 'View proof')} <ExternalLink size={12} /></a>}
+                  </div>
+                )}
+              </div>
+
+              <div className="panel p-6 sm:p-8 border-t md:border-t-0 md:border-s border-[var(--line)] flex flex-col gap-4 min-w-0">
+                {data.status === 'open' && (
+                  <div>
+                    <div className="flex items-baseline justify-between gap-2 text-[12.5px] text-[var(--muted)]">
+                      <span>{t('ch.clock', '{n} days left to add to it').replace('{n}', String(clock.left))}</span>
+                    </div>
+                    <div className="mt-1.5 h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden" aria-hidden>
+                      <div className="h-full rounded-full bg-[var(--line-strong)]" style={{ width: `${Math.round(clock.done * 100)}%` }} />
+                    </div>
+                  </div>
+                )}
+                <Button variant="primary" className="w-full !whitespace-normal" onClick={() => setGiving(true)}><Heart size={15} className="shrink-0" /> {t('ch.give.cta', 'Increase the pot')}</Button>
+                <Link to={data.poll?.id ? `/polls/${data.poll.id}` : '/polls'} className="block"><Button className="w-full !whitespace-normal"><Vote size={15} className="shrink-0" /> {t('ch.vote', 'Vote')}</Button></Link>
+                <p className="text-[12px] text-[var(--muted)] leading-relaxed">{t('ch.securenote2', 'You’ll confirm on a secure payment page. Nothing is charged until you do, and gifts are final: donations are not refundable.')}</p>
+              </div>
+            </div>
+          </Card>
+        ) : (
+          <Card className="p-6 text-center text-[var(--muted)]">{t('ch.page.off', 'The charity programme is not running at the moment. Check back soon.')}</Card>
+        )}
+      </section>
+
+      {/* Where the money goes: the four steps, as a path. */}
+      <section className="mt-14" aria-labelledby="ch-how">
+        <div className="plate w-fit max-w-full">
+          <h2 id="ch-how" className="text-2xl font-extrabold tracking-tight">{t('ch.how.t2', 'Where the money goes')}</h2>
+        </div>
+        <ol className="mt-5 grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+          {flow.map(([Icon, title, desc], i) => (
+            <li key={title} className="card p-5 min-w-0 flex flex-col">
+              <div className="flex items-center gap-2.5">
+                <span aria-hidden className="grid place-items-center w-9 h-9 rounded-xl shrink-0 border border-[var(--line)]"
+                  style={{ background: 'color-mix(in srgb, var(--primary) 12%, var(--surface-2))' }}>
+                  <Icon size={17} className="text-[var(--accent-ink)]" />
+                </span>
+                <span className="text-[11px] font-bold text-[var(--muted)] tabular-nums">{String(i + 1).padStart(2, '0')}</span>
+              </div>
+              <div className="font-semibold mt-3 leading-snug">{title}</div>
+              <p className="text-[13px] text-[var(--muted)] mt-1.5 leading-relaxed">{desc}</p>
+            </li>
+          ))}
+        </ol>
+        <p className="card mt-3 px-4 py-3 text-[12.5px] text-[var(--muted)] flex items-start gap-2 leading-relaxed">
+          <Info size={14} className="mt-0.5 shrink-0" aria-hidden />
+          {t('ch.how.note', 'BetterCommunity’s contribution and the community’s voluntary gifts are two distinct things, brought together in one pot for the final donation.')}
+        </p>
+      </section>
+
+      {/* The record. Every closed month, with its proof when there is one. */}
+      {enabled && (
+        <section className="mt-14" aria-labelledby="ch-past">
+          <div className="plate w-fit max-w-full">
+            <h2 id="ch-past" className="text-2xl font-extrabold tracking-tight">{t('ch.past.t', 'Past months')}</h2>
+            <p className="text-[var(--muted)] mt-1.5 text-[14px]">{t('ch.past.s', 'Totals and the number of gifts. Who gave is never shown.')}</p>
           </div>
-        </Card>
-      ) : (
-        <Card className="p-6 text-center text-[var(--muted)]">{t('ch.page.off', 'The charity programme is not running at the moment. Check back soon.')}</Card>
+          {!past.length ? (
+            <Card className="mt-5 p-6 text-sm text-[var(--muted)]">{t('ch.past.none', 'No month has closed yet. Each one appears here when it does, with its proof once the donation is sent.')}</Card>
+          ) : (
+            <ul className="mt-5 card divide-y divide-[var(--line)] overflow-hidden">
+              {past.map((m) => (
+                <li key={m.month} className="px-4 sm:px-6 py-4 flex flex-wrap items-center gap-x-4 gap-y-2">
+                  <div className="min-w-0 flex-1 basis-56">
+                    <div className="font-semibold capitalize">{monthLabel(m.month, lang)}</div>
+                    <div className="text-[12.5px] text-[var(--muted)] mt-0.5">{m.association || t('ch.past.noassoc', 'No association recorded')}</div>
+                  </div>
+                  <div className="text-end">
+                    <div className="font-bold tabular-nums">{money(m.totalCents, m.currency)}</div>
+                    <div className="text-[11.5px] text-[var(--faint)] tabular-nums">
+                      {/* The language's own plural rule: French says "0 don", English "0 gifts". */}
+                      {(new Intl.PluralRules(lang || undefined).select(m.gifts) === 'one'
+                        ? t('ch.past.gift1n', '{n} gift') : t('ch.past.gifts', '{n} gifts')).replace('{n}', String(m.gifts))}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap justify-end">
+                    <StatusBadge status={m.status} t={t} />
+                    {m.proofUrl && <a href={m.proofUrl} target="_blank" rel="noreferrer" className="text-[12.5px] underline text-[var(--accent-ink)] inline-flex items-center gap-1 min-h-[24px] max-lg:min-h-[44px]">{t('ch.proof', 'View proof')} <ExternalLink size={12} /></a>}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       )}
 
-      <Card className="p-6 space-y-4">
-        <h2 className="font-semibold flex items-center gap-2"><Info size={16} /> {t('ch.how.t', 'How it works')}</h2>
-        <ol className="space-y-3 text-sm text-[var(--muted)] list-decimal ms-4">
-          <li>{t('ch.how.1', 'Each month BetterCommunity sets aside a percentage (up to 50%) of its eligible recurring revenue, what remains after recurring costs.')}</li>
-          <li>{t('ch.how.2', 'You can add to the pot at any time. Your gifts and BetterCommunity’s share are tracked as two separate amounts and shown together in one pot.')}</li>
-          <li>{t('ch.how.3', 'The community votes on which association receives the month’s pot.')}</li>
-          <li>{t('ch.how.4', 'At the end of the month an admin sends the donation manually and posts the proof.')}</li>
-        </ol>
-        <div className="rounded-lg bg-[var(--surface-2)] p-3 text-xs text-[var(--faint)] flex items-start gap-2">
-          <ArrowRight size={14} className="mt-0.5 shrink-0" />
-          {t('ch.how.note', 'BetterCommunity’s contribution and the community’s voluntary gifts are two distinct things, brought together in one pot for the final donation.')}
+      <section className="mt-14 mb-4" aria-labelledby="ch-faq">
+        <div className="plate w-fit max-w-full">
+          <h2 id="ch-faq" className="text-2xl font-extrabold tracking-tight">{t('ch.faq.t', 'Questions')}</h2>
         </div>
-      </Card>
+        <Accordion className="mt-5" items={faq} />
+      </section>
 
       {giving && enabled && <ContributeModal pot={data} onClose={() => setGiving(false)} />}
     </div>

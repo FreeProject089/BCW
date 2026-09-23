@@ -872,10 +872,11 @@ règles sont appliquées à trois endroits, pas un.
 | Méthode | Chemin | Auth | Rôle |
 |---|---|---|---|
 | GET | `/domains/ask?domain=` | — (l'edge) | Le `on_demand_tls { ask }` de Caddy. 200 = émettre, autre = refuser. |
-| GET | `/me/:kind/:id/domain` | propriétaire | Le domaine et les enregistrements DNS à ajouter. `:kind` = `repos` ou `catalogs`. |
+| GET | `/domains/guide?host=` | — | Les deux enregistrements pour un nom d'exemple (ou celui donné), construits par le même helper que ceux du propriétaire : la preuve TXT `_bcw-verify` (jeton fictif) et le `pointer` CNAME vers le nom du site. Ce que montre /hosting. |
+| GET | `/me/:kind/:id/domain` | propriétaire | Le domaine et les enregistrements DNS à ajouter (`record` = la preuve TXT, `pointer` = le CNAME). `:kind` = `repos` ou `catalogs`. |
 | PUT | `/me/:kind/:id/domain` | propriétaire | Revendiquer un nom. Un nouveau nom = un nouveau jeton et une vérification repartie de zéro. |
 | DELETE | `/me/:kind/:id/domain` | propriétaire | Le retirer. L'adresse bettercommunity n'est pas touchée. |
-| POST | `/me/:kind/:id/domain/verify` | propriétaire | Résoudre le TXT `_bcw-verify.<host>` maintenant et comparer. |
+| POST | `/me/:kind/:id/domain/verify` | propriétaire | Résoudre le TXT `_bcw-verify.<host>` maintenant et comparer. Répond aussi `traffic: ok / missing / unknown` (le nom pointe-t-il déjà chez nous), à titre indicatif, jamais pris en compte dans `verified`. |
 
 **Preuve de contrôle.** Un enregistrement TXT sur `_bcw-verify.<host>` portant un jeton propre
 au domaine. Par domaine et non par compte, pour qu'en retirer un n'invalide pas un
@@ -1021,6 +1022,7 @@ de test local reçoit un refus qui se lit comme du code cassé.
 ## 45. Composants du studio (`studio.mjs`)
 Le studio (`/studio/:kind/:id/:index` côté web) permet à un auteur de garder un groupe de blocs
 de planche sous un nom et d'en déposer des copies sur d'autres pages. La liste est personnelle —
+| GET | `/charity/history` | — | Les mois précédents, du plus récent au plus ancien (jusqu'à 24) : association, statut, les deux flux et leur total, le nombre de dons, et le lien de preuve + la date une fois versé. Jamais qui a donné (ni identifiant, ni note admin). Même interrupteur : désactivé → 404 `charity_disabled`. Cache 60 s. |
 une valeur JSON par utilisateur dans le magasin clé/valeur des réglages
 (`studio.components:<userId>`), sans table dédiée — lue entière à l'ouverture du studio et
 réécrite entière à chaque changement.

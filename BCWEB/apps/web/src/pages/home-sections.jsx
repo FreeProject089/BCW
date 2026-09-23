@@ -16,7 +16,7 @@
 //     testimonial next to French everything else. `bodyFr` was fetched and never used.
 import { Suspense, lazy } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Sparkles, MessageSquareQuote, Wand2 } from 'lucide-react';
+import { ArrowRight, MessageSquareQuote, Wand2 } from 'lucide-react';
 import { Button, Card, Badge } from '../ui/ui.jsx';
 import { KofiIcon, DiscordIcon } from '../ui/brand.jsx';
 import { closingCta } from '../lib/home-ctas.js';
@@ -25,6 +25,8 @@ import { AppLogo } from '../ui/brand.jsx';
 import { PollTeaser } from './polls.jsx';
 import { useI18n } from '../i18n.jsx';
 import { ErrorBoundary } from '../ui/ErrorBoundary.jsx';
+import { Marker } from '../ui/marker.jsx';
+import HomeDemo from './home-demo.jsx';
 
 const ProjectShowcase = lazy(() => import('../hero/ProjectShowcase.jsx'));
 
@@ -105,7 +107,7 @@ export function ClosingBand({ user, t }) {
   return (
     <section>
       <Card className="grain-hero p-8 md:p-12 text-center">
-        <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight">{cta.title}</h2>
+        <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight"><Marker variant="line">{cta.title}</Marker></h2>
         <p className="text-[var(--muted)] mt-3 max-w-lg mx-auto leading-relaxed">{cta.sub}</p>
         <div className="flex flex-wrap gap-3 justify-center mt-6">
           <Link to={cta.action.to}><Button variant="primary" className="!px-6 !py-3">{cta.action.label} <ArrowRight size={16} /></Button></Link>
@@ -132,12 +134,10 @@ export function ShowcasePanel({ showcase }) {
   return <ShowcaseFallback />;
 }
 
+// Nothing configured, or the showcase failed: the product demo (home-demo.jsx) instead of the
+// empty frame with a sparkle in it that used to hold the place.
 function ShowcaseFallback() {
-  return (
-    <div className="rounded-2xl border border-[var(--line)] aspect-video grid place-items-center" style={{ background: 'var(--surface)' }}>
-      <Sparkles size={28} className="text-[var(--faint)]" />
-    </div>
-  );
+  return <HomeDemo />;
 }
 
 /** A strip of headlines. The last thing on a page, saying the project is alive. */

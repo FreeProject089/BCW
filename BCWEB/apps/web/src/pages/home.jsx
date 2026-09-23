@@ -32,6 +32,10 @@ import { HomeV2, HomeV3 } from './home-variants.jsx';
 // page renders around. That is what keeps a built page from arriving after the default one.
 import { heroCtas, heroNote, closingCta } from '../lib/home-ctas.js';
 import { useFramedDraft } from '../lib/studio-preview.js';
+// The marker stroke under the title and the handwritten asides (ui/marker.jsx), and the product
+// demo that fills the media frame when no showcase is configured.
+import { Marker, HandNote } from '../ui/marker.jsx';
+import HomeDemo from './home-demo.jsx';
 
 /* ─────────────────────────  Home  ───────────────────────── */
 function useScrollReveal() {
@@ -456,8 +460,11 @@ export function Home({ draft: draftProp = null }) {
               word, and at 60px it asked for 496px inside a 343px box on a 375px phone, so it
               was clipped. A clamp keeps it on one line from 320px up and still reaches the
               same 7rem on a desktop. */}
+          {/* The marker stroke goes round the WHOLE name, both halves, so it is one unbreakable
+              unit (an inline-block with no break opportunity inside) and the stroke is as wide
+              as the word in every language. It draws in after the title's own slide. */}
           <h1 className="anim-slide font-extrabold leading-[0.98] tracking-[-0.035em] text-[clamp(2.25rem,9.5vw,7rem)]" style={{ animationDelay: '80ms' }}>
-            {t('home.brand')}<span className="gradient-text">{t('home.brand2', 'Community')}</span>
+            <Marker delay={560}>{t('home.brand')}<span className="gradient-text">{t('home.brand2', 'Community')}</span></Marker>
           </h1>
           <p className="anim-slide plate text-[var(--muted)] text-lg md:text-xl max-w-xl mx-auto mt-7 leading-relaxed" style={{ animationDelay: '160ms' }}>{t('home.sub2', 'Catalogues, presets and Server-Repos for every Better* project, browse them, publish your own, and host them here.')}</p>
           <div className="anim-slide flex flex-wrap gap-3 justify-center mt-10" style={{ animationDelay: '240ms' }}>
@@ -471,8 +478,10 @@ export function Home({ draft: draftProp = null }) {
           </div>
           {/* Answers the question that stops a stranger before any of the copy does. Absent
               for a member, who settled it when they signed up. */}
+          {/* Handwritten, with an arrow up at the buttons: the odoo-style aside. Same sentence as
+              before, same rule for when it shows; `plate` keeps its halo over the backdrop. */}
           {heroNote(user, t) && (
-            <p className="anim-slide plate w-fit mx-auto px-2 text-[13px] text-[var(--faint)] mt-3.5" style={{ animationDelay: '280ms' }}>{heroNote(user, t)}</p>
+            <p className="anim-slide plate w-fit max-w-full mx-auto px-2 mt-3" style={{ animationDelay: '280ms' }}><HandNote arrow="up">{heroNote(user, t)}</HandNote></p>
           )}
           {/* A Discord community runs alongside the site; the bot is how a server owner plugs
               their own server into it. Only rendered once the bot is live (has an appId). */}
@@ -495,6 +504,13 @@ export function Home({ draft: draftProp = null }) {
               <ErrorBoundary fallback={null}>
                 <Suspense fallback={null}><ProjectShowcase config={showcase} /></Suspense>
               </ErrorBoundary>
+            </div>
+          )}
+          {/* No showcase configured: the product demo stands where the media would, rather than
+              the hero ending on its buttons with nothing to look at. */}
+          {!showcaseLoading && !showcase?.enabled && (
+            <div className="anim-slide mt-14 mx-auto w-full max-w-3xl" style={{ animationDelay: '320ms' }}>
+              <HomeDemo />
             </div>
           )}
           {/* The headline counts are gone. They were the two numbers a visitor cannot
@@ -691,7 +707,7 @@ export function Home({ draft: draftProp = null }) {
       {show('steps') && (
       <section>
         <SectionKicker n="03" label={t('home.k.start', 'Get started')} />
-        <div className="reveal-on-scroll plate w-fit max-w-full mx-auto text-center mb-9"><h2 className="text-3xl md:text-4xl font-extrabold tracking-tight">{t('home.steps.title')}</h2><p className="text-[var(--muted)] mt-2.5">{t('home.steps.sub')}</p></div>
+        <div className="reveal-on-scroll plate w-fit max-w-full mx-auto text-center mb-9"><h2 className="text-3xl md:text-4xl font-extrabold tracking-tight"><Marker variant="line">{t('home.steps.title')}</Marker></h2><p className="text-[var(--muted)] mt-2.5">{t('home.steps.sub')}</p></div>
         {/* A path, and one that knows where the reader already is.
 
             It was three cards side by side, numbered 1-2-3 with a hairline behind them. Three
@@ -890,7 +906,7 @@ export function Home({ draft: draftProp = null }) {
               primary vanishes on orange. Taking the slab away lets the buttons be the
               buttons this site uses everywhere else. */}
           <div className="relative reveal-stagger">
-            <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight">{closingCta(user, t).title}</h2>
+            <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight"><Marker variant="line">{closingCta(user, t).title}</Marker></h2>
             <p className="text-[var(--muted)] mt-3 max-w-lg mx-auto leading-relaxed">{closingCta(user, t).sub}</p>
             <div className="flex flex-wrap gap-3 justify-center mt-7">
               {/* Was an unconditional "Get started" pointing at /auth — offered to somebody

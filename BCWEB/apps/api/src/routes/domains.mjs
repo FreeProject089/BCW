@@ -15,7 +15,7 @@
 import dns from 'node:dns/promises';
 import { z } from 'zod';
 import { db, requireRole, logAudit, clientIp } from '../lib/lib.mjs';
-import { normaliseHost, isServableHost, isOurOwnHost, domainEligible, txtMatches, genVerifyToken, VERIFY_PREFIX } from '../lib/domain.mjs';
+import { normaliseHost, isServableHost, isOurOwnHost, domainEligible, txtMatches, genVerifyToken, dnsRecordsFor, pointsAtUs } from '../lib/domain.mjs';
 import { recordChange } from '../lib/changelog.mjs';
 
 /** Our own hostname, from the configured site URL. Empty if unset — see isOurOwnHost. */
@@ -27,6 +27,7 @@ export function siteHost() {
  *  row's internal ids are noise. */
 export function domainView(d) {
   if (!d) return null;
+  const records = dnsRecordsFor(d.host, d.verifyToken, siteHost());
   return {
     id: d.id,
     host: d.host,
@@ -37,7 +38,10 @@ export function domainView(d) {
     createdAt: d.createdAt,
     // Everything the owner needs to type into their DNS panel, so the UI never assembles it
     // from parts and gets the separator wrong.
-    record: { type: 'TXT', name: `${VERIFY_PREFIX}.${d.host}`, value: d.verifyToken },
+    record: records.proof,
+    // Where the traffic goes: a CNAME to our own hostname, from the same helper as the proof
+    // (null on a stack with no SITE_URL, where there is no name to point at).
+    pointer: records.pointer,
   };
 }
 
@@ -179,6 +183,19 @@ export default async function domainRoutes(app) {
     return reply.send({ ok: true });
   });
 
+  // ── the public guide ──────────────────────────────────────────────────────────────────
+  //
+  // What /hosting shows a reader who has not bought anything yet: the two records, for an
+  // example name (or the one they type), built by the same helper that hands the owner their
+  // real ones. Nothing here is secret: the prefix is published in every customer's zone and
+  // our hostname is the site's own address. The token is a placeholder, never a real one.
+  app.get('/domains/guide', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (req) => {
+    const asked = normaliseHost(req.query?.host);
+    const host = asked && isServableHost(asked) && !isOurOwnHost(asked, siteHost()) ? asked : 'mods.example.com';
+    const records = dnsRecordsFor(host, 'bcwv_…', siteHost());
+    return { host, proof: records.proof, pointer: records.pointer };
+  });
+
   // ── the owner ─────────────────────────────────────────────────────────────────────────
   //
   // Owner-only, and for a repo the same rule as the agent token: a shared dashboard password
@@ -274,7 +291,7 @@ export default async function domainRoutes(app) {
     const gate = domainEligible(ctx.forRule);
     if (!gate.ok) return reply.code(403).send({ error: gate.reason });
 
-    const name = `${VERIFY_PREFIX}.${d.host}`;
+    const name = dnsRecordsFor(d.host, d.verifyToken, '').proof.name;
     let records = null; let err = null;
     try {
       records = await dns.resolveTxt(name);
@@ -285,6 +302,19 @@ export default async function domainRoutes(app) {
       err = String(e?.code || e?.message || 'lookup_failed').slice(0, 120);
     }
     const ok = !err && txtMatches(records, d.verifyToken);
+    // The second question, answered alongside the first and never instead of it: does the
+    // name already send its traffic here? Not stored and not part of `verified` (see
+    // pointsAtUs). Each lookup is allowed to fail on its own: no answer is "not yet".
+    const target = siteHost();
+    let traffic = 'unknown';
+    if (target) {
+      const [cnames, addrs, ours] = await Promise.all([
+        dns.resolveCname(d.host).catch(() => []),
+        dns.resolve4(d.host).catch(() => []),
+        dns.resolve4(target).catch(() => []),
+      ]);
+      traffic = pointsAtUs({ cnames, addrs }, { target, addrs: ours }) ? 'ok' : 'missing';
+    }
     const out = await ctx.p.customDomain.update({
       where: { id: d.id },
       data: {
@@ -295,6 +325,6 @@ export default async function domainRoutes(app) {
     });
     // A domain that just passed verification has to start working now, not in a minute.
     await refreshHostMap(ctx.p).catch(() => {});
-    return { domain: domainView(out), ok };
+    return { domain: domainView(out), ok, traffic };
   });
 }

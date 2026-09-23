@@ -7,7 +7,7 @@ import { stripe } from './hosting.mjs';
 import {
   CHARITY_CONFIG_KEY, CHARITY_DEFAULTS, CHARITY_MAX_PCT,
   normalizeCharityConfig, computeOrgShare, clampCharityPct,
-  validateContribution, potTotalCents, monthKey, CONTRIBUTION_PRESETS_CENTS, pollOpen,
+  validateContribution, potTotalCents, monthKey, CONTRIBUTION_PRESETS_CENTS, pollOpen, charityHistoryView,
 } from '../lib/charity.mjs';
 
 // B14 Community Charity — Phase 1: admin config + the org-share preview. No money moves here;
@@ -122,6 +122,22 @@ export default async function charityRoutes(app) {
     if (!cur.enabled) return reply.code(404).send({ error: 'charity_disabled', enabled: false });
     reply.header('Cache-Control', 'public, max-age=30');
     return cur;
+  });
+
+  // Public: the months before this one, for the /charity page's record of where the money went
+  // (charityHistoryView decides what is published: totals, a gift count, the proof once paid;
+  // never who gave). Same switch as /charity/current: off is a 404, not an empty list. Capped
+  // at two years of months, which is more than the page shows.
+  app.get('/charity/history', async (req, reply) => {
+    const p = await db();
+    const config = await loadConfig(p);
+    if (!config.enabled) return reply.code(404).send({ error: 'charity_disabled', enabled: false });
+    const pots = await p.charityPot.findMany({
+      orderBy: { month: 'desc' }, take: 25,
+      select: { month: true, association: true, status: true, currency: true, proofUrl: true, paidAt: true, orgContribCents: true, contributions: { select: { amountCents: true } } },
+    });
+    reply.header('Cache-Control', 'public, max-age=60');
+    return { months: charityHistoryView(pots, monthKey(new Date())), currency: config.currency };
   });
 
   // Public (auth optional — an anonymous gift is allowed): start a contribution checkout. The

@@ -1,0 +1,77 @@
+/* Hand-drawn marks: the highlighter stroke under a title, a hand-drawn underline, and the
+   handwritten note with its arrow. See ui/marker.jsx for where and why.
+
+   Contrast is the constraint every number here answers to. The stroke sits LOW: it starts
+   around the baseline and runs below it, so it crosses only the feet of the letters and never
+   sits behind their bodies. A highlighter behind the whole x-height would put orange gradient
+   text on an orange tint, which is exactly the "does not hurt contrast" the owner ruled out.
+   Measured: see the report for the numbers in both themes. */
+
+.mk {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  isolation: isolate;          /* the stroke's z-index:-1 stays inside the word */
+}
+.mk-swash {
+  position: absolute;
+  z-index: -1;
+  inset-inline: -0.07em;
+  /* Measured on the home hero (leading 0.98): the stroke's top edge lands about 0.07em above
+     the baseline, so it crosses the bottom 15% of the x-height and runs on below. */
+  bottom: -0.2em;
+  height: 0.34em;
+  width: calc(100% + 0.14em);
+  overflow: visible;
+  pointer-events: none;
+  color: var(--mk-ink, color-mix(in srgb, var(--primary) 34%, transparent));
+  transform: rotate(-0.8deg);
+  transform-origin: 0 50%;
+  clip-path: inset(0 0 0 0);
+  animation: mkDraw 0.9s cubic-bezier(0.6, 0.05, 0.3, 1) var(--mk-delay, 420ms) both;
+}
+[data-theme="dark"] .mk-swash { color: var(--mk-ink, color-mix(in srgb, var(--primary) 42%, transparent)); }
+/* The line variant: a thin hand-drawn underline, for section titles where a full stroke would
+   be one highlight too many on the page. */
+.mk--line .mk-swash { bottom: -0.2em; height: 0.2em; }
+.mk--line .mk-swash path { fill: none; stroke: currentColor; stroke-width: 3.2; stroke-linecap: round; }
+.mk--line { --mk-ink: color-mix(in srgb, var(--primary) 70%, transparent); }
+
+@keyframes mkDraw { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+@keyframes mkDrawRtl { from { clip-path: inset(0 0 0 100%); } to { clip-path: inset(0 0 0 0); } }
+[dir="rtl"] .mk-swash { animation-name: mkDrawRtl; transform: rotate(0.8deg); transform-origin: 100% 50%; }
+
+/* A genuine OS request: the stroke is simply there, no draw-in. It is decoration, and it is
+   the same picture either way. */
+@media (prefers-reduced-motion: reduce) { .mk-swash { animation: none; } }
+/* High-contrast mode draws its own colours; a tinted blob behind text is noise there. */
+@media (forced-colors: active) { .mk-swash { display: none; } }
+@media print { .mk-swash { animation: none; } }
+
+/* ── The handwritten note ──────────────────────────────────────────────────────────────────
+   No web font: the site loads none (privacy-first, nothing fetched from a font CDN), so this is
+   the handwriting face each system already has: Segoe Print on Windows, Bradley Hand or
+   Chalkboard on Apple, and the platform's `cursive` elsewhere. Worst case it is an italic in
+   the accent ink, which still reads as an aside. */
+.hand-note {
+  font-family: "Segoe Print", "Bradley Hand", "Chalkboard SE", "Comic Neue", "Marker Felt", cursive;
+  /* The words in the text colour, the arrow in the accent. Measured: the accent ink as text,
+     at this size on the hero backdrop, gave 3.4:1 (under AA for small text). */
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.35;
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 0.35rem;
+  max-width: 100%;
+  transform: rotate(-2deg);
+}
+.hand-note-text { min-width: 0; text-wrap: balance; }
+.hand-note-arrow { flex-shrink: 0; width: 34px; height: 30px; color: var(--accent-ink); overflow: visible; }
+.hand-note-arrow path { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+[dir="rtl"] .hand-note-arrow { transform: scaleX(-1); }
+[dir="rtl"] .hand-note { transform: rotate(2deg); }
+
+/* A mark inside a section that reveals on scroll draws when the section arrives, not while it
+   is still below the fold: paused at its first frame (hidden) until the reveal adds `.in`. */
+html.js-anim :where(.reveal-on-scroll, .reveal-stagger):not(.in) .mk-swash { animation-play-state: paused; }

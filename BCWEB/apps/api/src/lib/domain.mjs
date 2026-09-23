@@ -116,3 +116,49 @@ export function txtMatches(records, token) {
   const flat = (records || []).map((r) => (Array.isArray(r) ? r.join('') : String(r || '')));
   return flat.some((v) => v.trim().replace(/^"|"$/g, '') === token);
 }
+
+/**
+ * Every DNS record the owner has to create for `host`, in the order they create them.
+ *
+ * One function, used by the owner's panel (with their real token) and by the public guide on
+ * /hosting (with a placeholder), so the page that explains the records and the panel that
+ * hands them out cannot disagree on a name, a separator or a type. The web never assembles a
+ * record from parts.
+ *
+ *   * `proof`   the TXT record that says the name is theirs. Checked by /verify.
+ *   * `pointer` the record that sends the traffic here. A CNAME to our own hostname, because
+ *               that is the one value that stays right if the server's address changes. It is
+ *               null when the site has no hostname configured (a dev stack), rather than a
+ *               CNAME to an empty string. A CNAME cannot sit on the bare apex of a zone
+ *               (example.com itself), which is why the panel says so and suggests the
+ *               provider's flattening record (ALIAS / ANAME) or a subdomain instead.
+ */
+export function dnsRecordsFor(host, token, target) {
+  const h = normaliseHost(host);
+  const tgt = normaliseHost(target);
+  return {
+    proof: { type: 'TXT', name: `${VERIFY_PREFIX}.${h}`, value: String(token || '') },
+    pointer: tgt ? { type: 'CNAME', name: h, value: tgt } : null,
+  };
+}
+
+/**
+ * Does the traffic for this name already reach us?
+ *
+ * Informational only: verification is the TXT proof and nothing else, because the pointer can
+ * legitimately be missing while somebody moves a live name over (they prove it first, then
+ * switch the traffic). This answers the question the owner has next: "and is it pointing at
+ * you yet?".
+ *
+ * `seen` is what the resolver said about the owner's name: its CNAME chain and its IPv4
+ * addresses (resolve4 follows a CNAME, so a correct CNAME shows up here too). `ours` is our own
+ * hostname and its addresses. A match on either is a yes.
+ */
+export function pointsAtUs(seen, ours) {
+  const target = normaliseHost(ours?.target);
+  if (!target) return false;
+  const cn = (seen?.cnames || []).map(normaliseHost);
+  if (cn.includes(target)) return true;
+  const mine = new Set((ours?.addrs || []).map(String));
+  return (seen?.addrs || []).some((a) => mine.has(String(a)));
+}

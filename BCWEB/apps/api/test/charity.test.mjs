@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {
   computeOrgShare, clampCharityPct, normalizeCharityConfig,
   CHARITY_MAX_PCT, monthKey, validateContribution, potTotalCents,
-  CONTRIBUTION_MIN_CENTS, CONTRIBUTION_MAX_CENTS, pollOpen, normalizeCharityDesign,
+  CONTRIBUTION_MIN_CENTS, CONTRIBUTION_MAX_CENTS, pollOpen, normalizeCharityDesign, charityHistoryView,
 } from '../src/lib/charity.mjs';
 
 test('org-share is a percentage of net recurring revenue', () => {
@@ -122,4 +122,23 @@ test('the third mode rebuilds parts, labels, classes and blocks from an allowlis
 test('an unknown mode falls back to the default card', () => {
   assert.equal(normalizeCharityDesign({ mode: 'hax' }).mode, 'default');
   assert.equal(normalizeCharityDesign(null).mode, 'default');
+});
+
+test('the public history: past months only, newest first, totals and a gift count, never who gave', () => {
+  const pots = [
+    { month: '2026-07', association: 'A', status: 'paid', proofUrl: 'https://x/p', proofNote: 'internal', paidAt: new Date('2026-08-02T10:00:00Z'), orgContribCents: 1000, currency: 'chf', contributions: [{ amountCents: 500, userId: 'u1' }, { amountCents: 250, userId: null }] },
+    { month: '2026-09', association: 'Now', status: 'open', orgContribCents: 1, contributions: [] },
+    { month: '2026-08', association: '', status: 'closing', proofUrl: 'https://x/early', orgContribCents: 0, contributions: [] },
+  ];
+  const h = charityHistoryView(pots, '2026-09');
+  assert.deepEqual(h.map((x) => x.month), ['2026-08', '2026-07']);
+  assert.deepEqual(h[1], {
+    month: '2026-07', association: 'A', status: 'paid', currency: 'chf', proofUrl: 'https://x/p',
+    paidAt: '2026-08-02T10:00:00.000Z', gifts: 2, orgContribCents: 1000, communityCents: 750, totalCents: 1750,
+  });
+  // A proof link on a month that is not marked paid is not published yet.
+  assert.equal(h[0].proofUrl, '');
+  // No identities and no admin note, anywhere in the output.
+  const json = JSON.stringify(h);
+  assert.ok(!json.includes('u1') && !json.includes('internal') && !json.includes('userId'));
 });

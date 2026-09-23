@@ -1,0 +1,19 @@
+/* The answer's drawer (ui/accordion.jsx). Grid rows 0fr -> 1fr animates the height without
+   measuring it. Visibility follows: visible at once when opening, hidden only AFTER the close
+   has played, so a closed answer is neither read aloud nor reachable with Tab. A reduced-motion
+   request drops every transition: it opens and closes in one step. */
+.acc-panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  visibility: hidden;
+  transition: grid-template-rows 0.2s ease-out, visibility 0s linear 0.2s;
+}
+.acc-panel.is-open {
+  grid-template-rows: 1fr;
+  visibility: visible;
+  transition: grid-template-rows 0.2s ease-out, visibility 0s linear 0s;
+}
+.acc-panel > div { overflow: hidden; min-height: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .acc-panel, .acc-panel.is-open { transition: none; }
+}

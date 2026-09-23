@@ -850,10 +850,11 @@ obtains a TLS certificate on demand — so the rules are enforced in three place
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
 | GET | `/domains/ask?domain=` | — (the edge) | Caddy's `on_demand_tls { ask }`. 200 = issue a certificate, anything else = refuse. |
-| GET | `/me/:kind/:id/domain` | owner | The domain and the DNS records to add. `:kind` is `repos` or `catalogs`. |
+| GET | `/domains/guide?host=` | — | The two records for an example host (or the one given), built by the same helper as the owner's: the `_bcw-verify` TXT proof (placeholder token) and the CNAME `pointer` to the site's own hostname. What /hosting shows. |
+| GET | `/me/:kind/:id/domain` | owner | The domain and the DNS records to add (`record` = the TXT proof, `pointer` = the CNAME). `:kind` is `repos` or `catalogs`. |
 | PUT | `/me/:kind/:id/domain` | owner | Claim a host. A new host means a new token and verification from zero. |
 | DELETE | `/me/:kind/:id/domain` | owner | Remove it. The bettercommunity address is unaffected. |
-| POST | `/me/:kind/:id/domain/verify` | owner | Resolve `_bcw-verify.<host>` TXT now and compare. |
+| POST | `/me/:kind/:id/domain/verify` | owner | Resolve `_bcw-verify.<host>` TXT now and compare. Also answers `traffic: ok / missing / unknown` (does the name already resolve to us), which is informational and never part of `verified`. |
 
 **Proof of control.** A TXT record at `_bcw-verify.<host>` carrying a per-domain token. Per
 domain rather than per account, so removing one does not invalidate a record already published
@@ -990,6 +991,7 @@ gets a refusal that reads as broken code.
 ## 45. Studio components (`studio.mjs`)
 The studio (`/studio/:kind/:id/:index` on the web) lets an author keep a group of canvas blocks
 as a named component and drop copies on other pages. The list is personal — one JSON value per
+| GET | `/charity/history` | — | The months before this one, newest first (up to 24): association, status, the two streams and their total, the number of gifts, and the proof link + date once paid. Never who gave (no user ids, no admin note). Same switch: off → 404 `charity_disabled`. Cached 60 s. |
 user in the key/value settings store (`studio.components:<userId>`), no table of its own — and
 is read whole when the studio opens and written whole on every change.
 

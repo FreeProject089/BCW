@@ -31,6 +31,9 @@ import StatusBanner from './status-banner.jsx';
 // One rule for all three landing pages. Written three times it would be right once:
 // v1 could learn about the signed-in visitor and these two not, and both would render.
 import { heroCtas, heroNote, closingCta } from '../lib/home-ctas.js';
+// The same marker stroke and handwritten aside v1 draws on its title (ui/marker.jsx), so the
+// three landing pages share one hand.
+import { Marker, HandNote } from '../ui/marker.jsx';
 
 /** The posts a landing page shows, oldest concern first: is there anything at all. */
 const postsOf = (ctx) => (ctx.data?.posts || []).slice(0, 6);
@@ -60,7 +63,7 @@ export function HomeV2(ctx) {
               and still reaches the same size on a desktop. `break-words` covers a site that
               renames the brand to something longer still. */}
           <h1 className="font-extrabold leading-[1.02] tracking-[-0.03em] break-words text-[clamp(1.9rem,7vw,3.75rem)]">
-            {t('home.hero1')} <span className="gradient-text">{t('home.brand')}</span> {t('home.hero2')}
+            {t('home.hero1')} <Marker delay={200}><span className="gradient-text">{t('home.brand')}</span></Marker> {t('home.hero2')}
           </h1>
           <p className="mt-4 text-[15px] leading-relaxed text-[var(--muted)] max-w-prose">
             {t('home.v2.lede', 'Tools for managing, sharing and hosting mods. Pick the one you came for.')}
@@ -77,7 +80,7 @@ export function HomeV2(ctx) {
               </Link>
             ))}
           </div>
-          {heroNote(user, t) && <p className="mt-3 text-[12px] text-[var(--faint)]">{heroNote(user, t)}</p>}
+          {heroNote(user, t) && <p className="mt-3 plate w-fit max-w-full"><HandNote arrow="up">{heroNote(user, t)}</HandNote></p>}
 
           {show('status') && <StatusBanner />}
           {show('products') && (
@@ -125,7 +128,7 @@ export function HomeV3(ctx) {
       {/* One line where v1 has a hero. Somebody who is here for the third time does not need
           to be told what the site is; they need to see whether anything moved. */}
       <header className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <h1 className="text-2xl font-extrabold tracking-tight">{t('home.v3.title', 'What’s happening')}</h1>
+        <h1 className="text-2xl font-extrabold tracking-tight"><Marker delay={200}>{t('home.v3.title', 'What’s happening')}</Marker></h1>
         <span className="text-[13px] text-[var(--muted)]">
           {t('home.v3.sub', 'Releases, decisions being made, and what people are saying.')}
         </span>

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Home as HomeIcon, Trophy, Play, RotateCcw, Gamepad2, ChevronDown, Timer, Heart, WifiOff, Zap, Pause } from 'lucide-react';
+import { Home as HomeIcon, Trophy, Play, RotateCcw, Gamepad2, ChevronDown, Timer, Heart, WifiOff, Zap, Pause, LayoutGrid, Server, Cloud, BookOpen, HelpCircle, Activity, Mail, ArrowRight } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { useAuth } from './auth.jsx';
@@ -375,7 +375,7 @@ export default function NotFound({ offline = false }) {
       {/* The page number, and one line. There were two headings above the game saying the
           same thing in different words — "Lost in space" over "that page doesn't exist" —
           and neither told anybody anything they had not worked out from the 404. */}
-      <div className="text-center">
+      <div className="plate w-fit max-w-full mx-auto text-center px-2">
         {offline ? (
           <>
             <WifiOff size={54} className="mx-auto text-[var(--accent-ink)]" strokeWidth={1.5} />
@@ -395,7 +395,8 @@ export default function NotFound({ offline = false }) {
 
       <div className="flex flex-col md:flex-row gap-6 items-start justify-center">
         {/* Game */}
-        <div className="shrink-0 mx-auto w-full" style={{ maxWidth: W }}>
+        {/* `select-none`: steering is a drag, and a drag over text is a selection. */}
+        <div className="shrink-0 mx-auto w-full select-none" style={{ maxWidth: W }}>
           {/* The score used to be one number floating over the top-left corner of the field,
               on top of the orbs. Three things now matter to a run (what it is worth, what is
               multiplying it, and how much rope is left), so they sit in a row above the
@@ -422,30 +423,45 @@ export default function NotFound({ offline = false }) {
           </div>
           <div className="relative">
             <canvas ref={canvasRef}
-              onPointerDown={(e) => { if (phase === 'playing') move(e.clientX); }}
+              onPointerDown={(e) => { if (phase === 'playing') { e.preventDefault(); move(e.clientX); } }}
               className="rounded-2xl border border-[var(--line)] panel touch-none w-full block" style={{ aspectRatio: `${W}/${H}` }} />
+            {/* The panel over the field between runs.
+                It was a `grid place-items-center` box with everything in one centred block, so
+                whenever the block was taller than the field (a phone, French, a streak line and
+                a sign-in line on the same run) it overflowed at BOTH ends: "Game over" was pushed
+                up under the HUD and the button sat on the rules text. And because the run ends
+                while the pointer is usually still held down on the field, the drag that was
+                steering the paddle went on to select the text that appeared under it, which is
+                the highlight the report showed over "Partie terminée".
+                Now: a flex column that scrolls if it has to, centred with auto margins (which,
+                unlike `place-items`, never pushes content above the top edge), every row in its
+                own line with a real gap, and no text selection anywhere on the panel. */}
             {phase !== 'playing' && (
-              <div className="absolute inset-0 grid place-items-center rounded-2xl scrim backdrop-blur-sm">
-                <div className="text-center px-4">
-                  {phase === 'over' && <>
-                    <div className="text-xs uppercase tracking-wider text-[var(--faint)]">{t('nf.gameover', 'Game over')}</div>
-                    <div className="text-4xl font-black text-[var(--accent-ink)] my-1">{hud.score}</div>
-                    {g.current?.bestCombo > 4 && (
-                      <div className="text-[11px] text-[var(--muted)] mb-1">
-                        {t('nf.bestcombo', 'Longest streak: {n}').replace('{n}', String(g.current.bestCombo))}
-                      </div>
-                    )}
-                    {saved?.improved ? <div className="text-xs text-success mb-2 inline-flex items-center gap-1"><Trophy size={12} /> {t('nf.newbest', 'New personal best!')}</div>
-                      : user ? <div className="text-xs text-[var(--faint)] mb-2">{t('nf.best', 'Your best: {n}').replace('{n}', best)}</div>
-                      : <div className="text-xs text-[var(--faint)] mb-2"><Link to="/auth" className="text-[var(--accent-ink)] underline">{t('nf.signin', 'Sign in')}</Link> {t('nf.tosave', 'to save your score')}</div>}
-                  </>}
+              <div className="nf-overlay absolute inset-0 flex rounded-2xl scrim backdrop-blur-sm overflow-y-auto overscroll-contain select-none">
+                <div className="m-auto w-full max-w-[19rem] px-4 py-5 flex flex-col items-center text-center gap-3">
+                  {phase === 'over' && (
+                    <div className="flex flex-col items-center gap-1 min-w-0 max-w-full">
+                      <h2 className="text-[13px] font-semibold uppercase tracking-wider text-[var(--muted)] leading-snug text-balance">{t('nf.gameover', 'Game over')}</h2>
+                      <div className="text-4xl font-black text-[var(--accent-ink)] leading-none tabular-nums">{hud.score}</div>
+                      {g.current?.bestCombo > 4 && (
+                        <div className="text-[11px] text-[var(--muted)] leading-snug">
+                          {t('nf.bestcombo', 'Longest streak: {n}').replace('{n}', String(g.current.bestCombo))}
+                        </div>
+                      )}
+                      {saved?.improved ? <div className="text-xs text-success inline-flex items-center gap-1 leading-snug"><Trophy size={12} className="shrink-0" /> {t('nf.newbest', 'New personal best!')}</div>
+                        : user ? <div className="text-xs text-[var(--muted)] leading-snug">{t('nf.best', 'Your best: {n}').replace('{n}', best)}</div>
+                        : <div className="text-xs text-[var(--muted)] leading-snug select-text"><Link to="/auth" className="text-[var(--accent-ink)] underline">{t('nf.signin', 'Sign in')}</Link> {t('nf.tosave', 'to save your score')}</div>}
+                    </div>
+                  )}
+                  {/* `whitespace-normal` + a max width: `.btn` is nowrap, so a long label in some
+                      language would otherwise push the button wider than the field. */}
                   {phase === 'paused'
-                    ? <Button variant="primary" onClick={resume}><Play size={16} /> {t('nf.resume', 'Resume')}</Button>
-                    : <Button variant="primary" onClick={start}>{phase === 'over' ? <><RotateCcw size={16} /> {t('nf.again', 'Play again')}</> : <><Play size={16} /> {t('nf.play', 'Play')}</>}</Button>}
+                    ? <Button variant="primary" className="shrink-0 max-w-full !whitespace-normal" onClick={resume}><Play size={16} className="shrink-0" /> {t('nf.resume', 'Resume')}</Button>
+                    : <Button variant="primary" className="shrink-0 max-w-full !whitespace-normal" onClick={start}>{phase === 'over' ? <><RotateCcw size={16} className="shrink-0" /> {t('nf.again', 'Play again')}</> : <><Play size={16} className="shrink-0" /> {t('nf.play', 'Play')}</>}</Button>}
                   {phase !== 'paused' && (
-                    <div className="text-[12px] text-[var(--faint)] mt-3 leading-relaxed">
+                    <div className="text-[12px] text-[var(--muted)] leading-relaxed">
                       {t('nf.how2', 'Catch orange, dodge red. Three lives. Five catches in a row doubles what the next ones are worth, and a missed orange one puts you back to nothing.')}
-                      <span className="block mt-1">{t('nf.keys', 'Mouse, finger, or hold the left and right arrows. Space pauses.')}</span>
+                      <span className="block mt-1 text-[var(--faint)]">{t('nf.keys', 'Mouse, finger, or hold the left and right arrows. Space pauses.')}</span>
                     </div>
                   )}
                 </div>
@@ -550,9 +566,33 @@ export default function NotFound({ offline = false }) {
       {/* Offline, every other address on the site is the same blank wall this page is
           standing in for, so it does not offer one. */}
       {!offline && (
-        <div className="text-center">
-          <Link to="/" className="inline-flex items-center gap-1.5 mt-8 text-sm min-h-[24px] max-lg:min-h-[44px] text-[var(--muted)] hover:text-[var(--text)] transition"><HomeIcon size={15} /> {t('nf.home', 'Back to home')}</Link>
-        </div>
+        <nav aria-labelledby="nf-more-h" className="mt-10 sm:mt-12">
+          {/* Where people who land on a wrong address were usually trying to go. "Back to
+              home" alone sent every one of them through the landing page to find it. The
+              tiles wrap by content, so a longer label in another language grows its tile
+              instead of being cut. */}
+          <h2 id="nf-more-h" className="plate w-fit mx-auto px-2 text-center text-sm font-semibold text-[var(--muted)]">{t('nf.more.t', 'Learn more')}</h2>
+          <ul className="mt-3 grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(min(100%,12rem),1fr))]">
+            {[
+              ['/', HomeIcon, t('nf.home', 'Back to home')],
+              ['/catalog', LayoutGrid, t('nf.more.catalog', 'Browse the catalogue')],
+              ['/repos', Server, t('nf.more.repos', 'Server Repos')],
+              ['/hosting', Cloud, t('nf.more.hosting', 'Hosting plans')],
+              ['/docs', BookOpen, t('nf.more.docs', 'Documentation')],
+              ['/faq', HelpCircle, t('nf.more.faq', 'Questions and answers')],
+              ['/status', Activity, t('nf.more.status', 'Service status')],
+              ['/contact', Mail, t('nf.more.contact', 'Contact us')],
+            ].map(([to, Icon, label]) => (
+              <li key={to} className="min-w-0">
+                <Link to={to} className="card card-hover h-full min-h-[44px] px-3.5 py-2.5 flex items-center gap-2.5 text-sm text-[var(--text)] hover:text-[var(--accent-ink)] transition-colors">
+                  <Icon size={16} className="shrink-0 text-[var(--accent-ink)]" aria-hidden />
+                  <span className="min-w-0 flex-1 leading-snug break-words">{label}</span>
+                  <ArrowRight size={14} className="shrink-0 text-[var(--faint)] rtl-mirror" aria-hidden />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </nav>
       )}
     </div>
   );
