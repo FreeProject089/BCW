@@ -203,7 +203,54 @@ void main() {
  * were already exposed and already applied to every shape. A shape that is not a shape is
  * worse than no entry — it is the one a reader picks when they want the sliders to work.
  */
-export const SCENE_SHAPES = ['orb', 'prism', 'crystal', 'gem', 'ring', 'halo'];
+export const SCENE_SHAPES = [
+  // The six platonic/torus silhouettes the scene shipped with.
+  'orb', 'prism', 'crystal', 'gem', 'ring', 'halo',
+  // Five that are not a subdivided ball. Each was chosen for a silhouette the first six cannot
+  // reach at any slider setting, not for a different number of faces on the same ball:
+  //   cube     right angles and flat squares — the only shape here with a corner you can name
+  //   spire    one point and a wide base; the only vertically asymmetric solid
+  //   capsule  tall, round-ended; the only one whose height is twice its width
+  //   spiral   a coil — more negative space than solid, and it reads as motion when still
+  //   vase     a revolved profile with a waist; a curve that goes in and back out
+  'cube', 'spire', 'capsule', 'spiral', 'vase',
+];
+
+/**
+ * The path the `spiral` shape is swept along: a helix whose radius swells in the middle, so
+ * the coil reads as a barrel rather than a spring.
+ *
+ * Sampled into a CatmullRomCurve3 rather than written as a THREE.Curve subclass. A subclass is
+ * the textbook way and it is one method — but that method has to be called `getPoint`, and the
+ * repo's crash-at-render lint reads a method definition as a call to an undefined function and
+ * fails the build on it. 96 samples through a smooth interpolation is visually identical here
+ * (the tube takes 70-270 segments along it) and costs one array built once at module load.
+ */
+const HELIX = new THREE.CatmullRomCurve3(
+  Array.from({ length: 97 }, (_, i) => {
+    const t = i / 96;
+    const a = t * Math.PI * 4.4;                              // 2.2 turns
+    const r = 2.35 * (0.55 + 0.45 * Math.sin(t * Math.PI));   // fat at the middle, tight at the ends
+    return new THREE.Vector3(Math.cos(a) * r, -2.9 + 5.8 * t, Math.sin(a) * r);
+  }),
+  false, 'catmullrom', 0.5,
+);
+
+/**
+ * The `vase` profile, revolved by LatheGeometry. Points are (radius, height) in the XY plane;
+ * the radius is floored at 0.15 because a lathe through radius 0 makes degenerate triangles
+ * whose normals are NaN — and the displacement shader multiplies by `normal`, so one NaN
+ * normal takes the whole vertex off screen.
+ */
+const VASE_PROFILE = (() => {
+  const pts = [];
+  for (let i = 0; i <= 12; i++) {
+    const t = i / 12;
+    const r = 0.5 + 1.9 * Math.sin(Math.PI * (0.12 + 0.8 * t)) + 0.45 * Math.sin(t * 6);
+    pts.push(new THREE.Vector2(Math.max(0.15, r), -3 + 6 * t));
+  }
+  return pts;
+})();
 
 export function buildGeometry(shape, detail) {
   // The per-shape ceiling comes from scene-config.js, which the editor reads too: the slider
@@ -224,6 +271,23 @@ export function buildGeometry(shape, detail) {
     // A plain ring. The knot is busy; this is the same idea with one hole and a clean
     // silhouette, which is what a page with a lot of text in front of it wants.
     case 'halo': return new THREE.TorusGeometry(2.5, 0.78, 12 + d * 6, 60 + d * 30);
+    // Six flat squares. `detail` is segments per edge here, not subdivisions of a solid: a cube
+    // with one segment per face has nothing for the noise to push, so the surface would stay
+    // dead flat at detail 0 while every other shape moved. 4.3 rather than 2.9 because a cube
+    // reads by its inscribed sphere, which is half its edge.
+    case 'cube': return new THREE.BoxGeometry(4.3, 4.3, 4.3, 1 + d * 2, 1 + d * 2, 1 + d * 2);
+    // One point, one wide base. Drawn taller than wide on purpose — the shapes above are all
+    // roughly as tall as they are broad, so this is the one that changes the page's balance.
+    case 'spire': return new THREE.ConeGeometry(2.45, 6, 6 + d * 6, 1 + d * 2);
+    // A pill. Round ends, straight sides: no facets at all, which is the opposite end of the
+    // range from `prism` and the shape to pick when the noise is turned up.
+    case 'capsule': return new THREE.CapsuleGeometry(1.7, 3.2, 3 + d * 3, 10 + d * 8);
+    // A tube swept along the helix above. The heaviest shape here (14k triangles at 5, still
+    // under `halo`'s 17.6k), and the only one that is mostly empty space.
+    case 'spiral': return new THREE.TubeGeometry(HELIX, 70 + d * 40, 0.42, 6 + d * 4, false);
+    // The profile above, revolved. `detail` is the number of segments around, so the slider
+    // goes from a faceted 14-sided revolve to a smooth one rather than doing nothing.
+    case 'vase': return new THREE.LatheGeometry(VASE_PROFILE, 14 + d * 10);
     default: return new THREE.IcosahedronGeometry(2.9, d);
   }
 }

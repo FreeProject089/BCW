@@ -448,7 +448,11 @@ const SCENE_KEY = 'site.scene';
 //
 // A row still holding 'custom' falls through the `includes` check below to 'orb', which is
 // precisely what it has been drawing all along. Nothing to migrate.
-export const SCENE_SHAPES = ['orb', 'prism', 'crystal', 'gem', 'ring', 'halo'];
+// The five after 'halo' are not subdivided balls: a cube, a spire, a capsule, a spiral and a
+// vase (see apps/web/src/hero/scene-shapes.js, where each one says what silhouette it is for).
+// This list is the zod enum the PUT validates against AND what the editor renders, so a shape
+// missing here is a shape that cannot be chosen and would 400 on save.
+export const SCENE_SHAPES = ['orb', 'prism', 'crystal', 'gem', 'ring', 'halo', 'cube', 'spire', 'capsule', 'spiral', 'vase'];
 export const SCENE_SURFACES = ['solid', 'wire', 'both'];
 // What the shape does when the pointer is on it.
 //

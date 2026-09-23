@@ -56,8 +56,15 @@ export const SCENE_BOUNDS = {
  * subdivided past 3 is a sphere with extra steps, and a dodecahedron past 2 the same. So on
  * those shapes the top of a 0–5 slider did NOTHING: 4 and 5 drew exactly what 3 drew. The
  * editor reads this to stop the slider where the shape stops.
+ *
+ * The second group (cube → vase) does not subdivide a solid, it drives SEGMENT COUNTS, so the
+ * ceiling is set where the silhouette stops changing rather than where the topology does:
+ * a cone at 36 radial segments is already round, and a lathe past 64 is a smooth revolve.
  */
-export const SHAPE_DETAIL_MAX = { orb: 5, prism: 3, crystal: 3, gem: 2, ring: 5, halo: 5 };
+export const SHAPE_DETAIL_MAX = {
+  orb: 5, prism: 3, crystal: 3, gem: 2, ring: 5, halo: 5,
+  cube: 4, spire: 5, capsule: 5, spiral: 5, vase: 5,
+};
 export const detailMaxFor = (shape) => SHAPE_DETAIL_MAX[shape] ?? 5;
 
 /** A value held to its bounds (and to the shape's detail ceiling), for a reset or a paste. */

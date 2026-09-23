@@ -12732,6 +12732,11 @@ function SceneEditor() {
     gem: [t('scn.gem', 'Gem'), t('scn.gem.d', 'Twelve pentagons. The most faceting before the outline becomes a sphere again; best with the distortion turned down.')],
     ring: [t('scn.ring', 'Knot'), t('scn.ring.d', 'A knotted torus. The most movement and the most fill, turn the detail down on a slow machine.')],
     halo: [t('scn.halo', 'Halo'), t('scn.halo.d', 'A plain ring. The knot\u2019s idea with one hole and a clean outline, which is what a page with a lot of text in front of it wants.')],
+    cube: [t('scn.cube', 'Cube'), t('scn.cube.d', 'Six flat squares and right angles. The only shape here with a corner, and the one that reads as built rather than grown.')],
+    spire: [t('scn.spire', 'Spire'), t('scn.spire.d', 'One point over a wide base. Taller than it is broad, so it is the one that changes the balance of the page.')],
+    capsule: [t('scn.capsule', 'Capsule'), t('scn.capsule.d', 'A pill: round ends, straight sides, no facets at all. The one to pick when the distortion is turned up.')],
+    spiral: [t('scn.spiral', 'Spiral'), t('scn.spiral.d', 'A tube coiled into a barrel. More empty space than surface, and it reads as movement even while still. The heaviest to draw after the knot.')],
+    vase: [t('scn.vase', 'Vase'), t('scn.vase.d', 'A profile turned on a lathe, with a waist. A curve that goes in and back out, which no other shape here does.')],
   };
 
   const SURFACES = {
@@ -12948,10 +12953,107 @@ function SceneEditor() {
               looking at the previous scene. Said, rather than left to be discovered by
               staring at an unchanged page. */}
           <span className="block text-[11px] text-[var(--muted)] mt-1">{t('scn.reload', 'Reload the page to see it behind you, the backdrop is built once, when a page loads.')}</span>
+          <SceneModelCheck />
         </div>
       </div>
       <SceneEventScenes cfg={cfg} set={set} shapes={shapes} names={NAMES} />
     </Card>
+  );
+}
+
+/** Bytes as MB with one decimal, and a plain thousands-separated integer. For the card below. */
+const sceneMb = (n) => (Number(n || 0) / 1048576).toFixed(1);
+const sceneNum = (n) => Math.round(Number(n) || 0).toLocaleString();
+
+/**
+ * Would one of your own models be allowed here, and what would it cost?
+ *
+ * What this is, said plainly because the difference matters: it reads a `.glb` off this
+ * machine, checks it and measures it. It does NOT upload it, it does not save it, and it does
+ * not draw it. Two halves are missing and each is missing for its own reason:
+ *
+ *   · storing it is server-side. A model every visitor downloads belongs in the platform's
+ *     asset storage, with a quota, behind `manage_site`, and with a field on the scene config
+ *     pointing at it.
+ *   · DRAWING it costs +13.4 kB gzipped on the first paint of every page of every site,
+ *     measured, because three.js ships as one module and its glTF loader keeps a large slice
+ *     of it alive in the chunk that loads before anything is on screen. `hero/scene-model.js`
+ *     has the before/after numbers. That is a decision to take with the server half, not to
+ *     smuggle in behind an admin convenience.
+ *
+ * So this answers the question that comes first anyway, and answers it with numbers: the
+ * triangle count, the draw calls, the texture weight, and the refusal with the limit it broke.
+ */
+function SceneModelCheck() {
+  const { t } = useI18n();
+  const inputRef = useRef(null);
+  const [busy, setBusy] = useState(false);
+  const [report, setReport] = useState(null);
+  const [error, setError] = useState(null);
+
+  // Refusals in the admin's language, each carrying the number it was judged by. A code with
+  // no entry still prints the code: a refusal nobody can read is indistinguishable from a crash.
+  const reason = (code, d) => ({
+    too_large: t('scn.md.e.size', 'Too big: {a} MB, the cap is {b} MB. A model is downloaded before the backdrop can draw, on every first visit.')
+      .replace('{a}', sceneMb(d.bytes)).replace('{b}', sceneMb(d.max)),
+    not_glb: t('scn.md.e.glb', 'Not a .glb file. Export from your 3D tool as binary glTF 2.0: a .gltf points at its geometry and its textures from outside itself, a .glb carries them.'),
+    bad_version: t('scn.md.e.ver', 'glTF version {a}. Only glTF 2.0 is read.').replace('{a}', String(d.version)),
+    length_mismatch: t('scn.md.e.trunc', 'The file says it is a different length than it is. Truncated or corrupted, export it again.'),
+    bad_json: t('scn.md.e.json', 'The description block inside the file could not be read.'),
+    draco: t('scn.md.e.draco', 'Compressed with Draco. Reading it needs a 700 kB decoder we do not ship to every visitor. Export it again without Draco compression.'),
+    unknown_extension: t('scn.md.e.ext', 'Uses an extension we do not handle: {a}. Accepting it anyway would mean guessing at what it asks for.').replace('{a}', (d.ext || []).join(', ')),
+    external_reference: t('scn.md.e.uri', 'Points at a file outside itself ({a}). Every visitor would fetch it on every page. Export it again with everything embedded.').replace('{a}', (d.uri || [])[0] || ''),
+    no_geometry: t('scn.md.e.empty', 'No triangles in it. Cameras, lights, animation and point or line meshes do not count, and there was nothing else.'),
+    too_many_draws: t('scn.md.e.draws', '{a} separate pieces to draw, the cap is {b}. That is usually a whole scene rather than one object.')
+      .replace('{a}', String(d.drawCalls)).replace('{b}', String(d.max)),
+    too_many_triangles: t('scn.md.e.tris', '{a} triangles, the cap is {b}. The heaviest built-in shape is 17 640, and the shader runs on every vertex of every frame. Decimate it in the tool that made it: we will not do it for you badly.')
+      .replace('{a}', sceneNum(d.triangles)).replace('{b}', sceneNum(d.max)),
+  }[code] || code);
+
+  const pick = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setBusy(true); setError(null); setReport(null);
+    try {
+      const mod = await import('../hero/scene-model.js');
+      const out = mod.inspectGlb(await file.arrayBuffer());
+      setReport({ name: file.name, ...out.stats, warnings: out.warnings });
+    } catch (err) {
+      setError(reason(err?.code || 'bad_json', err?.detail || {}));
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="mt-4 rounded-xl border border-[var(--line)] p-3">
+      <div className="text-[13px] font-medium mb-1">{t('scn.md.title', 'Check one of your own models')}</div>
+      <p className="text-[11px] text-[var(--muted)] leading-snug mb-2">
+        {t('scn.md.d2', 'A binary glTF 2.0 file (.glb), up to 8 MB. It is read on this machine only: nothing leaves this page and nothing is saved. Importing a model into the scene is not finished, this is the half that can already tell you whether yours would be allowed and what it would cost to draw.')}
+      </p>
+      <input ref={inputRef} type="file" accept=".glb,model/gltf-binary" className="hidden" onChange={pick} />
+      <Button size="sm" variant="ghost" loading={busy} onClick={() => inputRef.current?.click()}>
+        <Upload size={13} /> {t('scn.md.pick', 'Choose a .glb')}
+      </Button>
+      {error && (
+        <p className="text-[11px] leading-snug mt-2 text-[var(--error)] flex gap-1.5">
+          <AlertTriangle size={13} className="shrink-0 mt-px" /><span>{error}</span>
+        </p>
+      )}
+      {report && (
+        <div className="text-[11px] text-[var(--muted)] leading-snug mt-2 space-y-0.5">
+          <div className="text-[var(--text)] font-medium break-all">{report.name}</div>
+          <div>{t('scn.md.tris', '{a} triangles, drawn in {b} pieces.').replace('{a}', sceneNum(report.triangles)).replace('{b}', String(report.drawCalls))}</div>
+          <div>{t('scn.md.gpu', '{a} MB on the graphics card, from a {b} MB file.').replace('{a}', sceneMb(report.gpuBytes)).replace('{b}', sceneMb(report.bytes))}</div>
+          {report.textureBytes > 0 && (
+            <div>{t('scn.md.tex', '{a} MB of that file is texture, and none of it would be used: the scene paints a model with the site accent, not with its own materials.').replace('{a}', sceneMb(report.textureBytes))}</div>
+          )}
+          {report.warnings.includes('triangles') && <div className="text-[var(--warning)]">{t('scn.md.w.tris', 'Heavier than every built-in shape. It is inside the cap, and it would cost more than the scene was designed to.')}</div>}
+          {report.warnings.includes('draws') && <div className="text-[var(--warning)]">{t('scn.md.w.draws', 'Several separate pieces. Each one is a draw call on every frame, behind every page.')}</div>}
+          {report.warnings.includes('textures') && <div className="text-[var(--warning)]">{t('scn.md.w.tex', 'More than half this file is texture that would never be used. Export it again without the textures and it downloads far faster.')}</div>}
+          {!report.warnings.length && <div className="text-[var(--success)]">{t('scn.md.ok', 'Inside every limit.')}</div>}
+        </div>
+      )}
+    </div>
   );
 }
 

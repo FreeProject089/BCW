@@ -4709,6 +4709,7 @@ const DICT = {
     'em.p.json': 'Ce n’est pas du JSON.', 'em.p.none': 'Aucun emoji trouvé dedans.',
     'em.f.attention': 'À traiter ({n})', 'em.f.missing': 'Manquantes ({n})', 'em.f.outdated': 'Anciens dessins ({n})', 'em.f.present': 'Sur Discord ({n})', 'em.f.all': 'Toutes ({n})',
     'em.override': 'Ton propre emoji est utilisé à la place.', 'em.allgood': 'Chaque icône est sur Discord avec son dessin actuel.', 'em.nothing': 'Rien ici.',
+    'em.pick': 'Ou choisis-en un que le bot a déjà :',
     'em.one': 'Ajouter un emoji à toi',
     'em.one.d': 'Dans Discord, tape \\:emoji: et envoie-le pour copier son <:nom:id>. Une clé d’icône remplace cette icône partout ; une nouvelle clé s’utilise dans les textes du bot avec {ic:clé}.',
     'em.one.key': 'Clé', 'em.one.token': 'L’emoji', 'em.one.add': 'Ajouter',
