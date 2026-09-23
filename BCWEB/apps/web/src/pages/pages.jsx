@@ -1,10 +1,5 @@
 import { useEffect, useState, useRef, useMemo, Suspense } from 'react';
 import { createPortal } from 'react-dom';
-import Prism from 'prismjs';
-import 'prismjs/components/prism-json';
-import 'prismjs/components/prism-bash';
-import 'prismjs/components/prism-javascript';
-import 'prismjs/components/prism-python';
 import { Link, useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { Library, GraduationCap, ListChecks,
   Boxes, Music2, Puzzle, Palette, Server, Rocket, Download, ArrowRight, Search, Upload,
@@ -26,12 +21,12 @@ import { useTheme } from '../ui/theme.jsx';
 import { getConsent, setConsent } from '../lib/consent.js';
 import { SKIP_KEY, useIntro } from '../ui/IntroContext.jsx';
 import { getGlassPrefs, setGlassPrefs, getOrbTransitionPref, setOrbTransitionPref } from '../lib/prefs.js';
-import { TotpQuickFill } from './twofa-fill.jsx';
-import { AuthorsRow } from '../ui/post-bits.jsx';
-import { MarkdownEditor } from '../editor/markdown-editor.jsx';
+// M18 (agent-perf-M18): ten imports that nothing in this file used any more were removed here
+// (the markdown EDITOR, the markdown renderer, the icon picker, the project-config editor, the
+// report thread, the TOTP quick-fill, AuthorsRow, Badges, createRoot). catalog.jsx imports this
+// file eagerly, so each of them was in every visitor's first load: the B.MD editor alone brought
+// react-dom/server, the snippet library and its stylesheet. Import them where they are used.
 import Avatar, { VARIANTS as AV_VARIANTS, PALETTES as AV_PALETTES } from '../ui/Avatar.jsx';
-import { Badges, BadgeIcon } from '../ui/Badges.jsx';
-import { ReportThread, ReportComposer, ReportModal } from '../ui/report.jsx';
 
 // A stable-but-varied Boring-avatar look for an anonymous analytics session (keyed by
 // the visitor hash) — so each session gets its OWN geometric avatar instead of the
@@ -42,13 +37,8 @@ export function seededAvatar(seed) {
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
   return { variant: AV_VARIANTS[h % AV_VARIANTS.length], colors: AV_PAL_LIST[(h >> 5) % AV_PAL_LIST.length] };
 }
-import { createRoot } from 'react-dom/client';
 import { AppLogo, KofiIcon, GithubIcon, DiscordIcon, RedditIcon, GoogleIcon } from '../ui/brand.jsx';
 import { Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, PageHeader, EmptyState, Spinner, Modal, useDialog, useToast, copyText } from '../ui/ui.jsx';
-import Markdown, { ShowcaseIcon } from '../ui/md.jsx';
-import IconPicker from '../editor/icon-picker.jsx';
-import { IconGlyph } from '../ui/md.jsx';
-import ProjectConfigEditor from '../editor/project-config-editor.jsx';
 // M1 OS mode: the switch and the preference are tiny and eager; the shell itself is a lazy chunk.
 import { lazyChunk } from '../lib/lazy-chunk.js';
 import { useOsMode, OsModeSwitch } from '../ui/os/os-mode.jsx';
@@ -317,80 +307,9 @@ export function fmtRemaining(deleteAt) {
   return h >= 1 ? `${h}h` : `${Math.max(1, Math.floor(ms / 60000))}m`;
 }
 
-// A friendlier JSON editor: framed panel with a live valid/invalid indicator, a
-// one-click Format button, and tab-to-indent — replaces the raw ugly <textarea>.
-// Both layers must lay text out identically or the caret and the glyphs part company.
-const EDITOR_TEXT = 'px-3 py-2.5 font-mono text-xs leading-relaxed whitespace-pre-wrap break-words';
-
-/** JSON, highlighted with Prism into the classes prism-bmm.css already styles. Escaped first:
- *  this renders with dangerouslySetInnerHTML, and the value is whatever is being typed. */
-// Exported for the Projects-config editor, which has its own chrome (line gutter, fixed
-// height) and so reuses the highlighting rather than the whole JsonEditor.
-//
-// Safe for dangerouslySetInnerHTML: Prism.highlight() escapes the source it tokenises, and
-// the no-Prism fallback escapes explicitly. Nothing here interpolates raw input.
-export function highlightJson(src) {
-  const esc = (t) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  try {
-    if (Prism?.languages?.json) return Prism.highlight(src, Prism.languages.json, 'json');
-  } catch { /* fall through to plain text */ }
-  return esc(src);
-}
-
-/** The same treatment for the other languages the snippet generator emits.
- *
- *  Same safety note as highlightJson: Prism escapes what it tokenises, and the fallback
- *  escapes explicitly, so the result is safe for dangerouslySetInnerHTML even though the
- *  source contains whatever the user typed into the request body.
- */
-export function highlightCode(src, lang) {
-  const esc = (t) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const g = { curl: 'bash', bash: 'bash', fetch: 'javascript', js: 'javascript', javascript: 'javascript', python: 'python', json: 'json' }[lang] || lang;
-  try {
-    if (Prism?.languages?.[g]) return Prism.highlight(src, Prism.languages[g], g);
-  } catch { /* fall through to plain text */ }
-  return esc(src);
-}
-
-export function JsonEditor({ value, onChange, placeholder, minH = 170 }) {
-  const [err, setErr] = useState(null);
-  const taRef = useRef(null); const preRef = useRef(null);
-  // The overlay does not scroll on its own; it follows the textarea exactly.
-  const syncScroll = () => { if (preRef.current && taRef.current) { preRef.current.scrollTop = taRef.current.scrollTop; preRef.current.scrollLeft = taRef.current.scrollLeft; } };
-  useEffect(() => { try { if ((value || '').trim()) JSON.parse(value); setErr(null); } catch (e) { setErr(String(e.message || e)); } }, [value]);
-  const format = () => { try { onChange(JSON.stringify(JSON.parse(value || '{}'), null, 2)); } catch {} };
-  const onKey = (e) => {
-    if (e.key === 'Tab') { // indent instead of leaving the field
-      e.preventDefault(); const el = e.target; const s = el.selectionStart, en = el.selectionEnd;
-      onChange(value.slice(0, s) + '  ' + value.slice(en));
-      requestAnimationFrame(() => { el.selectionStart = el.selectionEnd = s + 2; });
-    }
-  };
-  return (
-    <div className={`rounded-xl border overflow-hidden transition-colors ${err ? 'border-error-border' : 'border-[var(--line)]'}`} style={{ background: 'var(--surface-2)' }}>
-      <div className="flex items-center justify-between px-2.5 py-1.5 border-b border-[var(--line)]">
-        <span className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)]"><FileJson size={12} /> JSON</span>
-        <div className="flex items-center gap-2.5 text-[10px]">
-          <span className={`flex items-center gap-1 ${err ? 'text-error' : 'text-success'}`}><span className={`w-1.5 h-1.5 rounded-full ${err ? 'bg-error' : 'bg-success'}`} />{err ? 'invalid' : 'valid'}</span>
-          <button type="button" onClick={format} className="flex items-center gap-1 text-[var(--muted)] hover:text-[var(--text)]"><Wand2 size={11} /> Format</button>
-        </div>
-      </div>
-      {/* Highlighted overlay: a <pre> Prism paints, with the real <textarea> transparent on top.
-          A textarea cannot render markup, so this is the only way to colour what is being typed.
-          The two must agree on font, size, line-height, padding and wrapping or the caret drifts
-          away from the glyphs — hence the shared EDITOR_TEXT class rather than two style props. */}
-      <div className="relative">
-        <pre aria-hidden="true" ref={preRef}
-             className={`${EDITOR_TEXT} pointer-events-none absolute inset-0 overflow-hidden m-0`}
-             style={{ minHeight: minH }}><code className="language-json"
-             dangerouslySetInnerHTML={{ __html: highlightJson(value || '') }} /></pre>
-      <textarea ref={taRef} onScroll={syncScroll} value={value} onChange={(e) => onChange(e.target.value)} onKeyDown={onKey} placeholder={placeholder} spellCheck={false}
-        className={`${EDITOR_TEXT} relative w-full bg-transparent outline-none resize-y text-transparent caret-[var(--text)]`} style={{ minHeight: minH }} />
-      </div>
-      {err && <div className="px-3 py-1.5 text-[10px] text-error border-t border-error-border truncate" title={err}>{err}</div>}
-    </div>
-  );
-}
+// M18 (agent-perf-M18): JsonEditor, highlightJson and highlightCode moved to ui/code-highlight.jsx,
+// with the Prism import. catalog.jsx imports this file eagerly, so Prism and four grammars
+// (~25 KB gzip) were in every first load for editors that only admin and developer pages use.
 
 // Pro dashboard shell: a sticky left sidebar of sections + a content pane.
 // `tabs`: [{ id, label, icon, badge? }] — or a `{ heading }` entry (no id) to group

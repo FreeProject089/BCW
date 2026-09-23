@@ -119,6 +119,15 @@ test('the third mode rebuilds parts, labels, classes and blocks from an allowlis
   assert.equal(d.blocks[2].size, 720);
 });
 
+// M12: the ready-made looks. The field is on the allowlist (so the public /charity/current
+// design carries it), an unknown id is refused, and a design saved before presets opens as ''.
+test('the preset is an allowlisted field: known ids travel, anything else falls back to ""', () => {
+  for (const id of ['classic', 'minimal', 'band', 'glass', 'hand']) assert.equal(normalizeCharityDesign({ preset: id }).preset, id);
+  assert.equal(normalizeCharityDesign({ preset: '<img onerror=x>' }).preset, '');
+  assert.equal(normalizeCharityDesign({ mode: 'custom' }).preset, '');
+  assert.equal(normalizeCharityDesign(null).preset, '');
+});
+
 test('an unknown mode falls back to the default card', () => {
   assert.equal(normalizeCharityDesign({ mode: 'hax' }).mode, 'default');
   assert.equal(normalizeCharityDesign(null).mode, 'default');

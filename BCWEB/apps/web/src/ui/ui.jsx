@@ -602,7 +602,7 @@ export function Explain({ summary, label, children, className = '', tone = 'mute
 }
 
 /* ── Modal ── */
-export function Modal({ open, onClose, title, icon: Icon, children, footer, width = 'max-w-md' }) {
+export function Modal({ open, onClose, title, icon: Icon, children, footer, width = 'max-w-md', className = '' }) {
   const { t } = useI18n();
   const cardRef = useRef(null);
   const restoreRef = useRef(null);
@@ -651,7 +651,7 @@ export function Modal({ open, onClose, title, icon: Icon, children, footer, widt
   return createPortal(
     <div className="fixed inset-0 z-50 grid place-items-center p-4 anim-fade" style={{ background: 'rgba(4,5,8,0.62)', backdropFilter: 'blur(4px)' }} onMouseDown={onClose}>
       <div ref={cardRef} role="dialog" aria-modal="true" aria-labelledby={title ? titleId : undefined} aria-label={title ? undefined : 'Dialog'} tabIndex={-1}
-        className={`card modal-card anim-pop w-full ${width} p-0 overflow-hidden max-h-[92vh] flex flex-col`} onMouseDown={(e) => e.stopPropagation()} style={{ boxShadow: '0 24px 70px -20px rgba(0,0,0,0.7)', outline: 'none' }}>
+        className={`card modal-card anim-pop w-full ${width} p-0 overflow-hidden max-h-[92vh] flex flex-col ${className}`} onMouseDown={(e) => e.stopPropagation()} style={{ boxShadow: '0 24px 70px -20px rgba(0,0,0,0.7)', outline: 'none' }}>
         <div className="flex items-center gap-2.5 px-5 py-4 border-b border-[var(--line)] shrink-0">
           {Icon && <Icon size={18} className="text-[var(--accent-ink)]" />}
           <div id={titleId} className="font-semibold flex-1 min-w-0 truncate" title={title}>{title}</div>

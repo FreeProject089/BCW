@@ -14,7 +14,7 @@
 // The word "simulation" is avoided for the same reason.
 import { useEffect, useRef, useState } from 'react';
 import { ArrowDown, ChevronRight, FileCode2, Play, Pause, SkipBack, SkipForward, Search, X, ExternalLink } from 'lucide-react';
-import { highlightCode } from '../pages/pages.jsx';
+import { highlightCode } from './code-highlight.jsx'; // M18: moved out of pages.jsx with Prism
 import { Button } from './ui.jsx';
 
 /** A file's language, from its extension. Prism needs telling; the snapshot does not carry it.

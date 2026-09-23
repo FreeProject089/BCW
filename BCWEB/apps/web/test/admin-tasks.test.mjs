@@ -57,7 +57,7 @@ describe('the screen speaks the API’s vocabulary', () => {
 });
 
 describe('French', () => {
-  const i18n = readFileSync(join(SRC, 'i18n.jsx'), 'utf8');
+  const i18n = readFileSync(join(SRC, 'i18n-fr.js'), 'utf8'); // M18: DICT.fr moved here
   // Brace-match DICT.fr the same way scripts/i18n-check.mjs does.
   const frSection = (() => {
     const m = /\n\s{2,4}fr:\s*\{/.exec(i18n);

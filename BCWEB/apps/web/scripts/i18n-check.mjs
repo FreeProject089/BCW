@@ -27,6 +27,8 @@ function walk(dir, exts, out = []) {
 const here = dirname(fileURLToPath(import.meta.url));
 const SRC = join(here, '..', 'src');
 const I18N = join(SRC, 'i18n.jsx');
+// M18: DICT.fr moved to its own lazily imported module; DICT.en stays in i18n.jsx.
+const I18N_FR = join(SRC, 'i18n-fr.js');
 const strict = process.argv.includes('--strict');
 
 // Brace-match a `name: {  … }` object section inside the DICT literal.
@@ -51,12 +53,12 @@ function keysAndDups(sec) {
 
 const i18n = readFileSync(I18N, 'utf8');
 const en = keysAndDups(section(i18n, 'en'));
-const fr = keysAndDups(section(i18n, 'fr'));
+const fr = keysAndDups(section(readFileSync(I18N_FR, 'utf8'), 'fr'));
 
 // t('key' / t("key") usages across the web source (excluding i18n.jsx itself).
 const used = new Set();
 for (const f of walk(SRC, ['.jsx', '.js'])) {
-  if (f.endsWith('i18n.jsx')) continue;
+  if (f.endsWith('i18n.jsx') || f.endsWith('i18n-fr.js')) continue;
   const txt = readFileSync(f, 'utf8');
   for (const m of txt.matchAll(/\bt\(\s*'([A-Za-z0-9_.]+)'/g)) used.add(m[1]);
   for (const m of txt.matchAll(/\bt\(\s*"([A-Za-z0-9_.]+)"/g)) used.add(m[1]);
@@ -76,7 +78,7 @@ const isDynamicPrefix = (k) => k.endsWith('.');
 // fallback it carries.
 const noFallback = new Set();
 for (const f of walk(SRC, ['.jsx', '.js'])) {
-  if (f.endsWith('i18n.jsx')) continue;
+  if (f.endsWith('i18n.jsx') || f.endsWith('i18n-fr.js')) continue;
   const txt = readFileSync(f, 'utf8');
   for (const m of txt.matchAll(/t\(\s*'([A-Za-z0-9_.]+)'\s*\)/g)) noFallback.add(m[1]);
   for (const m of txt.matchAll(/t\(\s*"([A-Za-z0-9_.]+)"\s*\)/g)) noFallback.add(m[1]);

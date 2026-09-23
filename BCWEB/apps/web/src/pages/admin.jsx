@@ -49,6 +49,7 @@ import { themeCss, applySiteTheme, inkOn, contrastRatio } from '../ui/theme.jsx'
 import { registerAppIcons } from '@bettercommunity/bmd/config';
 import { I18nDraft } from '../i18n.jsx';
 import { CharityCard, CHARITY_WIDTHS, CHARITY_DESIGN_DEFAULTS, charityCanvasSizes, CHARITY_PART_KEYS, CHARITY_BLOCK_KINDS, CHARITY_LABEL_KEYS, CHARITY_CSS_SCOPE } from './charity.jsx';
+import { CharityPresetPicker } from './admin-charity-presets.jsx'; // M12 (agent-charity-M12)
 // The charity design editor shows what its stylesheet filter took out, the way the studio's
 // page panel does — a rule that vanished silently is a rule the author rewrites five times.
 import { scopeCss } from '../lib/css-scope.js';
@@ -65,7 +66,7 @@ import { listZip, readZipEntry, hashEntries } from '../lib/zip-read.js';
 import { HOSTING_SETTINGS_GROUPS, HOSTING_GROUP_DESC } from '../lib/hosting-settings.js';
 import { DELIVERY_KINDS, DELIVERY_BY_V, BILLING_MODES, mkdKey } from '../lib/marketplace-delivery.js';
 import BmmInspector from '../ui/bmm-inspector.jsx';
-import { useI18n, shippedText } from '../i18n.jsx';
+import { useI18n, shippedText, useLangReady } from '../i18n.jsx'; // M18: useLangReady (DICT.fr is loaded on demand)
 import { useTheme, ThemePreviewScope } from '../ui/theme.jsx';
 import { rawStatusLabel, DotDropdown } from './repos.jsx';
 import { analyseTrend, robustCeiling } from '../lib/trend.js';
@@ -111,7 +112,8 @@ import AdminGuide from './admin-guide.jsx';
 import { AdminThreads } from './admin-threads.jsx';
 import { AdminMediaFlags } from './admin-media-flags.jsx';
 import ReplayPlayer from '../ui/ReplayPlayer.jsx';
-import { useAsync, Loading, useUndoableDelete, useUndoableToggle, useUndoableSave, useElementWidth, statusTone, KIND_ICON, KIND_LABEL, kindLabel, kindsFor, CATALOG_PROJECTS, csvCell, downloadCsv, toCsv, fmtRemaining, seededAvatar, JsonEditor, highlightJson, highlightCode, SideDash, useThreadStream } from './pages.jsx';
+import { useAsync, Loading, useUndoableDelete, useUndoableToggle, useUndoableSave, useElementWidth, statusTone, KIND_ICON, KIND_LABEL, kindLabel, kindsFor, CATALOG_PROJECTS, csvCell, downloadCsv, toCsv, fmtRemaining, seededAvatar, SideDash, useThreadStream } from './pages.jsx';
+import { JsonEditor, highlightJson, highlightCode } from '../ui/code-highlight.jsx'; // M18 (agent-perf-M18): moved out of pages.jsx with Prism
 
 // Deferred-commit delete with a Gmail-style undo toast. The row hides immediately and the
 // actual api.del only fires once the 6s window elapses — Undo means nothing was ever deleted,
@@ -186,6 +188,7 @@ const ADMIN_SEARCH_KEYWORDS = (() => {
 const adminRemoteSearch = (q) => api.get(`/admin/search?q=${encodeURIComponent(q)}`);
 
 export function Admin() {
+  useLangReady('fr'); // M18 (agent-perf-M18): start fetching DICT.fr on entry; the copy and language editors enumerate it
   const { user } = useAuth(); const dialog = useDialog(); const toast = useToast(); const { t } = useI18n();
   const [modQ, setModQ] = useState(''); const [modQApplied, setModQApplied] = useState('');
   const [modSort, setModSort] = useState('oldest'); const [modKind, setModKind] = useState(''); const [modType, setModType] = useState(''); const [modStatus, setModStatus] = useState('PENDING');
@@ -12954,50 +12957,48 @@ function SceneEditor() {
         {t('scn.desc2', 'The WebGL shape behind every page. A visitor can still switch it off for themselves. Where WebGL cannot run, or while the graphics driver recovers, a still drawing of the same shape takes its place.')}
       </p>
 
+      {/* M18 (agent-perf-M18): the layout of this card.
+          · The eleven shapes were cards with their whole description inside, three to a row in a
+            column that is ~430px wide beside the preview (the admin sidebar takes the rest):
+            127px cards, 828px for one choice. They are pills now, like every other choice here,
+            with the chosen shape described underneath.
+          · Two-up slider grids go back to one column while the preview sits beside them (lg),
+            and only pair up again when there is room (2xl).
+          · Below lg the preview comes FIRST, so a phone sees what it is changing; the model
+            check moved out of that column to the end of the card. */}
       <div className="grid lg:grid-cols-[minmax(0,1fr)_340px] gap-5 items-start">
-        <div className={`space-y-3 ${cfg.enabled === false ? 'opacity-45 pointer-events-none' : ''}`}>
-          {group(t('scn.g.shape', 'Shape'), null, <>
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-              {shapes.map((k) => (
-                <button key={k} type="button" onClick={() => set({ shape: k })}
-                  aria-pressed={cfg.shape === k}
-                  className={`text-start rounded-xl border p-3 transition-colors ${
-                    cfg.shape === k ? 'border-[var(--primary)] tint-primary-soft' : 'border-[var(--line)] hover:border-[var(--line-strong)]'
-                  }`}>
-                  <div className="text-sm font-semibold">{NAMES[k]?.[0] || k}</div>
-                  <p className="text-[11px] text-[var(--muted)] leading-snug mt-0.5">{NAMES[k]?.[1] || ''}</p>
-                </button>
-              ))}
-            </div>
+        <div className={`space-y-3 min-w-0 ${cfg.enabled === false ? 'opacity-45 pointer-events-none' : ''}`}>
+          {group(t('scn.g.shape', 'Shape'), t('scn.g.shape.s', 'What is drawn behind every page, and how finely.'), <>
+            {choice('shape', t('scn.shape.pick', 'Silhouette'), shapes, NAMES, '')}
             {slider('detail', t('scn.detail', 'Detail'), t('scn.detail.d2', 'Subdivisions. The cost grows with the square of this. The flat shapes stop earlier (prism and crystal at 3, gem at 2): past that they draw the same thing.'))}
           </>)}
 
-          {group(t('scn.g.look', 'Look'), null, <>
+          {group(t('scn.g.look', 'Look'), t('scn.g.look.s', 'How the surface reads.'), <>
             {choice('surface', t('scn.surface', 'Surface'), surfaces, SURFACES, '')}
-            <div className="grid sm:grid-cols-2 gap-x-5 gap-y-4">
+            <div className="grid sm:grid-cols-2 lg:grid-cols-1 2xl:grid-cols-2 gap-x-5 gap-y-4">
               {slider('noise', t('scn.noise', 'Distortion'), t('scn.noise.d', 'How far the surface is pushed around. 0 leaves the bare solid, which is a look in itself.'))}
               {slider('opacity', t('scn.opacity', 'Presence'), t('scn.opacity.d', 'How much of the surface there is. It never reaches 0, that is the switch above, and it costs nothing instead of drawing nothing.'))}
               {slider('scale', t('scn.scale', 'Size'), t('scn.scale.d', 'Multiplies the framing, so the intro keeps its proportion to the resting size.'))}
             </div>
           </>)}
 
-          {group(t('scn.g.motion', 'Motion'), null, <>
+          {group(t('scn.g.motion', 'Motion'), t('scn.g.motion.s', 'How it moves on its own, and under the pointer.'), <>
             {slider('speed', t('scn.speed', 'Speed'), t('scn.speed.d', 'Rotation and drift. 0 stops it dead, still drawn, no longer moving.'))}
             {choice('hover', t('scn.hover', 'When the pointer is on it'), hovers, HOVERS, t('scn.hover.d', 'Hover the preview to try it.'))}
           </>)}
 
-          {group(t('scn.g.air', 'Around it'), null, <div className="grid sm:grid-cols-2 gap-x-5 gap-y-4">
+          {group(t('scn.g.air', 'Around it'), t('scn.g.air.s', 'The light and the specks around the shape.'), <div className="grid sm:grid-cols-2 lg:grid-cols-1 2xl:grid-cols-2 gap-x-5 gap-y-4">
             {slider('glow', t('scn.glow', 'Halo'), t('scn.glow.d2', 'The soft light behind it, and how strong it is. At 0 it is not drawn at all.'))}
             {slider('twinkles', t('scn.tw', 'Dust'), t('scn.tw.d', 'Specks on a tilted belt orbiting the shape, passing in front and behind. 0 removes them.'))}
           </div>)}
 
-          {group(t('scn.g.page', 'Page and performance'), null, <>
+          {group(t('scn.g.page', 'Page and performance'), t('scn.g.page.s', 'What applies to the whole page, and what the scene may cost.'), <>
             {choice('reveal', t('scn.reveal', 'How sections arrive'), reveals, REVEALS, t('scn.reveal.d', 'Applies to every page, including the ones the scene is not drawn on. Reload to see it.'))}
             {slider('fps', t('scn.fps', 'Frame budget'), t('scn.fps.d2', 'Frames per second while nothing fast is happening. 30 looks the same as 60 for a drifting backdrop and costs half the CPU; the intro and hover still run at full rate. A machine that cannot hold it gets a still frame of the scene, and is asked again later.'))}
           </>)}
         </div>
 
-        <div className="lg:sticky lg:top-4">
+        <div className="order-first lg:order-none min-w-0 lg:sticky lg:top-4">
           <div className="rounded-xl border border-[var(--line)] overflow-hidden bg-[var(--bg-solid)]">
             {cfg.enabled === false ? (
               <div className="h-[240px] grid place-items-center text-center px-4">
@@ -13017,13 +13018,15 @@ function SceneEditor() {
           <div className="flex items-center gap-2 mt-3 flex-wrap">
             <Button variant="ghost" size="sm" onClick={resetAll}><RotateCcw size={13} /> {t('scn.reset.all', 'Shipped look')}</Button>
           </div>
+          {/* M18: what the reset touches, said where the button is (a title is invisible on a phone). */}
+          <span className="block text-[11px] text-[var(--muted)] leading-snug mt-1">{t('scn.reset.all.h', 'Puts every setting above and the transitions back to their defaults. The on/off switch and the per-event scenes are kept. Nothing is saved until you save.')}</span>
           {/* The backdrop is built once per page load, so the admin looking past this card is
               looking at the previous scene. Said, rather than left to be discovered by
               staring at an unchanged page. */}
           <span className="block text-[11px] text-[var(--muted)] mt-1">{t('scn.reload', 'Reload the page to see it behind you, the backdrop is built once, when a page loads.')}</span>
-          <SceneModelCheck />
         </div>
       </div>
+      <SceneModelCheck />
       <SceneEventScenes cfg={cfg} set={set} shapes={shapes} names={NAMES} />
       {/* D4: transitions between shapes (pages/admin-scene-transitions.jsx). */}
       <SceneTransitionsEditor cfg={cfg} set={set} shapes={shapes} names={NAMES} />
@@ -13150,7 +13153,7 @@ function SceneEventScenes({ cfg, set, shapes, names }) {
     <div className="mt-6 pt-5 border-t border-[var(--line)]">
       <div className="text-[13px] font-medium mb-1">{t('scn.ev.title', 'Per-event scenes')}</div>
       <p className="text-[11px] text-[var(--muted)] leading-snug mb-3 max-w-2xl">
-        {t('scn.ev.d', 'Give an event its own look — a different shape or a brighter halo while it runs. Applied only while the event is live, and only when the scene above is on: switching the scene off is always final.')}
+        {t('scn.ev.d', 'Give an event its own look: a different shape or a brighter halo while it runs. Applied only while the event is live, and only when the scene above is on: switching the scene off is always final.')}
       </p>
       {!events.length ? (
         <p className="text-[11px] text-[var(--faint)]">{t('scn.ev.none', 'No events yet, create one under Events to give it a scene.')}</p>
@@ -13166,21 +13169,37 @@ function SceneEventScenes({ cfg, set, shapes, names }) {
                   {ev.active ? <Badge tone="green">{t('scn.ev.live', 'active')}</Badge> : null}
                 </label>
                 {ov && (
-                  <div className={`grid sm:grid-cols-3 gap-3 mt-3 ${cfg.enabled === false ? 'opacity-45' : ''}`}>
-                    <div>
-                      <div className="text-[11px] text-[var(--muted)] mb-1">{t('scn.ev.shape', 'Shape')}</div>
-                      <Select value={ov.shape || cfg.shape} onChange={(e) => setEvent(ev.id, { shape: e.target.value })}>
-                        {shapes.map((s) => <option key={s} value={s}>{names[s]?.[0] || s}</option>)}
-                      </Select>
+                  // M18 (agent-perf-M18): a themed Dropdown instead of a native <select> (its OS
+                  // popup ignores the theme), the same bounds and units as the sliders above
+                  // (SCENE_BOUNDS, so a value here can never be one the API refuses), and a way
+                  // back to the base scene's values without unticking the event.
+                  <div className={`mt-3 ${cfg.enabled === false ? 'opacity-45' : ''}`}>
+                    <div className="grid sm:grid-cols-3 gap-3">
+                      <div className="min-w-0">
+                        <div className="text-[11px] text-[var(--muted)] mb-1">{t('scn.ev.shape', 'Shape')}</div>
+                        <Dropdown value={ov.shape || cfg.shape} onChange={(v) => setEvent(ev.id, { shape: v })}
+                          options={shapes.map((s) => ({ value: s, label: names[s]?.[0] || s }))} className="w-full" />
+                      </div>
+                      {[['glow', t('scn.glow', 'Halo'), (n) => `${Math.round(n * 100)}%`], ['speed', t('scn.speed', 'Speed'), (n) => `×${Number(n).toFixed(1)}`]].map(([key, label, show]) => {
+                        const b = SCENE_BOUNDS[key];
+                        const v = ov[key] ?? cfg[key];
+                        return (
+                          <label key={key} className="block min-w-0">
+                            <div className="flex justify-between gap-2 text-[11px] text-[var(--muted)] mb-1">
+                              <span>{label}</span><span className="tabular-nums text-[var(--text)]">{show(v)}</span>
+                            </div>
+                            <input type="range" min={b.min} max={b.max} step={b.step} value={v}
+                              onChange={(e) => setEvent(ev.id, { [key]: Number(e.target.value) })} className="w-full accent-[var(--primary)]" />
+                          </label>
+                        );
+                      })}
                     </div>
-                    <label className="block">
-                      <div className="text-[11px] text-[var(--muted)] mb-1">{t('scn.glow', 'Halo')} · {Math.round((ov.glow ?? cfg.glow) * 100)}%</div>
-                      <input type="range" min="0" max="1" step="0.05" value={ov.glow ?? cfg.glow} onChange={(e) => setEvent(ev.id, { glow: Number(e.target.value) })} className="w-full accent-[var(--primary)]" />
-                    </label>
-                    <label className="block">
-                      <div className="text-[11px] text-[var(--muted)] mb-1">{t('scn.speed', 'Speed')} · {ov.speed ?? cfg.speed}</div>
-                      <input type="range" min="0" max="3" step="0.1" value={ov.speed ?? cfg.speed} onChange={(e) => setEvent(ev.id, { speed: Number(e.target.value) })} className="w-full accent-[var(--primary)]" />
-                    </label>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2">
+                      <Button size="sm" variant="ghost" onClick={() => set({ events: { ...map, [ev.id]: { shape: cfg.shape } } })}>
+                        <RotateCcw size={13} /> {t('scn.ev.reset', 'Same as the base scene')}
+                      </Button>
+                      <span className="text-[11px] text-[var(--muted)]">{t('scn.ev.reset.h', 'Untick the event to remove its scene altogether.')}</span>
+                    </div>
                   </div>
                 )}
               </div>
@@ -13435,8 +13454,11 @@ function HomePageEditor() {
   //
   // The shipped English is the list of what exists, and also the placeholder — so an empty
   // box visibly shows the wording it will fall back to.
-  const shipped = useMemo(() => shippedText('home.'), []);
-  if (loading) return <Loading />;
+  // M18 (agent-perf-M18): shippedText enumerates DICT.fr, which now arrives on demand.
+  const frReady = useLangReady('fr');
+  const shipped = useMemo(() => shippedText('home.'), [frReady]);
+  // M18: the editor reads shipped[k].en/.fr for every home key, so it waits for DICT.fr.
+  if (loading || !frReady) return <Loading />;
   // A FAILED load used to sit on "Loading…" forever: useAsync clears `loading` and sets
   // `err`, but the guard only asked whether the form had arrived, so a 404 or a 500 rendered
   // a spinner with nothing behind it and no way to tell that anything had gone wrong.
@@ -24874,8 +24896,12 @@ function CharityDesignEditor({ design, onChange, pot, currency }) {
 
       {/* The picked mode used to carry an alpha on a CSS variable, which Tailwind emits no rule
           for, so it was never actually tinted — .tint-primary-soft is the house class. */}
-      <div className="grid sm:grid-cols-3 gap-2 mb-4">
-        {MODES.map(([v, l, h]) => (
+      {/* M12 (agent-charity-M12): ready-made looks first, each with a live thumbnail of the real
+          card, plus "Custom". The old "Default card" tile IS the Classic look now, so the mode row
+          below only appears once Custom is picked, to choose between artwork and write-it-yourself. */}
+      <CharityPresetPicker d={d} onChange={onChange} onCustom={() => setMode('custom')} pot={previewPot} t={t} />
+      {d.mode !== 'default' && <div className="grid sm:grid-cols-2 gap-2 mb-4">
+        {MODES.filter(([v]) => v !== 'default').map(([v, l, h]) => (
           <button key={v} type="button" onClick={() => setMode(v)}
             className={`text-start rounded-xl border p-3 flex gap-3 items-start transition ${d.mode === v ? 'border-[var(--primary)] tint-primary-soft' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
             <span className={`w-12 h-9 rounded-md shrink-0 border ${v === 'default' ? 'bg-gradient-to-br from-[var(--primary)] to-transparent b-primary' : 'border-dashed border-[var(--line-strong)] bg-[var(--surface-2)]'} grid place-items-center`}>
@@ -24884,7 +24910,8 @@ function CharityDesignEditor({ design, onChange, pot, currency }) {
             <span className="min-w-0"><span className="block text-sm font-medium">{l}</span><span className="block text-[11px] text-[var(--muted)] leading-snug">{h}</span></span>
           </button>
         ))}
-      </div>
+      </div>}
+      {/* fin M12 (agent-charity-M12) */}
 
       {d.mode === 'custom' && (
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px] items-start">
@@ -25162,14 +25189,15 @@ function LanguagesCard() {
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(null);
   const locales = data?.locales || [];
+  const frReady = useLangReady('fr'); // M18 (agent-perf-M18): DICT.fr arrives on demand
   const core = useMemo(() => {
     const out = {};
     for (const p of CORE_I18N_PREFIXES) Object.assign(out, shippedText(p));
     return out;
-  }, []);
+  }, [frReady]);
   // The FULL dictionary (~7k keys) for the "All strings" editor scope. `shippedText('')` returns
   // every key (every key startsWith ''), enumerated from the complete French dictionary.
-  const allKeys = useMemo(() => shippedText(''), []);
+  const allKeys = useMemo(() => shippedText(''), [frReady]); // M18: re-run once DICT.fr is loaded
   const create = async () => {
     const code = add.code.trim();
     if (!code || !add.nativeName.trim()) return;

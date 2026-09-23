@@ -1,4 +1,4 @@
-import { IconGlyph } from './md.jsx';
+import { IconGlyph } from './md-lite.js'; // M18: icons without the renderer
 
 // lucide export name → CDN kebab-case (BadgeCheck → badge-check), so seed/PascalCase names
 // and the picker's kebab names both resolve through IconGlyph.

@@ -142,8 +142,9 @@ export function setForceConfirm(on) {
 // site — three.js, a render loop, a GPU context — and on an older laptop or a phone that is
 // felt as heat and battery rather than as a visual choice. OFF here means the component is never
 // mounted: no WebGL context, no render loop, no per-frame work — which is the cost that is
-// actually felt. The three.js chunk itself is still fetched, because index.html preloads it
-// and event-effect.jsx imports it too. Measured, not assumed.
+// actually felt. M18 (agent-perf-M18): the three.js chunk is no longer fetched either: index.html
+// does not preload it any more, event-effect.jsx loads it only for a live show, and main.jsx
+// prefetches the scene only while the orb is on.
 export const HERO_3D_KEY = 'bcw_hero_3d_off';
 export function getHero3dDisabled() {
   try { return localStorage.getItem(HERO_3D_KEY) === '1'; } catch { return false; }

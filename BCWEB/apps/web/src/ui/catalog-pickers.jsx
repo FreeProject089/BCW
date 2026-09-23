@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, ChevronDown, Plus, Search, Tag, X, LayoutGrid } from 'lucide-react';
-import { IconGlyph, ShowcaseIcon, appIconKeys } from './md.jsx';
+import { IconGlyph, ShowcaseIcon, appIconKeys } from './md-lite.js'; // M18: icons without the renderer
 import { useI18n } from '../i18n.jsx';
 import { api } from '../lib/api.js';
 

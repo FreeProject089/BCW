@@ -72,7 +72,8 @@ const FAMILIES = [
   },
 ];
 
-const i18n = read('src/i18n.jsx');
+// M18: the French dictionary is its own module now (loaded on demand by i18n.jsx).
+const i18n = read('src/i18n-fr.js');
 
 // The French block, by brace depth from `fr: {`.
 const frAt = i18n.indexOf('fr: {');
@@ -119,5 +120,5 @@ if (!problems.length) {
 }
 for (const p of problems) console.error(`✗ ${p}`);
 console.error('\n  These keys are built with a template, so i18n-check cannot see them.');
-console.error('  Add them to the fr dictionary in src/i18n.jsx.');
+console.error('  Add them to the fr dictionary in src/i18n-fr.js.');
 process.exit(1);

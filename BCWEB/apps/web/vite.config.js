@@ -101,7 +101,12 @@ function bcwebPwa() {
   const STATIC = ['/manifest.webmanifest', '/logo.png', '/logo-white.webp', '/icons/maskable.svg'];
   // Which lazily imported routes must survive offline. The 404 page is the offline
   // destination (the owner's call), so its chunk is not optional.
-  const OFFLINE_ROUTES = ['pages/notfound.jsx'];
+  // M18 (agent-perf-M18): plus the 3D backdrop. three.js used to be a static import of the
+  // entry, so this walk precached it without being asked; it is lazy now (main.jsx prefetches
+  // it), and without this line an offline page would try to fetch it, fail, and reload once.
+  // The French dictionary is deliberately NOT here: 262 KB on every install for one language
+  // (the runtime asset cache keeps it after a French visitor's first online load).
+  const OFFLINE_ROUTES = ['pages/notfound.jsx', 'hero/Hero3D.jsx'];
   return {
     name: 'bcweb-pwa',
     transformIndexHtml() {
@@ -148,9 +153,43 @@ function bcwebPwa() {
   };
 }
 
+/**
+ * M18 (agent-perf-M18): preload the French dictionary, for French visitors only.
+ *
+ * DICT.fr is a chunk of its own (src/i18n-fr.js, imported on demand by i18n.jsx), and main.jsx
+ * holds a French visitor's first render until it has arrived. Left to the dynamic import, its
+ * fetch would only START once the entry has downloaded and run: one extra round trip, on the
+ * critical path, for exactly the visitors it is meant to serve. A static <link modulepreload>
+ * would put it back on EVERY visitor's first load, which is what moving it out undid.
+ *
+ * So a few bytes of inline script in <head> read the saved language and add the preload only
+ * when it is French; the chunk then downloads in parallel with the entry. The site's CSP allows
+ * inline scripts (infra/caddy/Caddyfile, script-src 'unsafe-inline'). Injected here rather than
+ * written into index.html, which is the owner's file, and because the name carries a hash.
+ */
+function bcwebLangPreload() {
+  return {
+    name: 'bcweb-lang-preload',
+    apply: 'build',
+    transformIndexHtml: {
+      order: 'post',
+      handler(_html, ctx) {
+        const chunk = Object.values(ctx.bundle || {}).find((c) => c.type === 'chunk'
+          && c.facadeModuleId && c.facadeModuleId.replace(/\\/g, '/').endsWith('/src/i18n-fr.js'));
+        if (!chunk) return [];
+        const href = '/' + chunk.fileName;
+        if (!/^\/[\w./-]+\.js$/.test(href)) return [];
+        const code = `try{if(localStorage.getItem('bcw_lang')==='fr'){var l=document.createElement('link');`
+          + `l.rel='modulepreload';l.crossOrigin='';l.href='${href}';document.head.appendChild(l)}}catch(e){}`;
+        return [{ tag: 'script', attrs: { 'data-lang-preload': 'fr' }, children: code, injectTo: 'head' }];
+      },
+    },
+  };
+}
+
 // Dev proxies /api -> the API container so the SPA + API share an origin.
 export default defineConfig(async () => ({
-  plugins: [react(), verificationTag(), bcwebPwa()],
+  plugins: [react(), verificationTag(), bcwebPwa(), bcwebLangPreload()],
   resolve: {
     alias: [
       { find: /^@bettercommunity\/bmd$/, replacement: `${BMD}/index.jsx` },
@@ -202,13 +241,12 @@ export default defineConfig(async () => ({
     // (a) the main app chunk shrinks and parses faster on first paint, and (b)
     // each vendor lib is cached independently — an app code change no longer
     // busts three.js/rrweb/etc. Previously everything was one 1.67 MB chunk.
-    // Vite adds a <link rel="modulepreload"> for chunks it expects the entry to need.
-    // vendor-highlight is fetched only when a markdown document is rendered, so preloading
-    // it puts the 55kB (gzipped) syntax highlighter back on the first-load path that making
-    // its import dynamic just removed it from. Everything else keeps its preload.
-    modulePreload: {
-      resolveDependencies: (_url, deps) => deps.filter((d) => !d.includes('vendor-highlight')),
-    },
+    // M18 (agent-perf-M18): there used to be a modulePreload.resolveDependencies here that
+    // dropped the <link rel="modulepreload"> of vendor-highlight, "fetched only when a markdown
+    // document is rendered". It was not: that manual chunk (below, now removed) had absorbed
+    // the small unist/hast utilities the renderer shares with it, so the ENTRY imported
+    // vendor-highlight statically, and removing the preload only made its 54 KB a waterfall
+    // on every first load. scripts/bundle-budget.mjs now counts static imports too.
     rollupOptions: {
       output: {
         // Only carve out the heavy, self-contained libraries into their own
@@ -230,11 +268,12 @@ export default defineConfig(async () => ({
           if (id.includes('rrweb')) return 'vendor-rrweb';
           if (id.includes('jszip')) return 'vendor-jszip';
           if (id.includes('gsap')) return 'vendor-gsap';
-          // highlight.js ships a grammar per language and rehype-highlight pulls the lot in.
-          // It was landing in the ENTRY chunk, so every visitor downloaded a syntax
-          // highlighter to read a page that may contain no code at all. Split out, it is
-          // fetched with the markdown renderer that actually needs it.
-          if (id.includes('highlight.js') || id.includes('lowlight') || id.includes('rehype-highlight')) return 'vendor-highlight';
+          // M18 (agent-perf-M18): no 'vendor-highlight' chunk any more. rehype-highlight is
+          // imported dynamically by the renderer (packages/bmd/src/index.jsx), which is all it
+          // takes for Rollup to keep highlight.js and its grammars out of the first load. Naming
+          // a manual chunk did the opposite: Rollup puts a manual chunk's static dependencies
+          // IN it, so it took unist-util-visit & co. with it and the entry had to import it.
+          // (The same mechanism made 'showcase' swallow the i18n dictionaries.)
         },
       },
     },

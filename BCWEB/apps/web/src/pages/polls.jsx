@@ -7,7 +7,7 @@ import { QuestionResults } from '../ui/poll-results.jsx';
 import { Card, Button, Badge, EmptyState, Spinner, Input, Textarea, useToast } from '../ui/ui.jsx';
 import { useAsync, Loading } from './pages.jsx';
 import { useAuth } from './auth.jsx';
-import Markdown from '../ui/md.jsx';
+import Markdown from '../ui/md-lazy.jsx'; // M18: the renderer arrives when a block needs it
 
 // The public poll page, and the card the rest of the site reuses.
 //

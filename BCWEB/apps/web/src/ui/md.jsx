@@ -11,7 +11,9 @@
 //
 // Everything else is re-exported from here so the ~20 files that already import
 // `ui/md.jsx` keep working, and so there is exactly one renderer on the site.
-import Markdown, { configureMarkdown } from '@bettercommunity/bmd';
+import Markdown from '@bettercommunity/bmd';
+// M18 (agent-perf-M18): the kit is configured in md-lite.js (once, early, for the icons too).
+import './md-lite.js';
 import { ProgressTracker } from '../hero/progress-tracker.jsx';
 import ReplayPlayer from './ReplayPlayer.jsx';
 import { useI18n } from '../i18n.jsx';
@@ -20,14 +22,6 @@ export {
   ANCHOR_PREFIX, anchorEl, preprocessMd, ICON_NAMES, ShowcaseIcon, appIconKeys, appIconLabel, registerAppIcons, IconGlyph,
   matchesLang, MarkdownConfig, configureMarkdown,
 } from '@bettercommunity/bmd';
-
-// These paths are this site's asset layout, and they are the only thing in the kit that was
-// specific to it by value. Set once, at import time, before anything renders.
-configureMarkdown({
-  // Diagrams: the package is installed here, so no CDN request.
-  loadMermaid: () => import('mermaid'),
-  appIcons: { bmm: '/icons/bmm.png', bsm: '/icons/bsm.png', bi: '/icons/bi.png', installer: '/icons/bi.png', bc: '/logo.png' },
-});
 
 export default function SiteMarkdown(props) {
   const { lang } = useI18n();

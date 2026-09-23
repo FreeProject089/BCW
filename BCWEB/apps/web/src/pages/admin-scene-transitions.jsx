@@ -5,9 +5,9 @@
 //
 // The playlist is the scene's own shape first, then the shapes picked here, in the order they
 // were picked (the order is the order the site moves through them).
-import { Repeat2, MousePointer2, Timer, RotateCw, Route } from 'lucide-react';
+import { Repeat2, MousePointer2, Timer, RotateCw, Route, RotateCcw } from 'lucide-react';
 import { useI18n } from '../i18n.jsx';
-import { Explain } from '../ui/ui.jsx';
+import { Explain, Button } from '../ui/ui.jsx';
 import { SCENE_DEFAULTS, TRANSITION_MAX_SHAPES } from '../hero/scene-config.js';
 
 export default function SceneTransitionsEditor({ cfg, set, shapes, names }) {
@@ -84,6 +84,7 @@ export default function SceneTransitionsEditor({ cfg, set, shapes, names }) {
             <label className="block mt-3">
               <span className="text-[12px] text-[var(--muted)]">{t('scn.tr.every', 'Every {n} s').replace('{n}', String(tr.intervalSec))}</span>
               <input type="range" min={5} max={600} step={5} value={tr.intervalSec} onChange={(e) => patch({ intervalSec: Number(e.target.value) })} className="w-full accent-[var(--primary)]" />
+              <span className="flex justify-between text-[10px] tabular-nums text-[var(--faint)]"><span>5 s</span><span>{t('scn.default', 'default {v}').replace('{v}', `${SCENE_DEFAULTS.transitions.intervalSec} s`)}</span><span>600 s</span></span>
             </label>
           )}
         </div>
@@ -99,12 +100,19 @@ export default function SceneTransitionsEditor({ cfg, set, shapes, names }) {
           <label className="block mt-3">
             <span className="text-[12px] text-[var(--muted)]">{t('scn.tr.dur', 'Length {n} s').replace('{n}', (tr.durationMs / 1000).toFixed(1))}</span>
             <input type="range" min={300} max={3000} step={100} value={tr.durationMs} onChange={(e) => patch({ durationMs: Number(e.target.value) })} className="w-full accent-[var(--primary)]" />
+            <span className="flex justify-between text-[10px] tabular-nums text-[var(--faint)]"><span>0.3 s</span><span>{t('scn.default', 'default {v}').replace('{v}', `${(SCENE_DEFAULTS.transitions.durationMs / 1000).toFixed(1)} s`)}</span><span>3.0 s</span></span>
           </label>
         </div>
       </div>
       {playlist.length > 1 && !anyTrigger && (
         <p className="text-[11px] text-warning mt-3">{t('scn.tr.notrigger', 'No moment is ticked, so the scene stays on its first shape.')}</p>
       )}
+      {/* M18 (agent-perf-M18): a way back to the shipped state (one shape, nothing ticked). */}
+      <div className="mt-3">
+        <Button size="sm" variant="ghost" onClick={() => set({ transitions: SCENE_DEFAULTS.transitions })}>
+          <RotateCcw size={13} /> {t('scn.tr.reset', 'No transitions (default)')}
+        </Button>
+      </div>
     </div>
   );
 }

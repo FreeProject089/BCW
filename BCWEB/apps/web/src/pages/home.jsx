@@ -14,7 +14,8 @@ import { Button, Card, Badge, Explain } from '../ui/ui.jsx';
 import { api } from '../lib/api.js';
 import { productCards } from '../lib/home-products.js';
 import { CATALOG_SEEN } from '../lib/prefs.js';
-import Markdown, { IconGlyph } from '../ui/md.jsx';
+import Markdown from '../ui/md-lazy.jsx'; // M18: the renderer arrives when a block needs it
+import { IconGlyph } from '../ui/md-lite.js';
 // Drawn only during an incident — see status-banner.jsx.
 import StatusBanner from './status-banner.jsx';
 import { thumb } from '../lib/img.js';
@@ -1155,6 +1156,15 @@ function KofiGoalWidget() {
   // that render differently on every platform.
   const own = String(goal?.title || '').replace(/[\p{Extended_Pictographic}\u{FE0F}\u{200D}]/gu, '').replace(/\s+/g, ' ').trim();
   const heading = goal ? (own || t('home.kofi.goal.title', 'Funding goal')) : t('home.kofi.support', 'Support BetterCommunity');
+  // M12 (agent-charity-M12): ONE highlighter stroke in this section (the site's Marker, not a
+  // second system). On the brand name when the heading carries it ("Support BetterCommunity",
+  // "Soutenir BetterCommunity": the name is never translated, so it is found in every
+  // language); on a short goal title otherwise; a long one is left plain rather than striped.
+  const BRAND = 'BetterCommunity';
+  const at = heading.indexOf(BRAND);
+  const marked = at >= 0
+    ? <>{heading.slice(0, at)}<Marker delay={200}>{BRAND}</Marker>{heading.slice(at + BRAND.length)}</>
+    : heading.length <= 40 ? <Marker delay={200}>{heading}</Marker> : heading;
   return (
     <section className="reveal-on-scroll">
       <Card className="p-6 sm:p-8 max-w-4xl mx-auto">
@@ -1164,7 +1174,7 @@ function KofiGoalWidget() {
               <HeartHandshake size={20} className="text-[var(--accent-ink)]" />
             </span>
             <div className="min-w-0">
-              <h2 className="text-lg sm:text-xl font-bold leading-snug break-words">{heading}</h2>
+              <h2 className="text-lg sm:text-xl font-bold leading-snug break-words">{marked}</h2>
               <p className="text-sm text-[var(--muted)] mt-1 leading-relaxed">{t('home.kofi.goal.help', 'Help keep the servers running, every tip counts.')}</p>
             </div>
           </div>

@@ -30,7 +30,8 @@ describe('project content: rendered only by the sanitising renderer', () => {
       assert.doesNotMatch(read(f), /dangerouslySetInnerHTML|innerHTML\s*=/, `${f} writes HTML`);
     }
     // And ui/md.jsx is the kit's renderer, not a second one.
-    assert.match(read('src/ui/md.jsx'), /import Markdown, \{ configureMarkdown \} from '@bettercommunity\/bmd';/);
+    // M18: md.jsx no longer imports configureMarkdown (the kit is configured once, in md-lite.js).
+    assert.match(read('src/ui/md.jsx'), /^import Markdown(, \{[^}]*\})? from '@bettercommunity\/bmd';$/m);
   });
 });
 

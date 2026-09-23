@@ -3,7 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Code2, Shield, KeyRound, BookOpen, Send, Copy, Sliders, FlaskConical, ArrowRight, FileJson, Puzzle } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
-import { highlightCode, useAsync } from './pages.jsx';
+import { useAsync } from './pages.jsx';
+import { highlightCode } from '../ui/code-highlight.jsx'; // M18: moved out of pages.jsx with Prism
 import { Card, Button, Input, Select, Textarea, Badge, Field, Spinner, useToast, copyText } from '../ui/ui.jsx';
 import { NewsGrid } from './home-sections.jsx';
 import { useAuth } from './auth.jsx';

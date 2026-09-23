@@ -12,13 +12,14 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Heart, Vote, Info, Check, CalendarDays, Coins, FileCheck, Receipt, ShieldCheck, HandCoins, Landmark, ExternalLink } from 'lucide-react';
-import { Button, Card, Badge, Modal, Input, useToast } from '../ui/ui.jsx';
+import { Button, Card, Badge, Modal, Input, Explain, useToast } from '../ui/ui.jsx';
 import { api } from '../lib/api.js';
 // The SAME sanitiser the studio's page CSS goes through — one filter, tested in one place
 // (apps/web/test/canvas-shapes.test.mjs), rather than a second copy that drifts from it.
 import { scopeCss, safeClasses } from '../lib/css-scope.js';
 import { useI18n } from '../i18n.jsx';
-import { Marker } from '../ui/marker.jsx'; // M3 (agent-landing-M)
+import { Marker, HandNote } from '../ui/marker.jsx'; // M3 (agent-landing-M); HandNote: M12
+import './charity.css'; // M12 (agent-charity-M12)
 import { useAsync } from './pages.jsx';
 // The same question list /hosting uses (ui/accordion.jsx).
 import Accordion from '../ui/accordion.jsx';
@@ -28,8 +29,14 @@ function money(cents, currency) {
   return `${((cents || 0) / 100).toFixed(2)} ${(currency || 'chf').toUpperCase()}`;
 }
 
+// M12 (agent-charity-M12): the gift dialog, rebuilt around what a giver needs to know, in the
+// order they need it: WHO the month's pot goes to, HOW MUCH is in it already and how much of that
+// the community gave, HOW the association is chosen, and only then the amount and the button.
+// Every figure is the pot the caller already loaded (/charity/current); nothing is a target the
+// site invented. The payment path (POST /charity/contribute, then Stripe's hosted page) is
+// unchanged. Opaque in every mode (.chy-modal in charity.css), focus trap and Escape from the shared Modal.
 function ContributeModal({ pot, onClose }) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const toast = useToast();
   const presets = pot.presets || [500, 1000, 2500, 5000];
   const [amount, setAmount] = useState(presets[1] || 1000); // cents
@@ -45,6 +52,11 @@ function ContributeModal({ pot, onClose }) {
   const feeFixed = Number.isFinite(pot.feeFixedCents) ? pot.feeFixedCents : 30;
   const feeCents = finalCents > 0 ? Math.round(finalCents * feePct / 100) + feeFixed : 0;
   const netCents = Math.max(0, finalCents - feeCents);
+  const cur = (pot.currency || 'chf').toUpperCase();
+  const total = pot.totalCents || 0;
+  const comPct = total > 0 ? Math.round(((pot.communityCents || 0) / total) * 100) : 0;
+  const month = pot.month ? monthLabel(pot.month, lang) : new Date().toLocaleString(lang || undefined, { month: 'long', year: 'numeric' });
+  const pollTo = pot.poll?.id ? `/polls/${pot.poll.id}` : '/polls';
   const go = async () => {
     if (!(finalCents >= 100)) { toast.error(t('ch.min', 'The minimum gift is 1.00.')); return; }
     setBusy(true);
@@ -58,37 +70,109 @@ function ContributeModal({ pot, onClose }) {
           : t('common.failed', 'Failed.'));
     } finally { setBusy(false); }
   };
+  // The three steps, short. The long version is /charity, one link away.
+  const steps = [
+    [HandCoins, t('chm.step1', 'Your gift joins BetterCommunity’s own share in one pot.')],
+    [Vote, pot.association ? t('chm.step2b', 'The Discord community voted for this month’s association.') : t('chm.step2', 'The Discord community votes for the association that receives it.')],
+    [Landmark, t('chm.step3', 'At the end of the month the donation is sent, and its proof is published.')],
+  ];
+  const secTitle = 'text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]';
   return (
-    <Modal open onClose={onClose} title={t('ch.give.t', 'Increase the pot')} width="max-w-md">
-      <div className="space-y-4">
-        <p className="text-sm text-[var(--muted)]">{t('ch.give.s', 'Your gift is added to this month’s community pot, alongside BetterCommunity’s own contribution, and sent to the chosen association.')}</p>
-        <div className="grid grid-cols-4 gap-2">
-          {presets.map((c) => (
-            <button key={c} type="button" onClick={() => { setAmount(c); setCustom(''); }}
-              className={`rounded-lg border px-2 py-2 text-sm font-medium transition ${!custom && amount === c ? 'border-[var(--ring)] bg-[var(--surface-2)] text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}>
-              {money(c, pot.currency)}
-            </button>
-          ))}
+    <Modal open onClose={onClose} title={t('ch.give.t', 'Increase the pot')} icon={Heart} width="max-w-3xl" className="chy-modal">
+      {/* Two columns from md up (the pot and how it works | the gift and the button), so the whole
+          dialog fits a laptop screen without scrolling; one column, in the same order, on a phone. */}
+      <div className="grid gap-5 md:grid-cols-2 md:gap-6" data-charity-modal="">
+        <div className="space-y-5 min-w-0">
+        {/* 1. Who it goes to, and what is in the pot already. */}
+        <section className="chy-hero rounded-2xl p-4 sm:p-5" aria-labelledby="chm-assoc">
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div className="min-w-0 flex-1">
+              <div className={secTitle}>{t('chm.assoc.for', 'This month’s association')} · <span className="capitalize">{month}</span></div>
+              <div id="chm-assoc" className="mt-1 text-lg sm:text-xl font-bold leading-snug break-words">
+                {pot.association || <span className="text-[var(--muted)] font-semibold">{t('chm.assoc.voting', 'Being chosen by community vote')}</span>}
+              </div>
+            </div>
+            <StatusBadge status={pot.status} t={t} />
+          </div>
+          <div className="mt-4 flex items-end justify-between gap-x-4 gap-y-2 flex-wrap">
+            <div className="min-w-0">
+              <div className="text-[12px] text-[var(--muted)]">{t('chm.pot.total', 'In the pot so far')}</div>
+              <div className="text-3xl font-extrabold tabular-nums tracking-tight leading-tight">{money(total, pot.currency)}</div>
+            </div>
+            {total > 0 && (
+              <div className="text-end min-w-0">
+                <div className="text-[12px] text-[var(--muted)]">{t('chm.pot.share', 'Given by the community')}</div>
+                <div className="text-xl font-extrabold tabular-nums leading-tight">{comPct}%</div>
+              </div>
+            )}
+          </div>
+          <Streams pot={pot} t={t} />
+        </section>
+
+        {/* 2. How the association is chosen. */}
+        <section aria-labelledby="chm-how">
+          <h3 id="chm-how" className={secTitle}>{t('chm.how', 'How it works')}</h3>
+          <ol className="mt-2.5 space-y-2">
+            {steps.map(([Icon, label], i) => (
+              <li key={i} className="flex items-start gap-3 text-[13.5px] leading-snug">
+                <span aria-hidden="true" className="grid place-items-center w-7 h-7 rounded-lg shrink-0 tint-primary"><Icon size={14} className="text-[var(--accent-ink)]" /></span>
+                <span className="min-w-0 pt-1">{label}</span>
+              </li>
+            ))}
+          </ol>
+          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 ps-10 text-[13px]">
+            {!pot.association && pot.poll && (
+              <Link to={pollTo} onClick={onClose} className="underline text-[var(--accent-ink)] inline-flex items-center gap-1 min-h-[24px] max-lg:min-h-[44px]">
+                <Vote size={13} aria-hidden="true" /> {pot.poll.open ? t('chm.vote.go', 'Vote for the association') : t('chm.vote.see', 'See the vote')}
+              </Link>
+            )}
+            <Link to="/charity" onClick={onClose} className="underline text-[var(--accent-ink)] inline-flex items-center gap-1 min-h-[24px] max-lg:min-h-[44px]">
+              <Info size={13} aria-hidden="true" /> {t('ch.more', 'Learn more')}
+            </Link>
+          </div>
+        </section>
         </div>
-        <div>
-          <label className="text-xs text-[var(--faint)]">{t('ch.custom', 'Or a custom amount')} ({(pot.currency || 'chf').toUpperCase()})</label>
-          <Input inputMode="decimal" placeholder="—" value={custom} onChange={(e) => setCustom(e.target.value)} />
+
+        <div className="space-y-4 min-w-0 md:border-s md:ps-6 border-[var(--line)]">
+        {/* 3. The amount. */}
+        <section aria-labelledby="chm-amount" className="pt-4 border-t border-[var(--line)] md:pt-0 md:border-t-0">
+          <h3 id="chm-amount" className={secTitle}>{t('chm.amount', 'Your gift')}</h3>
+          <div className="mt-2.5 grid grid-cols-2 sm:grid-cols-4 md:grid-cols-2 gap-2" role="group" aria-labelledby="chm-amount">
+            {presets.map((c) => (
+              <button key={c} type="button" onClick={() => { setAmount(c); setCustom(''); }} aria-pressed={!custom && amount === c}
+                className="chy-amt rounded-xl border border-[var(--line)] bg-[var(--bg-solid)] px-2 py-2.5 min-h-[44px] text-sm font-semibold tabular-nums text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--line-strong)] transition">
+                {money(c, pot.currency)}
+              </button>
+            ))}
+          </div>
+          <label className="mt-3 block">
+            <span className="text-xs text-[var(--muted)]">{t('ch.custom', 'Or a custom amount')} ({cur})</span>
+            <Input inputMode="decimal" placeholder="0.00" value={custom} onChange={(e) => setCustom(e.target.value)} className="mt-1 tabular-nums" />
+          </label>
+          <div className="mt-3 rounded-xl panel px-3.5 py-3 text-sm space-y-1.5">
+            <div className="flex items-center justify-between gap-3"><span className="text-[var(--muted)]">{t('ch.total', 'You give')}</span><span className="font-semibold tabular-nums">{money(finalCents, pot.currency)}</span></div>
+            <div className="flex items-center justify-between gap-3 text-[13px]"><span className="text-[var(--muted)]">{t('ch.fee', 'Estimated card fee')}</span><span className="tabular-nums text-[var(--muted)]">− {money(feeCents, pot.currency)}</span></div>
+            <div className="flex items-center justify-between gap-3 border-t border-[var(--line)] pt-1.5"><span className="font-medium">{t('ch.net', 'Reaches the pot')}</span><span className="font-bold tabular-nums text-[var(--accent-ink)]">{money(netCents, pot.currency)}</span></div>
+          </div>
+          {/* Why a little less lands in the pot: the question a first-time giver actually has,
+              answered before they pay rather than after. One line, the rest a click away. */}
+          <Explain className="mt-2 text-[12px]" summary={t('chm.fee.why', 'Why does a little less reach the pot?')}>
+            {t('ch.feewhy', 'Card processing (Stripe) keeps about {p}% + {f} of each gift, so slightly less than you give reaches the pot — the pot is credited with the exact fee once paid, which may differ by a cent or two from this estimate.').replace('{p}', String(feePct)).replace('{f}', money(feeFixed, pot.currency))}
+          </Explain>
+        </section>
+
+        {/* 4. The call to action, then what happens next. */}
+        <div className="space-y-2.5">
+          <Button variant="primary" className="w-full !py-3 !text-[15px] !whitespace-normal" loading={busy} onClick={go}>
+            <Heart size={16} className="shrink-0" /> {t('chm.confirm', 'Give {a}').replace('{a}', money(finalCents, pot.currency))}
+          </Button>
+          <div className="flex items-start gap-2 text-[12px] text-[var(--muted)] leading-snug">
+            <ShieldCheck size={14} className="shrink-0 mt-px" aria-hidden="true" />
+            <span className="min-w-0">{t('ch.securenote2', 'You’ll confirm on a secure payment page. Nothing is charged until you do, and gifts are final: donations are not refundable.')}</span>
+          </div>
+          <div className="flex justify-center"><Button variant="ghost" size="sm" onClick={onClose}>{t('common.cancel', 'Cancel')}</Button></div>
         </div>
-        <div className="rounded-lg bg-[var(--surface-2)] px-3 py-2.5 text-sm space-y-1.5">
-          <div className="flex items-center justify-between"><span className="text-[var(--muted)]">{t('ch.total', 'You give')}</span><span className="font-semibold tabular-nums">{money(finalCents, pot.currency)}</span></div>
-          <div className="flex items-center justify-between text-[13px]"><span className="text-[var(--faint)]">{t('ch.fee', 'Estimated card fee')}</span><span className="tabular-nums text-[var(--faint)]">− {money(feeCents, pot.currency)}</span></div>
-          <div className="flex items-center justify-between border-t border-[var(--line)] pt-1.5"><span className="text-[var(--muted)]">{t('ch.net', 'Reaches the pot')}</span><span className="font-semibold tabular-nums text-[var(--accent-ink)]">{money(netCents, pot.currency)}</span></div>
         </div>
-        {/* Why a little less lands in the pot, and that a gift is final. Both are the questions a
-            first-time giver actually has, answered before they pay rather than after. */}
-        <p className="text-[11px] text-[var(--faint)] leading-snug">
-          {t('ch.feewhy', 'Card processing (Stripe) keeps about {p}% + {f} of each gift, so slightly less than you give reaches the pot — the pot is credited with the exact fee once paid, which may differ by a cent or two from this estimate.').replace('{p}', String(feePct)).replace('{f}', money(feeFixed, pot.currency))}
-        </p>
-        <div className="flex justify-end gap-2">
-          <Button variant="ghost" onClick={onClose}>{t('common.cancel', 'Cancel')}</Button>
-          <Button variant="primary" loading={busy} onClick={go}><Heart size={15} /> {t('ch.confirm', 'Confirm & pay')}</Button>
-        </div>
-        <p className="text-[11px] text-[var(--faint)] text-center">{t('ch.securenote2', 'You’ll confirm on a secure payment page. Nothing is charged until you do, and gifts are final: donations are not refundable.')}</p>
       </div>
     </Modal>
   );
@@ -175,12 +259,27 @@ export const CHARITY_LABEL_KEYS = ['title', 'sub', 'give', 'vote', 'more'];
 export const CHARITY_CLASS_SLOTS = ['root', 'card', 'content'];
 const ALL_PARTS = Object.fromEntries(CHARITY_PART_KEYS.map((k) => [k, true]));
 export const CHARITY_DESIGN_DEFAULTS = {
-  mode: 'default', width: 'xl', height: 360, frame: true, ink: 'auto', align: 'center',
+  mode: 'default', preset: '', width: 'xl', height: 360, frame: true, ink: 'auto', align: 'center',
   backdrop: '', backdropFit: 'cover', overflow: '', bleed: 64,
   sticker: '', stickerSize: 160, stickerCorner: 'tr', stickerOffset: 24, alt: '',
   parts: ALL_PARTS, labels: { title: '', sub: '', give: '', vote: '', more: '' },
   classes: { root: '', card: '', content: '' }, css: '', blocks: [],
 };
+// M12 (agent-charity-M12): ready-made looks for the site-drawn card. Each one is a set of the
+// design's EXISTING fields (mode, width, align) plus `preset`, the one new field (normalised by
+// the API's normalizeCharityDesign allowlist, CHARITY_PRESET_IDS). Picking one in the admin
+// writes these fields in one click; the admin's own artwork, CSS and blocks are left as they
+// were, so going back to "Custom" finds them untouched. '' and 'classic' are the same card: a
+// design saved before presets existed draws byte for byte as it did.
+export const CHARITY_PRESETS = [
+  { id: 'classic', fields: { mode: 'default', preset: 'classic', width: 'xl', align: 'center' } },
+  { id: 'minimal', fields: { mode: 'default', preset: 'minimal', width: 'xl', align: 'left' } },
+  { id: 'band', fields: { mode: 'default', preset: 'band', width: '2xl', align: 'left' } },
+  { id: 'glass', fields: { mode: 'default', preset: 'glass', width: 'xl', align: 'center' } },
+  { id: 'hand', fields: { mode: 'default', preset: 'hand', width: 'xl', align: 'left' } },
+];
+const PRESET_LOOKS = new Set(['minimal', 'band', 'glass', 'hand']);
+
 /** The scope every admin-authored rule is confined to — the card, and nothing outside it. */
 export const CHARITY_CSS_SCOPE = '[data-charity-scope]';
 
@@ -255,6 +354,7 @@ export function CharityCard({ pot, design, t, onGive, preview = false }) {
     </>
   );
   if (d.mode === 'code') return <CharityCodeCard {...{ d, pot, t, L, scoped, cls, giveBtn, voteBtn, moreBtn, buttonRow }} />;
+  if (d.mode === 'default' && PRESET_LOOKS.has(d.preset)) return <CharityPresetCard d={d} pot={pot} t={t} buttonRow={buttonRow} />; // M12
   if (!custom) {
     return (
       <Card className="grain-hero charity-card-glow p-6 md:p-8 max-w-xl mx-auto text-center relative overflow-hidden">
@@ -312,6 +412,80 @@ export function CharityCard({ pot, design, t, onGive, preview = false }) {
 // The month pill and the big heart tile, as pieces a `code` design can place (or leave out).
 const MonthBadge = () => <div data-el="month" className="chy-month text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-full bg-[var(--surface-2)] text-[var(--muted)]">{new Date().toLocaleString(undefined, { month: 'long' })}</div>;
 const IconTile = () => <div data-el="icon" className="chy-icon w-14 h-14 rounded-2xl grid place-items-center bg-gradient-to-br from-brand to-brand-2 text-[var(--on-primary)] shadow-lg"><Heart size={26} /></div>;
+
+// M12 (agent-charity-M12): the four ready-made looks beyond the classic card. Same pieces as
+// every other mode (PotSummary, the one button row), so a look can never show a number the
+// classic card would not. Every colour is a theme token (charity.css), so each look follows
+// light and dark. The labels are the site's translated strings: re-wording is what "Custom" is for.
+function CharityPresetCard({ d, pot, t, buttonRow }) {
+  const W = CHARITY_WIDTHS[d.width] || CHARITY_WIDTHS.xl;
+  const title = t('ch.title', 'Community Charity');
+  const sub = t('ch.sub', 'A charity the community chooses, every month.');
+  const side = d.align === 'left' ? 'text-left chy-start' : d.align === 'right' ? 'text-right chy-end' : 'text-center';
+  const row = d.align === 'left' ? 'justify-between' : d.align === 'right' ? 'justify-between flex-row-reverse' : 'justify-center';
+  if (d.preset === 'minimal') {
+    return (
+      <Card data-charity-design="minimal" className={`chy-p-minimal p-6 md:p-7 mx-auto ${side}`} style={{ maxWidth: W }}>
+        <div className={`flex items-center gap-3 flex-wrap mb-4 ${row}`}>
+          <div data-el="title" className="chy-title inline-flex items-center gap-2 text-sm font-semibold"><Heart size={16} className="text-[var(--accent-ink)] shrink-0" /> {title}</div>
+          <MonthBadge />
+        </div>
+        <PotSummary pot={pot} t={t} />
+        {buttonRow}
+      </Card>
+    );
+  }
+  if (d.preset === 'band') {
+    return (
+      <Card data-charity-design="band" className="chy-p-band p-0 overflow-hidden mx-auto" style={{ maxWidth: W }}>
+        <div className={`chy-band px-6 md:px-8 py-5 flex items-center gap-3 flex-wrap ${row} ${side}`}>
+          <div className="min-w-0">
+            <div data-el="title" className="chy-title inline-flex items-center gap-2 text-xl md:text-2xl font-extrabold tracking-tight"><Heart size={22} className="shrink-0" /> {title}</div>
+            <p data-el="sub" className="chy-sub text-[13px] mt-0.5">{sub}</p>
+          </div>
+          <span className="chy-band-pill shrink-0 text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full">{new Date().toLocaleString(undefined, { month: 'long' })}</span>
+        </div>
+        <div className={`p-6 md:p-8 ${side}`}>
+          <PotSummary pot={pot} t={t} />
+          {buttonRow}
+        </div>
+      </Card>
+    );
+  }
+  if (d.preset === 'glass') {
+    return (
+      <div data-charity-design="glass" className="chy-p-glass relative mx-auto" style={{ maxWidth: W }}>
+        <span className="chy-glow" aria-hidden="true" style={{ width: 260, height: 260, top: -30, left: -40, background: 'color-mix(in srgb, var(--primary) 42%, transparent)' }} />
+        <span className="chy-glow" aria-hidden="true" style={{ width: 240, height: 240, bottom: -40, right: -30, background: 'color-mix(in srgb, var(--primary-2) 38%, transparent)' }} />
+        <div className={`chy-pane rounded-3xl p-6 md:p-8 ${side}`}>
+          <div className={`flex items-center gap-3 flex-wrap mb-2 ${row}`}>
+            <div data-el="title" className="chy-title inline-flex items-center gap-2 text-lg font-bold"><Heart size={18} className="text-[var(--accent-ink)] shrink-0" /> {title}</div>
+            {d.align !== 'center' && <MonthBadge />}
+          </div>
+          <p data-el="sub" className="chy-sub text-xs text-[var(--muted)] mb-4">{sub}</p>
+          <PotSummary pot={pot} t={t} />
+          {buttonRow}
+        </div>
+      </div>
+    );
+  }
+  // 'hand': a sheet of ruled paper, the title in the landing's handwriting face with the
+  // site's one highlighter (ui/marker.jsx), and a handwritten aside under the buttons.
+  return (
+    <div data-charity-design="hand" className="chy-p-hand relative mx-auto" style={{ maxWidth: W }}>
+      <div className={`chy-paper rounded-2xl ps-14 pe-6 md:pe-8 py-7 shadow-lg ${side}`}>
+        <div className={`flex items-start gap-3 flex-wrap ${row}`}>
+          <div data-el="title" className="chy-title chy-hand text-3xl md:text-4xl min-w-0"><Marker delay={300}>{title}</Marker></div>
+          <MonthBadge />
+        </div>
+        <p data-el="sub" className="chy-sub text-[13px] text-[var(--muted)] mt-2 mb-4">{sub}</p>
+        <PotSummary pot={pot} t={t} />
+        {buttonRow}
+        <div className="mt-3"><HandNote arrow="up">{t('chp.hand.note', 'Every gift counts, even a small one')}</HandNote></div>
+      </div>
+    </div>
+  );
+}
 
 // ── Mode 3: the card the admin writes themselves ──────────────────────────────────────────
 // The site draws NO chrome here beyond an optional frame: the card is the admin's ordered

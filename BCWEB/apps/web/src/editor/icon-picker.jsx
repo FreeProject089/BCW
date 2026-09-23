@@ -3,7 +3,7 @@ import { useI18n } from '../i18n.jsx';
 import { createPortal } from 'react-dom';
 import { Search, X } from 'lucide-react';
 import PHOSPHOR_NAMES from './phosphor-names.json';
-import { ICON_NAMES, IconGlyph, appIconKeys, appIconLabel } from '../ui/md.jsx';
+import { ICON_NAMES, IconGlyph, appIconKeys, appIconLabel } from '../ui/md-lite.js'; // M18: icons without the renderer
 import { Button } from '../ui/ui.jsx';
 
 // The names come from the kit's registry — the bundled four plus whatever an admin added

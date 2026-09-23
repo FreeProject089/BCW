@@ -11,7 +11,7 @@
 // Read by the real topbar (App.jsx), its phone menu, and through them the admin Live preview,
 // which renders those same components. One reader, so the three cannot disagree about which
 // icon a button has; they already disagreed once about which BUTTONS exist.
-import { IconGlyph } from './md.jsx';
+import { IconGlyph } from './md-lite.js'; // M18: icons without the renderer
 
 // The size each button has always been drawn at. A config with no `size` must look exactly
 // like the site did before the field existed.

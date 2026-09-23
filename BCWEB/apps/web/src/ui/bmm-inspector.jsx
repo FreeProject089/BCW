@@ -18,7 +18,7 @@ import ReplayPlayer from './ReplayPlayer.jsx';
 // Left behind by the extraction from admin.jsx, which had it in scope from its own
 // imports. A bare function call to an unbound name is a RUNTIME fact, not a compile
 // one, so the build shipped a panel that threw the moment somebody opened a file.
-import { highlightCode } from '../pages/pages.jsx';
+import { highlightCode } from './code-highlight.jsx'; // M18: moved out of pages.jsx with Prism
 
 /** A file name to a Prism language. Unknown extensions fall through to plain text, which is
  *  what an unhighlighted <pre> already was — never a wrong grammar, which mis-colours a file

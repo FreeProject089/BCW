@@ -69,6 +69,9 @@ export const CHARITY_CSS_MAX = 20000;
 
 export const CHARITY_DESIGN_DEFAULTS = {
   mode: 'default',        // default | custom | code
+  // M12: which ready-made look the site-drawn (`default`) card uses. '' and 'classic' are the
+  // same original glowing card, so a design saved before presets existed draws unchanged.
+  preset: '',             // '' | classic | minimal | band | glass | hand
   width: 'xl',            // xl (576 px) | 2xl (672 px) | 3xl (768 px) — the frame's CSS width
   height: 360,            // min height of the frame, px (content can still make it taller)
   frame: true,            // keep the card's own border + background under the artwork
@@ -94,6 +97,8 @@ export const CHARITY_DESIGN_DEFAULTS = {
   blocks: [],
 };
 export const CHARITY_WIDTHS = { xl: 576, '2xl': 672, '3xl': 768 };
+// M12: the ready-made looks of the site-drawn card (apps/web/src/pages/charity.jsx CHARITY_PRESETS).
+export const CHARITY_PRESET_IDS = ['', 'classic', 'minimal', 'band', 'glass', 'hand'];
 const clampInt = (v, lo, hi, d) => { const x = Math.round(Number(v)); return Number.isFinite(x) ? Math.min(hi, Math.max(lo, x)) : d; };
 // Only images the site serves itself or an absolute http(s) URL — never a data: blob (unbounded
 // size in an AdminSetting row) and never a javascript: string.
@@ -139,6 +144,7 @@ export function normalizeCharityDesign(v) {
   const D = CHARITY_DESIGN_DEFAULTS;
   return {
     mode: oneOf(o.mode, ['default', 'custom', 'code'], D.mode),
+    preset: oneOf(o.preset, CHARITY_PRESET_IDS, D.preset), // M12
     width: oneOf(o.width, Object.keys(CHARITY_WIDTHS), D.width),
     height: clampInt(o.height, 200, 720, D.height),
     frame: o.frame !== false,

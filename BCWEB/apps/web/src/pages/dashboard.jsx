@@ -34,7 +34,8 @@ const MyThreads = lazyNamed(() => import('./threads.jsx'), 'MyThreads');
 const MyTeams = lazyNamed(() => import('./teams.jsx'), 'MyTeams');
 import { KofiIcon } from '../ui/brand.jsx';
 import { ItemTagPicker } from '../ui/catalog-pickers.jsx'; // G4 (agent-catalog-G): tags as a dropdown with icons
-import { useAsync, Loading, statusTone, KIND_ICON, fmtRemaining, JsonEditor, SideDash, startOwnershipTransfer } from './pages.jsx';
+import { useAsync, Loading, statusTone, KIND_ICON, fmtRemaining, SideDash, startOwnershipTransfer } from './pages.jsx';
+import { JsonEditor } from '../ui/code-highlight.jsx'; // M18: moved out of pages.jsx with Prism
 
 /* ─────────────────────────  Dashboard  ───────────────────────── */
 const SUBMIT_INIT = { projectKey: 'bmm', kind: 'PLUGIN', name: '', description: '', version: '1.0.0', meta: '{}' };

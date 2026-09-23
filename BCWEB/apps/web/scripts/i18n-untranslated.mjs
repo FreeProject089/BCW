@@ -15,7 +15,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const SRC = 'src';
-const DICT = 'src/i18n.jsx';
+const DICT = 'src/i18n-fr.js'; // M18: the French dictionary moved out of i18n.jsx
 
 // Identical in both languages on purpose. Extend it rather than "fixing" a false positive:
 // a word listed here is a decision recorded, and the next person does not have to make it

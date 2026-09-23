@@ -1,0 +1,82 @@
+/* M12 (agent-charity-M12): the Community Charity gift dialog and the ready-made card looks.
+   See pages/charity.jsx (ContributeModal, CharityPresetCard) for where each one is drawn. */
+
+/* The gift dialog is a popup, so it is OPAQUE in every mode. The shared .modal-card turns
+   see-through under Settings > Appearance > Translucent surfaces, and a translucent dialog
+   draws its amounts over whatever card sits behind it. Two attributes and two classes so this
+   outranks the `[data-theme="dark"][data-surface-glass] .modal-card` rule, which is also
+   !important. */
+.modal-card.chy-modal,
+[data-surface-glass] .modal-card.chy-modal,
+[data-theme="dark"] .modal-card.chy-modal,
+[data-theme="dark"][data-surface-glass] .modal-card.chy-modal {
+  background: var(--bg-solid) !important;
+  backdrop-filter: none !important;
+}
+
+/* The association plate at the top of the dialog: a quiet wash of the accent, drawn with
+   color-mix because an alpha on a CSS variable emits nothing in this Tailwind setup. */
+.chy-hero {
+  background:
+    radial-gradient(120% 140% at 100% 0%, color-mix(in srgb, var(--primary) 16%, transparent), transparent 60%),
+    color-mix(in srgb, var(--primary) 5%, var(--bg-solid));
+  border: 1px solid color-mix(in srgb, var(--primary) 22%, var(--line));
+}
+.chy-amt[aria-pressed="true"] {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 10%, var(--bg-solid));
+  color: var(--text);
+  box-shadow: 0 0 0 1px var(--primary) inset;
+}
+
+/* ── Ready-made looks ─────────────────────────────────────────────────────────────────────
+   Every colour is a theme token, so each look follows light and dark without a second rule. */
+
+/* The vote line and the "sent" notice centre themselves (they were drawn for the centred card);
+   a look that reads from the start edge lines them up with the rest. */
+.chy-start :is([data-el="poll"], [data-el="paid"]) { justify-content: flex-start; }
+.chy-end :is([data-el="poll"], [data-el="paid"]) { justify-content: flex-end; }
+
+/* Bold band: a full accent band across the top, the numbers on the card below it. The band's
+   ink is --on-primary, the token made to be read on the accent fill. */
+.chy-p-band .chy-band {
+  background: linear-gradient(100deg, var(--primary), var(--primary-2));
+  color: var(--on-primary);
+}
+.chy-p-band .chy-band-pill {
+  background: color-mix(in srgb, var(--on-primary) 14%, transparent);
+  color: var(--on-primary);
+}
+
+/* Glass: frosted pane over two soft accent glows. The pane is the page's own solid colour at
+   60 %, so the text keeps the theme's contrast and only the glow shows through. */
+.chy-p-glass { isolation: isolate; }
+.chy-p-glass .chy-glow {
+  position: absolute; z-index: -1; border-radius: 9999px; filter: blur(42px); pointer-events: none;
+}
+.chy-p-glass .chy-pane {
+  background: color-mix(in srgb, var(--bg-solid) 60%, transparent);
+  -webkit-backdrop-filter: blur(18px) saturate(1.3);
+  backdrop-filter: blur(18px) saturate(1.3);
+  border: 1px solid color-mix(in srgb, var(--primary) 26%, var(--line));
+  box-shadow: 0 1px 0 color-mix(in srgb, #fff 22%, transparent) inset, 0 24px 60px -30px color-mix(in srgb, var(--primary) 55%, transparent);
+}
+
+/* Handwritten: a paper sheet with a ruled margin, the title in the handwriting face the
+   landing's notes use (Caveat, declared in ui/marker.css). */
+.chy-p-hand .chy-paper {
+  background:
+    linear-gradient(90deg, transparent 38px, color-mix(in srgb, var(--primary) 30%, transparent) 38px 39px, transparent 39px),
+    repeating-linear-gradient(180deg, transparent 0 31px, color-mix(in srgb, var(--line) 80%, transparent) 31px 32px),
+    var(--bg-solid);
+  border: 1px solid var(--line);
+}
+.chy-p-hand .chy-hand {
+  font-family: "BC Hand", "Segoe Print", "Bradley Hand", "Chalkboard SE", "Comic Neue", cursive;
+  font-weight: 700;
+  line-height: 1.1;
+}
+@media (forced-colors: active) {
+  .chy-p-glass .chy-glow { display: none; }
+}
+/* END M12 */

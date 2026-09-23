@@ -21,7 +21,7 @@ import { openPalette } from './ui/palette-recent.js';
 import { buildDownbar } from './ui/mobilebar-items.js';
 import { KofiIcon, GithubIcon, DiscordIcon, RedditIcon, XIcon, YoutubeIcon, TwitchIcon,
   MastodonIcon, BlueskyIcon, InstagramIcon, TelegramIcon, TiktokIcon, appLogoUrl } from './ui/brand.jsx';
-import { ShowcaseIcon, IconGlyph } from './ui/md.jsx';
+import { ShowcaseIcon, IconGlyph } from './ui/md-lite.js'; // M18: icons without the renderer
 /**
  * Telemetry, imported so that losing it costs telemetry and not the site.
  *
@@ -1678,8 +1678,8 @@ export default function App() {
         {/* Read once at mount, not reactively: turning the orb off mid-session and
             tearing down a live WebGL context is a worse experience than the reload the
             Settings row already tells you to do. Not rendering it means no GPU context and
-            no render loop, which is the cost that is felt; the three.js chunk is still
-            fetched, since index.html preloads it and event-effect.jsx imports it too. */}
+            no render loop, which is the cost that is felt. M18 (agent-perf-M18): the three.js
+            chunk is no longer preloaded either; main.jsx fetches it only when the orb is on. */}
         {/* Two votes, and only one of them can turn it ON.
             The visitor's preference is absolute: somebody who switched the orb off did so for
             motion, for a weak GPU, or because they did not want it, and no page setting

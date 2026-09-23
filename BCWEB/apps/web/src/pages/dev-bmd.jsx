@@ -9,7 +9,7 @@ import { Link } from 'react-router-dom';
 import { Copy, Package, Layers, ShieldCheck, ExternalLink, BookOpen, PenLine, Puzzle } from 'lucide-react';
 import { Card, Button, Badge, copyText, useToast } from '../ui/ui.jsx';
 import { useI18n } from '../i18n.jsx';
-import { highlightCode } from './pages.jsx';
+import { highlightCode } from '../ui/code-highlight.jsx'; // M18: moved out of pages.jsx with Prism
 
 const INSTALL = 'npm i @bettercommunity/bmd react react-dom react-markdown remark-gfm remark-directive rehype-raw rehype-sanitize unist-util-visit unified remark-parse lucide-react';
 const INSTALL_OPT = 'npm i rehype-highlight remark-math rehype-katex katex mermaid';

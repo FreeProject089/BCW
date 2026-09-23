@@ -17,7 +17,8 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const FILE = join(HERE, '..', 'src', 'i18n.jsx');
+// M18: the French dictionary is its own module now (src/i18n-fr.js).
+const FILE = join(HERE, '..', 'src', 'i18n-fr.js');
 
 // Ceiling, to be lowered and never raised. 9 em dashes in 6 strings, all of them the
 // "nothing selected" placeholders: ds.pick.none, chc.poll.none, ve.status.none,
@@ -32,7 +33,7 @@ const lines = src.split(/\r?\n/);
 // complaint, and the code below the dictionary is not prose.
 const start = lines.findIndex((l) => /^ {2}fr: \{/.test(l));
 if (start === -1) {
-    console.error('check-em-dash: no `fr: {` block in src/i18n.jsx — did the dictionary move?');
+    console.error('check-em-dash: no `fr: {` block in src/i18n-fr.js — did the dictionary move?');
     process.exit(1);
 }
 let end = -1;

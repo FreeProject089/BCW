@@ -10,7 +10,7 @@ import { markCatalogSeen } from '../lib/prefs.js';
 import FeedLink, { FeedMenu } from '../ui/feed-link.jsx';
 import { useAsync, Loading, KIND_ICON, kindLabel, ALL_KINDS, kindsFor, CATALOG_PROJECTS } from './pages.jsx';
 import { ProjectPicker, ProjectLogo, TagFilter, projectId, tagText } from '../ui/catalog-pickers.jsx';
-import { IconGlyph } from '../ui/md.jsx';
+import { IconGlyph } from '../ui/md-lite.js'; // M18: icons without the renderer
 
 /* ─────────────────────────  Catalog  ───────────────────────── */
 const SORTS = [['recent', 'Newest'], ['popular', 'Most popular'], ['month', 'Popular this month'], ['views', 'Most viewed']];

@@ -68,6 +68,7 @@ await esbuild.build({
   alias: {
     '@bettercommunity/bmd': join(cwd, '../../packages/bmd/src/index.jsx'),
     '@bettercommunity/bmd/config': join(cwd, '../../packages/bmd/src/config.js'),
+    '@bettercommunity/bmd/icons': join(cwd, '../../packages/bmd/src/icons.jsx'), // M18: ui/md-lite.js
     '@bettercommunity/bmd/links': join(cwd, '../../packages/bmd/src/links.js'),
     '@bettercommunity/bmd/ast': join(cwd, '../../packages/bmd/src/ast.js'),
     '@bettercommunity/bmd/export': join(cwd, '../../packages/bmd/src/export.jsx'),
