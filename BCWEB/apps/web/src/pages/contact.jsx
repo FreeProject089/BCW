@@ -6,6 +6,7 @@ import { Button, Card, Field, Input, Textarea, Select, PageHeader, Spinner, useT
 import {
   Mail, MessageSquare, Send, ShieldCheck, BadgeCheck, ArrowLeft, ChevronRight, Flag, Scale,
   CreditCard, User, ShieldAlert, Bug, Server, Receipt, Download, Trash2, Info, Languages, Boxes,
+  Lightbulb,
 } from 'lucide-react';
 import { ContactModal } from '../ui/contact.jsx';
 import { useDraft, DraftBanner } from '../ui/drafts.jsx';
@@ -33,7 +34,7 @@ import { DESTINATIONS, Q1, Q2, TOPICS, fieldsComplete } from './contact-triage.j
 const ICONS = {
   flag: Flag, scale: Scale, card: CreditCard, user: User, shield: ShieldAlert, bug: Bug,
   message: MessageSquare, server: Server, receipt: Receipt, download: Download, trash: Trash2,
-  languages: Languages, boxes: Boxes,
+  languages: Languages, boxes: Boxes, lightbulb: Lightbulb,
 };
 
 /**

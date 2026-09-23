@@ -186,9 +186,18 @@ export const PENDING_QUEUES = [
   },
   {
     key: 'contact', cap: 'manage_users', to: '/admin?s=messages',
-    count: (p) => p.contactMessage.count({ where: { status: 'new' } }),
+    count: (p) => p.contactMessage.count({ where: { status: 'new', kind: { not: 'suggestion' } } }),
     recent: (p) => p.contactMessage.findMany({
-      where: { status: 'new' }, orderBy: { createdAt: 'desc' }, take: 5,
+      where: { status: 'new', kind: { not: 'suggestion' } }, orderBy: { createdAt: 'desc' }, take: 5,
+      select: { id: true, name: true, email: true, body: true, createdAt: true },
+    }).then((rows) => rows.map((r) => ({ id: r.id, title: r.name || r.email, sub: String(r.body || '').slice(0, 90), at: r.createdAt }))),
+  },
+  {
+    // Ideas sent through the contact form. Not support, so not in the Messages badge.
+    key: 'suggestions', cap: 'manage_users', to: '/admin?s=suggestions',
+    count: (p) => p.contactMessage.count({ where: { status: 'new', kind: 'suggestion' } }),
+    recent: (p) => p.contactMessage.findMany({
+      where: { status: 'new', kind: 'suggestion' }, orderBy: { createdAt: 'desc' }, take: 5,
       select: { id: true, name: true, email: true, body: true, createdAt: true },
     }).then((rows) => rows.map((r) => ({ id: r.id, title: r.name || r.email, sub: String(r.body || '').slice(0, 90), at: r.createdAt }))),
   },
@@ -2637,6 +2646,10 @@ export default async function miscRoutes(app) {
     // people answer the same message.
     const assignee = String(req.query?.assignee || '').trim();
 
+    // The Messages tab leaves suggestions out (they have their own tab); the state counts
+    // below follow the same scope, or a tab would count messages it does not list.
+    const exclude = String(req.query?.exclude || '').trim();
+    const scope = kind ? { kind } : exclude ? { kind: { not: exclude } } : {};
     let assignedIds = null;
     if (assignee) {
       const who = assignee === 'me' ? req.user.uid : assignee;
@@ -2651,7 +2664,7 @@ export default async function miscRoutes(app) {
 
     const where = {
       ...(state ? stateWhere(state) : {}),
-      ...(kind ? { kind } : {}),
+      ...scope,
       ...(assignedIds ? { id: assignedIds } : {}),
       ...(q ? { OR: [{ name: { contains: q, mode: 'insensitive' } }, { email: { contains: q, mode: 'insensitive' } }, { body: { contains: q, mode: 'insensitive' } }] } : {}),
     };
@@ -2663,7 +2676,7 @@ export default async function miscRoutes(app) {
       assignableStaff(p),
       // Counted over the WHOLE table, not over the page: a tab that says "3" because three
       // of the two hundred loaded rows matched is a number that means nothing.
-      Promise.all(CONTACT_STATES.map(async (s) => [s, await p.contactMessage.count({ where: stateWhere(s) })])),
+      Promise.all(CONTACT_STATES.map(async (s) => [s, await p.contactMessage.count({ where: { ...stateWhere(s), ...scope } })])),
     ]);
     const byId = new Map(tickets.map((t) => [t.messageId, t]));
     const names = new Map(staff.map((s) => [s.id, s.displayName]));

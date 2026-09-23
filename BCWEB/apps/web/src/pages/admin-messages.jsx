@@ -73,6 +73,7 @@ const KINDS = {
   bug: { tone: '', label: (t) => t('am.k.bug', 'Bug') },
   account: { tone: '', label: (t) => t('am.k.account', 'Account') },
   translation: { tone: '', label: (t) => t('am.k.translation', 'Translation') },
+  suggestion: { tone: 'primary', label: (t) => t('am.k.suggestion', 'Suggestion') },
   other: { tone: '', label: (t) => t('ami.k.other', 'Other') },
 };
 const kindOf = (k) => KINDS[k] || KINDS.other;
@@ -306,7 +307,12 @@ function MemberPolicy() {
 }
 
 /* ── The screen ──────────────────────────────────────────────────────────────────────── */
-export default function AdminMessagesScreen() {
+/**
+ * `only`: the screen shows one kind and nothing else (the Suggestions tab passes
+ * 'suggestion'). Without it, suggestions are left out: they have their own tab and their own
+ * badge, and the Messages badge does not count them (routes/misc.mjs, PENDING_QUEUES).
+ */
+export default function AdminMessagesScreen({ only = '' } = {}) {
   const { t } = useI18n();
   const [sp, setSp] = useSearchParams();
   // In the URL, so a digest that says "2 waiting" can link to those two, and so Back works.
@@ -324,7 +330,8 @@ export default function AdminMessagesScreen() {
     setSp(n, { replace: true });
   };
 
-  const qs = new URLSearchParams({ ...(state === 'all' ? {} : { state }), ...(q ? { q } : {}), ...(kind ? { kind } : {}), ...(assignee ? { assignee } : {}) }).toString();
+  const scope = only ? { kind: only } : kind ? { kind } : { exclude: 'suggestion' };
+  const qs = new URLSearchParams({ ...(state === 'all' ? {} : { state }), ...(q ? { q } : {}), ...scope, ...(assignee ? { assignee } : {}) }).toString();
   const { data, loading, reload } = useAsync(() => api.get(`/admin/contact/inbox?${qs}`), [qs]);
   const rows = data?.messages || [];
   const counts = data?.counts || {};
@@ -334,7 +341,7 @@ export default function AdminMessagesScreen() {
     <div className="space-y-6">
       <div className="flex items-center gap-2 flex-wrap">
         <Mail size={16} className="text-[var(--accent-ink)]" />
-        <h2 className="font-semibold">{t('am.title', 'Contact messages')}</h2>
+        <h2 className="font-semibold">{only === 'suggestion' ? t('am.sugg.title', 'Suggestions') : t('am.title', 'Contact messages')}</h2>
         {counts.new > 0 && <Badge tone="amber">{counts.new}</Badge>}
         <Button size="sm" variant="ghost" className="ms-auto" onClick={() => reload()} title={t('am.refresh', 'Refresh')} aria-label={t('am.refresh', 'Refresh')}><RefreshCw size={14} /></Button>
       </div>
@@ -360,10 +367,12 @@ export default function AdminMessagesScreen() {
           <Search size={13} className="absolute start-3 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" />
           <Input value={q} onChange={(e) => setQ(e.target.value)} className="ps-8" placeholder={t('ami.search', 'Name, e-mail, text…')} />
         </div>
-        <Select value={kind} className="!w-auto" onChange={(e) => setKind(e.target.value)} aria-label={t('ami.f.kind', 'Subject')}>
-          <option value="">{t('ami.allkinds', 'Every subject')}</option>
-          {Object.keys(KINDS).map((k) => <option key={k} value={k}>{KINDS[k].label(t)}</option>)}
-        </Select>
+        {!only && (
+          <Select value={kind} className="!w-auto" onChange={(e) => setKind(e.target.value)} aria-label={t('ami.f.kind', 'Subject')}>
+            <option value="">{t('ami.allkinds', 'Every subject')}</option>
+            {Object.keys(KINDS).filter((k) => k !== 'suggestion').map((k) => <option key={k} value={k}>{KINDS[k].label(t)}</option>)}
+          </Select>
+        )}
         <Select value={assignee} className="!w-auto" onChange={(e) => setAssignee(e.target.value)} aria-label={t('ami.f.assignee', 'Handled by')}>
           <option value="">{t('ami.anyone', 'Anyone')}</option>
           <option value="me">{t('ami.mine', 'Mine')}</option>

@@ -101,6 +101,7 @@ import { handoffKey, studioPath } from '../lib/studio-page.js';
 // the feedback centre gained crash grouping, the messages screen gained an inbox.
 import { AdminFeedbackCentre } from './admin-feedback.jsx';
 import AdminMessagesScreen from './admin-messages.jsx';
+import { Lightbulb } from 'lucide-react'; // M24: the Suggestions tab
 import { AdminTasks, TASKS_TAB_ICON } from './admin-tasks.jsx';
 import { ADMIN_SCREENS_REF } from '../lib/admin-screens-ref.js';
 import { AdminReactions } from './admin-reactions.jsx';
@@ -282,6 +283,8 @@ export function Admin() {
         can('manage_reports') && { id: 'feedback', label: t('adm.tab.feedback', 'Feedback & crashes'), icon: BugIcon, badge: pc.feedback || undefined },
         can('manage_reports') && { id: 'lookalikes', label: t('adm.tab.lookalikes', 'Lookalike pictures'), icon: ImageIcon },
         { id: 'messages', label: t('adm.tab.messages', 'Messages'), icon: Mail, badge: pc.contact || undefined },
+        // Ideas from the contact form, apart from support (M24): read together, badged apart.
+        { id: 'suggestions', label: t('adm.tab.suggestions', 'Suggestions'), icon: Lightbulb, badge: pc.suggestions || undefined },
         can('manage_legal') && { id: 'legal', label: t('adm.tab.legal', 'Legal'), icon: FileText },
         can('manage_sanctions') && { id: 'sanctions', label: t('adm.tab.sanctions', 'Sanctions'), icon: Gavel, badge: pc.contests || undefined },
       ].filter(Boolean) },
@@ -499,6 +502,7 @@ export function Admin() {
         {s === 'tasks' && <AdminTasks />}
         {/* The new screen renders AdminThreads itself, under its policy card. */}
         {s === 'messages' && <AdminMessagesScreen />}
+        {s === 'suggestions' && <AdminMessagesScreen only="suggestion" />}
         {s === 'lookalikes' && <AdminMediaFlags />}
         {s === 'legal' && <AdminLegal />}
         {s === 'users' && <AdminUsers />}

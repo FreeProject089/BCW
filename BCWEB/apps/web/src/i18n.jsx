@@ -2450,6 +2450,8 @@ const DICT = {
     'th.st.frozen': 'gelée', 'th.st.archived': 'archivée', 'th.archive': 'Archiver',
     'rcpt.sent': 'Envoyé', 'rcpt.delivered': 'Distribué', 'rcpt.read': 'Lu',
     'am.k.translation': 'Traduction',
+    // M24 (suggestions)
+    'am.k.suggestion': 'Suggestion', 'am.sugg.title': 'Suggestions', 'adm.tab.suggestions': 'Suggestions',
     // ── Contact d’un projet ──
     'cm.topic': 'Sujet', 'cm.topic.pick': 'Choisir un sujet', 'cm.needtopic': 'Choisis de quoi il s’agit.',
     'cm.projoff': 'Ce projet ne reçoit pas de messages pour le moment.',

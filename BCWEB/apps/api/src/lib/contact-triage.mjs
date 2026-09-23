@@ -32,13 +32,15 @@
  *   account · security                      added with the triage
  *   translation                             a wrong or missing translation, on the site
  *                                           or in a project (the form asks which)
+ *   suggestion                              an idea: filed apart from support so the ideas are
+ *                                           read together, in their own admin tab
  *
  * `report` and `copyright` stay: the triage routes those people to /report, but the Terms
  * have pointed here for a long time and a message already sent must still land somewhere
  * countable.
  */
 export const CONTACT_KINDS = ['other', 'data_export', 'data_delete', 'bug', 'billing', 'appeal',
-  'report', 'copyright', 'account', 'security', 'translation'];
+  'report', 'copyright', 'account', 'security', 'translation', 'suggestion'];
 
 /**
  * A destination: the queue it files into, and the fields it asks for.
@@ -119,6 +121,17 @@ export const DESTINATIONS = {
     fields: [
       { name: 'where', label: 'Where it happens (page or address)', required: true, max: 300 },
       { name: 'version', label: 'App or browser version', max: 120 },
+    ],
+  },
+  // An idea for the site, the bot, an app or a project. "About" is asked because the answer
+  // goes to different people, and "who it would help" because an idea without a person
+  // behind it is the hardest kind to weigh.
+  suggestion: {
+    kind: 'suggestion',
+    fields: [
+      { name: 'about', label: 'About', type: 'choice', options: ['site', 'bot', 'bmm', 'installer', 'project', 'other'], required: true, max: 20 },
+      { name: 'project', label: 'Project', type: 'project', max: 90, requiredIf: { field: 'about', equals: 'project' } },
+      { name: 'who', label: 'Who it would help', max: 300 },
     ],
   },
   other: { kind: 'other', fields: [] },

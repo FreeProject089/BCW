@@ -146,6 +146,29 @@ export const DESTINATIONS = {
         label: L('App or browser version', 'Version de l’application ou du navigateur') },
     ],
   },
+  suggestion: {
+    kind: 'suggestion',
+    title: L('A suggestion or an idea', 'Une suggestion ou une idée'),
+    lead: L('Something the site, the bot, an app or a project could do better, or do at all. Ideas are read together, not between two bug reports.',
+      'Quelque chose que le site, le bot, une application ou un projet pourrait mieux faire, ou faire tout court. Les idées sont lues ensemble, pas entre deux signalements de bug.'),
+    fields: [
+      { name: 'about', type: 'choice', required: true, max: 20,
+        label: L('About', 'À propos de'),
+        options: [
+          { value: 'site', label: L('The site', 'Le site') },
+          { value: 'bot', label: L('The Discord bot', 'Le bot Discord') },
+          { value: 'bmm', label: L('BetterModsManager', 'BetterModsManager') },
+          { value: 'installer', label: L('BetterInstaller', 'BetterInstaller') },
+          { value: 'project', label: L('Another project', 'Un autre projet') },
+          { value: 'other', label: L('Something else', 'Autre chose') },
+        ] },
+      { name: 'project', type: 'project', max: 90, requiredIf: { field: 'about', equals: 'project' },
+        label: L('Which project', 'Quel projet') },
+      { name: 'who', type: 'text', max: 300,
+        label: L('Who it would help', 'À qui ça servirait'),
+        placeholder: L('Server owners, people who host a repo, translators…', 'Les propriétaires de serveur, ceux qui hébergent un dépôt, les traducteurs…') },
+    ],
+  },
   other: {
     kind: 'other',
     title: L('Something else', 'Autre chose'),
@@ -178,8 +201,10 @@ export const Q1 = [
     sub: L('On the site or in a project', 'Sur le site ou dans un projet'), dest: 'translation' },
   { id: 'bug', icon: 'bug', label: L('Something is broken', 'Quelque chose est cassé'),
     sub: L('A page, a button, an upload', 'Une page, un bouton, un envoi'), dest: 'bug' },
+  { id: 'suggestion', icon: 'lightbulb', label: L('A suggestion or an idea', 'Une suggestion ou une idée'),
+    sub: L('For the site, the bot, an app or a project', 'Pour le site, le bot, une application ou un projet'), dest: 'suggestion' },
   { id: 'other', icon: 'message', label: L('Something else', 'Autre chose'),
-    sub: L('A question, a partnership, an idea', 'Une question, un partenariat, une idée'), dest: 'other' },
+    sub: L('A question, a partnership', 'Une question, un partenariat'), dest: 'other' },
 ];
 
 /**
@@ -256,6 +281,7 @@ export const TOPICS = {
   'security-report': { dest: 'security', en: '', fr: '' },
   'bug-report': { dest: 'bug', en: '', fr: '' },
   'translation': { dest: 'translation', en: '', fr: '' },
+  'suggestion': { dest: 'suggestion', en: '', fr: '' },
   'general': { dest: 'other', en: '', fr: '' },
 };
 
