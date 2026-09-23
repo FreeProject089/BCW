@@ -1423,7 +1423,10 @@ export const pageAccountEntrySchema = z.object({
 // callers decide separately (only 'public' pages should ever be listed).
 // `private` has no bypass here — admin routes fetch pages through their own
 // requireRole('ADMIN') preHandler instead of this check.
-export async function canViewPage(p, { visibility, whitelist }, req) {
+// Takes the page ROW as the routes pass it (column `visibilityWhitelist`) or an explicit
+// `{ visibility, whitelist }`. It used to read `whitelist` only, so every route that passed
+// the row refused the very accounts on a whitelisted page's list (test/page-whitelist).
+export async function canViewPage(p, { visibility, whitelist, visibilityWhitelist }, req) {
   if (visibility === 'public' || visibility === 'unlisted') return true;
   if (visibility !== 'whitelist') return false;
   if (!req?.user?.uid) return false;
@@ -1433,7 +1436,8 @@ export async function canViewPage(p, { visibility, whitelist }, req) {
     p.creatorLink.findMany({ where: { userId }, select: { creatorId: true } }).catch(() => []),
   ]);
   const creatorIds = new Set(creatorLinks.map((c) => c.creatorId));
-  return (whitelist || []).some((a) =>
+  const list = Array.isArray(whitelist) ? whitelist : Array.isArray(visibilityWhitelist) ? visibilityWhitelist : [];
+  return list.some((a) =>
     (a.type === 'bcweb' && a.id === userId)
     || (a.type === 'discord' && discordLink && a.id === discordLink.discordId)
     || (a.type === 'creator' && creatorIds.has(a.id)));
