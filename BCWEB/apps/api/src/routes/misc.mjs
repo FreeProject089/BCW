@@ -1284,7 +1284,8 @@ export default async function miscRoutes(app) {
   app.get('/reviews', async () => {
     const p = await db();
     const [rows, setting] = await Promise.all([
-      p.review.findMany({ where: { enabled: true }, orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] }),
+      // Only approved rows: a member's review waits for a moderator (M11), whatever `enabled` says.
+      p.review.findMany({ where: { enabled: true, status: 'approved' }, orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] }),
       p.adminSetting.findUnique({ where: { key: 'reviews.enabled' } }),
     ]);
     const enabled = setting?.value?.on !== false; // default ON
@@ -1311,7 +1312,61 @@ export default async function miscRoutes(app) {
   app.get('/admin/reviews', { preHandler: requireRole('ADMIN') }, async () => {
     const p = await db();
     const [reviews, setting] = await Promise.all([
+    // M11: moderating a member's review. Approving also shows it; rejecting also hides it.
+    status: z.enum(['approved', 'pending', 'rejected']).optional(),
+  });
+  // ── M11: a member's own landing review ──────────────────────────────────────────────
+  // One per account (Review.userId is unique), held as `pending` until a moderator approves
+  // it, and editing an approved one sends it back to pending: what visitors read is always
+  // something a person looked at. Plain text only, and no links at all: a review with a URL
+  // in it is an advert, and refusing the shape is simpler than judging each one.
+  const memberReview = z.object({
+    body: z.string().trim().min(20).max(600),
+    rating: z.number().int().min(1).max(5).nullish(),
+    role: z.string().trim().max(60).optional(),
+    lang: z.enum(['en', 'fr']).optional(),
+  });
+  const HAS_LINK = /(https?:\/\/|www\.|\b[a-z0-9-]+\.(com|net|org|io|gg|xyz|ru|cn|ch|fr|de|me|app|dev)\b)/i;
+  const REVIEW_MIN_ACCOUNT_AGE_MS = 24 * 60 * 60 * 1000;
+  const ownView = (r) => r && ({ id: r.id, body: r.lang === 'fr' ? (r.bodyFr || r.body) : r.body, rating: r.rating, role: r.role, lang: r.lang, status: r.status, updatedAt: r.updatedAt });
+
+  app.get('/me/review', { preHandler: requireRole() }, async (req) => {
+    const p = await db();
+    const [r, setting] = await Promise.all([
+      p.review.findUnique({ where: { userId: req.user.uid } }),
+      p.adminSetting.findUnique({ where: { key: 'reviews.enabled' } }),
+    ]);
+    // sectionOn: the form hides itself when the landing shows no reviews at all.
+    return { review: ownView(r), sectionOn: setting?.value?.on !== false };
       p.review.findMany({ orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] }),
+
+  app.put('/me/review', { preHandler: requireRole(), config: { rateLimit: { max: 5, timeWindow: '1 hour' } } }, async (req, reply) => {
+    const b = memberReview.safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    if (HAS_LINK.test(b.data.body) || HAS_LINK.test(b.data.role || '')) return reply.code(400).send({ error: 'no_links' });
+    const p = await db();
+    const me = await p.user.findUnique({ where: { id: req.user.uid }, select: { displayName: true, createdAt: true, status: true } });
+    if (!me || (me.status && me.status !== 'active')) return reply.code(403).send({ error: 'forbidden' });
+    // A day-old account at least: a review written by an account made for it is the spam case.
+    if (Date.now() - new Date(me.createdAt).getTime() < REVIEW_MIN_ACCOUNT_AGE_MS) return reply.code(403).send({ error: 'account_too_new' });
+    const lang = b.data.lang || 'en';
+    const data = {
+      author: String(me.displayName || '').slice(0, 80) || 'Member', role: b.data.role || '',
+      // Written once, in the member's language; the other side is filled on approval by staff.
+      body: b.data.body, bodyFr: lang === 'fr' ? b.data.body : '', lang,
+      rating: b.data.rating ?? null, status: 'pending', enabled: false,
+      avatar: { variant: 'beam', seed: req.user.uid },
+    };
+    const r = await p.review.upsert({ where: { userId: req.user.uid }, create: { ...data, userId: req.user.uid, order: 100000 }, update: data });
+    return { review: ownView(r) };
+  });
+
+  app.delete('/me/review', { preHandler: requireRole() }, async (req) => {
+    const p = await db();
+    await p.review.deleteMany({ where: { userId: req.user.uid } });
+    return { ok: true };
+  });
+
       p.adminSetting.findUnique({ where: { key: 'reviews.enabled' } }),
     ]);
     return { reviews, enabled: setting?.value?.on !== false };
@@ -1336,7 +1391,9 @@ export default async function miscRoutes(app) {
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
     const data = {};
-    for (const k of ['author', 'role', 'body', 'bodyFr', 'rating', 'avatar', 'enabled', 'order']) if (b.data[k] !== undefined) data[k] = b.data[k];
+    for (const k of ['author', 'role', 'body', 'bodyFr', 'rating', 'avatar', 'enabled', 'order', 'status']) if (b.data[k] !== undefined) data[k] = b.data[k];
+    if (b.data.status === 'approved' && b.data.enabled === undefined) data.enabled = true;
+    if (b.data.status === 'rejected') data.enabled = false;
     const review = await p.review.update({ where: { id: req.params.id }, data }).catch(() => null);
     if (!review) return reply.code(404).send({ error: 'not_found' });
     return { review };

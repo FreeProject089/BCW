@@ -5369,7 +5369,11 @@ function AdminReviews() {
   // call. Declaring that set without filtering here would have left the row on screen under a
   // toast offering to undo its deletion — two contradictory claims, and the undo the one that
   // stops being believed.
-  const reviews = (data?.reviews || []).map(utog.apply).filter((rv) => !pendingDel.has(rv.id));
+  // M11: a member's review waiting for a moderator sorts first, so the queue is the first
+  // thing on the page and not a badge found by scrolling.
+  const reviews = (data?.reviews || []).map(utog.apply).filter((rv) => !pendingDel.has(rv.id))
+    .sort((a, b) => (a.status === 'pending' ? 0 : 1) - (b.status === 'pending' ? 0 : 1));
+  const pendingCount = reviews.filter((rv) => rv.status === 'pending').length;
   const sectionOn = data?.enabled !== false;
   const reset = () => { setF({ author: '', role: '', body: '', bodyFr: '', rating: '', enabled: true, avatar: null }); setEditId(null); };
   const toggleSection = async () => { try { await api.put('/admin/reviews/settings', { enabled: !sectionOn }); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
@@ -5397,6 +5401,10 @@ function AdminReviews() {
     const unhide = () => setPendingDel((p) => { const n = new Set(p); n.delete(rv.id); return n; });
     toast.action({
       tone: 'success', duration: 6000, cancelLabel: t('common.undo', 'Undo'),
+  // M11: approving shows the review on the landing, rejecting keeps it off (the API sets
+  // `enabled` to match). Both go through the same undo window as the show/hide toggle.
+  const moderate = (rv, status) => utog.act(rv.id, { status, enabled: status === 'approved' }, () => api.patch(`/admin/reviews/${rv.id}`, { status }),
+    status === 'approved' ? t('arv.approved', 'Review approved and shown.') : t('arv.rejected', 'Review rejected.'));
       msg: t('arv.deleted', 'Review deleted.'),
       onCommit: async () => {
         try { await api.del(`/admin/reviews/${rv.id}`); reload(); }
@@ -5411,7 +5419,7 @@ function AdminReviews() {
   return (
     <div>
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-        <h2 className="font-semibold flex items-center gap-2"><MessageSquare size={16} className="text-[var(--accent-ink)]" /> {t('arv.title', 'Landing reviews')}</h2>
+        <h2 className="font-semibold flex items-center gap-2"><MessageSquare size={16} className="text-[var(--accent-ink)]" /> {t('arv.title', 'Landing reviews')}{pendingCount > 0 && <Badge tone="amber">{t('arv.pendingn', '{n} to review').replace('{n}', pendingCount)}</Badge>}</h2>
         <button onClick={toggleSection} className={`btn ${sectionOn ? 'btn-primary' : ''}`}>{sectionOn ? <><Eye size={14} /> {t('arv.on', 'Section shown')}</> : <><EyeOff size={14} /> {t('arv.off', 'Section hidden')}</>}</button>
       </div>
       <p className="text-sm text-[var(--muted)] mb-4">{t('arv.desc', 'Curated testimonials shown on the landing page. Each has an English and a French text (the site shows the one matching the visitor’s language). Turn the whole section — or individual reviews — on/off.')}</p>
@@ -5451,8 +5459,13 @@ function AdminReviews() {
           <Card key={rv.id} className="p-4 flex items-start gap-3">
             <Avatar variant={rv.avatar?.variant || 'beam'} seed={rv.avatar?.seed || rv.author} image={rv.avatar?.image} colors={rv.avatar?.colors} size={36} />
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap"><span className="font-medium">{rv.author}</span>{rv.role && <span className="text-xs text-[var(--faint)]">{rv.role}</span>}{rv.rating > 0 && <span className="text-xs text-warning flex items-center gap-0.5"><Star size={11} fill="currentColor" /> {rv.rating}</span>}{!rv.enabled && <Badge>{t('arv.hiddenb', 'hidden')}</Badge>}{rv.bodyFr && <Badge tone="primary">FR</Badge>}</div>
-              <p className="text-sm text-[var(--muted)] mt-1 line-clamp-2">{rv.body}</p>
+              <div className="flex items-center gap-2 flex-wrap"><span className="font-medium">{rv.author}</span>{rv.role && <span className="text-xs text-[var(--faint)]">{rv.role}</span>}{rv.rating > 0 && <span className="text-xs text-warning flex items-center gap-0.5"><Star size={11} fill="currentColor" /> {rv.rating}</span>}{!rv.enabled && <Badge>{t('arv.hiddenb', 'hidden')}</Badge>}{rv.bodyFr && <Badge tone="primary">FR</Badge>}{rv.userId && <Badge>{t('arv.memberb', 'member')}</Badge>}{rv.status === 'pending' && <Badge tone="amber">{t('arv.pendingb', 'to review')}</Badge>}{rv.status === 'rejected' && <Badge tone="red">{t('arv.rejectedb', 'rejected')}</Badge>}</div>
+              {/* A member's review is read in full before a decision: no clamp while it waits. */}
+              <p className={`text-sm text-[var(--muted)] mt-1 whitespace-pre-line break-words ${rv.status === 'pending' ? '' : 'line-clamp-2'}`}>{rv.lang === 'fr' ? (rv.bodyFr || rv.body) : rv.body}</p>
+              {rv.status !== 'approved' && rv.status && <div className="flex gap-2 mt-2 flex-wrap">
+                <Button variant="primary" onClick={() => moderate(rv, 'approved')}><Check size={14} /> {t('arv.approve', 'Approve')}</Button>
+                {rv.status !== 'rejected' && <Button variant="ghost" onClick={() => moderate(rv, 'rejected')}><Ban size={14} /> {t('arv.reject', 'Reject')}</Button>}
+              </div>}
             </div>
             <button onClick={() => toggleEnabled(rv)} title={rv.enabled ? t('arv.hide', 'Hide') : t('arv.show', 'Show')} className="text-[var(--faint)] hover:text-[var(--accent-ink)] p-1">{rv.enabled ? <Eye size={16} /> : <EyeOff size={16} />}</button>
             <button onClick={() => edit(rv)} title={t('common.edit', 'Edit')} className="text-[var(--faint)] hover:text-[var(--accent-ink)] p-1"><PenSquare size={16} /></button>

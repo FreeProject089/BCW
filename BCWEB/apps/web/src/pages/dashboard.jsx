@@ -43,6 +43,7 @@ const SUBMIT_INIT = { projectKey: 'bmm', kind: 'PLUGIN', name: '', description: 
 // without dragging this whole page into the initial bundle. Re-exported for existing callers.
 import { NOTIF, NOTIF_FALLBACK } from '../ui/notif.js';
 import { lazyNamed } from '../lib/lazy-chunk.js';
+import { MyReviewCard } from '../ui/review-form.jsx'; // M11: a member's own landing review
 export { NOTIF, NOTIF_FALLBACK };
 
 // The member's Discord level, XP progress and spendable points — from /me/economy. Renders
@@ -1049,6 +1050,10 @@ export function Dashboard() {
             {/* MyPurchases titles its own card and renders null when there is nothing bought,
                 so it needs no heading from here. */}
             <MyPurchases refreshKey={purchasesKey} />
+
+            {/* M11: titles its own card, and renders null when the landing shows no reviews
+                and the member has none. */}
+            <MyReviewCard />
           </div>}
           {s === 'items' && <div>
             <div className="flex items-center justify-between mb-3">

@@ -491,6 +491,11 @@ code, .break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
   .badge-amber { background: var(--warning-bg); border-color: var(--warning-border); color: var(--warning); }
   .badge-red   { background: var(--error-bg);   border-color: var(--error-border);   color: var(--error); }
   .badge-blue  { background: var(--info-bg);    border-color: var(--info-border);    color: var(--info); }
+  /* The status names, as 22 call sites spelled them (tone="success" / "warning" / "error" /
+     "ok" / "warn"): no class existed, and those badges rendered with no colour at all. */
+  .badge-success, .badge-ok { background: var(--success-bg); border-color: var(--success-border); color: var(--success); }
+  .badge-warning, .badge-warn { background: var(--warning-bg); border-color: var(--warning-border); color: var(--warning); }
+  .badge-error { background: var(--error-bg); border-color: var(--error-border); color: var(--error); }
 
   /* Feedback messages (semantic) — explicit success / error / warning / info blocks.
      Usage: <div class="alert alert-error">…</div> */

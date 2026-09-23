@@ -119,6 +119,8 @@ model User {
   purchases        EconomyPurchase[]
   projectPurchases ProjectProductPurchase[]
   ledger           EconomyLedger[]
+  /// M11: the landing review this member posted (at most one per account).
+  review           Review?
   createdAt        DateTime       @default(now())
 
   // ── 2FA (TOTP) — see totp.mjs. Recovery codes are argon2 hashes, one-time use. ──
@@ -1140,10 +1142,20 @@ model Review {
   avatar    Json? // { variant, seed, colors } Boring-avatar, or { image }
   enabled   Boolean  @default(true)
   order     Int      @default(0)
+  /// M11: set when a member posted it (null = written by staff in the admin). One per account;
+  /// deleting the account deletes the review.
+  userId    String?  @unique
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// approved (shown when enabled) | pending (a member's, waiting for a moderator) | rejected.
+  /// Staff-written rows are approved, which is what every existing row becomes.
+  status    String   @default("approved")
+  /// The language the member wrote in; the admin can add the other translation on approval.
+  lang      String   @default("en")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([enabled, order])
+  @@index([status])
 }
 
 // Site-wide banner announcements. Publishing one also broadcasts a Notification to
