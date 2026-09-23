@@ -29,7 +29,15 @@ export const SCENE_DEFAULTS = {
   // from one drifting at 60; the CPU it costs can. Full rate only during the intro, a hover
   // reaction or a page transition.
   fps: 30,
+  // D4: transitions between shapes (apps/api/src/lib/scene-transitions.mjs). No playlist and
+  // every trigger off: the scene is one shape for the visit, as it always was.
+  transitions: { shapes: [], triggers: { hover: false, interval: false, reload: false, route: false }, intervalSec: 30, style: 'fade', durationMs: 900 },
 };
+
+/** D4: the transition vocabulary, the same lists the API validates against. */
+export const TRANSITION_TRIGGERS = ['hover', 'interval', 'reload', 'route'];
+export const TRANSITION_STYLES = ['fade', 'burst'];
+export const TRANSITION_MAX_SHAPES = 6;
 
 /**
  * The numeric settings: bounds, step and the unit the editor prints.

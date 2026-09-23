@@ -19,6 +19,7 @@ import { Library, GraduationCap, ListChecks,
 } from 'lucide-react';
 import { api, uploadPayload, uploadImage, uploadAsset } from '../lib/api.js';
 import { rankLeaves } from '../lib/admin-search.js';
+import { confirmLeave } from '../lib/leave-guard.js';
 import { useAuth } from './auth.jsx';
 import { useI18n } from '../i18n.jsx';
 import { useTheme } from '../ui/theme.jsx';
@@ -433,7 +434,12 @@ export function SideDash({ title, subtitle, icon, tabs, headerActions, children,
     return next;
   });
   const wanted = sp.get('s') || allLeaves[0]?.id;
-  const set = (id) => { setSp((p) => { const n = new URLSearchParams(p); n.set('s', id); return n; }, { replace: true }); setNavOpen(false); setQuery(''); };
+  // An editor with unsaved changes asks first (lib/leave-guard.js, registered by SaveBar):
+  // switching section unmounts it, and the draft with it.
+  const set = async (id) => {
+    if (id !== (sp.get('s') || allLeaves[0]?.id) && !(await confirmLeave())) return;
+    setSp((p) => { const n = new URLSearchParams(p); n.set('s', id); return n; }, { replace: true }); setNavOpen(false); setQuery('');
+  };
   // The leaf the URL asks for; falling back to the first one rather than to nothing, so a
   // stale bookmark lands somewhere real instead of on an empty pane.
   const leaf = allLeaves.find((l) => l.id === wanted) || allLeaves[0];

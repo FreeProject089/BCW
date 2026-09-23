@@ -19,7 +19,7 @@
 // not draw.
 
 import { Link } from 'react-router-dom';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, Boxes, Newspaper, Users, Server, LayoutDashboard, Download } from 'lucide-react';
 import { Button } from '../ui/ui.jsx';
 import { useI18n } from '../i18n.jsx';
 // The sections themselves. They used to be inline here, which was fine until the page
@@ -95,14 +95,18 @@ export function HomeV2(ctx) {
 
         {/* The media, big, beside the choice rather than under it. On one screen the
             showcase is the argument; in v1 it is an illustration you scroll to. */}
-        <div className="min-w-0">
+        <div className="min-w-0 lg:sticky lg:top-24 lg:self-start">
           <ShowcasePanel showcase={showcase} />
         </div>
       </section>
 
       {show('news') && (
         <section>
-          <Kicker label={t('home.k.news', 'From the blog')} />
+          {/* D3: the same way out v3 offers. Three headlines and no link to the rest was a
+              dead end on the page built for people who came to get somewhere. */}
+          <Kicker label={t('home.k.news', 'From the blog')}>
+            <Link to="/blog" className="text-xs text-[var(--muted)] hover:text-[var(--text)]">{t('common.seeAll', 'See all')}</Link>
+          </Kicker>
           <NewsGrid posts={posts} limit={3} heading={false} />
         </section>
       )}
@@ -120,8 +124,30 @@ export function HomeV2(ctx) {
 
 export function HomeV3(ctx) {
   const { t } = useI18n();
-  const { show, pollData, reviewsData, myo, user, showcase } = ctx;
+  const { show, pollData, reviewsData, myo, user, showcase, stats, products } = ctx;
   const posts = postsOf(ctx);
+  // D3: the site's pulse, for somebody coming back. Real counts from /stats, each a way in;
+  // a zero is left out rather than printed, because "0 posts" on a page about what moved
+  // says the opposite of what it means.
+  const pulse = [
+    { n: stats?.posts, to: '/blog', icon: Newspaper, label: t('home.v3.p.posts', 'posts') },
+    { n: stats?.items, to: '/catalog', icon: Boxes, label: t('home.v3.p.items', 'in the catalogue') },
+    { n: stats?.downloads, to: '/catalog', icon: Download, label: t('home.v3.p.downloads', 'downloads') },
+    { n: stats?.members, to: '/users', icon: Users, label: t('home.v3.p.members', 'members') },
+    { n: stats?.repos, to: '/repos', icon: Server, label: t('home.v3.p.repos', 'hosted repos') },
+  ].filter((x) => Number(x.n) > 0);
+  // Where a returning visitor goes next. A member: their own space first. A stranger: the two
+  // places a first look usually starts.
+  const jump = user
+    ? [
+      { to: '/dashboard', icon: LayoutDashboard, label: t('home.v3.j.dash', 'Your dashboard') },
+      { to: '/catalog', icon: Boxes, label: t('home.v3.j.catalog', 'The catalogue') },
+      { to: '/repos', icon: Server, label: t('home.v3.j.repos', 'Your repos') },
+    ]
+    : [
+      { to: '/catalog', icon: Boxes, label: t('home.v3.j.catalog', 'The catalogue') },
+      { to: '/hosting', icon: Server, label: t('home.v3.j.hosting', 'Hosting') },
+    ];
 
   return (
     <div className="space-y-10 pt-8">
@@ -144,6 +170,20 @@ export function HomeV3(ctx) {
         )}
       </header>
 
+      {/* D3: the numbers that moved, as one line of ways in. Wraps on a phone, never cut. */}
+      {pulse.length > 0 && (
+        <nav aria-label={t('home.v3.pulse', 'The site at a glance')} className="flex flex-wrap gap-2 -mt-4">
+          {pulse.map((x) => (
+            <Link key={x.label} to={x.to}
+              className="panel inline-flex items-center gap-2 rounded-xl border border-[var(--line)] px-3 py-1.5 text-[13px] hover:border-[var(--primary)] transition-colors">
+              <x.icon size={14} className="text-[var(--accent-ink)] shrink-0" />
+              <span className="font-semibold tabular-nums">{Number(x.n).toLocaleString()}</span>
+              <span className="text-[var(--muted)]">{x.label}</span>
+            </Link>
+          ))}
+        </nav>
+      )}
+
       <div className="grid lg:grid-cols-3 gap-6 items-start">
         {/* The feed takes two thirds. Everything else on this page is context for it. */}
         <div className="lg:col-span-2 space-y-3 min-w-0">
@@ -157,6 +197,27 @@ export function HomeV3(ctx) {
         </div>
 
         <aside className="space-y-4 min-w-0">
+          {/* D3: the way back in. v3 had nowhere to GO on it except the posts: somebody who
+              came back to use the site had to find the topbar. */}
+          <div className="panel rounded-2xl border border-[var(--line)] p-3">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">
+              {user ? t('home.v3.jump', 'Jump back in') : t('home.v3.start', 'Start here')}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {jump.map((j) => (
+                <Link key={j.to} to={j.to}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--line)] px-2.5 py-1.5 text-[13px] hover:border-[var(--primary)] transition-colors">
+                  <j.icon size={13} className="shrink-0" /> {j.label}
+                </Link>
+              ))}
+            </div>
+            {products?.length > 0 && (
+              <div className="mt-3">
+                <Kicker label={t('home.k.products', 'The suite')} />
+                <ProductRows products={products.slice(0, 4)} />
+              </div>
+            )}
+          </div>
           {/* Something to LOOK at. v1 opens on the showcase and v3 had no image on it at all
               beyond whatever cover a post happened to carry — a feed of text where the site's
               own work was the one thing never shown. It is the site's media, not a section, so

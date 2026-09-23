@@ -19,10 +19,9 @@
 // id this script creates is recorded in AdminSetting['seed.demoRows']. Refuses to run against a
 // production DB.
 import { PrismaClient } from '@prisma/client';
-// The fixtures themselves live in lib/demo.mjs: the admin demo mode serves the same generator
-// as JSON and stores nothing, this script writes its output as rows. One body of fixtures, so
-// the two can never drift into showing different shapes.
-import { generateCatalogItems, makeRng } from './lib/demo.mjs';
+// The fixtures themselves live in lib/demo-fixtures.mjs (they were in lib/demo.mjs until the
+// admin demo mode was retired on Sept 23; the generator is a dev fixture and stayed).
+import { generateCatalogItems, makeRng } from './lib/demo-fixtures.mjs';
 // The ids this run creates are recorded here; `clear-demo` deletes nothing else. See the
 // header of that file for why a `demo-` slug is not a safe marker.
 import { readSeedRecord, writeSeedRecord, SEED_RECORD_KEY } from './lib/demo-seed-record.mjs';
@@ -79,7 +78,7 @@ async function main() {
   const { pick } = makeRng(4242);
   const rows = generateCatalogItems({ seed: 42, n: N, at: new Date() }).map(({ projectKey, ...it }) => ({
     ...it,
-    description: it.description.replace('lib/demo.mjs', 'seed-demo.mjs'),
+    description: it.description.replace('lib/demo-fixtures.mjs', 'seed-demo.mjs'),
     projectId: projects[projectKey].id,
     ownerId: pick(owners),
   }));

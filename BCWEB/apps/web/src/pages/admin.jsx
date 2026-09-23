@@ -12,7 +12,7 @@ import { PartyPopper, ThumbsUp,
   BarChart3, Boxes, Music2, Puzzle, Server, Rocket, Download, Power, PowerOff, ArrowRight, ArrowRightLeft, Search, Upload, Bell, CheckCircle2, XCircle, Wallet, Scale, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Vote, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronUp, ChevronRight, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical, Check, ExternalLink, Palette, Pencil, Gavel, Code2, Database, Network, Share2, Link as LinkIcon, PlayCircle, Anchor, Boxes as BoxesIcon, Image as ImageIcon, ShoppingBag, Key, Coins, ShieldAlert, ServerCog, HeartPulse, Wrench, Bot, OctagonAlert, Flag as FlagIcon, ChevronsUp, Cloud, PanelBottom } from 'lucide-react';
 import { Bug as BugIcon } from 'lucide-react';
 // The `all` sub-tab on Hosting settings; nothing else here needs a plain list glyph.
-import { List, FlaskConical } from 'lucide-react';
+import { List } from 'lucide-react';
 import { LayoutTemplate } from 'lucide-react'; // studio phase 2: the manage_studio capability
 import { Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, EmptyState, Spinner, Modal, ActionBar, ByteSize, formatBytes, useDialog, useToast, copyText, ColorInput, Explain } from '../ui/ui.jsx';
 import { PointsHistoryTable } from '../ui/points-history.jsx';
@@ -36,6 +36,8 @@ import PreviewFrame from '../ui/preview-frame.jsx';
 import DomainPanel from '../ui/domain-panel.jsx';
 import { SaveBar } from '../ui/save-bar.jsx'; // D1 (agent-admin-D): one save bar for every editor
 import { Laptop as LaptopIcon } from 'lucide-react'; // D2 (agent-admin-D): laptop-width topbar preview
+import SceneTransitionsEditor from './admin-scene-transitions.jsx'; // D4 (agent-admin-D)
+import HomePresetCards from './admin-home-presets.jsx'; // D3 (agent-admin-D)
 import { UtilGlyph, UTIL_DEFAULT_SIZE, UTIL_SIZE_MIN, UTIL_SIZE_MAX } from '../ui/topbar-glyph.jsx';
 const SOCIAL_KEYS = Object.keys(SOCIAL_ICONS);
 import { TOKENS, TOKEN_GROUPS } from '../ui/theme-tokens.js';
@@ -67,7 +69,7 @@ import { rawStatusLabel, DotDropdown } from './repos.jsx';
 import { analyseTrend, robustCeiling } from '../lib/trend.js';
 import { AdminRepos, AdminPools } from './repos-admin.jsx';
 import { AdminCatalogTraffic, LiveTraffic } from './traffic-live.jsx';
-import { AdminDemo, AdminFirstRun, DemoBanner } from './admin-demo.jsx';
+import { AdminFirstRun } from './admin-first-run.jsx'; // demo mode retired Sept 23 (agent-admin-D)
 import { AdminMailLog } from './admin-maillog.jsx';
 import { AdminOnboarding } from './admin-onboarding.jsx';
 import { AdminEntityHosting } from './admin-entity-hosting.jsx';
@@ -257,8 +259,6 @@ export function Admin() {
   const raw = [
     { heading: t('adm.h.help', 'Reference') },
     isMod && { id: 'guide', label: t('adm.tab.guide', 'Admin guide'), icon: BookOpen },
-    // Admin-only, like its routes (requireRole('ADMIN') in demo.mjs, not a capability).
-    isAdmin && { id: 'demo', label: t('adm.tab.demo', 'Demo mode'), icon: FlaskConical },
 
     { heading: t('adm.h.queues', 'Waiting on you') },
     // No badge, deliberately. This tab is a DIGEST of the six queues below, and every one of
@@ -419,9 +419,6 @@ export function Admin() {
             the entry that documents THIS one, and guideEntryForTab is checked against the tab
             list by check-guide-coverage.mjs so it cannot quietly point nowhere. */}
         <GuideLink tab={s} />
-        {/* While a demo runs, every admin screen says so; the demo screen has its own. */}
-        {isAdmin && <DemoBanner current={s} />}
-        {s === 'demo' && <AdminDemo />}
         {s === 'homepage' && <><SceneEditor /><ShowcaseEditor /><HomePageEditor /></>}
         {s === 'languages' && <><LanguagesCard /><BotI18nCard /></>}
         {s === 'moderation' && <div>
@@ -4746,12 +4743,12 @@ const ADMIN_CAPS = [
   { id: 'manage_polls', cat: 'content', icon: BarChart3, label: 'Manage polls', labelFr: 'Gérer les sondages', desc: 'Create polls, read the results and who answered.', descFr: 'Créer des sondages, lire les résultats et qui a répondu.' },
   { id: 'manage_analytics', cat: 'insight', icon: TrendingUp, label: 'View analytics', labelFr: 'Voir les analyses', desc: 'Analytics, errors and goals.', descFr: 'Analyses, erreurs et objectifs.' },
   { id: 'manage_repos', cat: 'ops', icon: Server, label: 'Manage server repos', labelFr: 'Gérer les dépôts serveur', desc: 'Review, verify and moderate hosted repos.', descFr: 'Vérifier, valider et modérer les dépôts hébergés.' },
-  { id: 'manage_docs', cat: 'content', icon: BookOpen, label: 'Manage the docs', labelFr: 'Gérer la doc', desc: 'Write and organise the documentation pages and their categories.', descFr: 'Rédiger et organiser les pages de documentation et leurs catégories.' },
-  { id: 'manage_legal', cat: 'content', icon: Scale, label: 'Manage the legal pages', labelFr: 'Gérer les pages légales', desc: 'Edit the policy pages and publish a new version of them. Not the acceptances themselves.', descFr: 'Modifier les pages de politique et en publier une nouvelle version. Pas les acceptations elles-mêmes.' },
   // Drawing pages is not editing their words (PLAN-STUDIO-2026 3.1): the studio on every page,
   // the home page included, and on a page whose studio is off (D2). The per-page `studio`
   // right is granted beside the page permission below.
   { id: 'manage_studio', cat: 'content', icon: LayoutTemplate, label: 'Use the studio everywhere', labelFr: 'Utiliser le studio partout', desc: 'Draw the studio pages of every project, other project and the home page, including a page whose studio is switched off. Not the page text, which stays with Manage projects.', descFr: 'Dessiner les pages studio de chaque projet, autre projet et de l’accueil, y compris une page dont le studio est désactivé. Pas le texte des pages, qui reste à Gérer les projets.' },
+  { id: 'manage_docs', cat: 'content', icon: BookOpen, label: 'Manage the docs', labelFr: 'Gérer la doc', desc: 'Write and organise the documentation pages and their categories.', descFr: 'Rédiger et organiser les pages de documentation et leurs catégories.' },
+  { id: 'manage_legal', cat: 'content', icon: Scale, label: 'Manage the legal pages', labelFr: 'Gérer les pages légales', desc: 'Edit the policy pages and publish a new version of them. Not the acceptances themselves.', descFr: 'Modifier les pages de politique et en publier une nouvelle version. Pas les acceptations elles-mêmes.' },
   { id: 'manage_bot', cat: 'ops', icon: Bot, label: 'Manage the Discord bot', labelFr: 'Gérer le bot Discord', desc: 'The bot dashboard: config, features, servers, logs — and two broad ones: exporting the member database, and DMing every member. Not its token, and not the economy.', descFr: 'Le tableau de bord du bot : config, fonctionnalités, serveurs, journaux — et deux gros : exporter la base des membres, et envoyer un MP à tout le monde. Pas son token, ni l’économie.' },
   { id: 'manage_economy', cat: 'ops', icon: Coins, label: 'Manage the economy', labelFr: 'Gérer l’économie', desc: 'Grant and reset points, read the ledger, deliver a shop purchase by hand. Points buy things, grant it as you would grant money.', descFr: 'Créditer et remettre à zéro les points, lire le registre, livrer un achat à la main. Les points achètent des choses — accorde-le comme tu accorderais de l’argent.' },
   { id: 'manage_hosting', cat: 'ops', icon: Cloud, label: 'Manage hosting', labelFr: 'Gérer l’hébergement', desc: 'Plans, storage pools, capacity and free-hosting grants.', descFr: 'Formules, pools de stockage, capacité et hébergements gratuits accordés.' },
@@ -4846,10 +4843,10 @@ function AdminAccess({ isSuperAdmin }) {
   const [permsSel, setPermsSel] = useState([]);
   const [rolesSel, setRolesSel] = useState([]);
   const [pscopeSel, setPscopeSel] = useState('all');
-  const scopes = useAsync(() => api.get('/blog/my-scopes'), []);
-  const grants = useAsync(() => api.get('/admin/blog-permissions'), []);
   // What a per-project grant allows: the page's content, its studio (PLAN-STUDIO-2026 3.1), or both.
   const [prightsSel, setPrightsSel] = useState(['pages']);
+  const scopes = useAsync(() => api.get('/blog/my-scopes'), []);
+  const grants = useAsync(() => api.get('/admin/blog-permissions'), []);
   // Custom roles are SUPERADMIN-managed; other admins never load the list.
   const roles = useAsync(() => isSuperAdmin ? api.get('/admin/custom-roles') : Promise.resolve({ roles: [] }), [isSuperAdmin]);
   const projGrants = useAsync(() => api.get('/admin/project-permissions'), []);
@@ -4959,9 +4956,9 @@ function AdminAccess({ isSuperAdmin }) {
       toast.success(t('acc.proj.granted', 'Granted project-edit access to {name}.').replace('{name}', picked.displayName)); projGrants.reload();
     } catch (x) { toast.error(x.data?.error === 'cannot_grant_self' ? t('acc.proj.self', 'You cannot grant yourself a permission.') : x.data?.error === 'cannot_grant_unheld_right' ? t('acc.proj.unheld', 'You cannot grant a right you do not hold on this page.') : x.data?.error || t('acc.failed', 'Failed.')); } finally { setBusy(false); }
   };
+  const projRightsLabel = (g) => (g.rights || ['pages']).map((r) => (r === 'studio' ? t('acc.proj.r.studio', 'studio') : t('acc.proj.r.pages', 'page'))).join(' + ');
   const revokeProject = (g) => undoProj.del(g.id, () => api.del(`/admin/project-permissions/${g.id}`), t('acc.revoked', 'Revoked.'));
   const projScopeLabel = (g) => g.allShowcase ? t('acc.proj.all', 'All other-projects') : g.showcase ? t('acc.proj.custom', 'Other · {name}').replace('{name}', g.showcase.name) : g.projectKey ? t('acc.proj.project', 'Project · {key}').replace('{key}', g.projectKey.toUpperCase()) : '';
-  const projRightsLabel = (g) => (g.rights || ['pages']).map((r) => (r === 'studio' ? t('acc.proj.r.studio', 'studio') : t('acc.proj.r.pages', 'page'))).join(' + ');
   const allProjGrants = (projGrants.data?.grants || []).filter((g) => !undoProj.pending.has(g.id));
   const userProjGrants = picked ? allProjGrants.filter((g) => g.user?.id === picked.id) : [];
   const scopeLabel = (g) => g.showcase ? t('acc.scope.custom', 'Custom · {name}').replace('{name}', g.showcase.name) : g.projectKey ? t('acc.scope.project', 'Project · {key}').replace('{key}', g.projectKey.toUpperCase()) : t('acc.scope.global', 'Global (all blogs)');
@@ -5081,8 +5078,6 @@ function AdminAccess({ isSuperAdmin }) {
                   {(scopes.data?.showcases || []).map((s) => <option key={s.slug} value={`showcase:${s.slug}`}>{t('acc.proj.customopt', 'Other · {name}').replace('{name}', s.name)}</option>)}
                   {(scopes.data?.projects || []).map((pr) => <option key={pr.key} value={`project:${pr.key}`}>{t('acc.proj.projectopt', 'Project · {name}').replace('{name}', pr.name)}</option>)}
                 </Select>
-                <Button size="sm" variant="primary" disabled={busy} onClick={grantProject}>{busy ? <Spinner /> : <><Plus size={14} /> {t('acc.grant', 'Grant')}</>}</Button>
-              </div>
                 {/* What the grant allows there. Two rights, granted apart: editing the page's
                     words, and drawing its studio pages (PLAN-STUDIO-2026 3.1). At least one. */}
                 {[['pages', t('acc.proj.r.pages.l', 'Page content'), t('acc.proj.r.pages.h', 'Edit the page: overview, presentation, timeline, config. Not publishing or visibility.')], ['studio', t('acc.proj.r.studio.l', 'Studio'), t('acc.proj.r.studio.h', 'Draw the studio pages of this page, while an administrator has its studio switched on.')]].map(([id, label, h]) => (
@@ -5092,6 +5087,8 @@ function AdminAccess({ isSuperAdmin }) {
                     {label}
                   </label>
                 ))}
+                <Button size="sm" variant="primary" disabled={busy} onClick={grantProject}>{busy ? <Spinner /> : <><Plus size={14} /> {t('acc.grant', 'Grant')}</>}</Button>
+              </div>
             </>)}
           </div>
 
@@ -5282,7 +5279,7 @@ function RoleManager({ roles }) {
                   <div>
                     <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1">{t('rm.scope.rights', 'Rights on these elements')}</div>
                     <div className="flex flex-wrap gap-1.5">
-                      {[['pages', t('rm.scope.r.pages', 'Edit the page content'), t('rm.scope.r.pages.h', 'Like a per-project grant: overview, presentation, timeline, config, not publishing or visibility.')], ['blog', t('rm.scope.r.blog', 'Write in its blog'), t('rm.scope.r.blog.h', 'Post and edit articles in the blog of these projects, the same as a blog permission, granted by role.')], ['market', t('rm.scope.r.market', 'Run its marketplace'), t('rm.scope.r.market.h', 'Create, price and delete the products of these projects, upload their files and mint their keys. NOT the platform margin, and not where the money is paid — both stay with a super-admin.')], ['inbox', t('rm.scope.r.inbox', 'Read its contact inbox'), t('rm.scope.r.inbox.h', 'Read and answer the messages visitors send to these projects. No edit right.')]].map(([id, label, h]) => {
+                      {[['pages', t('rm.scope.r.pages', 'Edit the page content'), t('rm.scope.r.pages.h', 'Like a per-project grant: overview, presentation, timeline, config, not publishing or visibility.')], ['blog', t('rm.scope.r.blog', 'Write in its blog'), t('rm.scope.r.blog.h', 'Post and edit articles in the blog of these projects, the same as a blog permission, granted by role.')], ['market', t('rm.scope.r.market', 'Run its marketplace'), t('rm.scope.r.market.h', 'Create, price and delete the products of these projects, upload their files and mint their keys. NOT the platform margin, and not where the money is paid — both stay with a super-admin.')], ['inbox', t('rm.scope.r.inbox', 'Read its contact inbox'), t('rm.scope.r.inbox.h', 'Read and answer the messages visitors send to these projects. No edit right.')], ['studio', t('rm.scope.r.studio', 'Draw its studio pages'), t('rm.scope.r.studio.h', 'Open the studio on these projects and draw their studio pages, while their studio is switched on. Not the page text.')]].map(([id, label, h]) => {
                         const on = scopeRights.includes(id);
                         return <button key={id} type="button" title={h} onClick={() => setScopeRights((r) => on ? (r.length > 1 ? r.filter((x) => x !== id) : r) : [...r, id])} className={`px-2.5 py-1 rounded-lg border text-xs ${on ? 'border-[var(--primary)] tint-primary text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)]'}`}>{label}</button>;
                       })}
@@ -7758,7 +7755,13 @@ function MailGallery({ t }) {
       </p>
 
       <div className="grid lg:grid-cols-[260px_1fr] gap-3">
-        <div className="space-y-3 max-h-[560px] overflow-auto pe-1">
+        {/* D6: the list used to be `max-h-[560px]` beside a column that is the editor PLUS a
+            560px preview, so its scrollbar stopped half-way down the component. On a wide
+            screen it now fills the whole row (absolute inside a relative cell, so the right
+            column alone decides the height and the list scrolls within it, to the bottom).
+            On a narrow screen, where it sits above the preview, it keeps a cap. */}
+        <div className="relative min-h-0 lg:min-h-[560px]">
+        <div className="space-y-3 max-h-[420px] lg:max-h-none lg:absolute lg:inset-0 overflow-y-auto overscroll-contain scroll-thin pe-1">
           {groups.map((g) => {
             const mine = samples.filter((s) => s.group === g.id);
             if (!mine.length) return null;
@@ -7769,7 +7772,7 @@ function MailGallery({ t }) {
                   {mine.map((s) => (
                     <button key={s.id} type="button" onClick={() => setPick(s.id)}
                       className={`w-full text-start px-2 py-1.5 rounded-lg text-[13px] flex items-center gap-2 ${pick === s.id ? 'bg-[var(--surface-2)] text-[var(--text)]' : 'text-[var(--muted)] hover:bg-[var(--surface-2)]'}`}>
-                      <span className="flex-1 min-w-0 truncate" title={s.label}>{s.label}</span>
+                      <span className="flex-1 min-w-0 break-words">{s.label}</span>
                       {/* Which mails an edit would actually reach. Without this the list looks
                           uniform and the difference is only discovered after typing. */}
                       {s.editable && <Pencil size={11} className={data?.templates?.[s.id] ? 'text-[var(--accent-ink)]' : 'text-[var(--faint)]'}
@@ -7784,8 +7787,9 @@ function MailGallery({ t }) {
             );
           })}
         </div>
+        </div>
 
-        <div>
+        <div className="min-w-0">
           {current?.note && <p className="text-[12px] text-[var(--muted)] mb-2">{current.note}</p>}
           {/* The wording, edited where the mail is shown.
               The preview above is built by the SAME path the sender uses, override included,
@@ -7826,12 +7830,11 @@ function MailGallery({ t }) {
                   <p className="text-[11px] text-[var(--muted)] mt-1.5 leading-snug">
                     {t('adm.mail.tpl.help', '{{body}} is the message the app builds — the name, the link, the amount. Wrapping it keeps all of that; removing it replaces the message entirely, which is allowed and is a decision. HTML is kept as written.')}
                   </p>
-                  <div className="flex items-center gap-2 mt-2.5">
-                    <Button size="sm" variant="primary" disabled={!dirty || saving} onClick={() => saveTemplate(draft)}>
-                      {saving ? <Spinner /> : <Save size={13} />} {t('common.save', 'Save')}
-                    </Button>
-                    {hasSaved && <Button size="sm" variant="ghost" disabled={saving} onClick={() => { setDraft({ subject: '', body: '' }); saveTemplate({ subject: '', body: '' }); }}>{t('adm.mail.tpl.revert', 'Back to the built-in wording')}</Button>}
-                  </div>
+                  {/* D1: the shared SaveBar, in the flow of this card (the preview sits under it). */}
+                  <SaveBar sticky={false} className="mt-2.5" dirty={dirty} busy={saving} onSave={() => saveTemplate(draft)}
+                    label={current.label}
+                    onDiscard={() => { const prev = draft; setDraft({ subject: saved.subject || '', body: saved.body || '' }); return () => setDraft(prev); }}
+                    extra={hasSaved ? <Button size="sm" variant="ghost" disabled={saving} onClick={() => { setDraft({ subject: '', body: '' }); saveTemplate({ subject: '', body: '' }); }}>{t('adm.mail.tpl.revert', 'Back to the built-in wording')}</Button> : null} />
                 </>
               )}
             </div>
@@ -9304,13 +9307,13 @@ function ProjectVersionHistory({ projectKey, onApply, onSchedule, refreshKey = 0
       <p className="text-xs text-[var(--muted)] mb-3">
         {t('apv.sub', 'Saving the page under a new version adds an entry on its own, and so does a scheduled update. Add one by hand when the history is missing a release.')}
       </p>
-
-      {/* The live version with no stored snapshot behind it. It shows on the public list
-          already (that list falls back to the live config), so leaving it out here would
       {/* G2 (agent-projects-G23): what a release SAID lives on the page's Versions tab, edited there. */}
       <Link to={`/p/${projectKey}?tab=versions`} className="inline-flex items-center gap-1 text-xs text-[var(--accent-ink)] hover:underline mb-3">
         <History size={12} /> {t('apv.relnotes', 'Notes, downloads and channel of each version: on the project page, Versions tab')}
       </Link>
+
+      {/* The live version with no stored snapshot behind it. It shows on the public list
+          already (that list falls back to the live config), so leaving it out here would
           mean a version the reader can see and the admin cannot find. */}
       {data?.liveUnrecorded && (
         <div className="rounded-lg border border-dashed border-[var(--line-strong)] px-3 py-2 mb-2 flex items-center gap-2 text-[13px]">
@@ -9886,6 +9889,10 @@ function AdminProjects() {
           // move the "Edit staged" button already makes.
           onSchedule={(cfg) => { setText(JSON.stringify(cfg, null, 2)); setScheduling(true); }} />
       )}
+      {/* G4 (agent-catalog-G): this project's own catalogues. Every editor of the project, not
+          only managers: the server asks canEditProject / canEditShowcase, and the panel hides
+          itself on a 403. */}
+      <ProjectCatalogsPanel scope={isShowcase ? 'showcase' : 'project'} refKey={isShowcase ? active.slice(3) : active} />
       {activeManageable && <div className="flex justify-end mb-4">
         <Button size="sm" variant="ghost" onClick={() => setScheduling(true)} title={t('apj.stagefuture', 'Stage a future content swap for this page')}><Clock size={13} /> {(isShowcase ? activeShow : activeMeta)?.scheduledAt ? t('apj.reschedule', 'Reschedule') : t('sh.schedtip', 'Schedule an update')}</Button>
       </div>}
@@ -9893,10 +9900,6 @@ function AdminProjects() {
         <div className="flex items-center justify-between gap-2 px-4 py-2.5 code-chrome flex-wrap">
           <div className="flex items-center gap-2 text-sm font-medium text-[var(--text)]"><M.icon size={15} className="text-orange-400" /> {M.name}</div>
           <div className="flex items-center gap-2">
-      {/* G4 (agent-catalog-G): this project's own catalogues. Every editor of the project, not
-          only managers: the server asks canEditProject / canEditShowcase, and the panel hides
-          itself on a 403. */}
-      <ProjectCatalogsPanel scope={isShowcase ? 'showcase' : 'project'} refKey={isShowcase ? active.slice(3) : active} />
             {/* Visual form is the default; raw JSON stays as an advanced escape hatch. */}
             <div className="inline-flex rounded-lg border border-[var(--line)] p-0.5 text-xs">
               {[['form', t('su.visual', 'Visual')], ['json', 'JSON']].map(([m, label]) => (
@@ -12755,7 +12758,9 @@ function SceneEditor() {
   // vocabulary, not the value, and PUTting them back would be sending the menu with the order.
   useEffect(() => {
     if (!data) return;
-    const { shapes, surfaces, ...v } = data;
+    // D1: `hovers` and `reveals` are vocabulary too. Left in, the draft never equalled
+    // `saved` below and the editor said "Unsaved changes" the moment it opened.
+    const { shapes, surfaces, hovers, reveals, ...v } = data;
     setCfg(v);
   }, [data]);
   if (loading || !cfg) return <Loading />;
@@ -12982,13 +12987,8 @@ function SceneEditor() {
             {t('scn.prev.d3', 'Live, and the real thing: same geometry, shader, palette and opacity as the page behind you. Hover it to try the pointer reaction. Only the intro, the cursor parallax and the scroll drift are left out.')}
           </p>
           <div className="flex items-center gap-2 mt-3 flex-wrap">
-            <Button variant="primary" onClick={save} loading={busy} disabled={!dirty}><Save size={15} /> {t('common.save', 'Save')}</Button>
-            <Button variant="ghost" size="sm" onClick={() => setCfg(saved)} disabled={!dirty}>{t('scn.revert', 'Undo changes')}</Button>
             <Button variant="ghost" size="sm" onClick={resetAll}><RotateCcw size={13} /> {t('scn.reset.all', 'Shipped look')}</Button>
           </div>
-          <p className="text-[11px] mt-2 text-[var(--muted)]" aria-live="polite">
-            {dirty ? t('scn.dirty', 'Unsaved changes. Visitors still see the saved scene.') : t('scn.clean', 'Saved. This is what visitors see.')}
-          </p>
           {/* The backdrop is built once per page load, so the admin looking past this card is
               looking at the previous scene. Said, rather than left to be discovered by
               staring at an unchanged page. */}
@@ -12997,6 +12997,12 @@ function SceneEditor() {
         </div>
       </div>
       <SceneEventScenes cfg={cfg} set={set} shapes={shapes} names={NAMES} />
+      {/* D4: transitions between shapes (pages/admin-scene-transitions.jsx). */}
+      <SceneTransitionsEditor cfg={cfg} set={set} shapes={shapes} names={NAMES} />
+      {/* D1: the shared SaveBar. Sticky over this card while it is on screen. */}
+      <SaveBar dirty={dirty} busy={busy} onSave={save} label={t('scn.title', '3D scene')}
+        onDiscard={() => { const prev = cfg; setCfg(saved); return () => setCfg(prev); }}
+        detail={dirty ? t('scn.dirty2', 'visitors still see the saved scene') : t('scn.clean2', 'this is what visitors see')} />
     </Card>
   );
 }
@@ -13362,8 +13368,17 @@ function ShowcaseEditor() {
 
       <div className="flex gap-2 mt-4">
         <Button onClick={add} disabled={cfg.items.length >= (data?.max || 12)}><Plus size={15} /> {t('shsc.add', 'Add a project')}</Button>
-        <Button variant="primary" onClick={save} loading={busy}><Save size={15} /> {t('common.save', 'Save')}</Button>
       </div>
+      {/* D1: the shared SaveBar. This editor had no dirty state: Save was always lit. */}
+      {(() => {
+        const savedCfg = { enabled: !!data.enabled, intervalMs: data.intervalMs || 6000, items: data.items || [] };
+        const dirty = JSON.stringify(cfg) !== JSON.stringify(savedCfg);
+        return (
+          <SaveBar dirty={dirty} busy={busy} onSave={save} label={t('shsc.title', 'Landing showcase')}
+            onDiscard={() => { const prev = cfg; setCfg(savedCfg); return () => setCfg(prev); }}
+            detail={t('shsc.n', '{n} project(s)').replace('{n}', String(cfg.items.length))} />
+        );
+      })()}
     </Card>
   );
 }
@@ -13551,8 +13566,9 @@ function HomePageEditor() {
           <p className="text-xs text-[var(--muted)] max-w-xl">{t('hp.desc3', 'The home page LAYOUT: which landing variant it opens with, which sections it draws, and the suite row. The words on it are edited in the Languages editor, with every other string on the site.')}</p>
         </div>
         {/* An editor for a public page with no way to go and look at it asks you to keep
-            the result in your head. */}
-        <div className="flex items-center gap-2 shrink-0">
+            the result in your head. (D5: wraps, so the second button is not pushed off a phone
+            screen in French.) */}
+        <div className="flex items-center gap-2 flex-wrap max-w-full">
           {/* Two different things, and the difference is the point: one shows what visitors
               see right now, the other shows what they would see if this were saved. */}
           <button type="button" onClick={() => setPreview(true)}
@@ -13591,66 +13607,10 @@ function HomePageEditor() {
           A wireframe, not a screenshot: a screenshot goes stale the first time somebody
           rewrites a line, and this is derived from the same declaration the real page
           renders from. */}
-      <div className="grid sm:grid-cols-3 gap-3">
-        {VARIANTS.map((v) => {
-          // The hero is not in the sections list because it is not switchable; it is on
-          // every page but v3, whose whole point is not having one. Said here rather than
-          // inferred, and read from the same map the toggles use.
-          const list = variantMap?.[v.v]?.sections || [];
-          const hasHero = v.v !== 'v3';
-          return (
-            <button
-              key={v.v}
-              type="button"
-              onClick={() => setVariant(v.v)}
-              aria-pressed={variant === v.v}
-              className={`text-start rounded-xl border p-3 transition-colors ${
-                variant === v.v
-                  ? 'border-[var(--primary)] tint-primary-soft'
-                  : 'border-[var(--line)] hover:border-[var(--line-strong)]'
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-semibold">{v.name}</span>
-                <span className="ms-auto text-[10px] font-mono text-[var(--faint)]">{v.v}</span>
-              </div>
-
-              {/* The page, small. aria-hidden because the list under it says the same thing
-                  in words — a screen reader hearing eight unlabelled boxes learns nothing. */}
-              <div aria-hidden="true"
-                className="mt-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] p-1.5 space-y-1">
-                {hasHero && (
-                  <div className="rounded tint-primary-strong h-6 flex items-center justify-center">
-                    <span className="text-[8px] font-semibold text-[var(--muted)] tracking-wide">
-                      {t('hp.wire.hero', 'HERO')}
-                    </span>
-                  </div>
-                )}
-                {list.map((id) => (
-                  <div key={id}
-                    className="rounded bg-[var(--surface-3,var(--line))] h-3.5 flex items-center px-1.5">
-                    <span className="text-[7.5px] uppercase tracking-wide text-[var(--faint)] truncate">
-                      {SECTION_LABEL[id] || id}
-                    </span>
-                  </div>
-                ))}
-                {!list.length && (
-                  <div className="text-[8px] text-[var(--faint)] text-center py-2">
-                    {t('hp.wire.none', 'no sections')}
-                  </div>
-                )}
-              </div>
-
-              <p className="mt-2 text-[11px] leading-snug text-[var(--muted)]">{v.sub}</p>
-              {/* The count is the fact somebody compares on, and counting boxes by eye is
-                  what the number is for. */}
-              <p className="mt-1 text-[10px] text-[var(--faint)]">
-                {t('hp.wire.count', '{n} section(s)').replace('{n}', String(list.length + (hasHero ? 1 : 0)))}
-              </p>
-            </button>
-          );
-        })}
-      </div>
+      {/* D3: the preset cards live in pages/admin-home-presets.jsx: layout-aware wireframes,
+          a "live" / "selected, not saved" badge, and a preview for each without saving. */}
+      <HomePresetCards variants={VARIANTS} variantMap={variantMap} variant={variant} saved={data.variant || 'v1'}
+        onPick={setVariant} onPreview={(v) => { setVariant(v); setPreview(true); }} sectionLabel={SECTION_LABEL} />
 
       {/* The page itself, under a provider carrying the unsaved copy. Not a mock-up: the
           section switches, the chosen variant and every rewritten line resolve exactly the
@@ -13868,21 +13828,19 @@ function HomePageEditor() {
           strip with a hairline on top. It was `.scrim` + `backdrop-blur`, translucent and
           blurred with Translucent surfaces OFF, the one surface on this screen that ignored
           the setting. Solid by default, frosted when the visitor asks for it. */}
-      <div className="save-dock" data-dirty={dirty ? '1' : undefined}>
-        <span className="save-dock-dot" aria-hidden="true" />
-        <span className="text-[12px] min-w-0 flex-1">
-          <span className="font-medium text-[var(--text)]">
-            {dirty ? t('hp.dock.dirty', 'Unsaved changes') : t('hp.dock.clean', 'All changes saved')}
-          </span>
-          <span className="text-[var(--muted)]">
-            {' · '}
-            {changed > 0
-              ? t('hp.pending', '{n} line(s) rewritten').replace('{n}', String(changed))
-              : (lang === 'fr' ? t('hp.note.fr', 'Le champ vide affiche le texte livré.') : t('hp.note', 'An empty box shows the shipped wording.'))}
-          </span>
-        </span>
-        <Button variant="primary" onClick={save} disabled={busy || !dirty} loading={busy}><Save size={15} /> {t('common.save', 'Save')}</Button>
-      </div>
+      {/* D1: the shared SaveBar (ui/save-bar.jsx), same frame as before plus Discard, Ctrl+S
+          and the leave-page guard. */}
+      <SaveBar dirty={dirty} busy={busy} onSave={save} label={t('adm.tab.homepage', 'Home page')}
+        onDiscard={() => {
+          const prev = { form, sections, variant, suite, custom };
+          setForm(data.text || {}); setSections(data.sections || {}); setVariant(data.variant || 'v1');
+          setSuite({ style: data.suite?.style || 'grid', extra: data.suite?.extra || [] });
+          setCustom(Array.isArray(data.customSections) ? data.customSections : []);
+          return () => { setForm(prev.form); setSections(prev.sections); setVariant(prev.variant); setSuite(prev.suite); setCustom(prev.custom); };
+        }}
+        detail={changed > 0
+          ? t('hp.pending', '{n} line(s) rewritten').replace('{n}', String(changed))
+          : (lang === 'fr' ? t('hp.note.fr', 'Le champ vide affiche le texte livré.') : t('hp.note', 'An empty box shows the shipped wording.'))} />
     </div>
   );
 }
@@ -20378,7 +20336,9 @@ const NavPvIcon = ({ name, size = 15 }) => <IconGlyph name={navPvName(name)} siz
 // Why a frame (ui/preview-frame.jsx): the topbar is responsive by media query, and a media
 // query reads the viewport. A 375px iframe IS a 375px viewport, so the phone layout here is
 // the phone layout, including the bottom bar docked to the bottom of the screen.
-const PV_DESKTOP = { w: 1280, h: 380 };
+// D2: 300 rather than 380. Full width it is drawn at ~75%, and pinned under the topbar every
+// pixel of it is a pixel of editor hidden; 300 still fits the bar plus an open dropdown.
+const PV_DESKTOP = { w: 1280, h: 300 };
 const PV_PHONE = { w: 375, h: 700 };
 // Stand-in viewers. Only the fields the topbar reads: role for the staff rule (lib/roles.js
 // canAdmin), a name for the avatar's title, an id for its seed.
@@ -20422,7 +20382,9 @@ function LiveNavPreview({ cfg, device, theme, onTheme, viewer, onEdit, tall = fa
     if (Number.isInteger(idx) && onEdit) onEdit(idx);
   }, [onEdit]);
   const phone = device === 'mobile';
-  const base = phone ? PV_PHONE : PV_DESKTOP;
+  // D2: a laptop width too. 1024 is where the pill nav first appears (lg), so it is the tightest
+  // desktop bar a visitor gets, and in the admin column it is drawn larger than the 1280 one.
+  const base = phone ? PV_PHONE : device === 'laptop' ? { w: 1024, h: PV_DESKTOP.h } : PV_DESKTOP;
   const dim = useMemo(() => ({ w: base.w, h: tall ? Math.round(base.h * (phone ? 1.18 : 1.65)) : base.h }), [base.w, base.h, tall, phone]);
   // Fitted to the column, then the zoom multiplies it. On a phone-width admin screen the fitted
   // desktop bar is a sliver, which is what the zoom is for; past the fit the row pans.
@@ -20502,11 +20464,17 @@ function AdminNav() {
   // it never leaves the viewport; `top` is the old behaviour, kept because on a laptop at
   // 1280 the column costs the editor half its width and some people would rather have it.
   // Below the two-column breakpoint neither helps, which is what the docked sheet is for.
-  const [pvDock, setPvDock] = useState(() => { try { return localStorage.getItem('bcw.nav.pv.dock') === 'top' ? 'top' : 'side'; } catch { return 'side'; } });
+  //
+  // D2: the side column is gone. Beside the editor the desktop bar (laid out at 1280px) was
+  // drawn at about 30% in a 380px column: a grey sliver where no label could be read, which is
+  // what "the preview is greyed out" was describing. The preview is now full width above the
+  // panels (a 1280px bar at roughly 75% on a laptop), and "Keep it in view" pins it under the
+  // site's own topbar while the editor scrolls, which is what the side column was for.
+  const [pvPin, setPvPin] = useState(() => { try { return localStorage.getItem('bcw.nav.pv.pin') !== '0'; } catch { return true; } });
   const [pvTall, setPvTall] = useState(() => { try { return localStorage.getItem('bcw.nav.pv.tall') === '1'; } catch { return false; } });
   // The reachable preview: pinned to the bottom of the screen, over the editor, at any width.
   const [pvSheet, setPvSheet] = useState(false);
-  const dockTo = (v) => { setPvDock(v); try { localStorage.setItem('bcw.nav.pv.dock', v); } catch { /* private mode */ } };
+  const pinTo = (v) => { setPvPin(v); try { localStorage.setItem('bcw.nav.pv.pin', v ? '1' : '0'); } catch { /* private mode */ } };
   const tallTo = (v) => { setPvTall(v); try { localStorage.setItem('bcw.nav.pv.tall', v ? '1' : '0'); } catch { /* private mode */ } };
   // The preview's scheme and viewer. Its own, not the admin's: per-theme icons and the
   // signed-out bar are exactly the two things an admin cannot see from their own session.
@@ -20533,9 +20501,11 @@ function AdminNav() {
     setFlashIdx(idx);
     setTimeout(() => setFlashIdx((v) => (v === idx ? null : v)), 1400);
   };
-  useEffect(() => {
-    const n = loaded.data?.nav;
-    if (!n) return;
+  // D1: the draft is ten pieces of state, so "apply the saved config" is one function used by
+  // the load and by Discard, and `baseTick` marks the render in which a load landed so the
+  // baseline below is taken from the SAME cleaning Save uses.
+  const [baseTick, setBaseTick] = useState(0);
+  const applyNav = (n) => {
     setEnabled(!!n.enabled);
     setItems((n.items || []).map((it) => ({ type: it.type === 'group' ? 'group' : 'link', label: it.label || '', labelFr: it.labelFr || '', to: it.to || '', icon: it.icon || 'Boxes', children: (it.children || []).map((c) => ({ label: c.label || '', labelFr: c.labelFr || '', to: c.to || '/', desc: c.desc || '', descFr: c.descFr || '', icon: c.icon || 'Boxes' })) })));
     setUtility(n.utility && typeof n.utility === 'object' ? n.utility : {});
@@ -20546,6 +20516,13 @@ function AdminNav() {
     setDownbarItems(Array.isArray(n.downbar?.items) ? n.downbar.items.map((it) => ({ kind: it.kind === 'primary' || it.kind === 'dropup' ? it.kind : 'link', label: it.label || '', labelFr: it.labelFr || '', to: it.to || '/', icon: it.icon || 'Boxes', children: (it.children || []).map((c) => ({ label: c.label || '', labelFr: c.labelFr || '', to: c.to || '/', icon: c.icon || 'Boxes' })) })) : []);
     setLayout(readLayout(n.layout));
     setMobileMenu(readMobileMenu(n.mobileMenu));
+    setBaseTick((x) => x + 1);
+  };
+  useEffect(() => {
+    const n = loaded.data?.nav;
+    if (!n) return;
+    applyNav(n);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loaded.data]);
 
   const patchItem = (i, patch) => setItems((s) => s.map((it, k) => k === i ? { ...it, ...patch } : it));
@@ -20726,45 +20703,67 @@ function AdminNav() {
   // only while the switch is on), so it shows what visitors WILL get once this is saved.
   const pvDraft = buildClean(true);
   const pvCfg = { ...pvDraft, items: pvDraft.enabled ? pvDraft.items : [] };
+  // D1: what the server holds, read through buildClean like the draft, so a row Save would
+  // drop anyway is not "unsaved".
+  const [baseline, setBaseline] = useState(null);
+  useEffect(() => { if (baseTick) setBaseline(JSON.stringify(buildClean())); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [baseTick]);
+  const navDirty = baseline != null && JSON.stringify(buildClean()) !== baseline;
+  const discardNav = () => {
+    const prev = { enabled, items, utility, projectsMode, downbarEnabled, downbarDisplay, downbarQuick, downbarItems, layout, mobileMenu };
+    if (loaded.data?.nav) applyNav(loaded.data.nav);
+    return () => {
+      setEnabled(prev.enabled); setItems(prev.items); setUtility(prev.utility); setProjectsMode(prev.projectsMode);
+      setDownbarEnabled(prev.downbarEnabled); setDownbarDisplay(prev.downbarDisplay); setDownbarQuick(prev.downbarQuick);
+      setDownbarItems(prev.downbarItems); setLayout(prev.layout); setMobileMenu(prev.mobileMenu);
+    };
+  };
 
   // The preview, built once and placed wherever the dock says. Built ONCE on purpose: a second
   // copy for the mobile sheet would be a second iframe rendering the real topbar, and the two
   // would disagree about scroll, open menus and theme the moment either was touched.
   const previewCard = (
-    <Card className="p-4">
-      <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
-        <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Eye size={13} className="text-[var(--accent-ink)]" /> {t('nav.pv.title', 'Live preview')} <span className="normal-case font-normal text-[var(--faint)]">({lang.toUpperCase()})</span></div>
-        <div className="flex items-center gap-1.5 flex-wrap">
-          {(() => {
-            const seg = (value, set, opts) => (
-              <div className="flex rounded-lg border border-[var(--line)] overflow-hidden">
-                {opts.map(([v, I, label]) => (
-                  <button key={v} type="button" onClick={() => set(v)} aria-pressed={value === v} title={label}
+    <Card className="p-3 sm:p-4" style={pvPin ? { background: 'var(--bg-solid)' } : undefined}>
+      {/* D2: one labelled toolbar. It was five unlabelled icon toggles in a row (the labels
+          were hidden in the side column), so which one was "who is looking" and which one was
+          "how tall" had to be found by hovering. Each group now says what it sets, and the row
+          wraps instead of hiding words, so it holds in French too. */}
+      <div className="flex items-center gap-x-4 gap-y-2 mb-3 flex-wrap">
+        <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5 me-auto"><Eye size={13} className="text-[var(--accent-ink)]" /> {t('nav.pv.title', 'Live preview')} <span className="normal-case font-normal text-[var(--faint)]">({lang.toUpperCase()})</span></div>
+        {(() => {
+          const seg = (label, value, set, opts) => (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-[11px] text-[var(--muted)]">{label}</span>
+              <div className="flex flex-wrap rounded-lg border border-[var(--line)] overflow-hidden" role="group" aria-label={label}>
+                {opts.map(([v, I, lbl]) => (
+                  <button key={v} type="button" onClick={() => set(v)} aria-pressed={value === v}
                     className={`px-2.5 py-1 text-xs flex items-center gap-1.5 ${value === v ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>
-                    <I size={13} /> <span className={pvDock === 'side' ? 'hidden 2xl:inline' : ''}>{label}</span>
+                    <I size={13} /> {lbl}
                   </button>
                 ))}
               </div>
-            );
-            return <>
-              {seg(pvViewer, setPvViewer, [['out', LogIn, t('nav.pv.v.out', 'Signed out')], ['member', UserIcon, t('nav.pv.v.member', 'Member')], ['admin', Shield, t('nav.pv.v.admin', 'Admin')]])}
-              {seg(pvTheme, setPvTheme, [['light', Sun, t('nav.pv.light', 'Light')], ['dark', Moon, t('nav.pv.dark', 'Dark')]])}
-              {seg(device, setDevice, [['desktop', MonitorIcon, t('nav.pv.desktop', 'Desktop')], ['mobile', Smartphone, t('nav.pv.mobile', 'Mobile')]])}
-              {/* Where the preview lives, and how much of the page it shows. Both are
-                  remembered, so the screen opens the way it was left. */}
-              {!pvSheet && <div className="hidden xl:flex">{seg(pvDock, dockTo, [['side', PanelTop, t('nav.pv.dock.side', 'Beside the editor')], ['top', LayoutGrid, t('nav.pv.dock.top', 'Above the editor')]])}</div>}
-              {seg(pvTall ? 'tall' : 'short', (v) => tallTo(v === 'tall'), [['short', Minus, t('nav.pv.short', 'Just the bar')], ['tall', ChevronsUp, t('nav.pv.tall', 'More of the page')]])}
-            </>;
-          })()}
-        </div>
+            </div>
+          );
+          return <>
+            {seg(t('nav.pv.g.who', 'Seen by'), pvViewer, setPvViewer, [['out', LogIn, t('nav.pv.v.out', 'Signed out')], ['member', UserIcon, t('nav.pv.v.member', 'Member')], ['admin', Shield, t('nav.pv.v.admin', 'Admin')]])}
+            {seg(t('nav.pv.g.theme', 'Theme'), pvTheme, setPvTheme, [['light', Sun, t('nav.pv.light', 'Light')], ['dark', Moon, t('nav.pv.dark', 'Dark')]])}
+            {seg(t('nav.pv.g.device', 'Screen'), device, setDevice, [['desktop', MonitorIcon, t('nav.pv.desktop', 'Desktop')], ['laptop', LaptopIcon, t('nav.pv.laptop', 'Laptop')], ['mobile', Smartphone, t('nav.pv.mobile', 'Mobile')]])}
+            {seg(t('nav.pv.g.size', 'Show'), pvTall ? 'tall' : 'short', (v) => tallTo(v === 'tall'), [['short', Minus, t('nav.pv.short', 'Just the bar')], ['tall', ChevronsUp, t('nav.pv.tall', 'More of the page')]])}
+            {/* Pinning only means something where the preview is in the page (not the sheet),
+                and on a screen tall enough to spare the room: lg and up. */}
+            {!pvSheet && (
+              <label className="hidden lg:inline-flex items-center gap-1.5 text-xs text-[var(--muted)] cursor-pointer select-none">
+                <input type="checkbox" className="accent-[var(--primary)]" checked={pvPin} onChange={(e) => pinTo(e.target.checked)} />
+                <PanelTop size={13} /> {t('nav.pv.pin', 'Keep it in view')}
+              </label>
+            )}
+          </>;
+        })()}
       </div>
       {!enabled && <div className="text-[11px] text-warning mb-2">{t('nav.pv.off', 'Custom navigation is off, so this is the built-in menu visitors get. Turn it on above to preview your items.')}</div>}
       <LiveNavPreview cfg={pvCfg} device={device} theme={pvTheme} onTheme={setPvTheme} viewer={pvViewer} onEdit={editItem} tall={pvTall} />
-      <div className="text-[11px] text-[var(--faint)] mt-2 flex items-center gap-1"><MousePointerClick size={11} /> {device === 'desktop' ? t('nav.pv.edithint', 'Click any item in the preview to jump to its settings below.') : t('nav.pv.tapmenu', 'Tap the menu button to open the phone menu. Links jump to their settings instead of navigating.')}</div>
+      <div className="text-[11px] text-[var(--faint)] mt-2 flex items-center gap-1"><MousePointerClick size={11} /> {device !== 'mobile' ? t('nav.pv.edithint', 'Click any item in the preview to jump to its settings below.') : t('nav.pv.tapmenu', 'Tap the menu button to open the phone menu. Links jump to their settings instead of navigating.')}</div>
     </Card>
   );
-  const side = pvDock === 'side' && !pvSheet;
-
   if (loaded.loading) return <Loading />;
   return (
     <div className="space-y-5">
@@ -20782,15 +20781,21 @@ function AdminNav() {
           <div className="font-medium text-sm">{t('nav.enable', 'Use this custom navigation')}</div>
           <div className="text-xs text-[var(--faint)]">{enabled ? t('nav.enable.on', 'The topbar shows your configured items below.') : t('nav.enable.off', 'The topbar shows the built-in navigation.')}{enabled && validCount === 0 && <span className="text-warning"> · {t('nav.enable.empty', 'no valid items yet, the built-in nav still shows')}</span>}</div>
         </div>
-        <div className="flex items-center gap-1.5 shrink-0">
+        {/* D2: every "where does this configuration come from" action in one labelled group:
+            the built-in nav (was at the foot of the menu panel, out of sight on the other two
+            panels), a file, or a file out. Wraps under the switch on a narrow screen. */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-[11px] text-[var(--muted)] me-0.5">{t('nav.presets', 'Start from')}</span>
           <input ref={fileRef} type="file" accept="application/json,.json" className="hidden" onChange={importPreset} />
+          <Button size="sm" variant="ghost" onClick={resetDefault}><Layers size={14} /> {t('nav.seed2', 'The built-in nav')}</Button>
           <Button size="sm" variant="ghost" onClick={() => fileRef.current?.click()}><UploadIcon size={14} /> {t('nav.import', 'Import')}</Button>
           <Button size="sm" variant="ghost" onClick={exportPreset}><Download size={14} /> {t('nav.export', 'Export')}</Button>
         </div>
       </Card>
 
-      {/* Three panels. The preview stays above them, because it is what every panel changes. */}
-      <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
+      {/* Three panels. The preview stays above them, because it is what every panel changes.
+          D5: wraps rather than scrolling sideways, so in French the third tab is not off-screen. */}
+      <div className="flex flex-wrap gap-1.5">
         {[['menu', Navigation, t('nav.p.menu', 'Menu items')],
           ['buttons', LayoutGrid, t('nav.p.buttons', 'Topbar buttons')],
           ['layout', Sliders, t('nav.p.layout', 'Layout & mobile')]].map(([k, I, label]) => (
@@ -20810,11 +20815,14 @@ function AdminNav() {
           and stays there, stuck to the top of the viewport while the editor scrolls under it.
           When the docked sheet is open the flow slot renders nothing: there is one preview on
           the page at all times, never two. */}
-      <div className={side ? 'xl:grid xl:grid-cols-[minmax(0,1fr)_minmax(21rem,26rem)] xl:gap-5 xl:items-start' : ''}>
-        <div className={side ? 'xl:col-start-2 xl:row-start-1 xl:sticky xl:top-3 mb-5 xl:mb-0' : 'mb-5'}>
+      {/* D2: preview full width, above the panels; pinned under the site topbar (lg+) when
+          "Keep it in view" is on. Opaque card so the form scrolling under it never shows
+          through (inline `--bg-solid` on the card while pinned). */}
+      <div>
+        <div className={`mb-5 ${pvPin ? 'lg:sticky lg:top-[4.75rem] lg:z-20' : ''}`}>
           {!pvSheet && previewCard}
         </div>
-        <div className={`min-w-0 space-y-5 ${side ? 'xl:col-start-1 xl:row-start-1' : ''}`}>
+        <div className="min-w-0 space-y-5">
 
       {/* Pinned projects display + mobile bottom bar. */}
       {panel === 'layout' && (
@@ -21112,10 +21120,8 @@ function AdminNav() {
         <div className="flex flex-wrap items-center gap-2">
           <Button size="sm" variant="default" onClick={() => addItem('link')}><Plus size={14} /> {t('nav.addlink', 'Add link')}</Button>
           <Button size="sm" variant="default" onClick={() => addItem('group')}><Plus size={14} /> {t('nav.addgroup', 'Add dropdown')}</Button>
-          {/* The ONE button that loads the built-in navigation. There were two — this one and
-              "Reset to default" in the preset row — running the same expression under
-              different names, on the same screen. */}
-          <Button size="sm" variant="ghost" onClick={resetDefault}><Layers size={14} /> {t('nav.seed', 'Start from the built-in nav')}</Button>
+          {/* The ONE button that loads the built-in navigation now sits in the "Start from"
+              group at the top (D2), next to Import and Export, visible from every panel. */}
         </div>
       )}
         </div>
@@ -21143,7 +21149,7 @@ function AdminNav() {
         // Above the save dock, never over it: the two are the only floating things on this
         // screen and one hiding the other is how a Save button goes missing.
         <button type="button" onClick={() => setPvSheet(true)}
-          className="fixed z-30 end-3 bottom-24 xl:hidden inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-[var(--primary)] text-xs shadow-lg"
+          className="fixed z-30 end-3 bottom-24 lg:hidden inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-[var(--primary)] text-xs shadow-lg"
           style={{ background: 'var(--bg-solid)' }}>
           <Eye size={13} className="text-[var(--accent-ink)]" /> {t('nav.pv.open', 'Preview')}
         </button>
@@ -21154,12 +21160,10 @@ function AdminNav() {
       {/* `.save-dock`, like the home editor: a floating bar in the card family. It was `.scrim`
           + `backdrop-blur`, i.e. translucent and blurred even with Translucent surfaces OFF, which
           over the 3D backdrop read as a dark slab. */}
-      <div className="save-dock">
-        <span className="text-[11px] text-[var(--muted)] min-w-0 flex-1">
-          {validCount} {t('nav.valid', 'item(s) will be saved')}
-        </span>
-        <Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : <><Save size={15} /> {t('nav.save', 'Save navigation')}</>}</Button>
-      </div>
+      {/* D1: the shared SaveBar (dirty state, Discard with undo, Ctrl+S, leave guard). */}
+      <SaveBar dirty={navDirty} busy={busy} onSave={save} onDiscard={discardNav} label={t('adm.tab.navui2', 'Topbar')}
+        saveLabel={t('nav.save', 'Save navigation')}
+        detail={<>{validCount} {t('nav.valid', 'item(s) will be saved')}</>} />
       {iconPick && <IconPicker title={t('nav.pickicon', 'Pick a nav icon')} onPick={(v) => iconPick.onChange(v)} onClose={() => setIconPick(null)} />}
     </div>
   );
@@ -21301,6 +21305,7 @@ export function OwnerCatalogs() {
   const [openId, setOpenId] = useState(null);
   const [accessId, setAccessId] = useState(null);
   const [trafficId, setTrafficId] = useState(null); // the catalogue whose live traffic is open
+  const [domainId, setDomainId] = useState(null); // the catalogue whose custom-domain panel is open
   const [hidden, setHidden] = useState(() => new Set()); // optimistically-removed during the undo window
   const cats = (data?.catalogs || []).filter((c) => !hidden.has(c.id));
   const patch = async (c, body) => { try { await api.patch(`/me/catalogs/${c.id}`, body); reload(); } catch (x) { toast.error(x.data?.error || t('acc.failed', 'Failed.')); } };
@@ -21350,6 +21355,7 @@ export function OwnerCatalogs() {
                 c.mode === 'managed' && { key: 'items', label: t('oc.items', 'Items'), icon: Package, onClick: () => setOpenId(openId === c.id ? null : c.id) },
                 { key: 'access', label: t('oc.access', 'Access'), icon: ShieldCheck, onClick: () => setAccessId(accessId === c.id ? null : c.id) },
                 { key: 'traffic', label: t('oc.traffic', 'Live traffic'), icon: Activity, onClick: () => setTrafficId(trafficId === c.id ? null : c.id) },
+                { key: 'domain', label: t('oc.domain', 'Custom domain'), icon: Globe, onClick: () => setDomainId(domainId === c.id ? null : c.id) },
                 { key: 'del', label: t('common.delete', 'Delete'), icon: Trash2, danger: true, onClick: () => del(c) },
               ].filter(Boolean)} />
             </div>
@@ -21364,7 +21370,6 @@ export function OwnerCatalogs() {
                   to the wrong app is worse than an unlabelled one, and would otherwise be
                   permanently mislabelled. */}
               <label className="flex items-center gap-1.5 text-[var(--muted)]">
-  const [domainId, setDomainId] = useState(null); // the catalogue whose custom-domain panel is open
                 {t('oc.forapp', 'For')}
                 <Select className="!w-auto" value={c.app || ''} onChange={(e) => patch(c, { app: e.target.value })}>
                   <option value="">{t('oc.forapp.none', 'Not specified')}</option>
@@ -21379,6 +21384,8 @@ export function OwnerCatalogs() {
             {/* Feed fetches and item downloads, private share-link hits included (marked with a
                 key): the owner route, never the staff one. */}
             {trafficId === c.id && <LiveTraffic bare url={`/me/catalogs/${c.id}/traffic`} />}
+            {/* The API always accepted `catalogs` here (routes/domains.mjs); only repos had the panel. */}
+            {domainId === c.id && <div className="mt-3"><DomainPanel kind="catalogs" id={c.id} /></div>}
           </Card>
         ))}
       </div> : <EmptyState icon={Boxes} title={t('mycat.none.t', 'No catalogs yet')} sub={t('mycat.none.s', 'Host your own catalog of plugins, themes or apps.')}
@@ -21414,7 +21421,6 @@ function OwnerCatalogItems({ catalog, onChange }) {
         meta: (!file && f.url) ? { download_url: f.url.trim() } : {},
       });
       setF({ ...f, name: '', url: '' }); setFile(null); if (fileRef.current) fileRef.current.value = '';
-                { key: 'domain', label: t('oc.domain', 'Custom domain'), icon: Globe, onClick: () => setDomainId(domainId === c.id ? null : c.id) },
       reload(); onChange?.();
     } catch (x) {
       const e = x.data?.error;
@@ -21443,8 +21449,6 @@ function OwnerCatalogItems({ catalog, onChange }) {
               <button onClick={() => rm(it)} className="text-[var(--faint)] hover:text-error"><X size={13} /></button>
             </div>
           ))}
-            {/* The API always accepted `catalogs` here (routes/domains.mjs); only repos had the panel. */}
-            {domainId === c.id && <div className="mt-3"><DomainPanel kind="catalogs" id={c.id} /></div>}
         </div>}
         <div className="flex flex-wrap items-end gap-2">
           {/* Not a choice. A catalog serves one kind, so every item in it has that kind by
@@ -22667,7 +22671,8 @@ function AdminFooter() {
             </div>}
       </Card>
 
-      <div className="flex gap-1.5 overflow-x-auto no-scrollbar mb-4">
+      {/* D5: wraps rather than scrolling sideways (the French labels are longer). */}
+      <div className="flex flex-wrap gap-1.5 mb-4">
         {[['columns', LayoutGrid, t('afoot.p.columns', 'Columns & links')],
           ['brand', Sparkles, t('afoot.p.brand', 'Brand & socials')],
           ['bottom', PanelTop, t('afoot.p.bottom', 'Newsletter & bottom bar')]].map(([k, I, label]) => (
@@ -22840,12 +22845,16 @@ function AdminFooter() {
       {/* `.save-dock`, like the home editor: a floating bar in the card family. It was `.scrim`
           + `backdrop-blur`, i.e. translucent and blurred even with Translucent surfaces OFF, which
           over the 3D backdrop read as a dark slab. */}
-      <div className="save-dock">
-        <span className="text-[11px] text-[var(--muted)] min-w-0 flex-1">
-          {(f.columns || []).length} {t('afoot.ncols', 'column(s)')}
-        </span>
-        <Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : <><Save size={14} /> {t('common.save', 'Save')}</>}</Button>
-      </div>
+      {/* D1: the shared SaveBar. The footer had no dirty state (Save always lit). */}
+      {(() => {
+        const savedF = { columns: [], brand: {}, mobile: {}, bottom: {}, ...(data?.footer || {}) };
+        const dirty = JSON.stringify(f) !== JSON.stringify(savedF);
+        return (
+          <SaveBar dirty={dirty} busy={busy} onSave={save} label={t('adm.tab.footer', 'Footer')}
+            onDiscard={() => { const prev = f; setF(savedF); return () => setF(prev); }}
+            detail={<>{(f.columns || []).length} {t('afoot.ncols', 'column(s)')}{!f.enabled ? <> · {t('afoot.dock.off', 'the built-in footer shows while “Use this footer” is off')}</> : null}</>} />
+        );
+      })()}
     </div>
   );
 }
@@ -23257,7 +23266,7 @@ function AdminSiteTheme() {
               <option value="dark">{t('st.dark', 'Dark')}</option>
             </Select>
           </Field>
-          <Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : <><Save size={14} /> {t('st.apply', 'Apply to the whole site')}</>}</Button>
+          {/* D1: "Apply to the whole site" lives in the shared SaveBar at the foot of this screen. */}
           {/* Picking the "Default" preset only restores the accent — every token override
               survives it, which is why resetting used to bring the old custom colours back.
               This clears all three bags as well, and saves immediately. */}
@@ -23477,6 +23486,10 @@ function AdminSiteTheme() {
             : t('st.contrastlow', 'Button text contrast {n}:1, below WCAG AA (4.5:1). The ink already flipped to its best option; this accent is simply hard to write on.').replace('{n}', ratio.toFixed(2))}
         </div>
       </Card>
+      {/* D1: the shared SaveBar. Apply still writes immediately (see `save` above). */}
+      <SaveBar dirty={!!data?.theme && JSON.stringify(f) !== JSON.stringify(data.theme)} busy={busy} onSave={save}
+        label={t('adm.tab.sitetheme', 'Site theme')} saveLabel={t('st.apply', 'Apply to the whole site')}
+        onDiscard={() => { const prev = f; setF(data.theme); return () => setF(prev); }} />
     </div>
   );
 }
@@ -25292,11 +25305,8 @@ function AdminSettings() {
             chapter is the least useful of the three and was the one making the top of the page
             look cluttered. */}
       </div>
-      {dirtyKeys.length > 0 && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 anim-slide">
-          <Button variant="primary" disabled={busy === '__all__'} onClick={saveAll} className="shadow-lg">{busy === '__all__' ? <Spinner /> : <><CheckCheck size={15} /> {t('hs.saveall', 'Save all')} ({dirtyKeys.length})</>}</Button>
-        </div>
-      )}
+      {/* D1: the floating "Save all" pill became the shared SaveBar, rendered at the foot of
+          this screen (sticky), with Discard, Ctrl+S and the leave-page guard. */}
       {/* Sub-tabs, not one scroll.
           Eight collapsible groups plus the capacity visuals made this the longest screen in the
           admin: finding "how big can a blog post be" meant scrolling past every storage gauge,
@@ -25511,6 +25521,14 @@ function AdminSettings() {
           <ConfigTransferCard />
           <SeedGeneratorCard />
         </div>
+      )}
+      {/* D1: the shared SaveBar, shown only while something is unsaved (this screen is also a
+          dashboard of cards that save themselves, so an always-on bar would claim them). */}
+      {dirtyKeys.length > 0 && (
+        <SaveBar dirty busy={busy === '__all__'} onSave={saveAll} label={t('hs.title', 'Hosting settings')}
+          saveLabel={`${t('hs.saveall', 'Save all')} (${dirtyKeys.length})`}
+          onDiscard={() => { const prev = draft; setDraft(data?.settings || {}); return () => setDraft(prev); }}
+          detail={t('hs.tab.dirtyn', '{n} unsaved').replace('{n}', dirtyKeys.length)} />
       )}
     </div>
   );

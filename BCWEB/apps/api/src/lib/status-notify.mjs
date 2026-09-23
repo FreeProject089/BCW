@@ -8,7 +8,7 @@
 // stops being read, and then the one that mattered is not read either.
 
 import { sendMail, mailShell, escapeHtml, emailEnabled } from './mail.mjs';
-import { DEP_LABELS } from './monitor.mjs';
+import { depLabel } from './monitor.mjs';
 
 const SITE = (process.env.SITE_URL || 'http://localhost').replace(/\/+$/, '');
 
@@ -36,7 +36,7 @@ export async function subscribersFor(p, dep) {
  */
 export async function notifyStatusChange(p, dep, kind, since = null) {
     if (!emailEnabled()) return 0;
-    const label = DEP_LABELS[dep] || dep;
+    const label = depLabel(dep);
 
     const subs = await subscribersFor(p, dep);
     if (!subs.length) return 0;

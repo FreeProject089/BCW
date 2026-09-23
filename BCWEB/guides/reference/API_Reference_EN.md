@@ -991,6 +991,7 @@ gets a refusal that reads as broken code.
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
 | GET | `/charity/current` | — | This month's pot: association, percent, totals, the vote (id + open), `design`. Cached 30 s. **Switched off → 404 `charity_disabled`** (`{ error, enabled:false }`), the same answer as `/charity/contribute` and `/v1/charity` — a feature that is off is not there. |
+| GET | `/charity/history` | — | The months before this one, newest first (up to 24): association, status, the two streams and their total, the number of gifts, and the proof link + date once paid. Never who gave (no user ids, no admin note). Same switch: off → 404 `charity_disabled`. Cached 60 s. |
 | POST | `/charity/contribute` | optional user | Start a gift checkout `{ amountCents }` (anonymous allowed). Validation first (`too_small`…), then the switch (404 `charity_disabled`), then Stripe (503 `stripe_not_configured`). |
 | GET / PUT | `/admin/charity` | `manage_donations` | The config (`enabled`, `percent` ≤ 50, `currency`, `association`, the landing `design`) + this month's pot and the revenue preview. Admin → Ko-fi & funding → Community Charity. |
 | PUT | `/admin/charity/pot` · POST `/close` | `manage_donations` | Edit the month's pot (linked vote, association, status, proof) / freeze BetterCommunity's share. |
@@ -998,7 +999,6 @@ gets a refusal that reads as broken code.
 ## 45. Studio components (`studio.mjs`)
 The studio (`/studio/:kind/:id/:index` on the web) lets an author keep a group of canvas blocks
 as a named component and drop copies on other pages. The list is personal — one JSON value per
-| GET | `/charity/history` | — | The months before this one, newest first (up to 24): association, status, the two streams and their total, the number of gifts, and the proof link + date once paid. Never who gave (no user ids, no admin note). Same switch: off → 404 `charity_disabled`. Cached 60 s. |
 user in the key/value settings store (`studio.components:<userId>`), no table of its own — and
 is read whole when the studio opens and written whole on every change.
 

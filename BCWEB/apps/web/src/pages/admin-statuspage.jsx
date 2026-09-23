@@ -14,6 +14,7 @@ import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { Card, Button, Select, Badge, Textarea, Spinner, EmptyState, useToast, useDialog } from '../ui/ui.jsx';
 import { useAsync, Loading } from './pages.jsx';
+import AdminStatusMonitors from './admin-status-monitors.jsx'; // D7 (agent-admin-D)
 
 export default function AdminStatusPage() {
   const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
@@ -79,6 +80,9 @@ export default function AdminStatusPage() {
         {' '}
         <a className="underline" href="/status" target="_blank" rel="noreferrer">{t('stp.open', 'Open the public page')}</a>
       </p>
+
+      {/* D7: which services the page watches, built in and added. */}
+      <AdminStatusMonitors />
 
       {loading && !data ? <Loading /> : !outages.length ? (
         <EmptyState icon={CheckCircle2} title={t('stp.none', 'Nothing has broken in this window.')}

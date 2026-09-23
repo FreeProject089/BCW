@@ -57,7 +57,6 @@ test('an import is refused exactly where PUT /admin/settings/:key would refuse i
   const refused = [];
   const ops = await SECTIONS.settings.restore(p, [
     { key: 'marketplace.feePercentBp', value: 0 },                       // SUPERADMIN-only
-    { key: 'demo.session', value: { id: `dm_${'a'.repeat(32)}` } },      // routes/demo.mjs owns it
     { key: 'hosting.termMinMonths', value: 999 },                        // out of bounds
     { key: 'seo.gtmId', value: 'not-a-tag-id' },                         // not a tag id
     { key: 'bot.token', value: 'a-token' },                              // credential row
@@ -68,7 +67,6 @@ test('an import is refused exactly where PUT /admin/settings/:key would refuse i
     'only the legitimate row may be written');
   assert.deepEqual(refused.map((r) => `${r.key}:${r.error}`), [
     'marketplace.feePercentBp:superadmin_required',
-    'demo.session:use_demo_routes',
     'hosting.termMinMonths:invalid_term_bound',
     'seo.gtmId:bad_gtm_id',
     // The section refuses the four credential rows by name before it asks, so this one is

@@ -63,7 +63,22 @@ const stepSchema = z.object({
   enabled: z.boolean(),
   title: loc(80).optional().default({}),
   body: loc(600).optional().default({}),
+  // D5: the step's icon (a name from the web's ONB_ICONS; '' = the built-in one) and whether
+  // it may be skipped. Enforced here too, not only by hiding the button: applyAction refuses a
+  // `skip` on a step that cannot be skipped.
+  icon: z.string().trim().max(40).regex(/^[A-Za-z0-9]*$/).optional().default(''),
+  skippable: z.boolean().optional().default(true),
 });
+
+// D5: how the flow presents itself, beyond its steps. Every field defaults to what the flow did
+// before these options existed, so a stored config without `ui` behaves exactly as it did.
+const uiSchema = z.object({
+  allowSnooze: z.boolean().optional().default(true),     // "Finish later" and the close button
+  allowDismiss: z.boolean().optional().default(true),    // "Do not show again"
+  showProgress: z.boolean().optional().default(true),    // the bar and "Step n of m"
+  continueLabel: loc(40).optional().default({}),         // '' = the built-in "Continue"
+  finishLabel: loc(40).optional().default({}),           // '' = the built-in "Finish"
+}).optional().default({});
 
 export const ONBOARDING_CONFIG_SCHEMA = z.object({
   enabled: z.boolean(),
@@ -72,11 +87,12 @@ export const ONBOARDING_CONFIG_SCHEMA = z.object({
     .refine((s) => new Set(s.map((x) => x.id)).size === s.length, 'duplicate step'),
   interests: z.array(interestSchema).max(12).optional().default([]),
   links: z.array(linkSchema).max(8).optional().default([]),
+  ui: uiSchema,
 });
 
 export const DEFAULT_CONFIG = Object.freeze({
   enabled: true,
-  steps: STEP_IDS.map((id) => ({ id, enabled: true, title: {}, body: {} })),
+  steps: STEP_IDS.map((id) => ({ id, enabled: true, title: {}, body: {}, icon: '', skippable: true })),
   interests: [
     { id: 'mods', label: { en: 'Mods for BetterModsManager', fr: 'Des mods pour BetterModsManager' }, to: '/catalog', icon: 'Package' },
     { id: 'hosting', label: { en: 'Hosting a Server-Repo', fr: 'Héberger un Server-Repo' }, to: '/hosting', icon: 'Server' },
@@ -89,6 +105,7 @@ export const DEFAULT_CONFIG = Object.freeze({
     { id: 'repo', label: { en: 'Host your first Server-Repo', fr: 'Héberger votre premier Server-Repo' }, desc: {}, to: '/hosting#plans', icon: 'Server' },
     { id: 'docs', label: { en: 'Read the documentation', fr: 'Lire la documentation' }, desc: {}, to: '/docs', icon: 'BookOpen' },
   ],
+  ui: { allowSnooze: true, allowDismiss: true, showProgress: true, continueLabel: {}, finishLabel: {} },
 });
 
 /** The stored config, with anything unreadable replaced by the default. Steps missing from a
@@ -99,7 +116,7 @@ export function normalizeConfig(raw) {
   if (!r.success) return structuredClone(DEFAULT_CONFIG);
   const cfg = r.data;
   const seen = new Set(cfg.steps.map((s) => s.id));
-  for (const id of STEP_IDS) if (!seen.has(id)) cfg.steps.push({ id, enabled: false, title: {}, body: {} });
+  for (const id of STEP_IDS) if (!seen.has(id)) cfg.steps.push({ id, enabled: false, title: {}, body: {}, icon: '', skippable: true });
   return cfg;
 }
 
@@ -165,6 +182,11 @@ export function applyAction(progress, input, steps, config, now = new Date()) {
   if (!progress || progress.state !== 'pending') return { error: 'not_onboarding' };
   const cur = currentStep(progress, steps);
   const next = { ...progress, done: [...progress.done], skipped: [...progress.skipped], interests: [...(progress.interests || [])] };
+  const ui = normalizeConfig(config).ui || {};
+  // D5: an option the admin switched off is refused here, not only hidden in the page.
+  if (input.action === 'snooze' && ui.allowSnooze === false) return { error: 'not_allowed' };
+  if (input.action === 'dismiss' && ui.allowDismiss === false) return { error: 'not_allowed' };
+  if (input.action === 'skip' && steps.find((s) => s.id === input.step)?.skippable === false) return { error: 'not_skippable' };
   switch (input.action) {
     case 'snooze': next.snoozedAt = now.toISOString(); return { progress: next };
     case 'resume': delete next.snoozedAt; return { progress: next };

@@ -136,3 +136,7 @@ export async function safeFetch(url, opts = {}, maxRedirects = 5, resolve = real
 
 // Exported for the tests only: they need to assert what was verified, not just what came back.
 export { assertPublicUrl as _assertPublicUrl, pinnedAgent as _pinnedAgent };
+// The same check, for a caller that must refuse a URL BEFORE storing it (the status page's
+// admin-configured monitors, lib/status-monitors.mjs): the admin is told at save time, and
+// safeFetch still re-checks at every fetch because DNS can change after the save.
+export { assertPublicUrl as checkPublicUrl };

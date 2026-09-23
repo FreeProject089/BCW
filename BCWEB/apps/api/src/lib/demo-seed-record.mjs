@@ -13,10 +13,10 @@
 // real user cannot make one appear in this row (no route writes this key — `PUT
 // /admin/settings/:key` refuses unknown keys, and nothing else touches it).
 //
-// The key deliberately does NOT start with `demo.`: that prefix belongs to demo MODE, and
-// `stopDemo()` deletes every `demo.*` setting. The seeder's record living there would be
-// erased by an unrelated feature, and clear-demo would then refuse to delete anything —
-// leaving the seeded catalogue permanently in place.
+// The key deliberately does NOT start with `demo.`: that prefix belonged to the admin demo
+// MODE (retired Sept 23), whose stop deleted every `demo.*` setting, and a database that ran
+// it may still hold an inert `demo.session` row. Keeping the record out of that namespace
+// means no cleanup of it can ever take the seeder's record with it.
 export const SEED_RECORD_KEY = 'seed.demoRows';
 
 /** The ids the last `seed:demo` run created. Empty (never null) when it never ran. */

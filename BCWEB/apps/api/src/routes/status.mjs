@@ -15,7 +15,8 @@ import { z } from 'zod';
 import { randomBytes } from 'node:crypto';
 import { db, requireCap, logAudit, botAuth } from '../lib/lib.mjs';
 import { stripeStatus, STRIPE_STATUS_PAGE } from '../lib/stripe-status.mjs';
-import { DEP_LABELS, DEP_KEYS, checkDependencies, getDepsConfig } from '../lib/monitor.mjs';
+import { DEP_LABELS, DEP_KEYS, checkDependencies, getDepsConfig, depLabel } from '../lib/monitor.mjs';
+import { monitorsSchema, readMonitors, writeMonitors, assertMonitorUrl, probeMonitor, monitorSchema, monitorLabels, MAX_MONITORS, CUSTOM_PREFIX } from '../lib/status-monitors.mjs';
 import { dailyUptime, overallUptime, serviceState, overallState } from '../lib/status-page.mjs';
 import { sendMail, mailShell, escapeHtml, emailEnabled } from '../lib/mail.mjs';
 
@@ -40,14 +41,21 @@ export default async function statusRoutes(app) {
       }),
     ]);
 
-    const keys = DEP_KEYS.filter((k) => enabled[k] !== false);
+    // D7: the built-ins that are switched on, then the admin-configured services that answered
+    // (runMonitors only returns ENABLED ones). A refused or malformed monitor answers null and
+    // shows as "not in use", never as an outage.
+    const keys = [...DEP_KEYS.filter((k) => enabled[k] !== false), ...Object.keys(probes).filter((k) => k.startsWith(CUSTOM_PREFIX))];
+    const custom = monitorLabels();
     const services = keys.map((key) => {
       const mine = outages.filter((o) => o.dep === key);
       const open = mine.find((o) => !o.endedAt) || null;
       const bars = dailyUptime(mine, WINDOW_DAYS, now);
       return {
         key,
-        label: DEP_LABELS[key] || key,
+        label: depLabel(key),
+        // The admin's French name for a configured service (the built-ins are named from the
+        // web dictionary by key). Never the URL: the page says WHAT is down, not where it lives.
+        ...(custom[key]?.fr ? { labelFr: custom[key].fr } : {}),
         state: serviceState(probes[key], open),
         uptimePct: overallUptime(bars),
         // One number per day for the 90 bars. The full millisecond counts are not published —
@@ -68,7 +76,8 @@ export default async function statusRoutes(app) {
         // Both: `key` so the page can name it in the reader's language, `service` because the
         // English name is what a mail or a Discord message quotes.
         key: o.dep,
-        service: DEP_LABELS[o.dep] || o.dep,
+        service: depLabel(o.dep),
+        ...(custom[o.dep]?.fr ? { serviceFr: custom[o.dep].fr } : {}),
         startedAt: o.startedAt,
         endedAt: o.endedAt,
         minutes: Math.round(((o.endedAt ? new Date(o.endedAt) : now) - new Date(o.startedAt)) / 60000),
@@ -101,8 +110,9 @@ export default async function statusRoutes(app) {
       p.serviceOutage.findMany({ where: { endedAt: null } }).catch(() => []),
       process.env.STRIPE_SECRET_KEY ? stripeStatus() : Promise.resolve(null),
     ]);
-    const services = DEP_KEYS.filter((k) => enabled[k] !== false).map((key) => ({
-      key, label: DEP_LABELS[key] || key, state: serviceState(probes[key], open.find((o) => o.dep === key) || null),
+    const keys = [...DEP_KEYS.filter((k) => enabled[k] !== false), ...Object.keys(probes).filter((k) => k.startsWith(CUSTOM_PREFIX))];
+    const services = keys.map((key) => ({
+      key, label: depLabel(key), state: serviceState(probes[key], open.find((o) => o.dep === key) || null),
     }));
     return {
       state: overallState(services.map((s) => s.state)),
@@ -132,7 +142,7 @@ export default async function statusRoutes(app) {
       orderBy: { startedAt: 'desc' }, take: 100,
       include: { notes: { orderBy: { createdAt: 'asc' } } },
     });
-    return { outages: outages.map((o) => ({ ...o, service: DEP_LABELS[o.dep] || o.dep })) };
+    return { outages: outages.map((o) => ({ ...o, service: depLabel(o.dep) })) };
   });
 
   app.post('/admin/status/incidents/:id/notes', { preHandler: requireCap('manage_server', 'ADMIN') }, async (req, reply) => {
@@ -161,7 +171,7 @@ export default async function statusRoutes(app) {
     if (b.data.state === 'identified' && !outage.cause) {
       await p.serviceOutage.update({ where: { id: outage.id }, data: { cause: b.data.body.slice(0, 300) } }).catch(() => {});
     }
-    await logAudit(p, req.user.uid, 'status.note', `${DEP_LABELS[outage.dep] || outage.dep} — ${b.data.state}`, req.ip).catch(() => {});
+    await logAudit(p, req.user.uid, 'status.note', `${depLabel(outage.dep)} — ${b.data.state}`, req.ip).catch(() => {});
     return { ok: true, note };
   });
 
@@ -187,6 +197,56 @@ export default async function statusRoutes(app) {
     return { ok: true };
   });
 
+  // ── The services the page watches (D7) ─────────────────────────────────────
+  //
+  // The built-ins (database, storage, bot, telemetry, website, Stripe) are switched on and off
+  // through /admin/server/deps-config, as before. The others are URLs the admin adds here. Each
+  // one is fetched on every monitor tick, so each one is an SSRF surface (pentest R11): see
+  // lib/status-monitors.mjs for the rules. Here the target is refused at SAVE, with the reason,
+  // and the prober re-checks at every fetch.
+  app.get('/admin/status/monitors', { preHandler: requireCap('manage_server', 'ADMIN') }, async () => {
+    const p = await db();
+    return {
+      monitors: await readMonitors(p),
+      builtin: { keys: DEP_KEYS, labels: DEP_LABELS, enabled: await getDepsConfig(p).catch(() => ({})) },
+      max: MAX_MONITORS,
+    };
+  });
+
+  app.put('/admin/status/monitors', { preHandler: requireCap('manage_server', 'ADMIN') }, async (req, reply) => {
+    const b = z.object({ monitors: monitorsSchema }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input', detail: b.error.issues?.[0]?.path?.join('.') || '' });
+    const list = b.data.monitors;
+    const ids = new Set();
+    for (const m of list) {
+      if (ids.has(m.id)) return reply.code(400).send({ error: 'duplicate_id', id: m.id });
+      ids.add(m.id);
+      if (m.okMin > m.okMax) return reply.code(400).send({ error: 'invalid_range', id: m.id });
+      // Refused BEFORE it is stored. The code names the rule (ssrf_blocked_resolved, …), never
+      // what the name resolved to: an admin screen that printed resolved addresses would be a
+      // way to map the internal network one save at a time.
+      try { await assertMonitorUrl(m.url); }
+      catch (e) { return reply.code(400).send({ error: 'target_refused', id: m.id, code: String(e?.message || 'ssrf_refused').slice(0, 40) }); }
+    }
+    const p = await db();
+    await writeMonitors(p, list);
+    await logAudit(p, req.user.uid, 'status.monitors', `${list.length} configured service(s)`, req.ip).catch(() => {});
+    return { ok: true, monitors: list };
+  });
+
+  // "Test now", from the editor, before saving. Same prober, same rules; the answer is the
+  // verdict, a status code and a duration. Never the body or a header of the response.
+  app.post('/admin/status/monitors/test', {
+    preHandler: requireCap('manage_server', 'ADMIN'),
+    config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
+  }, async (req, reply) => {
+    const b = z.object({ monitor: monitorSchema }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    try { await assertMonitorUrl(b.data.monitor.url); }
+    catch (e) { return { ok: null, ms: null, status: null, error: String(e?.message || 'ssrf_refused').slice(0, 40) }; }
+    return probeMonitor(b.data.monitor);
+  });
+
   // ── Being told when it breaks ───────────────────────────────────────────────
   //
   // Double opt-in, like the newsletter: an unconfirmed row is never written to. Without it,
@@ -194,7 +254,8 @@ export default async function statusRoutes(app) {
   app.post('/status/subscribe', async (req, reply) => {
     const b = z.object({
       email: z.string().email().max(200),
-      deps: z.array(z.enum(DEP_KEYS)).max(10).optional(),
+      // A built-in key, or a configured service's `c_<slug>` (D7).
+      deps: z.array(z.union([z.enum(DEP_KEYS), z.string().regex(/^c_[a-z0-9-]{1,40}$/)])).max(10).optional(),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     if (!emailEnabled()) return reply.code(503).send({ error: 'email_off' });

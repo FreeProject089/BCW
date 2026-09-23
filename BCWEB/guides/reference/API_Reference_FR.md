@@ -1022,6 +1022,7 @@ de test local reçoit un refus qui se lit comme du code cassé.
 | Méthode | Chemin | Auth | But |
 |---|---|---|---|
 | GET | `/charity/current` | — | La cagnotte du mois : association, pourcentage, totaux, le vote (id + ouvert), `design`. Cache 30 s. **Éteinte → 404 `charity_disabled`** (`{ error, enabled:false }`), la même réponse que `/charity/contribute` et `/v1/charity` — une fonction éteinte n'est pas là. |
+| GET | `/charity/history` | — | Les mois précédents, du plus récent au plus ancien (jusqu'à 24) : association, statut, les deux flux et leur total, le nombre de dons, et le lien de preuve + la date une fois versé. Jamais qui a donné (ni identifiant, ni note admin). Même interrupteur : désactivé → 404 `charity_disabled`. Cache 60 s. |
 | POST | `/charity/contribute` | user optionnel | Démarre un checkout de don `{ amountCents }` (anonyme permis). Validation d'abord (`too_small`…), puis l'interrupteur (404 `charity_disabled`), puis Stripe (503 `stripe_not_configured`). |
 | GET / PUT | `/admin/charity` | `manage_donations` | La config (`enabled`, `percent` ≤ 50, `currency`, `association`, le `design` de l'accueil) + la cagnotte du mois et l'aperçu des revenus. Admin → Ko-fi & financement → Cagnotte solidaire. |
 | PUT | `/admin/charity/pot` · POST `/close` | `manage_donations` | Éditer la cagnotte du mois (vote lié, association, statut, preuve) / geler la part de BetterCommunity. |
@@ -1029,7 +1030,6 @@ de test local reçoit un refus qui se lit comme du code cassé.
 ## 45. Composants du studio (`studio.mjs`)
 Le studio (`/studio/:kind/:id/:index` côté web) permet à un auteur de garder un groupe de blocs
 de planche sous un nom et d'en déposer des copies sur d'autres pages. La liste est personnelle —
-| GET | `/charity/history` | — | Les mois précédents, du plus récent au plus ancien (jusqu'à 24) : association, statut, les deux flux et leur total, le nombre de dons, et le lien de preuve + la date une fois versé. Jamais qui a donné (ni identifiant, ni note admin). Même interrupteur : désactivé → 404 `charity_disabled`. Cache 60 s. |
 une valeur JSON par utilisateur dans le magasin clé/valeur des réglages
 (`studio.components:<userId>`), sans table dédiée — lue entière à l'ouverture du studio et
 réécrite entière à chaque changement.

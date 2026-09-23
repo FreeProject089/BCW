@@ -8,10 +8,11 @@
 // The preview on the right is the real component with `preview`: it draws the draft, in the
 // chosen language, and writes nothing.
 import { useEffect, useMemo, useState } from 'react';
-import { Rocket, ArrowUp, ArrowDown, Save, RotateCcw, Plus, Trash2, Eye, ChevronDown, ChevronRight } from 'lucide-react';
+import { Rocket, ArrowUp, ArrowDown, RotateCcw, Plus, Trash2, Eye, ChevronDown, ChevronRight, Smartphone, Monitor } from 'lucide-react';
 import { Card, Button, Input, Textarea, Badge, Dropdown, Spinner, Explain, useDialog, useToast } from '../ui/ui.jsx';
 import { api } from '../lib/api.js';
-import { useI18n } from '../i18n.jsx';
+import { useI18n, I18nLang } from '../i18n.jsx';
+import { SaveBar } from '../ui/save-bar.jsx';
 import { OnboardingFlow, previewData, useStepDefaults, ONB_ICONS } from './onboarding.jsx';
 
 const clone = (v) => JSON.parse(JSON.stringify(v));
@@ -55,9 +56,9 @@ function LinkList({ items, onChange, max, withDesc, requireTo }) {
     <div className="space-y-2">
       {items.map((it, i) => (
         <div key={it.id} className="rounded-xl border border-[var(--line)] p-3 space-y-2" style={{ background: 'var(--bg-solid)' }}>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Dropdown size="sm" value={it.icon || ''} options={[{ value: '', label: t('aonb.noicon', 'No icon') }, ...ICON_OPTIONS]} onChange={(v) => upd(i, { icon: v })} />
-            <Input className="flex-1" value={it.to || ''} placeholder={requireTo ? '/submit' : t('aonb.to.opt', '/path (optional)')} onChange={(e) => upd(i, { to: e.target.value })} />
+            <Input className="flex-1 min-w-[9rem]" value={it.to || ''} placeholder={requireTo ? '/submit' : t('aonb.to.opt', '/path (optional)')} onChange={(e) => upd(i, { to: e.target.value })} />
             <button type="button" className="p-1.5 text-[var(--faint)] hover:text-error" onClick={() => onChange(items.filter((_, j) => j !== i))} title={t('aonb.remove', 'Remove')} aria-label={t('aonb.remove', 'Remove')}><Trash2 size={14} /></button>
           </div>
           <LocPair value={it.label} max={60} onChange={(label) => upd(i, { label })} placeholder={{ en: t('aonb.label', 'Label'), fr: t('aonb.label', 'Label') }} />
@@ -83,6 +84,7 @@ export function AdminOnboarding() {
   const [busy, setBusy] = useState(false);
   const [pvLang, setPvLang] = useState('en');
   const [pvStep, setPvStep] = useState(null);
+  const [pvNarrow, setPvNarrow] = useState(false); // D5: judge the flow at phone width too
 
   const load = () => api.get('/admin/onboarding').then((r) => { setData(r); setCfg(clone(r.config)); }).catch(() => setData({ error: true }));
   useEffect(() => { load(); }, []);
@@ -104,6 +106,8 @@ export function AdminOnboarding() {
     interests: cfg.interests.filter((x) => (x.label?.en || x.label?.fr || '').trim()).map((x) => ({ ...x, to: (x.to || '').trim() || undefined })),
     links: cfg.links.filter((x) => (x.label?.en || x.label?.fr || '').trim() && (x.to || '').trim()),
   });
+  const ui = cfg.ui || {};
+  const setUi = (patch) => setCfg((c) => ({ ...c, ui: { ...(c.ui || {}), ...patch } }));
   const save = async () => {
     setBusy(true);
     try {
@@ -161,6 +165,17 @@ export function AdminOnboarding() {
                   </div>
                   {open === s.id && (
                     <div className="px-3 pb-3 space-y-2">
+                      {/* D5: the step's own icon, and whether it may be skipped. */}
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                        <label className="flex items-center gap-2 text-xs">
+                          <span className="font-medium">{t('aonb.f.icon', 'Icon')}</span>
+                          <Dropdown size="sm" value={s.icon || ''} options={[{ value: '', label: t('aonb.icon.builtin', 'Built-in') }, ...ICON_OPTIONS]} onChange={(v) => setStep(i, { icon: v })} />
+                        </label>
+                        <label className="flex items-center gap-2 text-xs cursor-pointer">
+                          <input type="checkbox" checked={s.skippable !== false} onChange={(e) => setStep(i, { skippable: e.target.checked })} />
+                          {t('aonb.f.skippable', 'Can be skipped')}
+                        </label>
+                      </div>
                       <div className="text-xs font-medium">{t('aonb.f.title', 'Title')}</div>
                       <LocPair value={s.title} max={80} onChange={(title) => setStep(i, { title })} placeholder={{ en: defaults[s.id]?.title, fr: defaults[s.id]?.title }} />
                       <div className="text-xs font-medium">{t('aonb.f.body', 'Text')}</div>
@@ -184,11 +199,34 @@ export function AdminOnboarding() {
             <LinkList items={cfg.links} max={8} withDesc requireTo onChange={(links) => setCfg((c) => ({ ...c, links }))} />
           </Card>
 
-          <div className="flex flex-wrap gap-2">
-            <Button variant="primary" onClick={save} loading={busy} disabled={!dirty}><Save size={14} /> {t('aonb.save', 'Save')}</Button>
-            <Button variant="ghost" onClick={() => setCfg(clone(data.config))} disabled={!dirty || busy}>{t('aonb.discard', 'Discard changes')}</Button>
-            <Button variant="ghost" onClick={reset} disabled={busy}><RotateCcw size={14} /> {t('aonb.reset', 'Built-in flow')}</Button>
-          </div>
+          {/* D5: how the flow presents itself, beyond its steps. */}
+          <Card className="p-4 space-y-3">
+            <div>
+              <div className="text-sm font-semibold">{t('aonb.ui', 'Buttons and progress')}</div>
+              <div className="text-xs text-[var(--muted)]">{t('aonb.ui.d', 'What a new member can do besides moving on. Switching an option off is enforced by the server, not only hidden.')}</div>
+            </div>
+            <div className="flex flex-wrap gap-x-5 gap-y-2">
+              {[
+                ['showProgress', t('aonb.ui.progress', 'Show the progress bar and the step count')],
+                ['allowSnooze', t('aonb.ui.snooze', 'Offer to finish later')],
+                ['allowDismiss', t('aonb.ui.dismiss', 'Offer to stop it for good')],
+              ].map(([k, label]) => (
+                <label key={k} className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input type="checkbox" checked={ui[k] !== false} onChange={(e) => setUi({ [k]: e.target.checked })} />
+                  {label}
+                </label>
+              ))}
+            </div>
+            <div className="text-xs font-medium">{t('aonb.ui.continue', 'Label of the button that moves on')}</div>
+            <LocPair value={ui.continueLabel} max={40} onChange={(continueLabel) => setUi({ continueLabel })} placeholder={{ en: 'Continue', fr: 'Continuer' }} />
+            <div className="text-xs font-medium">{t('aonb.ui.finish', 'Label of the last button')}</div>
+            <LocPair value={ui.finishLabel} max={40} onChange={(finishLabel) => setUi({ finishLabel })} placeholder={{ en: 'Finish', fr: 'Terminer' }} />
+          </Card>
+
+          {/* D1: the shared SaveBar; "Built-in flow" stays beside it as a secondary action. */}
+          <SaveBar dirty={dirty} busy={busy} onSave={save} label={t('aonb.title', 'Onboarding for new accounts')}
+            onDiscard={() => { const prev = cfg; setCfg(clone(data.config)); return () => setCfg(prev); }}
+            extra={<Button size="sm" variant="ghost" onClick={reset} disabled={busy}><RotateCcw size={14} /> {t('aonb.reset', 'Built-in flow')}</Button>} />
         </div>
 
         <div className="space-y-2 min-w-0 lg:sticky lg:top-4">
@@ -197,10 +235,22 @@ export function AdminOnboarding() {
             <span className="text-sm font-semibold flex-1">{t('aonb.preview', 'Preview')}</span>
             <Dropdown size="sm" value={pvCurrent || ''} options={pv.steps.map((s) => ({ value: s.id, label: names[s.id] }))} onChange={setPvStep} />
             <Dropdown size="sm" value={pvLang} options={[{ value: 'en', label: 'English' }, { value: 'fr', label: 'Français' }]} onChange={setPvLang} />
+            <Button size="sm" variant="ghost" aria-pressed={pvNarrow} onClick={() => setPvNarrow((v) => !v)}>
+              {pvNarrow ? <Monitor size={13} /> : <Smartphone size={13} />} {pvNarrow ? t('aonb.pv.wide', 'Full width') : t('aonb.pv.narrow', 'Phone width')}
+            </Button>
           </div>
           {!cfg.enabled && <div className="text-xs text-warning">{t('aonb.off', 'Switched off: nobody sees it until it is back on and saved.')}</div>}
           {pv.steps.length
-            ? <OnboardingFlow key={`${pvCurrent}-${pvLang}`} data={pv} preview stepOverride={pvCurrent} previewLang={pvLang} onAction={() => {}} compact />
+            // D5: the whole flow in the preview's language (I18nLang), buttons included, and
+            // optionally at phone width, so "does it hold in French on a phone" is answered by
+            // looking at it.
+            ? (
+              <div className={pvNarrow ? 'max-w-[360px] mx-auto' : ''}>
+                <I18nLang lang={pvLang}>
+                  <OnboardingFlow key={`${pvCurrent}-${pvLang}`} data={pv} preview stepOverride={pvCurrent} previewLang={pvLang} onAction={() => {}} compact />
+                </I18nLang>
+              </div>
+            )
             : <Card className="p-4 text-sm text-[var(--muted)]">{t('aonb.nosteps', 'Every step is off.')}</Card>}
         </div>
       </div>

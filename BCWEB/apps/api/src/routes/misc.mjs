@@ -1,7 +1,6 @@
 import { z } from 'zod';
 import { sectionsStudioProblems, studioDocError, sectionRevs, parsePageSave, replaceSectionCanvas } from '../lib/studio-doc.mjs';
 import { db, requireRole, requireCap, hasCap, optionalAuth, slugify, logAudit, notify, notifyAll, clearAccountLockCache, clearUserCache, CAPABILITIES, NOTIF_CATEGORIES, currentUser, httpUrl, canUseStudio, guardStudioSections, sectionsWithoutDrafts } from '../lib/lib.mjs';
-import { isDemoKey } from '../lib/demo.mjs';
 import { SECRET_SETTING_KEYS } from '../lib/secret-guard.mjs';
 import { suspendOwned, restoreOwned, cancelSubscriptions, anonymiseAccount } from './closure.mjs';
 import { addStaffNote, notifyAccountAction, notesFor, NOTE_KINDS } from '../lib/staff-notes.mjs';
@@ -35,6 +34,7 @@ import { FILES_BACKUP_ROOT, DB_BACKUP_ROOT, repoSizeBytes } from '../lib/gitback
 import { userBcId, itemFingerprint, repoFingerprint, loadOwnerIdentities, looksLikeBcId, findUserIdByBcId } from '../lib/repofingerprint.mjs';
 import { telemetryDb } from './server-control.mjs';
 import { issueSanction, splitSubscriptionsByTerm, cancelSubscriptionList } from '../lib/sanctions.mjs';
+import { sceneTransitions, transitionsBody } from '../lib/scene-transitions.mjs'; // D4 (agent-admin-D)
 
 // The real client IP as observed by our trusted proxy (Caddy appends it last).
 function clientIp(req) {
@@ -535,6 +535,8 @@ const sceneConfig = (row) => {
     fps: Math.round(num(v.fps, 15, 60, 30)),
     // Per-event overrides, applied client-side while an event is live (B11).
     events: sceneEvents(v.events),
+    // D4: a playlist of shapes and when/how the scene moves between them (lib/scene-transitions.mjs).
+    transitions: sceneTransitions(v.transitions, SCENE_SHAPES),
   };
 };
 
@@ -556,6 +558,8 @@ export const SCENE_BODY = z.object({
   // A map of event id → partial scene override. Sanitised (scenePartial) on store, so a
   // client that posts junk cannot poison the config every visitor reads.
   events: z.record(z.any()).optional(),
+  // D4: transitions between scenes. Bounded here, re-bounded by sceneConfig on the way out.
+  transitions: transitionsBody(SCENE_SHAPES),
 });
 
 // The body PUT /admin/site/showcase validates. Module-level and exported so the config import (lib/config-transfer.mjs) checks a seed with this schema rather than a copy of it.
@@ -708,11 +712,6 @@ export async function checkAdminSetting(p, key, value, { role } = {}) {
   // (the bot token only while the bot is off, the signing key never from outside at all), and
   // this one would have let any ADMIN overwrite all four with no such rule.
   if (SECRET_SETTING_KEYS.has(key)) return refuse(409, { error: 'use_dedicated_route', key });
-  // `demo.*` has exactly one writer, lib/demo.mjs, which clamps the duration and size and
-  // records who started it. Writing the row here would skip all three (a demo that never
-  // expires, a billion generated items) — so this door is shut and routes/demo.mjs is the
-  // way in. See isDemoKey.
-  if (isDemoKey(key)) return refuse(409, { error: 'use_demo_routes', key });
   if (SUPERADMIN_ONLY_SETTINGS.has(key) && role !== 'SUPERADMIN') {
     return refuse(403, { error: 'superadmin_required', key });
   }

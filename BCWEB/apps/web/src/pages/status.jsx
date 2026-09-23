@@ -48,7 +48,7 @@ function UptimeBars({ days, t }) {
 }
 
 export default function StatusPage() {
-  const { t } = useI18n(); const toast = useToast();
+  const { t, lang } = useI18n(); const toast = useToast();
   const [sp] = useSearchParams();
   const { data, err, loading, reload } = useAsync(() => api.get('/status'), []);
   const [email, setEmail] = useState('');
@@ -141,7 +141,7 @@ export default function StatusPage() {
           return (
             <div key={s.key}>
               <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
-                <span className="font-medium flex items-center gap-2"><st.icon size={15} style={{ color: st.tone }} /> {SERVICE_NAME(s.key, s.label, t)}</span>
+                <span className="font-medium flex items-center gap-2"><st.icon size={15} style={{ color: st.tone }} /> {SERVICE_NAME(s.key, (lang === 'fr' && s.labelFr) || s.label, t)}</span>
                 <span className="text-sm" style={{ color: st.tone }}>{t(st.key, st.en)}</span>
               </div>
               {s.state !== 'not_configured' && <>
@@ -180,7 +180,7 @@ export default function StatusPage() {
             {page.map((i) => (
               <li key={i.id} className="border-s-2 ps-3" style={{ borderColor: i.endedAt ? 'var(--line)' : 'var(--error)' }}>
                 <div className="flex items-center gap-2 flex-wrap text-sm">
-                  <span className="font-medium">{SERVICE_NAME(i.key, i.service, t)}</span>
+                  <span className="font-medium">{SERVICE_NAME(i.key, (lang === 'fr' && i.serviceFr) || i.service, t)}</span>
                   {i.endedAt ? <Badge>{t('st.resolved', 'Resolved')}</Badge> : <Badge tone="red">{t('st.ongoing', 'Ongoing')}</Badge>}
                   <span className="text-[var(--faint)] text-[12px]">{fdate(i.startedAt)} · {i.minutes} min</span>
                 </div>

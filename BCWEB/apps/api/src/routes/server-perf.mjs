@@ -3,7 +3,7 @@ import { ALERT_THRESHOLDS, ALERT_THRESHOLD_KEYS, readThresholds, serverVerdict }
 import { z } from 'zod';
 import { db, requireRole, requireCap, botAuth } from '../lib/lib.mjs';
 import { windowBounds, summariseDaily, compareDaily, dailyPoint } from '../lib/metrics-compare.mjs';
-import { checkSslExpiry, checkDependenciesTimed, cgroupMemory, sampleAndAlert, getDepsConfig, DEP_KEYS, DEP_LABELS, readNetBytes, getBandwidthByCat, getRepoUploadKbps, getRepoRateStats, sampleRepoRates } from '../lib/monitor.mjs';
+import { checkSslExpiry, checkDependenciesTimed, cgroupMemory, sampleAndAlert, getDepsConfig, DEP_KEYS, DEP_LABELS, depLabel, readNetBytes, getBandwidthByCat, getRepoUploadKbps, getRepoRateStats, sampleRepoRates } from '../lib/monitor.mjs';
 import { realDiskStats } from './hosting.mjs';
 import { alertFingerprint, pendingAlertUpdates, prunePosts } from '../lib/alert-incident.mjs';
 
@@ -476,7 +476,7 @@ export default async function serverPerfRoutes(app) {
       orderBy: { startedAt: 'desc' }, take,
     });
     const outages = rows.map((o) => ({
-      id: o.id, dep: o.dep, label: DEP_LABELS[o.dep] || o.dep, cause: o.cause,
+      id: o.id, dep: o.dep, label: depLabel(o.dep), cause: o.cause,
       startedAt: o.startedAt, endedAt: o.endedAt,
       seconds: Math.max(0, Math.round(((o.endedAt || new Date()).getTime() - o.startedAt.getTime()) / 1000)),
       ongoing: !o.endedAt,
@@ -486,7 +486,7 @@ export default async function serverPerfRoutes(app) {
     const byDep = {};
     for (const o of outages) byDep[o.dep] = (byDep[o.dep] || 0) + o.seconds;
     const uptime = Object.entries(byDep).map(([dep, sec]) => ({
-      dep, label: DEP_LABELS[dep] || dep, downSeconds: sec,
+      dep, label: depLabel(dep), downSeconds: sec,
       pct: Math.max(0, Math.round((1 - sec / windowSec) * 10000) / 100),
     })).sort((a, b) => b.downSeconds - a.downSeconds);
     return { outages, uptime, days };
@@ -574,7 +574,7 @@ export default async function serverPerfRoutes(app) {
     return {
       alert: { ...alert, durationSec: Math.max(0, Math.round((end - alert.createdAt) / 1000)), ongoing: !alert.resolvedAt },
       history: history.map((h) => ({ id: h.id, message: h.message, severity: h.severity, createdAt: h.createdAt, resolvedAt: h.resolvedAt })),
-      outage: outage ? { id: outage.id, dep: outage.dep, label: DEP_LABELS[outage.dep] || outage.dep, startedAt: outage.startedAt, endedAt: outage.endedAt } : null,
+      outage: outage ? { id: outage.id, dep: outage.dep, label: depLabel(outage.dep), startedAt: outage.startedAt, endedAt: outage.endedAt } : null,
     };
   });
 }

@@ -249,7 +249,27 @@ function Hero3DScene() {
     // detail 4 = 2562 verts on the icosahedron — smooth enough for a blurred, displaced shape
     // at a fraction of the per-frame vertex-shader cost of detail 5 (10242). The admin can go
     // higher; the API caps it at 5 for exactly that reason.
-    const geo = buildGeometry(sceneCfg.shape, sceneCfg.detail);
+    // ── D4: scene transitions ──
+    // A playlist: the configured shape first, then the admin's extra shapes. With fewer than two
+    // there is nothing to move between and none of this runs (the shipped default).
+    const TR = sceneCfg.transitions || {};
+    const TRG = TR.triggers || {};
+    const playlist = [sceneCfg.shape, ...((TR.shapes || []).filter((x) => x && x !== sceneCfg.shape))];
+    const canCycle = playlist.length > 1;
+    // Reduced motion: no animated transition, ever. `reload` still rotates the shape, because
+    // the first frame of a page is not a movement.
+    const reduceMotion = typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    let shapeIdx = 0;
+    if (canCycle && TRG.reload) {
+      try {
+        const prev = Number(localStorage.getItem('bcw.scene.idx'));
+        shapeIdx = (Number.isInteger(prev) && prev >= 0 ? prev + 1 : 0) % playlist.length;
+        localStorage.setItem('bcw.scene.idx', String(shapeIdx));
+      } catch { shapeIdx = 0; }
+    }
+    let geo = buildGeometry(playlist[shapeIdx], sceneCfg.detail);
+    // Which shape is on screen, on the mount: what a test (or a curious admin) can read.
+    el.setAttribute('data-scene-shape', playlist[shapeIdx]);
 
     // Fracture shards: a coarser icosahedron (detail 2 = 320 faces). Icosahedron
     // geometry is ALREADY non-indexed (every face owns its 3 vertices — calling
@@ -261,24 +281,31 @@ function Hero3DScene() {
     // apart as one rigid piece — icosahedron and tetrahedron geometry is already built that
     // way (calling it on those was a no-op that logged a warning), but a torus knot is
     // indexed and shares vertices between faces, so without this the ring tore into ribbons.
-    const rawFracture = buildGeometry(sceneCfg.shape, Math.min(2, sceneCfg.detail));
-    const fractureGeo = rawFracture.index ? rawFracture.toNonIndexed() : rawFracture;
-    const fPos = fractureGeo.attributes.position;
-    const centroidArr = new Float32Array(fPos.count * 3);
-    const randArr = new Float32Array(fPos.count * 3);
-    for (let f = 0; f < fPos.count / 3; f++) {
-      const i0 = f * 3;
-      const cx = (fPos.getX(i0) + fPos.getX(i0 + 1) + fPos.getX(i0 + 2)) / 3;
-      const cy = (fPos.getY(i0) + fPos.getY(i0 + 1) + fPos.getY(i0 + 2)) / 3;
-      const cz = (fPos.getZ(i0) + fPos.getZ(i0 + 1) + fPos.getZ(i0 + 2)) / 3;
-      const rx = Math.random() * 2 - 1, ry = Math.random() * 2 - 1, rz = Math.random() * 2 - 1;
-      for (let v = 0; v < 3; v++) {
-        centroidArr.set([cx, cy, cz], (i0 + v) * 3);
-        randArr.set([rx, ry, rz], (i0 + v) * 3);
+    // D4: a function, because a scene transition swaps the shape and the shards must be the
+    // new shape's faces, not the old one's.
+    const makeFracture = (shape) => {
+      const rawFracture = buildGeometry(shape, Math.min(2, sceneCfg.detail));
+      const g = rawFracture.index ? rawFracture.toNonIndexed() : rawFracture;
+      if (g !== rawFracture) rawFracture.dispose();
+      const fPos = g.attributes.position;
+      const centroidArr = new Float32Array(fPos.count * 3);
+      const randArr = new Float32Array(fPos.count * 3);
+      for (let f = 0; f < fPos.count / 3; f++) {
+        const i0 = f * 3;
+        const cx = (fPos.getX(i0) + fPos.getX(i0 + 1) + fPos.getX(i0 + 2)) / 3;
+        const cy = (fPos.getY(i0) + fPos.getY(i0 + 1) + fPos.getY(i0 + 2)) / 3;
+        const cz = (fPos.getZ(i0) + fPos.getZ(i0 + 1) + fPos.getZ(i0 + 2)) / 3;
+        const rx = Math.random() * 2 - 1, ry = Math.random() * 2 - 1, rz = Math.random() * 2 - 1;
+        for (let v = 0; v < 3; v++) {
+          centroidArr.set([cx, cy, cz], (i0 + v) * 3);
+          randArr.set([rx, ry, rz], (i0 + v) * 3);
+        }
       }
-    }
-    fractureGeo.setAttribute('aCentroid', new THREE.BufferAttribute(centroidArr, 3));
-    fractureGeo.setAttribute('aRandom', new THREE.BufferAttribute(randArr, 3));
+      g.setAttribute('aCentroid', new THREE.BufferAttribute(centroidArr, 3));
+      g.setAttribute('aRandom', new THREE.BufferAttribute(randArr, 3));
+      return g;
+    };
+    let fractureGeo = makeFracture(playlist[shapeIdx]);
 
     // One number, read in three places (the initial value, the intro tween and the skip
     // path). Three literal 0.45s were three chances for the shape to settle at a different
@@ -384,7 +411,8 @@ function Hero3DScene() {
       // this decides how much of it there is. Multiplying keeps both: the admin's number is
       // read against the shipped one, so 0.8 is unchanged and 0.4 is half as present in
       // either theme rather than half as present in one and opaque in the other.
-      uniforms.uOpacity.value = q.opacity * (sceneCfg.opacity / SCENE_DEFAULTS.opacity);
+      opacityBase = q.opacity * (sceneCfg.opacity / SCENE_DEFAULTS.opacity);
+      uniforms.uOpacity.value = opacityBase * (1 - transAmt.v);
       mat.blending = q.blending;
       mat.needsUpdate = true;
       fractureMat.blending = q.blending;
@@ -402,6 +430,9 @@ function Hero3DScene() {
       requestStill();
     };
     let twinkleBase = 0.32;
+    // D4: declared before applyPalette's first call, which reads both.
+    let opacityBase = 0.8;
+    const transAmt = { v: 0 };
     // Declared before applyPalette's first call, which asks for a still frame. Replaced by the
     // real scheduler once the loop exists; until then there is nothing to draw.
     let requestStill = () => {};
@@ -430,12 +461,13 @@ function Hero3DScene() {
     // orb bursts a different way every time it's poked. Only re-seeded when the
     // orb is (near) whole, so a re-roll can't visibly teleport shards mid-air.
     const reseedFracture = () => {
-      for (let f = 0; f < fPos.count / 3; f++) {
+      const ra = fractureGeo.attributes.aRandom;
+      for (let f = 0; f < ra.count / 3; f++) {
         const i0 = f * 3;
         const rx = Math.random() * 2 - 1, ry = Math.random() * 2 - 1, rz = Math.random() * 2 - 1;
-        for (let v = 0; v < 3; v++) randArr.set([rx, ry, rz], (i0 + v) * 3);
+        for (let v = 0; v < 3; v++) ra.array.set([rx, ry, rz], (i0 + v) * 3);
       }
-      fractureGeo.attributes.aRandom.needsUpdate = true;
+      ra.needsUpdate = true;
     };
     const setFracture = (target, duration) => {
       if (target && fractureState.value < 0.15) reseedFracture(); // fresh shatter → new pattern
@@ -471,7 +503,7 @@ function Hero3DScene() {
       mouse.y = e.clientY / H() - 0.5;
       if (showOverlayRef.current) return; // ignore during intro — orb isn't in its resting spot yet
       const hit = raycastHits(e.clientX, e.clientY);
-      if (hit && !hovering) { hovering = true; clearTimeout(recomposeTimer); setHover(true); }
+      if (hit && !hovering) { hovering = true; clearTimeout(recomposeTimer); setHover(true); if (TRG.hover) goNext(); }
       else if (!hit && hovering) { hovering = false; setHover(false); }
     };
     window.addEventListener('pointermove', onMove);
@@ -509,6 +541,61 @@ function Hero3DScene() {
       } });
     };
     window.addEventListener('bcweb:orb-transition', onPageTransition);
+
+    // ── D4: move to the next shape of the playlist ──
+    // Two looks, both built from what the scene already has: `fade` dims the surface out
+    // (uOpacity, scaled from the palette's own value) and brings the next shape in; `burst`
+    // breaks it into its faces (the existing fracture), swaps the shape at the peak, and the
+    // faces that come back together are the next shape. The geometry swap happens at the
+    // invisible/scattered moment, so no frame ever shows a shape popping into another.
+    // Full frame rate only while it plays (`busy` in tick), then back to the idle budget.
+    let transitioning = false;
+    const swapShape = (shape) => {
+      const g = buildGeometry(shape, sceneCfg.detail);
+      const old = geo;
+      geo = g;
+      orb.geometry = g;
+      if (wireOverlay) wireOverlay.geometry = g;
+      old.dispose();
+      const fg = makeFracture(shape);
+      const oldF = fractureGeo;
+      fractureGeo = fg;
+      fracturePoints.geometry = fg;
+      oldF.dispose();
+      el.setAttribute('data-scene-shape', shape);
+    };
+    const goNext = () => {
+      if (!canCycle || transitioning || reduceMotion || still || introRunning || ctxLost) return;
+      if (document.hidden || blurred) return;
+      transitioning = true;
+      const half = Math.max(0.15, (Number(TR.durationMs) || 900) / 2000);
+      shapeIdx = (shapeIdx + 1) % playlist.length;
+      const next = playlist[shapeIdx];
+      const done = () => { transitioning = false; };
+      if (TR.style === 'burst') {
+        clearTimeout(recomposeTimer);
+        setFracture(1, half);
+        gsap.killTweensOf(transAmt);
+        // transAmt stays at 0 for a burst: it only keeps the loop at full rate while it plays.
+        gsap.to(transAmt, { v: 0.002, duration: half, onComplete: () => {
+          swapShape(next);
+          if (!hovering) setFracture(0, half * 1.4);
+          gsap.to(transAmt, { v: 0, duration: half * 1.4, onComplete: done });
+        } });
+      } else {
+        gsap.killTweensOf(transAmt);
+        gsap.to(transAmt, { v: 1, duration: half, ease: 'power2.in', onComplete: () => {
+          swapShape(next);
+          gsap.to(transAmt, { v: 0, duration: half, ease: 'power2.out', onComplete: done });
+        } });
+      }
+    };
+    const onRouteChange = () => { if (TRG.route) goNext(); };
+    window.addEventListener('bcw:route-change', onRouteChange);
+    // The interval does nothing while the tab is hidden or the window is behind another:
+    // goNext() checks, so a tab left open for an hour does not queue sixty transitions.
+    const transTimer = canCycle && TRG.interval && !reduceMotion
+      ? setInterval(goNext, Math.max(5, Number(TR.intervalSec) || 30) * 1000) : 0;
     const onResize = () => {
       camera.aspect = W() / H(); camera.updateProjectionMatrix(); renderer.setSize(W(), H()); measurePage();
       requestStill();
@@ -665,6 +752,8 @@ function Hero3DScene() {
         if (HOVER !== 'swell' || hoverAmt.v < 0.001) baseScale.copy(orb.scale);
         uniforms.uTime.value = t;
         uniforms.uFracture.value = fractureState.value;
+        // D4: the fade of a scene transition (1 = invisible, at the swap).
+        uniforms.uOpacity.value = opacityBase * (1 - transAmt.v);
         // ── the damped scroll input ──
         // An exponential follow whose velocity is clipped: `want` is where an undamped
         // follow would go this second, the clamp is the ceiling the eye is allowed to see,
@@ -801,7 +890,7 @@ function Hero3DScene() {
       // Scrolling counts as busy: it is one of the moments a dropped frame reads as a
       // stutter, and scrollEnergy decays to nothing about a second after the page stops,
       // so this cannot pin the core on an idle page.
-      const busy = introRunning || hoverAmt.v > 0.001 || fractureState.value > 0.001 || orbTransition.amt > 0.001 || scrollEnergy > 0.02;
+      const busy = introRunning || hoverAmt.v > 0.001 || fractureState.value > 0.001 || orbTransition.amt > 0.001 || scrollEnergy > 0.02 || transAmt.v > 0.001;
       const target = busy ? 60 : idleFps;
       if (!busy && now - lastDraw < 1000 / target - 2) return;
       // Seconds since the frame we actually DREW, so the damping below runs at the same
@@ -893,6 +982,9 @@ function Hero3DScene() {
       gsap.killTweensOf(fractureState);
       gsap.killTweensOf(orbTransition);
       gsap.killTweensOf(hoverAmt);
+      gsap.killTweensOf(transAmt);
+      clearInterval(transTimer);
+      window.removeEventListener('bcw:route-change', onRouteChange);
       themeObs.disconnect();
       document.removeEventListener('bcw:site-theme', applyPalette);
       window.removeEventListener('pointermove', onMove);

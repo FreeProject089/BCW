@@ -53,6 +53,7 @@ export function previewData(config) {
     show: true, snoozed: false, current: steps[0]?.id || null, steps,
     progress: { done: [], skipped: [], interests: [] },
     interests: config?.interests || [], links: config?.links || [],
+    ui: config?.ui || {},
     ctx: { emailEnabled: true, emailVerified: false, totpEnabled: false, oauthAvailable: true, providers: { github: true, discord: true, google: false }, linked: [], hasPassword: true },
   };
 }
@@ -259,7 +260,11 @@ export function OnboardingFlow({ data, onAction, preview = false, stepOverride =
   const pct = steps.length ? Math.round((finishedCount / steps.length) * 100) : 0;
   const title = pick(step.title, lang) || defaults[step.id]?.title;
   const body = pick(step.body, lang) || defaults[step.id]?.body;
-  const Icon = STEP_ICON[step.id] || Rocket;
+  // D5: the admin's presentation options (all default to the behaviour before they existed).
+  const ui = data.ui || {};
+  const Icon = (step.icon && ONB_ICONS[step.icon]) || STEP_ICON[step.id] || Rocket;
+  const continueLabel = pick(ui.continueLabel, lang) || t('onb.continue', 'Continue');
+  const finishLabel = pick(ui.finishLabel, lang) || t('onb.finish', 'Finish');
 
   // What "Continue" saves before the step is marked done. Only the steps with a form save.
   const saveStep = async () => {
@@ -296,12 +301,12 @@ export function OnboardingFlow({ data, onAction, preview = false, stepOverride =
       <div className="flex items-center gap-3 mb-3">
         <span className="grid place-items-center w-10 h-10 rounded-xl border border-[var(--line)] shrink-0" style={{ background: 'var(--bg-solid)' }}><Icon size={18} className="text-[var(--accent-ink)]" /></span>
         <div className="min-w-0 flex-1">
-          <div className="text-[11px] uppercase tracking-wide text-[var(--faint)] font-semibold">{t('onb.stepof', 'Step {n} of {total}').replace('{n}', idx + 1).replace('{total}', steps.length)}</div>
+          {ui.showProgress !== false && <div className="text-[11px] uppercase tracking-wide text-[var(--faint)] font-semibold">{t('onb.stepof', 'Step {n} of {total}').replace('{n}', idx + 1).replace('{total}', steps.length)}</div>}
           <h2 className="font-semibold text-base sm:text-lg leading-tight">{title}</h2>
         </div>
-        <button type="button" onClick={() => onAction('snooze')} className="text-[var(--faint)] hover:text-[var(--text)] p-1 shrink-0" title={t('onb.later', 'Finish later')} aria-label={t('onb.later', 'Finish later')}><X size={16} /></button>
+        {ui.allowSnooze !== false && <button type="button" onClick={() => onAction('snooze')} className="text-[var(--faint)] hover:text-[var(--text)] p-1 shrink-0" title={t('onb.later', 'Finish later')} aria-label={t('onb.later', 'Finish later')}><X size={16} /></button>}
       </div>
-      <div className="progress-track mb-4"><div className="progress-fill" style={{ width: `${pct}%` }} /></div>
+      {ui.showProgress !== false && <div className="progress-track mb-4"><div className="progress-fill" style={{ width: `${pct}%` }} /></div>}
       {body && <div className="text-sm text-[var(--muted)] mb-4 whitespace-pre-line">{body}</div>}
 
       <div className="mb-5">
@@ -314,15 +319,21 @@ export function OnboardingFlow({ data, onAction, preview = false, stepOverride =
         {step.id === 'next' && <NextStep data={data} chosen={chosen} lang={lang} preview={preview} />}
       </div>
 
+      {/* D5: every group wraps. The inner group used to be a single non-wrapping row, so in
+          French ("Terminer plus tard", "Ne plus afficher") at half width it ran out of the card
+          instead of moving to its own line. Buttons keep their natural width (never squeezed or
+          cut): a row that does not fit becomes two. */}
       <div className="flex flex-wrap items-center gap-2">
-        <Button variant="primary" onClick={() => act('done')} loading={busy}>
-          {last ? <><Check size={14} /> {t('onb.finish', 'Finish')}</> : <>{t('onb.continue', 'Continue')} <ArrowRight size={14} /></>}
+        <Button variant="primary" className="max-w-full whitespace-normal text-start" onClick={() => act('done')} loading={busy}>
+          {last ? <><Check size={14} className="shrink-0" /> {finishLabel}</> : <>{continueLabel} <ArrowRight size={14} className="shrink-0" /></>}
         </Button>
-        {!last && <Button variant="ghost" onClick={() => act('skip')} disabled={busy}>{t('onb.skip', 'Skip this step')}</Button>}
-        <div className="ms-auto flex items-center gap-1">
-          <Button variant="ghost" size="sm" onClick={() => onAction('snooze')} disabled={busy}><Clock size={13} /> {t('onb.later', 'Finish later')}</Button>
-          <Button variant="ghost" size="sm" onClick={dismiss} disabled={busy}>{t('onb.dismiss', 'Do not show again')}</Button>
-        </div>
+        {!last && step.skippable !== false && <Button variant="ghost" className="max-w-full whitespace-normal" onClick={() => act('skip')} disabled={busy}>{t('onb.skip', 'Skip this step')}</Button>}
+        {(ui.allowSnooze !== false || ui.allowDismiss !== false) && (
+          <div className="ms-auto flex flex-wrap items-center justify-end gap-1">
+            {ui.allowSnooze !== false && <Button variant="ghost" size="sm" className="whitespace-normal" onClick={() => onAction('snooze')} disabled={busy}><Clock size={13} className="shrink-0" /> {t('onb.later', 'Finish later')}</Button>}
+            {ui.allowDismiss !== false && <Button variant="ghost" size="sm" className="whitespace-normal" onClick={dismiss} disabled={busy}>{t('onb.dismiss', 'Do not show again')}</Button>}
+          </div>
+        )}
       </div>
     </Card>
   );

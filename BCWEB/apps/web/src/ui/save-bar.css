@@ -1,0 +1,3 @@
+/* The save bar (ui/save-bar.jsx) reuses `.save-dock` from index.css for its frame. This file
+   only adds what the shared bar needs on top: an in-flow variant for a bar inside a card. */
+.save-dock.save-dock-flow { position: static; box-shadow: none; }

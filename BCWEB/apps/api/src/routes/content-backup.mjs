@@ -112,8 +112,8 @@ export const SECTIONS = {
     //
     // The import side was worse. `restore` upserted whatever the zip said into whatever key
     // the zip named, with no check at all — while `PUT /admin/settings/:key` runs every write
-    // through `checkAdminSetting`, which refuses the credential keys, refuses `demo.*`
-    // (routes/demo.mjs owns those and clamps them), refuses the SUPERADMIN-only rows to an
+    // through `checkAdminSetting`, which refuses the credential keys, refuses the
+    // SUPERADMIN-only rows to an
     // ADMIN, and validates a handful of values that break the site when they are wrong. This
     // route is ADMIN + server-control + elevated, NOT SUPERADMIN, so a hand-edited zip was a
     // way for an admin to write settings the site reserves for somebody above them.

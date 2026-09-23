@@ -265,3 +265,40 @@ describe('the routes', { skip: !RUN && 'no DATABASE_URL' }, () => {
     assert.equal((await call(plain, 'GET', '/admin/onboarding')).statusCode, 403);
   });
 });
+
+// D5: presentation options. Each one is enforced by applyAction, not only by the page hiding a
+// button: a request built by hand must meet the same rule.
+describe('D5 options: skippable steps, snooze and dismiss switches', () => {
+  test('a config without `ui` keeps every behaviour it had', () => {
+    const cfg = normalizeConfig({ enabled: true, steps: [{ id: 'profile', enabled: true }] });
+    assert.deepEqual(
+      { s: cfg.ui.allowSnooze, d: cfg.ui.allowDismiss, p: cfg.ui.showProgress },
+      { s: true, d: true, p: true },
+    );
+    assert.equal(cfg.steps[0].skippable, true);
+    assert.equal(cfg.steps[0].icon, '');
+  });
+
+  test('a step that cannot be skipped refuses `skip` but accepts `done`', () => {
+    const cfg = normalizeConfig({ enabled: true, steps: [{ id: 'profile', enabled: true, skippable: false }, { id: 'next', enabled: true }] });
+    const st = resolveSteps(cfg, CTX);
+    const p0 = initialProgress();
+    assert.equal(applyAction(p0, { action: 'skip', step: 'profile' }, st, cfg).error, 'not_skippable');
+    assert.ok(!applyAction(p0, { action: 'done', step: 'profile' }, st, cfg).error);
+  });
+
+  test('snooze and dismiss switched off are refused', () => {
+    const cfg = normalizeConfig({ enabled: true, steps: [{ id: 'profile', enabled: true }], ui: { allowSnooze: false, allowDismiss: false } });
+    const st = resolveSteps(cfg, CTX);
+    const p0 = initialProgress();
+    assert.equal(applyAction(p0, { action: 'snooze' }, st, cfg).error, 'not_allowed');
+    assert.equal(applyAction(p0, { action: 'dismiss' }, st, cfg).error, 'not_allowed');
+  });
+
+  test('labels are bounded and an icon name is a bare identifier', () => {
+    const long = 'x'.repeat(41);
+    assert.equal(ONBOARDING_CONFIG_SCHEMA.safeParse({ enabled: true, steps: [{ id: 'profile', enabled: true }], ui: { finishLabel: { en: long } } }).success, false);
+    assert.equal(ONBOARDING_CONFIG_SCHEMA.safeParse({ enabled: true, steps: [{ id: 'profile', enabled: true, icon: '<svg onload=x>' }] }).success, false);
+    assert.equal(ONBOARDING_CONFIG_SCHEMA.safeParse({ enabled: true, steps: [{ id: 'profile', enabled: true, icon: 'Rocket' }], ui: { finishLabel: { en: 'Let us go', fr: 'C’est parti' } } }).success, true);
+  });
+});

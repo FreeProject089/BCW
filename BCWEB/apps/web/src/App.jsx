@@ -765,10 +765,14 @@ export function Nav({ preview = null } = {}) {
       <div className="max-w-7xl mx-auto relative">
       <div className="rounded-2xl border border-[var(--line)] px-2.5 sm:px-3 h-14 flex items-center gap-1 flex-nowrap topbar"
         style={{ boxShadow: '0 10px 34px -14px rgba(0,0,0,0.30)' }}>
-        <Link to="/" className="flex items-center gap-2 font-extrabold text-[15px] me-1 shrink-0" onClick={() => setOpen(false)}>
+        {/* D2: the mark is decorative (the name is the link's label), so alt="" and the name on
+            the link. alt="BC" printed the letters "BC" on the white plate whenever the image
+            had not decoded yet: in the admin's Live preview frame that was most of the time,
+            and it read as a fake logo. */}
+        <Link to="/" aria-label="BetterCommunity" className="flex items-center gap-2 font-extrabold text-[15px] me-1 shrink-0" onClick={() => setOpen(false)}>
           {hasIcon('brand', theme)
             ? <span className="grid place-items-center shrink-0" style={{ width: utilSize('brand', uCfg.brand), height: utilSize('brand', uCfg.brand) }}>{ug('brand')}</span>
-            : <BrandMark alt="BC" className="rounded-xl object-contain" style={{ width: utilSize('brand', uCfg.brand), height: utilSize('brand', uCfg.brand) }} />}
+            : <BrandMark alt="" className="rounded-xl object-contain" style={{ width: utilSize('brand', uCfg.brand), height: utilSize('brand', uCfg.brand) }} />}
           <span className="text-[var(--text)] hidden sm:inline">BetterCommunity</span>
         </Link>
         {/* desktop segmented nav — icons-only when tight, icons+labels at xl+.
@@ -1617,6 +1621,9 @@ export default function App() {
   useEffect(() => {
     if (firstNav.current) { firstNav.current = false; return; }
     if (getOrbTransitionPref()) window.dispatchEvent(new CustomEvent('bcweb:orb-transition'));
+    // D4 (agent-admin-D): the scene's own "on each page change" transition, when the admin
+    // configured one (hero/Hero3D.jsx decides; this only says a page changed).
+    window.dispatchEvent(new CustomEvent('bcw:route-change'));
   }, [loc.pathname]);
 
   // Replay the content fade on EVERY navigation.

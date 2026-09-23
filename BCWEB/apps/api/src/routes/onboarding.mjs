@@ -57,6 +57,7 @@ async function view(p, uid) {
     progress: { done: progress.done, skipped: progress.skipped, interests: progress.interests || [] },
     interests: cfg.interests,
     links: cfg.links,
+    ui: cfg.ui,
     ctx,
   };
 }

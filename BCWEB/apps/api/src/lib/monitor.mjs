@@ -14,6 +14,7 @@ import { checkStorageHealth } from './storage.mjs';
 import { notify } from './lib.mjs';
 import { stripeStatus, stripeUp } from './stripe-status.mjs';
 import { planAlert } from './alert-incident.mjs';
+import { runMonitors, monitorLabels } from './status-monitors.mjs';
 
 // ── CPU% — classic two-snapshot os.cpus() diff (reflects what this container's
 // scheduler sees; under an unrestricted cgroup that's effectively the host's). ──
@@ -137,6 +138,12 @@ const DEP_CHECKS = {
 };
 export const DEP_LABELS = { db: 'Database', storage: 'Object storage', bot: 'Discord bot', telemetry: 'Telemetry dashboard', web: 'Website', stripe: 'Stripe' };
 export const DEP_KEYS = Object.keys(DEP_CHECKS);
+/**
+ * The name of a service, built-in or admin-configured (D7, lib/status-monitors.mjs). Use this
+ * instead of `DEP_LABELS[key] || key`: a configured monitor's key is `c_<slug>`, and printing
+ * that on a status page or in an outage mail would be the key, not the name.
+ */
+export const depLabel = (key) => DEP_LABELS[key] || monitorLabels()[key]?.en || key;
 
 export async function getDepsConfig(p) {
   const row = await p.adminSetting.findUnique({ where: { key: 'serverperf.deps' } });
@@ -157,12 +164,17 @@ export async function getDepsConfig(p) {
 export async function checkDependenciesTimed(p) {
   const enabled = await getDepsConfig(p);
   const keys = DEP_KEYS.filter((k) => enabled[k] !== false);
-  const results = await Promise.all(keys.map(async (k) => {
-    const t0 = Date.now();
-    const ok = await DEP_CHECKS[k](p).catch(() => false);
-    return [k, { ok, ms: ok === null ? null : Date.now() - t0 }];
-  }));
-  return Object.fromEntries(results);
+  const [results, custom] = await Promise.all([
+    Promise.all(keys.map(async (k) => {
+      const t0 = Date.now();
+      const ok = await DEP_CHECKS[k](p).catch(() => false);
+      return [k, { ok, ms: ok === null ? null : Date.now() - t0 }];
+    })),
+    // D7: the admin-configured services, through the SSRF-safe prober (cached, never throws).
+    runMonitors(p).catch(() => ({})),
+  ]);
+  const extra = Object.entries(custom).map(([k, v]) => [k, { ok: v.ok, ms: v.ok === null ? null : v.ms }]);
+  return Object.fromEntries([...results, ...extra]);
 }
 
 /**
@@ -639,7 +651,7 @@ export async function recordOutages(p, deps, inGrace) {
     const open = await p.serviceOutage.findFirst({ where: { dep, endedAt: null }, orderBy: { startedAt: 'desc' } });
     if (ok === false) {
       if (!open && !inGrace) {
-        await p.serviceOutage.create({ data: { dep, cause: `${DEP_LABELS[dep] || dep} is unreachable.` } });
+        await p.serviceOutage.create({ data: { dep, cause: `${depLabel(dep)} is unreachable.` } });
         // Only on the TRANSITION — inside `!open`, so a service that stays down for an hour
         // sends one message, not one every tick. Imported lazily to keep the notifier (and its
         // mail dependencies) out of the hot sampling path when nobody subscribes.
@@ -724,7 +736,7 @@ export async function sampleAndAlert(p, log) {
     for (const [key, ok] of Object.entries(deps)) {
       if (ok === false && !inGrace) {
         stillTrue.push(`service_down:${key}`);
-        alerts.push(await maybeAlert(p, 'service_down', `${DEP_LABELS[key] || key} is unreachable.`, { key: `service_down:${key}` }));
+        alerts.push(await maybeAlert(p, 'service_down', `${depLabel(key)} is unreachable.`, { key: `service_down:${key}` }));
       }
     }
     // Everything that was open and is no longer true, closed in one statement. Failing here
