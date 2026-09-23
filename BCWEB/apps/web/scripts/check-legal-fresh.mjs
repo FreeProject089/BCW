@@ -24,38 +24,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { checkFreshness } from '../../api/src/lib/legal-freshness.mjs';
+import { checkFreshness, legalWordingDate } from '../../api/src/lib/legal-freshness.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 // A path may be passed in — that is how the failing case is exercised, since the real file is
 // (and should stay) up to date.
 const FILES = (process.argv.slice(2).length ? process.argv.slice(2).map((f) => path.resolve(f))
     : ['src/pages/legal.jsx'].map((f) => path.resolve(here, '..', f)));
-
-// The file with its class attributes removed: `className="..."` and `className={`...`}`.
-// Template-literal classes here never nest braces deeper than one `${...}`, which the second
-// pattern allows for; anything it cannot parse stays in, so the error is always "counted a
-// class-only commit as a wording change", never the other way round.
-const stripClasses = (src) => String(src)
-    .replace(/className="[^"]*"/g, 'className=""')
-    .replace(/className=\{`(?:[^`$]|\$\{[^}]*\})*`\}/g, 'className=""');
-
-const git = (args) => execFileSync('git', args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
-
-function wordingDate(file) {
-    const rel = path.relative(execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8' }).trim(), file).replace(/\\/g, '/');
-    const log = git(['log', '--format=%H %cs', '--', file]).trim().split('\n').filter(Boolean);
-    const show = (rev) => { try { return git(['show', `${rev}:${rel}`]); } catch { return null; } };
-    for (const line of log) {
-        const [sha, date] = line.split(' ');
-        const after = show(sha);
-        const before = show(`${sha}^`);
-        // No parent version (the file was created here, or a root commit): that is a wording date.
-        if (before == null || after == null) return date;
-        if (stripClasses(after) !== stripClasses(before)) return date;
-    }
-    return log.length ? log[log.length - 1].split(' ')[1] : '';
-}
 
 let bad = 0;
 for (const file of FILES) {
@@ -69,7 +44,10 @@ for (const file of FILES) {
         // The newest commit that changed more than class attributes. A shallow clone has no
         // history to answer with, which checkFreshness reports as unverified rather than
         // passing -- see the CI step's fetch-depth.
-        fileDate = wordingDate(file);
+        const root = execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8' }).trim();
+        const rel = path.relative(root, file).replace(/\\/g, '/');
+        const git = (args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+        fileDate = legalWordingDate(git, rel, { working: fs.readFileSync(file, 'utf8') });
     } catch { /* no git: reported below as unverified, never as fine */ }
 
     const r = checkFreshness(fs.readFileSync(file, 'utf8'), fileDate);

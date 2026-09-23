@@ -7,9 +7,9 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { declaredDate, checkFreshness } from '../src/lib/legal-freshness.mjs';
+import { declaredDate, checkFreshness, legalWordingDate } from '../src/lib/legal-freshness.mjs';
 
 describe('declaredDate', () => {
   test('reads the constant', () => {
@@ -64,14 +64,14 @@ describe('the real legal.jsx', () => {
     const REL = 'apps/web/src/pages/legal.jsx';
     let fileDate = '';
     try {
-      // An UNCOMMITTED edit counts as today. `git log` reports the last commit, so without
-      // this the check only bites after the change is already in history — which is too late
-      // to be useful while somebody is editing the terms, and is how the first version of
-      // this test passed a probe that had just modified the file.
-      const dirty = execFileSync('git', ['status', '--porcelain', '--', REL], { cwd: repo, encoding: 'utf8' }).trim();
-      fileDate = dirty
-        ? new Date().toISOString().slice(0, 10)
-        : execFileSync('git', ['log', '-1', '--format=%cs', '--', REL], { cwd: repo, encoding: 'utf8' }).trim();
+      // The same rule the CLI gate uses (legalWordingDate): the date the WORDING changed,
+      // an uncommitted wording edit counting as today. This test used to carry its own copy
+      // of the rule, and the day the gate learned to ignore class-only commits this copy kept
+      // failing on a layout change.
+      const top = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: repo, encoding: 'utf8' }).trim();
+      const rel = relative(top, FILE).replace(/\\/g, '/');
+      const git = (args) => execFileSync('git', args, { cwd: top, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+      fileDate = legalWordingDate(git, rel, { working: src });
     } catch { /* reported as unverified below, never as a pass */ }
 
     // A checkout with no git history (a release tarball) cannot answer this. Skipping is
