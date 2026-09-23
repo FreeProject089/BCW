@@ -1316,3 +1316,355 @@ audit finding nobody can act on is how real ones start being skipped.
   of the skipped tests touch the zip path; the two new ones do not need a DB.
 - **No container was run as a non-root user** to see whether `USER node` breaks the api's git
   backup volume (F10-12) — that needs the stack, and compose is off-limits under this card.
+
+---
+
+# Pentest 2026-09-22 — Cards 2 and 3, authentication & linking, config transfer / backup / demo
+
+Plan: `.Assets/.md/PLAN-PENTEST-SEPT22-2026.md`, cards 2 (B, C) and 3 (D, E). Scope: `oauth.mjs`,
+`connections.mjs`, `social.mjs`, `links.mjs`, `auth.mjs`, `config-transfer.mjs`,
+`content-backup.mjs`, `demo.mjs` and their libs (`verify-gate`, `login-alert`, `secret-guard`,
+`creator-identity`, `creator-proof`, `onboarding`, `demo`). Nothing was committed. The Discord bot
+was never started. Every fixture written to the dev database was removed and the removal verified.
+
+**No stack was running**, so nothing here was proven through Caddy: port 5176 answers a different
+project entirely. Every finding below is measured either against the modules through the real
+Fastify handlers (`app.inject`) or against the dev Postgres directly — which is how the suite runs
+in CI, and is what the "measured before AND after" rule needs. What that costs is written under
+*What was NOT checked*.
+
+Suite, run the CI way (`DATABASE_URL` set, `REDIS_URL` unset): **1900 -> 1913 tests, 1913 pass, 0
+fail, 0 skipped**. `test/thread-copy-abuse.test.mjs` is card 1's, untracked and in flight in the
+same working tree; it is excluded from that count and its 4 failures are not this card's.
+
+## Findings, most severe first
+
+### F23-1 — A content-backup zip wrote any admin setting, unchecked, at a lower rank than the screen that owns it (FIXED)
+
+**CWE-862 / CWE-269 / CWE-20.** CVSS 3.1 **6.8 medium** —
+`AV:N/AC:L/PR:H/UI:R/S:U/C:N/I:H/A:L`. PR:H because the route is `requireRole('ADMIN')` +
+`requireCanControlServer()` + `requireElevated()`; the point is that it is **not** SUPERADMIN, and
+the door it opens is.
+
+`POST /admin/content-backup/import` restored the `settings` section with
+
+```js
+rows.filter((r) => !SECRET_SETTING_KEYS.has(r.key)).map((r) => p.adminSetting.upsert({ where: { key: r.key }, update: r, create: r }))
+```
+
+— the four credential keys excluded and **nothing else checked**. The site's own settings door,
+`PUT /admin/settings/:key`, runs every write through `checkAdminSetting` (`routes/misc.mjs:704`),
+which refuses the credential keys, refuses `demo.*` (`routes/demo.mjs` owns those and clamps
+them), refuses `SUPERADMIN_ONLY_SETTINGS` to an ADMIN, and validates the handful of values that
+break the site when they are wrong. A hand-edited zip skipped all of it.
+
+*Trigger, measured.* Four rows through `SECTIONS.settings.restore` with a recording client, and
+the same four through `checkAdminSetting` as `role: 'ADMIN'`, against the dev database:
+
+| planted row | the zip wrote it | `PUT /admin/settings/:key` as ADMIN |
+|---|---|---|
+| `marketplace.feePercentBp: 0` | yes | `403 superadmin_required` |
+| `demo.session: {…}` | yes | `409 use_demo_routes` |
+| `hosting.termMinMonths: 999` | yes | `400 invalid_term_bound` |
+| `seo.gtmId: "not-a-tag-id"` | yes | `400 bad_gtm_id` |
+
+The first is money: the marketplace fee is one of the two rows the site reserves for SUPERADMIN,
+and an admin with the server-control grant could set it to 0 (or to 100%) through a file. The
+second is F23-3's door.
+
+*Fix.* `SECTIONS.settings.restore` is now async and puts every row through `checkAdminSetting`
+with the **importing admin's own role**, writes `checkAdminSetting`'s returned (normalised) value
+rather than the zip's raw one, and reports each refusal by key and reason in the response
+(`refused: [{ key, error }]`) instead of dropping it silently. The route `await`s the restore —
+which is what lets a section check before it writes — and still receives the operation list, so
+the one-transaction-per-section guarantee is untouched. The rollback route takes the same path.
+
+*Why it holds.* There is now one policy function and two callers, instead of two policies. A rule
+the import could drift away from is a rule written twice; `checkAdminSetting` is imported, never
+copied — the same discipline `lib/config-transfer.mjs` already follows for its schemas. And the
+gate is the caller's live role, so an import is neither a way up (an ADMIN cannot write the
+SUPERADMIN rows) nor a way down (a SUPERADMIN restoring their own backup gets it all back, which
+is asserted separately).
+
+*Tests.* `apps/api/test/content-backup-settings-policy.test.mjs`, new: the four-row table above
+asserted as refusals with their exact reasons, the SUPERADMIN counterpart, and the "a restore
+still hands back operations rather than running them" invariant re-asserted for the async form.
+**RED at HEAD** on 2 of the 3 import tests.
+
+### F23-2 — A leftover password-reset token reopened a CLOSED account (FIXED)
+
+**CWE-613 / CWE-285.** CVSS 3.1 **6.5 medium** —
+`AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:N`. AC:H because it needs a token that is live at the moment
+the closure sweeps.
+
+Card 2 asks whether a closed account can be revived. It could.
+
+`anonymiseAccount` (`routes/closure.mjs`) says it removes "everything that could still let
+somebody in", and removes a great deal: the password hash, every session, the refresh tokens, the
+API keys, the consents, the pairwise subs, and the GitHub/Discord/Google links. It does **not**
+delete `PasswordReset` rows. `POST /auth/reset/confirm` never asked whose account a token belonged
+to, and `POST /auth/login` had no `closedAt` check of its own — it only ever failed on a closed
+account incidentally, because there was no hash to compare against.
+
+So: a reset token issued in the hour before the sweep ran, or a 24-hour *set a password* link from
+an OAuth signup (`oauth.mjs sendPasswordSetup`), wrote a fresh hash onto the anonymised row. The
+address to sign in with afterwards is not a secret: `anonymiseAccount` rewrites it to
+`closed+<userId>@account.invalid`, and the user id is on display in half the admin surface.
+
+*Trigger, measured.* Fixture account, a reset token, then `anonymiseAccount`: the row came back
+`closedAt` set and `passwordHash: null`, and the token came back **live and unused**. Driven
+through the real handlers at HEAD, `POST /auth/reset/confirm` answered `{"ok":true}` and
+`POST /auth/login` answered with the full signed-in user object and a session cookie.
+
+*Fix.* Two refusals in `routes/auth.mjs`, because either alone leaves the other as the rule.
+`/auth/reset/confirm` reads the target's `closedAt` and, when it is set, **burns the token** (a
+token that still works is one that gets tried again) and answers the same `invalid_token` as an
+expired one. `/auth/login` refuses a `closedAt` row outright, in the same `invalid_credentials`
+words as a wrong password — so the closed address of a real person is not confirmable from the
+login form.
+
+*Why it holds.* The login route is the one place that decides who gets a session, and it now has
+its own rule rather than inheriting a side effect of what `anonymiseAccount` happens to clear. The
+reset route refuses at the account, not at the token, so every future way of minting a
+`PasswordReset` row is covered without being enumerated.
+
+*Residual (owner).* `anonymiseAccount` still leaves the `PasswordReset` rows in the table. Both
+consumers now refuse them, so nothing uses them — but a closure that claims to remove every way in
+should also stop keeping them, and `closure.mjs` is outside this card's files. **Owner card:**
+add `p.passwordReset.deleteMany({ where: { userId } })` (and `emailVerification`) to the
+`Promise.all` in `anonymiseAccount`.
+
+*Tests.* `apps/api/test/closed-account-revival.test.mjs`, new, 2 tests through `app.inject`:
+the reset is refused *and* the token is burned *and* the closed row still has no password; and the
+login refuses with a body byte-identical to a wrong password. **Both RED at HEAD** — `{"ok":true}`
+and a full user object respectively.
+
+### F23-3 — A planted `demo.session` never expired: the ceiling was only a ceiling on the past (FIXED)
+
+**CWE-20 / CWE-613.** CVSS 3.1 **4.3 medium** —
+`AV:N/AC:L/PR:H/UI:R/S:U/C:L/I:L/A:N`. Chained behind F23-1, which is the door.
+
+`lib/demo.mjs normalize()` exists to re-apply demo mode's limits on the way **out** of the
+database, and its docstring names the case it refuses: "an `expiresAt` in 2099 would make a demo
+that never ends". The clamp is
+
+```js
+expiresAt: new Date(Math.min(expires, started + MAX_MINUTES * 60_000)).toISOString()
+```
+
+which is a ceiling relative to `startedAt` — so it caps nothing at all on a row whose **start** is
+in the future. A row dated 2099 is comfortably inside its own start plus eight hours, so
+`readDemoSession` found it unexpired and served it.
+
+*Trigger, measured.* A planted row with `startedAt: 2099-01-01`, `expiresAt: +1h`, read through
+`readDemoSession`: accepted, `expiresAt` 2099-01-01T01:00:00Z, **`expiresInSec` 2 280 788 983 —
+26 398 days** against a `MAX_MINUTES` of 480. `PUT /admin/settings/demo.session` refuses `demo.*`,
+so the way to plant it was F23-1's unchecked settings restore.
+
+*Fix.* `const startedMs = Math.min(started, Date.now())`, used for both the reported `startedAt`
+and the clamp. A session `startDemo` wrote is unaffected (it always writes `new Date()`); a
+planted one now expires at most `MAX_MINUTES` after it is first read.
+
+*Why it holds.* The ceiling is now anchored to a value the row cannot choose. Everything else
+`normalize` already did right stays — `n` clamped to `MAX_ITEMS`, the `dm_[0-9a-f]{32}` id shape,
+a non-integer seed rejected — and the row is still deleted rather than served when it is expired
+or malformed.
+
+*Refuted along the way.* The rest of demo mode held under the same pressure and is recorded under
+*Reviewed and found safe*.
+
+*Tests.* `apps/api/test/demo-mode.test.mjs` +1, inside the existing HTTP suite: plant the 2099 row,
+`GET /admin/demo`, assert the served session expires within the ceiling. Cleanup is in a `finally`
+so a failure cannot cascade into its neighbours. **RED at HEAD** (1 fail of 22), green after
+(22 of 22).
+
+### F23-4 — The export promised "no API tokens" and carried a credential FIELD (FIXED)
+
+**CWE-200 / CWE-532.** CVSS 3.1 **4.9 medium** —
+`AV:N/AC:L/PR:H/UI:N/S:U/C:H/I:N/A:N`. The zip is meant to leave the building — that is what the
+feature is for — and its own header says what is not in it.
+
+`20fd0998` excluded the four credential **rows** from the content backup. A row is not the unit a
+secret lives in. `codegraph.settings.<project>` holds a webhook `secret` beside a harmless `url`
+(`routes/projects.mjs CODEGRAPH_SETTINGS_BODY`, written by `requireEditor()` — not even an admin),
+and that key is not on the credential list, so the whole value went into `settings.json` under a
+header promising "no password hashes, no TOTP secrets, **no API tokens**". `lib/secret-guard.mjs`
+has stripped credential FIELDS as well as rows since the day it was written, and the config
+transfer uses it; this exporter did not, and the two were describing the same policy.
+
+*Trigger, measured.* A fixture row `codegraph.settings.__pentest_probe = { url, secret:
+'hunter2-webhook-shared-secret' }` written to the dev database, then `SECTIONS.settings.read(p)`:
+the secret came back in full. `findSecrets` on the same value: `[{ path: 'secret', reason:
+'secret_field' }]` — the policy already knew, the exporter never asked. Fixture removed and the
+removal verified.
+
+*Scanned, and clean today.* All 44 non-credential `AdminSetting` rows on the dev install through
+`findSecrets`: **0** would have leaked. The finding is latent, not live — stated so it is not
+overstated.
+
+*Fix.* `SECTIONS.settings.read` runs `stripSecrets` over each row's value and pushes what it
+removed, by path, into an optional sink. The export route passes that sink to **every** section
+(so the next one that strips something is reported without anybody wiring it up), records the
+paths per section as `manifest.sections.<id>.redacted`, and adds a manifest note. The restore then
+calls `keepLocalSecrets(incoming, current)` — the same helper the config transfer uses — so an
+import of a stripped row keeps the secret the receiving install already has instead of silently
+erasing it.
+
+*Why it holds.* One definition of "secret" for all three exporters, which is the whole reason
+`lib/secret-guard.mjs` exists. And the strip is reported rather than silent: a backup that quietly
+drops a field is how somebody restores it elsewhere and spends a day wondering why the webhook
+never fires.
+
+*Tests.* `content-backup-settings-policy.test.mjs`: the `url` survives, the `secret` does not, an
+ordinary row is untouched, the removal is reported by path, and a restore of the stripped row
+keeps the local secret. **RED at HEAD** on 2 of them.
+
+### F23-5 — One creator identity, two accounts, by flipping the case (FIXED)
+
+**CWE-178 (improper handling of case sensitivity) / CWE-20.** CVSS 3.1 **3.7 low** —
+`AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:L/A:N`. Low because the id must already be UNPINNED (v4), and an
+unpinned id being claimable by whoever knows it is an accepted risk recorded at the route.
+
+A Creator ID is the hex of an ed25519 public key, so two spellings are one identity — and the v5
+half of the system agrees: `creatorProofGate` lowercases the claimed id before it looks for a key
+pin, and `acceptCreatorProof` pins the lowercased id. `POST /link/request` did not. Its "already
+linked?" check was `creatorLink.findUnique({ where: { creatorId } })`, exact, on a case-sensitive
+Postgres text column — so the UPPER-case spelling of an id that is already somebody's answered
+"nobody holds it" and a pairing code was issued. `POST /me/creator-links` then made a **second**
+`CreatorLink` for one identity, against the "One creator id ↔ one account" rule written two lines
+above it.
+
+*Trigger, measured.* A fixture `CreatorLink` on a lowercase id, then `POST /link/request` through
+the real handler: the exact spelling answered `{ linked: true }`, the upper-case spelling answered
+with a fresh pairing code. Fixtures removed in a `finally`.
+
+*Refuted.* This is **not** a way past the v5 pin, and not a way past a ban. `creatorProofGate`
+lowercases, so a pinned id answers `proof_required` in either spelling; `siteban.mjs` and the
+global access policy both compare `.toLowerCase()`; `feedback.mjs` lowercases the `X-Creator-ID`
+header before it resolves an account. And `FreeTierClaim` is keyed on `userId` OR the creator ids,
+so the case variant buys no extra free tier. What it buys is a duplicate identity row.
+
+*Fix.* Both checks are now case-insensitive (`findFirst` with `mode: 'insensitive'`) — the
+existence test in `/link/request` and the one-id-one-account test in `/me/creator-links`, so a
+code minted before the fix still cannot land as a second link. The **lookups** are deliberately
+left exact: lowercasing them would stop resolving any mixed-case row an older client already
+created, which is a breakage, not a fix.
+
+*Tests.* `apps/api/test/link-request-limit.test.mjs` +1: an id linked in lower case is answered
+`{ linked: true }` for the upper-case spelling and no code is issued. **RED at HEAD.**
+
+### F23-6 — `X-Creator-ID` bans are matched case-sensitively (OWNER, not fixed here)
+
+**CWE-178.** CVSS 3.1 **5.3 medium** — `AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N`.
+
+The same confusion as F23-5, in a file this card does not own. `routes/hosting-content.mjs`:
+
+```js
+const creatorId = req.headers['x-creator-id'] ? String(req.headers['x-creator-id']).slice(0, 120) : null;
+…
+const banned = policies.some((pol) => … || (creatorId && (pol.bannedKeys || []).includes(creatorId)) || matchAccountList(pol.bannedAccounts, userId, discordId)) …
+```
+
+`includes` is an exact string match, and `resolveIdentity` looks the CreatorLink up with the raw
+header too. So a banned creator flips the case of its own id and **two** gates miss at once: the
+key ban (the id no longer matches `bannedKeys`) and the account ban (the id no longer resolves a
+`userId`, and a BMM sync carries no session cookie to fall back on). The whitelist misses the same
+way, which is a nuisance rather than a hole.
+
+Not fixed here: `hosting-content.mjs` belongs to no card in this run's file split and three other
+agents are in this working tree. **Owner card**, and the patch is small: lowercase once in
+`resolveIdentity` (`String(...).slice(0, 120).toLowerCase()`) and compare the policy arrays
+case-insensitively rather than with `includes`, since stored entries may be mixed case. A test
+belongs with it: a repo whose `bannedKeys` holds the lower-case id must refuse the upper-case
+header.
+
+## Reviewed and found safe (worth recording, so it is not re-attacked blind)
+
+- **Steam OpenID 2.0** (`connections.mjs`). Every angle the card names, refuted.
+  `steamAssertionShape` pins `openid.ns` to the 2.0 URI, refuses any `mode` but `id_res`, pins
+  `op_endpoint` to `https://steamcommunity.com/openid/login`, requires `identity === claimed_id`
+  against `^https://steamcommunity\.com/openid/id/(\d{17})$`, and requires all six of
+  `op_endpoint, claimed_id, identity, return_to, response_nonce, assoc_handle` to be in the signed
+  list. `return_to` is compared against the value **recomputed from the signed state that came
+  back**, not against a prefix — extra query parameters change it and are refused. The
+  `check_authentication` body is rebuilt as a string-only copy of the `openid.*` keys, so a
+  repeated parameter (an array in the parsed query) cannot smuggle a second value past what was
+  checked. Replay is refused twice over: the browser-bound `bcw_connect` cookie is single-use, and
+  a verified `response_nonce` is burned. The in-process nonce map does not survive a restart — but
+  the state that carries the assertion names a fixed `uid`, so a replay can only re-link the same
+  connection to the same account.
+- **The link-conflict cookie** (`oauth.mjs`). HMAC domain-separated from the OAuth state
+  (`conflict.${payload}` vs the bare payload), so neither can be presented as the other. It is
+  bound to `uid` and `/me/oauth/conflict` refuses a blob whose `uid` is not the caller's, clears
+  it on read, and it dies after 5 minutes. It carries a masked address, a 64-character display
+  name and a `passwordless` boolean about an account whose provider identity the reader has just
+  proved they control. Replay inside the window is by the same account, about the same fact.
+- **Creator key v5** (`creator-identity.mjs`, `creator-proof.mjs`). Downgrade: a `bmmc1` proof for
+  a pinned id is `upgraded_key_required`, and a ban is keyed on the Creator ID, which v5 keeps —
+  so upgrading or downgrading changes no ban. Fork: a chain must contain the pinned `kid` **at the
+  index it was pinned at** (`v.kids[pin.seq] !== pin.kid`), and a shorter chain is `key_retired`;
+  the racing-first-proof path re-reads the winner and applies the same rule. Replay: the nonce is a
+  primary key in Postgres, not a process map, so a restart does not forget it, and it is burned
+  before anything else is written. Site binding: `aud` is compared against this deployment's own
+  origin and is inside the signed bytes; the `bmmc5.` prefix is inside them too, so a v5 proof
+  cannot be relabelled `bmmc1.` to skip the nonce.
+- **The verify gate** (`lib/verify-gate.mjs`). Deny-by-default for every write, so "a route added
+  since that should be behind it" cannot exist by construction — the question is whether the
+  ALLOW list is too wide, and it is not: `/auth/**` is credentials only (10 write routes, all of
+  them register / verify / reset / login / logout / oauth-link), and the `/me/*` entries are the
+  account's own settings, its notifications, its sessions and leaving. `normalizePath` strips the
+  query, the fragment, a trailing slash and one `/api` prefix; `segMatch` cannot be walked past a
+  segment (Fastify does not resolve `..` in a route path, and the edge normalises before us).
+  **The bypass worth naming and ruling out**: the gate reads `req.cookies.bcw_session` only, so a
+  credential that carries no cookie would walk around it — and the only such credential is an
+  `ApiKey`, whose two minting routes (`/me/api-keys`, `/me/notifications-key`) are both refused by
+  the gate. `presentedKey()` accepts `Authorization: Bearer` and `X-Api-Key` for API keys only;
+  there is no header path to a session JWT anywhere in `lib.mjs`.
+- **Login alerts** (`lib/login-alert.mjs`). No suppression and no enumeration found. The dedup key
+  is `(userId, reason, fingerprint)` and only a successful sign-in can write one, so it cannot be
+  pre-poisoned; `knownFingerprints`/`knownCountries` come from the account's own `Session` rows,
+  which only the owner can create. Matching the victim's User-Agent does silence `new_device` —
+  that is the documented cost of a coarse fingerprint — but `new_country` and `after_failures`
+  still fire, and `after_failures` is the one that fires on a **known** device. Nothing here runs
+  before authentication, so there is no oracle.
+- **Config transfer import** (`lib/config-transfer.mjs`). Genuinely the stronger of the two import
+  doors and the model F23-1 was fixed towards: SUPERADMIN, every value checked with the schema
+  **imported from** the live admin route, `exclusionReason` refusing the credential and runtime
+  keys by key, `findSecrets` refusing a planted credential on the way in, `keepLocalSecrets`
+  preserving what the receiving install holds, and a whole-bundle `findSecrets` on the way out
+  that throws rather than shipping. A domain with one bad item is not applied at all.
+- **Demo mode, the rest of it.** `sessionMatches` is `safeEqual`, so the session id is not a
+  timing oracle; every route is `requireRole('ADMIN')` (which carries the admin 2FA gate) and the
+  guard runs before the handler, so a guess never learns whether a demo is running; `stopDemo`
+  deletes by the `demo.` **prefix** and `demoAudit` counts what is left and names it, and both
+  throw rather than reporting zero on a database error. `DELETE /admin/demo` answers 500 if
+  anything demo survived, so "off" cannot be reported over a leftover. Apart from F23-3, "off"
+  could not be made to lie.
+
+## Open — recommendations, not changed
+
+- **`/link/request` still hands a stranger the pairing code of an UNLINKED, UNPINNED creator id.**
+  Unchanged, recorded, and the owner's decision: it is the compatibility path for clients with no
+  v5 key, the residual risk is written out at the route, and the cure is a v5 key on the id
+  (`/link/upgrade`). F23-5 narrowed it — an id that is already LINKED is now refused in either
+  spelling — but a never-claimed id is still first-come.
+- **F23-2's residual and F23-6**, above, both owner cards.
+- **`hitLinkLimit` and the Steam nonce map are per-process.** Both say so. An attacker across many
+  source addresses and many replicas is not what they stop; they raise the cost of enumeration.
+
+## What was NOT checked
+
+- **Nothing went through Caddy.** No BCWEB stack was running (port 5176 serves an unrelated
+  project), so the edge's own behaviour — the `/api` strip, header handling, the rate limiter's
+  `X-Forwarded-For` key under a real proxy — is not covered by anything here. The handler-level
+  proofs use `app.inject`, which skips the edge by design.
+- **No real provider round trip.** GitHub, Discord, Google, Twitch and Steam were attacked at the
+  code that validates their answers, never by holding a real assertion. `connectBound` /
+  `verifyState` were read and reasoned about, not exercised against a live redirect.
+- **The conflict cookie was not driven through a browser**, so "another account cannot read it" is
+  argued from the `uid` check and the `httpOnly`/`sameSite:lax`/`path:/` attributes, not observed.
+- **`/link/lookup`** was read (shared secret, `safeEqual`) and not attacked: it needs
+  `LINK_LOOKUP_SECRET`, and the telemetry service it serves was out of scope for these two cards.
+- **The web side of any of this.** `apps/web/src/**` belongs to another agent this run and was not
+  read, so nothing is claimed about what the admin screens do with the new `refused` list or the
+  manifest's `redacted` paths.
