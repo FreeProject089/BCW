@@ -157,6 +157,11 @@ export const SHORTCUTS = [
   // On this page: registered by the page that owns the action.
   { id: 'docs.search', group: 'page', combo: 'alt+/', handler: true, label: (t) => t('sc.docs.search', 'Search the documentation') },
   { id: 'docs.sidebar', group: 'page', combo: 'alt+s', handler: true, label: (t) => t('sc.docs.sidebar', 'Show or hide the docs sidebar') },
+  // The dashboards' OS mode (M1, ui/os/os-shell.jsx): live only while a dashboard is shown as
+  // windows. Letters, not arrows or Tab: Alt+Tab and Alt+arrows belong to the OS and the browser.
+  { id: 'os.launcher', group: 'os', combo: 'alt+o', handler: true, label: (t) => t('sc.os.launcher', 'Open the start menu and search') },
+  { id: 'os.next', group: 'os', combo: 'alt+j', handler: true, label: (t) => t('sc.os.next', 'Next window') },
+  { id: 'os.prev', group: 'os', combo: 'alt+k', handler: true, label: (t) => t('sc.os.prev', 'Previous window') },
   // The studio's own keys (editor/canvas-studio.jsx). Listed, never run from here.
   { id: 'studio.keys', group: 'page', combo: '?', fixed: true, route: /^\/studio\//, label: (t) => t('sc.studio.keys', 'Studio: every key') },
   { id: 'studio.pan', group: 'page', combo: 'space', fixed: true, route: /^\/studio\//, label: (t) => t('sc.studio.pan', 'Studio: hold to pan') },

@@ -94,6 +94,7 @@ const GROUPS = [
   ['page', (t) => t('sc.g.page', 'On this page')],
   ['nav', (t) => t('sc.g.nav', 'Go to')],
   ['act', (t) => t('sc.g.act', 'Actions')],
+  ['os', (t) => t('sc.g.os', 'Dashboards in OS mode')],
 ];
 
 /**

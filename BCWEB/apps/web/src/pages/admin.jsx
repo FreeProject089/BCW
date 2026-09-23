@@ -180,6 +180,10 @@ const ADMIN_SEARCH_KEYWORDS = (() => {
   return out;
 })();
 
+// The objects search behind the sidebar's "Jump to…" and the OS mode's start menu (M1). One
+// function at module level, so its identity is stable: the start menu refetches when it changes.
+const adminRemoteSearch = (q) => api.get(`/admin/search?q=${encodeURIComponent(q)}`);
+
 export function Admin() {
   const { user } = useAuth(); const dialog = useDialog(); const toast = useToast(); const { t } = useI18n();
   const [modQ, setModQ] = useState(''); const [modQApplied, setModQApplied] = useState('');
@@ -414,7 +418,7 @@ export function Admin() {
   const tabs = raw.filter((it, i) => !it.heading || (raw[i + 1] && !raw[i + 1].heading));
   return (
     <SideDash icon={ShieldCheck} title={t('adm.title', 'Admin')} subtitle={t('adm.subtitle', 'Moderation, catalogs, hosting, analytics and settings.')} tabs={tabs}
-      searchKeywords={ADMIN_SEARCH_KEYWORDS} remoteSearch={(q) => api.get(`/admin/search?q=${encodeURIComponent(q)}`)}>
+      searchKeywords={ADMIN_SEARCH_KEYWORDS} remoteSearch={adminRemoteSearch} os="admin">
       {(s) => (<>
         {/* The guide, from wherever you are.
             It was a tab in the sidebar and nothing else: two "Learn more" links existed on

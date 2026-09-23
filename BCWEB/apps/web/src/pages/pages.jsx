@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useMemo } from 'react';
+import { useEffect, useState, useRef, useMemo, Suspense } from 'react';
 import { createPortal } from 'react-dom';
 import Prism from 'prismjs';
 import 'prismjs/components/prism-json';
@@ -49,6 +49,10 @@ import Markdown, { ShowcaseIcon } from '../ui/md.jsx';
 import IconPicker from '../editor/icon-picker.jsx';
 import { IconGlyph } from '../ui/md.jsx';
 import ProjectConfigEditor from '../editor/project-config-editor.jsx';
+// M1 OS mode: the switch and the preference are tiny and eager; the shell itself is a lazy chunk.
+import { lazyChunk } from '../lib/lazy-chunk.js';
+import { useOsMode, OsModeSwitch } from '../ui/os/os-mode.jsx';
+const OsShell = lazyChunk(() => import('../ui/os/os-shell.jsx'));
 
 /* ── helpers ── */
 export function useAsync(fn, deps = []) {
@@ -392,7 +396,11 @@ export function JsonEditor({ value, onChange, placeholder, minH = 170 }) {
 // `tabs`: [{ id, label, icon, badge? }] — or a `{ heading }` entry (no id) to group
 // tabs under a small non-clickable section label (e.g. long admin sidebars).
 // Persists the active tab in the URL (?s=).
-export function SideDash({ title, subtitle, icon, tabs, headerActions, children, searchKeywords = null, remoteSearch = null }) {
+// `os` ('admin' | 'dashboard') opts a dashboard into the OS mode (M1, ui/os/): the same tabs
+// and the same `children(leaf)` rendered as windows on a desktop, when the person switched it on
+// and the screen is at least 768px wide.
+export function SideDash({ title, subtitle, icon, tabs, headerActions, children, searchKeywords = null, remoteSearch = null, os = null }) {
+  const osMode = useOsMode(os);
   const [sp, setSp] = useSearchParams();
   const { t: tr } = useI18n();
   const [navOpen, setNavOpen] = useState(false);
@@ -571,9 +579,19 @@ export function SideDash({ title, subtitle, icon, tabs, headerActions, children,
                 </div>
   ) : null;
 
+  // OS mode: every hook above has run, so returning here keeps the hook order stable.
+  if (os && osMode.active && typeof children === 'function') {
+    return (
+      <Suspense fallback={<div className="flex justify-center py-20 text-[var(--muted)]"><Spinner /></div>}>
+        <OsShell scope={os} title={title} icon={icon} tabs={tabs} render={children} searchKeywords={searchKeywords} remoteSearch={remoteSearch} />
+      </Suspense>
+    );
+  }
+
   return (
     <div>
-      <PageHeader icon={icon} title={title} subtitle={subtitle} actions={headerActions} />
+      <PageHeader icon={icon} title={title} subtitle={subtitle}
+        actions={os ? <>{headerActions}<OsModeSwitch on={osMode.on} onChange={osMode.set} /></> : headerActions} />
 
       {/* Mobile (<md): the ~15-tab sidebar becomes a proper dropdown sheet — a
           cramped horizontal scroll strip of tabs + section headings is unusable on

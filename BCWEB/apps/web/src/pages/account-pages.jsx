@@ -13,6 +13,7 @@ import { getConsent, setConsent } from '../lib/consent.js';
 import { SKIP_KEY } from '../ui/IntroContext.jsx';
 import { InstallAppCard } from '../ui/pwa-install.jsx';
 import { ShortcutsCard } from '../ui/shortcuts.jsx';
+import { OsModeSettingsCard } from '../ui/os/os-settings.jsx'; // M1 OS mode
 
 /* ──────────────  BMM telemetry: my data (GDPR export / erasure)  ────────────── */
 // Only for a signed-in account with at least one linked BMM install (creator id). The
@@ -252,6 +253,7 @@ export function Settings() {
         </Group>
 
         <InstallAppCard />
+        <OsModeSettingsCard />
         <ShortcutsCard className="lg:col-span-2" />
       </div>
     </div>

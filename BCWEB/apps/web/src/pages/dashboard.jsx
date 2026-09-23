@@ -946,7 +946,7 @@ export function Dashboard() {
     <>
       {payReturn && !introActive && <PaymentResultModal result={payReturn} onClose={() => setPayReturn(null)} onDelivered={() => setPurchasesKey((k) => k + 1)} />}
       <SideDash icon={LayoutDashboard} title={t('dash.hi', 'Hi, {name}').replace('{name}', user?.displayName || 'there')} subtitle={t('dash.sub', 'Manage your content, repos and billing.')} tabs={tabs}
-        headerActions={<Link to="/submit"><Button variant="primary"><Upload size={16} /> {t('sub.title', 'Submit content')}</Button></Link>}>
+        headerActions={<Link to="/submit"><Button variant="primary"><Upload size={16} /> {t('sub.title', 'Submit content')}</Button></Link>} os="dashboard">
         {(s) => (<>
           {/* The overview, in the order somebody actually reads it:
               ① what is waiting on them, ② what just happened, ③ what they own, ④ what they can
