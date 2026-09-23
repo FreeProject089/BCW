@@ -8,6 +8,9 @@ RUN npm install
 COPY packages/bmd /repo/packages/bmd
 # The editor package sits beside the kit and is aliased the same way (vite.config.js).
 COPY packages/bmd-editor /repo/packages/bmd-editor
+# The studio document package: src/lib/canvas.js, css-scope.js and svg-safe.js re-export it
+# by relative path, so it has to be where the repo has it.
+COPY packages/studio /repo/packages/studio
 COPY apps/web/ ./
 # Vite bakes VITE_* vars into the bundle at build time (not readable at runtime),
 # so the Google Tag id has to come in as a build arg, not a container env var.

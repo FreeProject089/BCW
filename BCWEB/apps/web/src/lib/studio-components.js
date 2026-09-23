@@ -9,7 +9,7 @@
 // copy produces carries `component: { id, inst }` — the component it came from and the
 // particular copy — which is what lets "update every instance" find the copies later and
 // "detach" forget one of them.
-import { boundsOf, GRID, DESIGN_WIDTH } from './canvas.js';
+import { boundsOf, GRID, DESIGN_WIDTH, BOUND } from './canvas.js';
 
 /** Hard limits, shared with the API's validation (lib/studio-components.mjs there). */
 export const COMPONENT_LIMITS = { count: 60, blocks: 40, name: 60 };
@@ -52,8 +52,11 @@ export function componentFromBlocks(name, blocks, uid = fallbackUid) {
 export function instantiateComponent(comp, at = { x: 64, y: 64 }, zBase = 0, uid = fallbackUid, boardWidth = DESIGN_WIDTH) {
   if (!comp || !Array.isArray(comp.blocks) || !comp.blocks.length) return [];
   const inst = `i${uid().slice(1)}`;
-  const x0 = Math.max(0, Math.min(Number(at.x) || 0, boardWidth - (comp.w || GRID)));
-  const y0 = Math.max(0, Number(at.y) || 0);
+  // Placed where asked (studio phase 3): there is no page edge to pull a wide component back
+  // inside any more, only the board's guard rail. `boardWidth` is accepted and ignored.
+  void boardWidth;
+  const x0 = Math.max(-BOUND, Math.min(Number(at.x) || 0, BOUND - (comp.w || GRID)));
+  const y0 = Math.max(-BOUND, Math.min(Number(at.y) || 0, BOUND - (comp.h || GRID)));
   return comp.blocks.map((b) => ({
     ...b,
     id: uid(),

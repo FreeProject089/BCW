@@ -28,8 +28,12 @@ test('a copy lands where asked, above the page, tagged with one instance id', ()
   assert.ok(copy.every((x) => x.component.id === c.id));
   assert.equal(new Set(copy.map((x) => x.component.inst)).size, 1, 'one inst for the whole copy');
   assert.equal(new Set(copy.map((x) => x.id)).size, 2, 'fresh ids');
-  // Clamped to the board so a wide component never lands off the right edge.
-  assert.equal(instantiateComponent(c, { x: 5000, y: 0 }, 0, uid)[0].x, 1200 - c.w);
+  // CHANGED in studio phase 3 (PLAN-STUDIO-2026): this asserted the v1 clamp that pulled a
+  // copy back inside the 1200px page (x = 1200 - w). On the v2 board a copy lands where it is
+  // asked, off the page included; only the ±20 000 guard rail still holds it.
+  assert.equal(instantiateComponent(c, { x: 5000, y: -300 }, 0, uid)[0].x, 5000);
+  assert.equal(instantiateComponent(c, { x: 5000, y: -300 }, 0, uid)[0].y, -300);
+  assert.equal(instantiateComponent(c, { x: 1e9, y: 0 }, 0, uid)[0].x, 20000 - c.w, 'the guard rail, not the page');
 });
 
 test('the tag survives normalisation — the allow-list names it', () => {

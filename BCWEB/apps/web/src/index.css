@@ -1539,6 +1539,14 @@ html[data-studio-open="1"], html[data-studio-open="1"] body { overflow: hidden; 
 .cst-board-hedge:hover::after, .cst-board-hedge:focus-visible::after { background: var(--primary); }
 .cst-board-hedge:focus-visible { outline: none; }
 @media (pointer: coarse) { .cst-board-hedge { height: 22px; margin-top: -11px; } }
+/* Studio phase 3 (agent-studio-3): a block outside the page frame, on the board and in the
+   layers list. On the board it sits inside the scaled world, so it is sized in board px. */
+.cst-offframe {
+  display: inline-flex; align-items: center; flex: none; padding: 0 5px; border-radius: 5px;
+  font-size: 10px; font-weight: 600; line-height: 16px; white-space: nowrap;
+  color: var(--text); background: color-mix(in srgb, var(--warning) 28%, var(--bg-solid));
+}
+.cst-offframe-board { position: absolute; right: 2px; top: 2px; pointer-events: none; }
 
 /* The document name, edited where it is shown. Invisible until it is focused, so
    the bar reads as a title bar and not as a form. */

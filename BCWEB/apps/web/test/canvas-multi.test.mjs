@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   boundsOf, blocksInRect, moveMany, alignMany, distributeMany,
-  DESIGN_WIDTH, GRID,
+  DESIGN_WIDTH, GRID, BOUND,
 } from '../src/lib/canvas.js';
 
 const b = (id, x, y, w = 100, h = 50) => ({ id, x, y, w, h, z: 0, kind: 'box', props: {} });
@@ -41,21 +41,27 @@ test('moving a selection keeps its shape', () => {
   assert.equal(out[0].y, out[1].y, 'and they stay level');
 });
 
-test('a selection clamps as a GROUP at the edge, and does not pile up', () => {
-  // Clamping each block on its own is the bug: drag a row towards the right wall and the
-  // leading blocks stop while the trailing ones keep coming, so a row you spaced carefully
-  // collapses into a heap against the edge.
+// CHANGED in studio phase 3 (PLAN-STUDIO-2026): these two asserted the v1 page clamp (the
+// group's right edge stopped at 1200, its top at 0). The v2 board has no page edge; what is
+// still true, and still asserted, is the reason the clamp was a GROUP clamp: at the one wall
+// left (the ±BOUND guard rail) the row stops as one box and keeps its spacing.
+test('v2: a selection crosses the page edge as a group, and stops as ONE box at the guard rail', () => {
   const blocks = [b('a', 800, 100), b('b', 1000, 100)];   // b's right edge is at 1100
-  const out = moveMany(blocks, ['a', 'b'], 5000, 0, 1);
-  assert.equal(out[1].x + out[1].w, DESIGN_WIDTH, 'the trailing block lands exactly on the edge');
+  const past = moveMany(blocks, ['a', 'b'], 5000, 0, 1);
+  assert.equal(past[0].x, 5800, 'the group went past the right edge of the frame');
+  assert.ok(past[1].x + past[1].w > DESIGN_WIDTH);
+  const out = moveMany(blocks, ['a', 'b'], 1e9, 0, 1);
+  assert.equal(out[1].x + out[1].w, BOUND, 'the trailing block lands exactly on the guard rail');
   assert.equal(out[1].x - out[0].x, 200, 'and the gap survived the clamp');
-  assert.ok(out[0].x < out[1].x);
 });
 
-test('a selection cannot be pushed above the canvas', () => {
-  const out = moveMany([b('a', 100, 40), b('b', 300, 120)], ['a', 'b'], 0, -5000, 1);
-  assert.equal(Math.min(out[0].y, out[1].y), 0);
-  assert.equal(out[1].y - out[0].y, 80, 'the vertical gap survived');
+test('v2: a selection can go above the page, and the guard rail keeps its shape', () => {
+  const up = moveMany([b('a', 100, 40), b('b', 300, 120)], ['a', 'b'], 0, -5000, 1);
+  assert.equal(up[0].y, -4960, 'above the frame is a place on the board');
+  assert.equal(up[1].y - up[0].y, 80, 'the vertical gap survived');
+  const out = moveMany([b('a', 100, 40), b('b', 300, 120)], ['a', 'b'], 0, -1e9, 1);
+  assert.equal(Math.min(out[0].y, out[1].y), -BOUND);
+  assert.equal(out[1].y - out[0].y, 80, 'the vertical gap survived the guard rail');
 });
 
 test('a drag is scaled for a selection exactly as for one block', () => {

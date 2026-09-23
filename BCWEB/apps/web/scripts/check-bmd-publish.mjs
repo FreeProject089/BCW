@@ -19,7 +19,7 @@ import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
 
 const ROOT = '../../packages';
-const PKGS = ['bmd', 'bmd-editor'];
+const PKGS = ['bmd', 'bmd-editor', 'studio'];
 
 const problems = [];
 const must = (cond, why) => { if (!cond) problems.push(why); };

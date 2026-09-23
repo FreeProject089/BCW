@@ -5,13 +5,15 @@
 // who review it included. The renderer filters every value on the way out
 // (apps/web/src/ui/canvas-view.jsx); this refuses the same values on the way IN, so a hostile
 // page is an error the author sees at Save rather than a quiet no-op a reviewer never learns
-// about. PLAN-STUDIO-2026, phase 0, S1 to S5.
+// about. PLAN-STUDIO-2026, phase 0 (S1 to S5) and phase 3.
 //
-// It is a restatement of the web's rules (lib/canvas.js `safeLink` / `buttonTarget` / `ID_SHAPE`,
-// lib/css-scope.js `safeCssValue` and the position refusal), because the API image does not
-// carry the web's source. Two copies of a rule drift, so test/studio-doc.test.mjs imports the
-// web's functions and asserts, over a corpus, that this one refuses at least everything the
-// renderer refuses. Phase 3 of the plan replaces both with one package.
+// THE RULE IS NOT HERE. It is `validateDoc` in the studio package (BCWEB/packages/studio),
+// the same module the web renders with. Up to phase 2 this file restated the web's rules
+// because the API image did not carry the web's source, and a test compared the two copies
+// over a corpus; two copies of a rule drift. The package is copied into the API image next to
+// the app (apps/api/Dockerfile: `COPY packages/studio /packages/studio`), where this relative
+// import resolves exactly as it does in the repo: /app/src/lib + ../../../../ is the root.
+// test/studio-doc.test.mjs asserts that `studioDocProblems` IS the package's function.
 //
 // LEGACY VALUES. A page saved before these rules may already hold a refused value (an `api`
 // button, above all: decision D5 keeps such a page loading, with the button inert). Refusing
@@ -19,128 +21,21 @@
 // problem is only refused when it is NEW: the same value, at the same block of the same page,
 // already stored, is tolerated (the renderer keeps it inert). Anything added or changed is
 // checked.
+import {
+  validateDoc, safeLink, cssValueOk, pinsToViewport, ID_SHAPE, MAX_DOC_BYTES,
+} from '../../../../packages/studio/src/index.js';
 
-/** The shape of a block or canvas id: a NAME, because it is interpolated into selectors. */
-export const ID_SHAPE = /^[A-Za-z0-9_-]{1,60}$/;
-/** A studio page, serialised, may not be larger than this (the home route's old ceiling). */
-export const MAX_DOC_BYTES = 300_000;
-const ACTIONS = new Set(['link', 'copy', 'scroll', 'download']);
-const LEGACY_ACTIONS = { api: 'api_removed' };
-const SCROLL_TARGET = /^#[A-Za-z][\w-]{0,79}$/;
-
-/** Same policy as the web's safeLink: path (not `//` or `/\`), anchor, http(s), mailto. */
-export function safeLink(raw) {
-  const s = typeof raw === 'string'
-    ? raw.slice(0, 2000).replace(/[\t\n\r]/g, '').replace(/^[\x00-\x20]+|[\x00-\x20]+$/g, '')
-    : '';
-  if (!s) return '';
-  if (s.startsWith('/')) return /^\/[/\\]/.test(s) ? '' : s;
-  if (s.startsWith('#')) return s;
-  if (/^https?:\/\//i.test(s)) return s;
-  if (/^mailto:[^\s]+$/i.test(s)) return s;
-  return '';
-}
-
-function decodeCssEscapes(input) {
-  return String(input)
-    .replace(/\\(?:\r\n|[\n\r\f])/g, '')
-    .replace(/\\([0-9a-fA-F]{1,6})(\r\n|[ \t\r\n\f])?/g, (all, hex) => {
-      const cp = parseInt(hex, 16);
-      if (!cp || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF)) return '�';
-      return String.fromCodePoint(cp);
-    })
-    .replace(/\\([^\r\n\f0-9a-fA-F])/g, '$1');
-}
-const CSS_REFUSE = /@import\b|expression\s*\(|behavior\s*:|-moz-binding\s*:|javascript\s*:|vbscript\s*:|@namespace\b/i;
-const URL_RE = /url\s*\(\s*(['"]?)([^'")]*)\1\s*\)/gi;
-const urlOk = (u) => /^(\/(?!\/)|#|data:image\/(?:png|jpeg|gif|webp|svg\+xml);)/i.test(u.trim());
+export { safeLink, cssValueOk, pinsToViewport, ID_SHAPE, MAX_DOC_BYTES };
 
 /**
- * Is this one CSS value (a colour, a background) safe to put in a style attribute?
- * Stricter than the web's safeCssValue in one place, on purpose: any `image-set(` or `src(`
- * is refused here, where the web reads its arguments. Stricter is the safe direction.
- */
-export function cssValueOk(input) {
-  if (input == null || input === '') return true;
-  if (typeof input !== 'string' || input.length > 600) return false;
-  const read = decodeCssEscapes(input.trim());
-  if (/[;{}<>]/.test(read) || /[\x00-\x08\x0b\x0e-\x1f\x7f]/.test(read)) return false;
-  if (CSS_REFUSE.test(read)) return false;
-  const urls = [...read.matchAll(URL_RE)];
-  if (urls.some((m) => !urlOk(m[2]))) return false;
-  if ((read.match(/url\s*\(/gi) || []).length !== urls.length) return false;
-  if (/(?:^|[^\w-])(?:-webkit-|-ms-|-moz-)?(?:image-set|src)\s*\(/i.test(read)) return false;
-  return true;
-}
-
-/** Does this stylesheet or inline style pin a box to the viewport (`position: fixed|sticky`)? */
-export function pinsToViewport(css) {
-  if (typeof css !== 'string' || !css) return false;
-  return /position\s*:\s*(?:fixed|sticky)\b/i.test(decodeCssEscapes(css).replace(/\/\*[\s\S]*?\*\//g, ''));
-}
-
-/** The author colour fields a block's props may carry, all written into a style or a paint. */
-const CSS_PROPS = ['bg', 'border', 'color', 'fill', 'fill2', 'stroke', 'textColor'];
-
-function propsProblems(props, at, push) {
-  const p = props && typeof props === 'object' ? props : {};
-  for (const k of CSS_PROPS) if (!cssValueOk(p[k])) push(`${at}.${k}`, 'unsafe_css', p[k]);
-  if (p.pattern && typeof p.pattern === 'object' && !cssValueOk(p.pattern.color)) push(`${at}.pattern.color`, 'unsafe_css', p.pattern.color);
-  if (pinsToViewport(p.style)) push(`${at}.style`, 'position_fixed', p.style);
-}
-
-/**
- * Every problem in ONE studio document, as `{ path, reason, key }`.
+ * Every problem in ONE studio document, as `{ path, reason, key }`: the package's validator
+ * itself, not a wrapper, so nothing can be added or dropped between the two.
  *
  * `path` is for the author (`blocks[3].props.action.href`); `key` names the same problem
  * WITHOUT indexes (canvas id, block id, field, value), which is what lets a legacy value be
  * recognised after the blocks were reordered.
  */
-export function studioDocProblems(doc, prefix = '') {
-  const out = [];
-  const c = doc && typeof doc === 'object' && !Array.isArray(doc) ? doc : null;
-  if (!c) return out;
-  const cid = typeof c.id === 'string' ? c.id : '';
-  const pre = prefix ? `${prefix}.` : '';
-  const add = (path, reason, value, blockId = '') => out.push({
-    path: `${pre}${path}`, reason,
-    key: `${cid}|${blockId}|${path.replace(/^blocks\[\d+\]\.?/, '')}|${reason}|${JSON.stringify(value ?? null).slice(0, 500)}`,
-  });
-  let size = 0;
-  try { size = JSON.stringify(c).length; } catch { size = Infinity; }
-  if (size > MAX_DOC_BYTES) add('', 'too_large', size);
-  if (c.id != null && c.id !== '' && !(typeof c.id === 'string' && ID_SHAPE.test(c.id))) add('id', 'bad_id', c.id);
-  if (!cssValueOk(c.bg)) add('bg', 'unsafe_css', c.bg);
-  if (pinsToViewport(c.css)) add('css', 'position_fixed', '');
-  const blocks = Array.isArray(c.blocks) ? c.blocks : [];
-  blocks.forEach((b, i) => {
-    if (!b || typeof b !== 'object') return;
-    const bid = typeof b.id === 'string' ? b.id : '';
-    const push = (path, reason, value) => add(`blocks[${i}]${path ? `.${path}` : ''}`, reason, value, bid);
-    if (b.id != null && b.id !== '' && !(typeof b.id === 'string' && ID_SHAPE.test(b.id))) push('id', 'bad_id', b.id);
-    if (b.link && !safeLink(b.link)) push('link', 'unsafe_url', b.link);
-    const p = b.props && typeof b.props === 'object' ? b.props : {};
-    propsProblems(p, 'props', push);
-    for (const theme of ['light', 'dark']) {
-      const o = b.themes?.[theme];
-      if (o && typeof o === 'object' && o.props) propsProblems(o.props, `themes.${theme}.props`, push);
-    }
-    const act = p.action;
-    if (act && typeof act === 'object') {
-      const type = typeof act.type === 'string' && act.type ? act.type : 'link';
-      if (LEGACY_ACTIONS[type]) push('props.action.type', LEGACY_ACTIONS[type], type);
-      else if (!ACTIONS.has(type)) push('props.action.type', 'unknown_action', type);
-      else if ((type === 'link' || type === 'download') && act.href) {
-        const h = safeLink(act.href);
-        if (!h || (type === 'download' && !(h.startsWith('/') || /^https?:\/\//i.test(h)))) push('props.action.href', 'unsafe_url', act.href);
-      } else if (type === 'scroll' && act.target && !SCROLL_TARGET.test(String(act.target).trim())) push('props.action.target', 'bad_scroll_target', act.target);
-    }
-    if (Array.isArray(p.items)) {
-      p.items.forEach((it, j) => { if (it && it.href && !safeLink(it.href)) push(`props.items[${j}].href`, 'unsafe_url', it.href); });
-    }
-  });
-  return out;
-}
+export const studioDocProblems = validateDoc;
 
 /** The studio documents inside a project or showcase config, with the path of each. */
 function configDocs(config) {

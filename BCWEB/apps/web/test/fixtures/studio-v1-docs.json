@@ -1,0 +1,1698 @@
+[
+ {
+  "name": "dev-db revision 1",
+  "source": "dev DB, ProjectConfigRevision.config.canvases (anonymised)",
+  "doc": {
+   "id": "fx-rev1",
+   "title": "",
+   "blocks": [
+    {
+     "h": 280,
+     "w": 1200,
+     "x": 0,
+     "y": 0,
+     "z": 0,
+     "id": "fx1b0",
+     "kind": "box",
+     "props": {
+      "bg": "color-mix(in srgb, var(--primary) 10%, transparent)",
+      "radius": 20
+     }
+    },
+    {
+     "h": 168,
+     "w": 640,
+     "x": 64,
+     "y": 56,
+     "z": 1,
+     "id": "fx1b1",
+     "kind": "text",
+     "props": {
+      "md": "# Your title\n\nOne sentence that says what this is.\n\n:button[Get started]{href=\"/\"}"
+     }
+    },
+    {
+     "h": 200,
+     "w": 376,
+     "x": 760,
+     "y": 40,
+     "z": 2,
+     "id": "fx1b2",
+     "kind": "image",
+     "props": {
+      "alt": "",
+      "fit": "contain",
+      "src": ""
+     }
+    },
+    {
+     "h": 200,
+     "w": 520,
+     "x": 64,
+     "y": 336,
+     "z": 3,
+     "id": "fx1b3",
+     "kind": "text",
+     "props": {
+      "md": "## What it does\n\nA paragraph.\n\n- A point\n- Another"
+     }
+    },
+    {
+     "h": 200,
+     "w": 520,
+     "x": 616,
+     "y": 336,
+     "z": 4,
+     "id": "fx1b4",
+     "kind": "text",
+     "props": {
+      "md": "## Why it matters\n\nA paragraph.\n\n- A point\n- Another"
+     }
+    }
+   ]
+  },
+  "v1": {
+   "id": "fx-rev1",
+   "height": 576,
+   "phoneHeight": 1168,
+   "phoneBoard": false,
+   "blocks": [
+    {
+     "id": "fx1b0",
+     "x": 0,
+     "y": 0,
+     "w": 1200,
+     "h": 280,
+     "phone": null,
+     "dark": null
+    },
+    {
+     "id": "fx1b1",
+     "x": 64,
+     "y": 56,
+     "w": 640,
+     "h": 168,
+     "phone": null,
+     "dark": null
+    },
+    {
+     "id": "fx1b2",
+     "x": 760,
+     "y": 40,
+     "w": 376,
+     "h": 200,
+     "phone": null,
+     "dark": null
+    },
+    {
+     "id": "fx1b3",
+     "x": 64,
+     "y": 336,
+     "w": 520,
+     "h": 200,
+     "phone": null,
+     "dark": null
+    },
+    {
+     "id": "fx1b4",
+     "x": 616,
+     "y": 336,
+     "w": 520,
+     "h": 200,
+     "phone": null,
+     "dark": null
+    }
+   ],
+   "phoneBoardBlocks": null
+  }
+ },
+ {
+  "name": "dev-db revision 2",
+  "source": "dev DB, ProjectConfigRevision.config.canvases (anonymised)",
+  "doc": {
+   "id": "fx-rev2",
+   "title": "Page title",
+   "blocks": [
+    {
+     "h": 280,
+     "w": 1200,
+     "x": 0,
+     "y": 0,
+     "z": 0,
+     "id": "fx2b0",
+     "kind": "box",
+     "props": {
+      "bg": "color-mix(in srgb, var(--primary) 10%, transparent)",
+      "radius": 20
+     }
+    },
+    {
+     "h": 168,
+     "w": 640,
+     "x": 64,
+     "y": 56,
+     "z": 1,
+     "id": "fx2b1",
+     "kind": "text",
+     "props": {
+      "md": "# Your title\n\nOne sentence that says what this is.\n\n:button[Get started]{href=\"/\"}"
+     }
+    },
+    {
+     "h": 200,
+     "w": 376,
+     "x": 760,
+     "y": 40,
+     "z": 2,
+     "id": "fx2b2",
+     "kind": "image",
+     "props": {
+      "alt": "",
+      "fit": "contain",
+      "src": ""
+     }
+    },
+    {
+     "h": 200,
+     "w": 520,
+     "x": 64,
+     "y": 336,
+     "z": 3,
+     "id": "fx2b3",
+     "kind": "text",
+     "props": {
+      "md": "## What it does\n\nA paragraph.\n\n- A point\n- Another"
+     }
+    },
+    {
+     "h": 200,
+     "w": 520,
+     "x": 616,
+     "y": 336,
+     "z": 4,
+     "id": "fx2b4",
+     "kind": "text",
+     "props": {
+      "md": "## Why it matters\n\nA paragraph.\n\n- A point\n- Another"
+     }
+    }
+   ]
+  },
+  "v1": {
+   "id": "fx-rev2",
+   "height": 576,
+   "phoneHeight": 1168,
+   "phoneBoard": false,
+   "blocks": [
+    {
+     "id": "fx2b0",
+     "x": 0,
+     "y": 0,
+     "w": 1200,
+     "h": 280,
+     "phone": null,
+     "dark": null
+    },
+    {
+     "id": "fx2b1",
+     "x": 64,
+     "y": 56,
+     "w": 640,
+     "h": 168,
+     "phone": null,
+     "dark": null
+    },
+    {
+     "id": "fx2b2",
+     "x": 760,
+     "y": 40,
+     "w": 376,
+     "h": 200,
+     "phone": null,
+     "dark": null
+    },
+    {
+     "id": "fx2b3",
+     "x": 64,
+     "y": 336,
+     "w": 520,
+     "h": 200,
+     "phone": null,
+     "dark": null
+    },
+    {
+     "id": "fx2b4",
+     "x": 616,
+     "y": 336,
+     "w": 520,
+     "h": 200,
+     "phone": null,
+     "dark": null
+    }
+   ],
+   "phoneBoardBlocks": null
+  }
+ },
+ {
+  "name": "pinned height shorter than content (bug A.1 page, D4)",
+  "doc": {
+   "id": "fx-a1",
+   "title": "A1",
+   "height": 300,
+   "blocks": [
+    {
+     "id": "a",
+     "kind": "box",
+     "x": 0,
+     "y": 0,
+     "w": 400,
+     "h": 100,
+     "props": {
+      "bg": "#eee"
+     }
+    },
+    {
+     "id": "b",
+     "kind": "box",
+     "x": 64,
+     "y": 600,
+     "w": 400,
+     "h": 200,
+     "props": {
+      "bg": "#eee"
+     }
+    }
+   ]
+  },
+  "source": "synthetic v1",
+  "v1": {
+   "id": "fx-a1",
+   "height": 840,
+   "phoneHeight": 376,
+   "phoneBoard": false,
+   "blocks": [
+    {
+     "id": "a",
+     "x": 0,
+     "y": 0,
+     "w": 400,
+     "h": 104,
+     "phone": null,
+     "dark": null
+    },
+    {
+     "id": "b",
+     "x": 64,
+     "y": 600,
+     "w": 400,
+     "h": 200,
+     "phone": null,
+     "dark": null
+    }
+   ],
+   "phoneBoardBlocks": null
+  }
+ },
+ {
+  "name": "out-of-range coordinates v1 clamped at read",
+  "doc": {
+   "id": "fx-oor",
+   "title": "OOR",
+   "blocks": [
+    {
+     "id": "l",
+     "kind": "box",
+     "x": -120,
+     "y": -40,
+     "w": 300,
+     "h": 100,
+     "props": {
+      "bg": "#eee"
+     }
+    },
+    {
+     "id": "r",
+     "kind": "box",
+     "x": 1500,
+     "y": 10,
+     "w": 2000,
+     "h": 100,
+     "props": {
+      "bg": "#eee"
+     }
+    },
+    {
+     "id": "o",
+     "kind": "box",
+     "x": 13,
+     "y": 27,
+     "w": 101,
+     "h": 99,
+     "props": {
+      "bg": "#eee"
+     }
+    }
+   ]
+  },
+  "source": "synthetic v1",
+  "v1": {
+   "id": "fx-oor",
+   "height": 240,
+   "phoneHeight": 392,
+   "phoneBoard": false,
+   "blocks": [
+    {
+     "id": "l",
+     "x": 0,
+     "y": 0,
+     "w": 304,
+     "h": 104,
+     "phone": null,
+     "dark": null
+    },
+    {
+     "id": "r",
+     "x": 1192,
+     "y": 8,
+     "w": 1200,
+     "h": 104,
+     "phone": null,
+     "dark": null
+    },
+    {
+     "id": "o",
+     "x": 16,
+     "y": 24,
+     "w": 104,
+     "h": 96,
+     "phone": null,
+     "dark": null
+    }
+   ],
+   "phoneBoardBlocks": null
+  }
+ },
+ {
+  "name": "phone board with pinned phone height and placed blocks",
+  "doc": {
+   "id": "fx-ph",
+   "title": "Ph",
+   "phoneBoard": true,
+   "phoneHeight": 200,
+   "blocks": [
+    {
+     "id": "p",
+     "kind": "box",
+     "x": 0,
+     "y": 0,
+     "w": 600,
+     "h": 100,
+     "props": {
+      "bg": "#eee"
+     },
+     "phone": {
+      "x": 385,
+      "y": 13,
+      "w": 900,
+      "h": 50
+     }
+    },
+    {
+     "id": "q",
+     "kind": "box",
+     "x": 100,
+     "y": 200,
+     "w": 300,
+     "h": 100,
+     "props": {
+      "bg": "#eee"
+     }
+    },
+    {
+     "id": "h",
+     "kind": "box",
+     "x": 0,
+     "y": 400,
+     "w": 100,
+     "h": 100,
+     "props": {
+      "bg": "#eee"
+     },
+     "phone": {
+      "hidden": true
+     }
+    }
+   ]
+  },
+  "source": "synthetic v1",
+  "v1": {
+   "id": "fx-ph",
+   "height": 544,
+   "phoneHeight": 240,
+   "phoneBoard": true,
+   "blocks": [
+    {
+     "id": "p",
+     "x": 0,
+     "y": 0,
+     "w": 600,
+     "h": 104,
+     "phone": {
+      "h": 48,
+      "x": 382,
+      "y": 16,
+      "w": 390
+     },
+     "dark": null
+    },
+    {
+     "id": "q",
+     "x": 104,
+     "y": 200,
+     "w": 304,
+     "h": 104,
+     "phone": null,
+     "dark": null
+    },
+    {
+     "id": "h",
+     "x": 0,
+     "y": 400,
+     "w": 104,
+     "h": 104,
+     "phone": {
+      "hidden": true
+     },
+     "dark": null
+    }
+   ],
+   "phoneBoardBlocks": [
+    {
+     "id": "p",
+     "x": 382,
+     "y": 16,
+     "w": 390,
+     "h": 48
+    },
+    {
+     "id": "q",
+     "x": 16,
+     "y": 80,
+     "w": 360,
+     "h": 104
+    }
+   ]
+  }
+ },
+ {
+  "name": "phone board inferred from a placed block, no flag",
+  "doc": {
+   "id": "fx-inf",
+   "title": "",
+   "blocks": [
+    {
+     "id": "p",
+     "kind": "box",
+     "x": 0,
+     "y": 0,
+     "w": 600,
+     "h": 100,
+     "props": {
+      "bg": "#eee"
+     },
+     "phone": {
+      "x": 0,
+      "y": 700
+     }
+    },
+    {
+     "id": "q",
+     "kind": "box",
+     "x": 0,
+     "y": 120,
+     "w": 300,
+     "h": 90,
+     "props": {
+      "bg": "#eee"
+     }
+    }
+   ]
+  },
+  "source": "synthetic v1",
+  "v1": {
+   "id": "fx-inf",
+   "height": 248,
+   "phoneHeight": 952,
+   "phoneBoard": true,
+   "blocks": [
+    {
+     "id": "p",
+     "x": 0,
+     "y": 0,
+     "w": 600,
+     "h": 104,
+     "phone": {
+      "x": 0,
+      "y": 704
+     },
+     "dark": null
+    },
+    {
+     "id": "q",
+     "x": 0,
+     "y": 120,
+     "w": 304,
+     "h": 88,
+     "phone": null,
+     "dark": null
+    }
+   ],
+   "phoneBoardBlocks": [
+    {
+     "id": "p",
+     "x": 0,
+     "y": 704,
+     "w": 360,
+     "h": 104
+    },
+    {
+     "id": "q",
+     "x": 16,
+     "y": 824,
+     "w": 360,
+     "h": 88
+    }
+   ]
+  }
+ },
+ {
+  "name": "dark overlay geometry",
+  "doc": {
+   "id": "fx-dk",
+   "title": "",
+   "blocks": [
+    {
+     "id": "d",
+     "kind": "box",
+     "x": 96,
+     "y": 48,
+     "w": 400,
+     "h": 200,
+     "props": {
+      "bg": "#eee"
+     },
+     "themes": {
+      "dark": {
+       "x": 13,
+       "y": 201,
+       "w": 399
+      }
+     }
+    }
+   ]
+  },
+  "source": "synthetic v1",
+  "v1": {
+   "id": "fx-dk",
+   "height": 288,
+   "phoneHeight": 256,
+   "phoneBoard": false,
+   "blocks": [
+    {
+     "id": "d",
+     "x": 96,
+     "y": 48,
+     "w": 400,
+     "h": 200,
+     "phone": null,
+     "dark": {
+      "x": 16,
+      "y": 200,
+      "w": 400
+     }
+    }
+   ],
+   "phoneBoardBlocks": null
+  }
+ },
+ {
+  "name": "forged and missing ids",
+  "doc": {
+   "id": "c\"]{}x",
+   "title": "",
+   "blocks": [
+    {
+     "kind": "text",
+     "x": 0,
+     "y": 0,
+     "w": 200,
+     "h": 100,
+     "props": {
+      "md": "a"
+     }
+    },
+    {
+     "id": "x\"]{}y",
+     "kind": "box",
+     "x": 0,
+     "y": 200,
+     "w": 100,
+     "h": 100,
+     "props": {
+      "bg": "#eee"
+     }
+    },
+    {
+     "id": "dup",
+     "kind": "box",
+     "x": 0,
+     "y": 400,
+     "w": 100,
+     "h": 100,
+     "props": {
+      "bg": "#eee"
+     }
+    },
+    {
+     "id": "dup",
+     "kind": "box",
+     "x": 0,
+     "y": 520,
+     "w": 100,
+     "h": 100,
+     "props": {
+      "bg": "#eee"
+     }
+    }
+   ]
+  },
+  "source": "synthetic v1",
+  "v1": {
+   "id": "canvas-cx",
+   "height": 664,
+   "phoneHeight": 520,
+   "phoneBoard": false,
+   "blocks": [
+    {
+     "id": "b0",
+     "x": 0,
+     "y": 0,
+     "w": 200,
+     "h": 104,
+     "phone": null,
+     "dark": null
+    },
+    {
+     "id": "b1-xy",
+     "x": 0,
+     "y": 200,
+     "w": 104,
+     "h": 104,
+     "phone": null,
+     "dark": null
+    },
+    {
+     "id": "dup",
+     "x": 0,
+     "y": 400,
+     "w": 104,
+     "h": 104,
+     "phone": null,
+     "dark": null
+    },
+    {
+     "id": "dup-1",
+     "x": 0,
+     "y": 520,
+     "w": 104,
+     "h": 104,
+     "phone": null,
+     "dark": null
+    }
+   ],
+   "phoneBoardBlocks": null
+  }
+ },
+ {
+  "name": "empty page",
+  "doc": {
+   "id": "fx-empty",
+   "title": "",
+   "blocks": []
+  },
+  "source": "synthetic v1",
+  "v1": {
+   "id": "fx-empty",
+   "height": 240,
+   "phoneHeight": 240,
+   "phoneBoard": false,
+   "blocks": [],
+   "phoneBoardBlocks": null
+  }
+ },
+ {
+  "name": "preset hero",
+  "doc": {
+   "id": "fx-hero",
+   "title": "Hero + two columns",
+   "blocks": [
+    {
+     "kind": "box",
+     "x": 0,
+     "y": 0,
+     "w": 1200,
+     "h": 280,
+     "props": {
+      "bg": "color-mix(in srgb, var(--primary) 10%, transparent)",
+      "radius": 20
+     },
+     "id": "hero0",
+     "z": 0
+    },
+    {
+     "kind": "text",
+     "x": 64,
+     "y": 56,
+     "w": 640,
+     "h": 168,
+     "props": {
+      "md": "# Your title\n\nOne sentence that says what this is.\n\n:button[Get started]{href=\"/\"}"
+     },
+     "id": "hero1",
+     "z": 1
+    },
+    {
+     "kind": "image",
+     "x": 760,
+     "y": 40,
+     "w": 376,
+     "h": 200,
+     "props": {
+      "src": "",
+      "alt": "",
+      "fit": "contain"
+     },
+     "id": "hero2",
+     "z": 2
+    },
+    {
+     "kind": "text",
+     "x": 64,
+     "y": 336,
+     "w": 520,
+     "h": 200,
+     "props": {
+      "md": "## What it does\n\nA paragraph.\n\n- A point\n- Another"
+     },
+     "id": "hero3",
+     "z": 3
+    },
+    {
+     "kind": "text",
+     "x": 616,
+     "y": 336,
+     "w": 520,
+     "h": 200,
+     "props": {
+      "md": "## Why it matters\n\nA paragraph.\n\n- A point\n- Another"
+     },
+     "id": "hero4",
+     "z": 4
+    }
+   ]
+  },
+  "source": "synthetic v1",
+  "v1": {
+   "id": "fx-hero",
+   "height": 576,
+   "phoneHeight": 1168,
+   "phoneBoard": false,
+   "blocks": [
+    {
+     "id": "hero0",
+     "x": 0,
+     "y": 0,
+     "w": 1200,
+     "h": 280,
+     "phone": null,
+     "dark": null
+    },
+    {
+     "id": "hero1",
+     "x": 64,
+     "y": 56,
+     "w": 640,
+     "h": 168,
+     "phone": null,
+     "dark": null
+    },
+    {
+     "id": "hero2",
+     "x": 760,
+     "y": 40,
+     "w": 376,
+     "h": 200,
+     "phone": null,
+     "dark": null
+    },
+    {
+     "id": "hero3",
+     "x": 64,
+     "y": 336,
+     "w": 520,
+     "h": 200,
+     "phone": null,
+     "dark": null
+    },
+    {
+     "id": "hero4",
+     "x": 616,
+     "y": 336,
+     "w": 520,
+     "h": 200,
+     "phone": null,
+     "dark": null
+    }
+   ],
+   "phoneBoardBlocks": null
+  }
+ },
+ {
+  "name": "preset features",
+  "doc": {
+   "id": "fx-features",
+   "title": "Feature grid",
+   "blocks": [
+    {
+     "kind": "text",
+     "x": 64,
+     "y": 0,
+     "w": 720,
+     "h": 96,
+     "props": {
+      "md": "# Features\n\nWhat you get."
+     },
+     "id": "features0",
+     "z": 0
+    },
+    {
+     "kind": "text",
+     "x": 64,
+     "y": 128,
+     "w": 344,
+     "h": 184,
+     "props": {
+      "md": ":::card[Feature 1]{icon=star}\nWhat it does, in a line or two.\n:::"
+     },
+     "id": "features1",
+     "z": 1
+    },
+    {
+     "kind": "text",
+     "x": 440,
+     "y": 128,
+     "w": 344,
+     "h": 184,
+     "props": {
+      "md": ":::card[Feature 2]{icon=star}\nWhat it does, in a line or two.\n:::"
+     },
+     "id": "features2",
+     "z": 2
+    },
+    {
+     "kind": "text",
+     "x": 816,
+     "y": 128,
+     "w": 344,
+     "h": 184,
+     "props": {
+      "md": ":::card[Feature 3]{icon=star}\nWhat it does, in a line or two.\n:::"
+     },
+     "id": "features3",
+     "z": 3
+    },
+    {
+     "kind": "text",
+     "x": 64,
+     "y": 344,
+     "w": 344,
+     "h": 184,
+     "props": {
+      "md": ":::card[Feature 4]{icon=star}\nWhat it does, in a line or two.\n:::"
+     },
+     "id": "features4",
+     "z": 4
+    },
+    {
+     "kind": "text",
+     "x": 440,
+     "y": 344,
+     "w": 344,
+     "h": 184,
+     "props": {
+      "md": ":::card[Feature 5]{icon=star}\nWhat it does, in a line or two.\n:::"
+     },
+     "id": "features5",
+     "z": 5
+    },
+    {
+     "kind": "text",
+     "x": 816,
+     "y": 344,
+     "w": 344,
+     "h": 184,
+     "props": {
+      "md": ":::card[Feature 6]{icon=star}\nWhat it does, in a line or two.\n:::"
+     },
+     "id": "features6",
+     "z": 6
+    }
+   ]
+  },
+  "source": "synthetic v1",
+  "v1": {
+   "id": "fx-features",
+   "height": 568,
+   "phoneHeight": 1352,
+   "phoneBoard": false,
+   "blocks": [
+    {
+     "id": "features0",
+     "x": 64,
+     "y": 0,
+     "w": 720,
+     "h": 96,
+     "phone": null,
+     "dark": null
+    },
+    {
+     "id": "features1",
+     "x": 64,
+     "y": 128,
+     "w": 344,
+     "h": 184,
+     "phone": null,
+     "dark": null
+    },
+    {
+     "id": "features2",
+     "x": 440,
+     "y": 128,
+     "w": 344,
+     "h": 184,
+     "phone": null,
+     "dark": null
+    },
+    {
+     "id": "features3",
+     "x": 816,
+     "y": 128,
+     "w": 344,
+     "h": 184,
+     "phone": null,
+     "dark": null
+    },
+    {
+     "id": "features4",
+     "x": 64,
+     "y": 344,
+     "w": 344,
+     "h": 184,
+     "phone": null,
+     "dark": null
+    },
+    {
+     "id": "features5",
+     "x": 440,
+     "y": 344,
+     "w": 344,
+     "h": 184,
+     "phone": null,
+     "dark": null
+    },
+    {
+     "id": "features6",
+     "x": 816,
+     "y": 344,
+     "w": 344,
+     "h": 184,
+     "phone": null,
+     "dark": null
+    }
+   ],
+   "phoneBoardBlocks": null
+  }
+ },
+ {
+  "name": "preset split",
+  "doc": {
+   "id": "fx-split",
+   "title": "Text beside a picture",
+   "blocks": [
+    {
+     "kind": "text",
+     "x": 64,
+     "y": 40,
+     "w": 520,
+     "h": 280,
+     "props": {
+      "md": "## A heading\n\nA paragraph explaining the thing beside it.\n\n:::tip[Good to know]\nSomething worth pulling out.\n:::"
+     },
+     "id": "split0",
+     "z": 0
+    },
+    {
+     "kind": "image",
+     "x": 640,
+     "y": 40,
+     "w": 496,
+     "h": 280,
+     "props": {
+      "src": "",
+      "alt": "",
+      "fit": "cover"
+     },
+     "id": "split1",
+     "z": 1
+    }
+   ]
+  },
+  "source": "synthetic v1",
+  "v1": {
+   "id": "fx-split",
+   "height": 360,
+   "phoneHeight": 632,
+   "phoneBoard": false,
+   "blocks": [
+    {
+     "id": "split0",
+     "x": 64,
+     "y": 40,
+     "w": 520,
+     "h": 280,
+     "phone": null,
+     "dark": null
+    },
+    {
+     "id": "split1",
+     "x": 640,
+     "y": 40,
+     "w": 496,
+     "h": 280,
+     "phone": null,
+     "dark": null
+    }
+   ],
+   "phoneBoardBlocks": null
+  }
+ },
+ {
+  "name": "preset cta",
+  "doc": {
+   "id": "fx-cta",
+   "title": "Call to action",
+   "blocks": [
+    {
+     "kind": "box",
+     "x": 0,
+     "y": 0,
+     "w": 1200,
+     "h": 320,
+     "props": {
+      "bg": "color-mix(in srgb, var(--primary) 12%, transparent)",
+      "radius": 24
+     },
+     "shadow": "md",
+     "id": "cta0",
+     "z": 0
+    },
+    {
+     "kind": "text",
+     "x": 160,
+     "y": 56,
+     "w": 880,
+     "h": 136,
+     "props": {
+      "md": "# Ready when you are\n\nOne line on what happens next.",
+      "align": "center"
+     },
+     "anim": {
+      "kind": "rise",
+      "trigger": "show"
+     },
+     "id": "cta1",
+     "z": 1
+    },
+    {
+     "kind": "button",
+     "x": 400,
+     "y": 216,
+     "w": 192,
+     "h": 56,
+     "props": {
+      "label": "Get started",
+      "variant": "button",
+      "size": "lg",
+      "action": {
+       "type": "link",
+       "href": "/"
+      }
+     },
+     "anim": {
+      "kind": "zoom",
+      "trigger": "show",
+      "delay": 150
+     },
+     "hover": "lift",
+     "id": "cta2",
+     "z": 2
+    },
+    {
+     "kind": "button",
+     "x": 608,
+     "y": 216,
+     "w": 192,
+     "h": 56,
+     "props": {
+      "label": "Read the docs",
+      "variant": "button",
+      "size": "lg",
+      "outline": true,
+      "action": {
+       "type": "link",
+       "href": "/docs"
+      }
+     },
+     "anim": {
+      "kind": "zoom",
+      "trigger": "show",
+      "delay": 250
+     },
+     "hover": "lift",
+     "id": "cta3",
+     "z": 3
+    }
+   ]
+  },
+  "source": "synthetic v1",
+  "v1": {
+   "id": "fx-cta",
+   "height": 360,
+   "phoneHeight": 672,
+   "phoneBoard": false,
+   "blocks": [
+    {
+     "id": "cta0",
+     "x": 0,
+     "y": 0,
+     "w": 1200,
+     "h": 320,
+     "phone": null,
+     "dark": null
+    },
+    {
+     "id": "cta1",
+     "x": 160,
+     "y": 56,
+     "w": 880,
+     "h": 136,
+     "phone": null,
+     "dark": null
+    },
+    {
+     "id": "cta2",
+     "x": 400,
+     "y": 216,
+     "w": 192,
+     "h": 56,
+     "phone": null,
+     "dark": null
+    },
+    {
+     "id": "cta3",
+     "x": 608,
+     "y": 216,
+     "w": 192,
+     "h": 56,
+     "phone": null,
+     "dark": null
+    }
+   ],
+   "phoneBoardBlocks": null
+  }
+ },
+ {
+  "name": "preset gallery",
+  "doc": {
+   "id": "fx-gallery",
+   "title": "Picture gallery",
+   "blocks": [
+    {
+     "kind": "text",
+     "x": 64,
+     "y": 0,
+     "w": 720,
+     "h": 88,
+     "props": {
+      "md": "# Gallery\n\nA few pictures, hover to lift."
+     },
+     "id": "gallery0",
+     "z": 0
+    },
+    {
+     "kind": "image",
+     "x": 64,
+     "y": 120,
+     "w": 256,
+     "h": 176,
+     "props": {
+      "src": "",
+      "alt": "",
+      "fit": "cover",
+      "radius": 16
+     },
+     "shadow": "sm",
+     "hover": "lift",
+     "anim": {
+      "kind": "fade",
+      "trigger": "show",
+      "delay": 0
+     },
+     "id": "gallery1",
+     "z": 1
+    },
+    {
+     "kind": "image",
+     "x": 352,
+     "y": 120,
+     "w": 256,
+     "h": 176,
+     "props": {
+      "src": "",
+      "alt": "",
+      "fit": "cover",
+      "radius": 16
+     },
+     "shadow": "sm",
+     "hover": "lift",
+     "anim": {
+      "kind": "fade",
+      "trigger": "show",
+      "delay": 60
+     },
+     "id": "gallery2",
+     "z": 2
+    },
+    {
+     "kind": "image",
+     "x": 640,
+     "y": 120,
+     "w": 256,
+     "h": 176,
+     "props": {
+      "src": "",
+      "alt": "",
+      "fit": "cover",
+      "radius": 16
+     },
+     "shadow": "sm",
+     "hover": "lift",
+     "anim": {
+      "kind": "fade",
+      "trigger": "show",
+      "delay": 120
+     },
+     "id": "gallery3",
+     "z": 3
+    },
+    {
+     "kind": "image",
+     "x": 928,
+     "y": 120,
+     "w": 256,
+     "h": 176,
+     "props": {
+      "src": "",
+      "alt": "",
+      "fit": "cover",
+      "radius": 16
+     },
+     "shadow": "sm",
+     "hover": "lift",
+     "anim": {
+      "kind": "fade",
+      "trigger": "show",
+      "delay": 180
+     },
+     "id": "gallery4",
+     "z": 4
+    },
+    {
+     "kind": "image",
+     "x": 64,
+     "y": 328,
+     "w": 256,
+     "h": 176,
+     "props": {
+      "src": "",
+      "alt": "",
+      "fit": "cover",
+      "radius": 16
+     },
+     "shadow": "sm",
+     "hover": "lift",
+     "anim": {
+      "kind": "fade",
+      "trigger": "show",
+      "delay": 240
+     },
+     "id": "gallery5",
+     "z": 5
+    },
+    {
+     "kind": "image",
+     "x": 352,
+     "y": 328,
+     "w": 256,
+     "h": 176,
+     "props": {
+      "src": "",
+      "alt": "",
+      "fit": "cover",
+      "radius": 16
+     },
+     "shadow": "sm",
+     "hover": "lift",
+     "anim": {
+      "kind": "fade",
+      "trigger": "show",
+      "delay": 300
+     },
+     "id": "gallery6",
+     "z": 6
+    },
+    {
+     "kind": "image",
+     "x": 640,
+     "y": 328,
+     "w": 256,
+     "h": 176,
+     "props": {
+      "src": "",
+      "alt": "",
+      "fit": "cover",
+      "radius": 16
+     },
+     "shadow": "sm",
+     "hover": "lift",
+     "anim": {
+      "kind": "fade",
+      "trigger": "show",
+      "delay": 360
+     },
+     "id": "gallery7",
+     "z": 7
+    },
+    {
+     "kind": "image",
+     "x": 928,
+     "y": 328,
+     "w": 256,
+     "h": 176,
+     "props": {
+      "src": "",
+      "alt": "",
+      "fit": "cover",
+      "radius": 16
+     },
+     "shadow": "sm",
+     "hover": "lift",
+     "anim": {
+      "kind": "fade",
+      "trigger": "show",
+      "delay": 420
+     },
+     "id": "gallery8",
+     "z": 8
+    }
+   ]
+  },
+  "source": "synthetic v1",
+  "v1": {
+   "id": "fx-gallery",
+   "height": 544,
+   "phoneHeight": 1680,
+   "phoneBoard": false,
+   "blocks": [
+    {
+     "id": "gallery0",
+     "x": 64,
+     "y": 0,
+     "w": 720,
+     "h": 88,
+     "phone": null,
+     "dark": null
+    },
+    {
+     "id": "gallery1",
+     "x": 64,
+     "y": 120,
+     "w": 256,
+     "h": 176,
+     "phone": null,
+     "dark": null
+    },
+    {
+     "id": "gallery2",
+     "x": 352,
+     "y": 120,
+     "w": 256,
+     "h": 176,
+     "phone": null,
+     "dark": null
+    },
+    {
+     "id": "gallery3",
+     "x": 640,
+     "y": 120,
+     "w": 256,
+     "h": 176,
+     "phone": null,
+     "dark": null
+    },
+    {
+     "id": "gallery4",
+     "x": 928,
+     "y": 120,
+     "w": 256,
+     "h": 176,
+     "phone": null,
+     "dark": null
+    },
+    {
+     "id": "gallery5",
+     "x": 64,
+     "y": 328,
+     "w": 256,
+     "h": 176,
+     "phone": null,
+     "dark": null
+    },
+    {
+     "id": "gallery6",
+     "x": 352,
+     "y": 328,
+     "w": 256,
+     "h": 176,
+     "phone": null,
+     "dark": null
+    },
+    {
+     "id": "gallery7",
+     "x": 640,
+     "y": 328,
+     "w": 256,
+     "h": 176,
+     "phone": null,
+     "dark": null
+    },
+    {
+     "id": "gallery8",
+     "x": 928,
+     "y": 328,
+     "w": 256,
+     "h": 176,
+     "phone": null,
+     "dark": null
+    }
+   ],
+   "phoneBoardBlocks": null
+  }
+ },
+ {
+  "name": "preset shapes",
+  "doc": {
+   "id": "fx-shapes",
+   "title": "Shapes & pattern",
+   "blocks": [
+    {
+     "kind": "box",
+     "x": 0,
+     "y": 0,
+     "w": 1200,
+     "h": 360,
+     "props": {
+      "bg": "color-mix(in srgb, var(--primary) 8%, transparent)",
+      "radius": 24,
+      "pattern": {
+       "id": "dots",
+       "color": "#000000",
+       "size": 20,
+       "opacity": 0.12
+      }
+     },
+     "id": "shapes0",
+     "z": 0
+    },
+    {
+     "kind": "shape",
+     "x": 64,
+     "y": 48,
+     "w": 160,
+     "h": 160,
+     "props": {
+      "shape": "blob",
+      "fill": "var(--primary)",
+      "opacity": 0.9
+     },
+     "anim": {
+      "kind": "float",
+      "trigger": "load"
+     },
+     "id": "shapes1",
+     "z": 1
+    },
+    {
+     "kind": "shape",
+     "x": 992,
+     "y": 40,
+     "w": 144,
+     "h": 144,
+     "props": {
+      "shape": "ring",
+      "stroke": "var(--primary-2)",
+      "strokeWidth": 10,
+      "fill": "none"
+     },
+     "anim": {
+      "kind": "pulse",
+      "trigger": "load"
+     },
+     "id": "shapes2",
+     "z": 2
+    },
+    {
+     "kind": "text",
+     "x": 280,
+     "y": 72,
+     "w": 640,
+     "h": 216,
+     "props": {
+      "md": "# A page with shapes\n\nBlocks that are drawn, not uploaded, every colour follows the theme.",
+      "align": "center"
+     },
+     "id": "shapes3",
+     "z": 3
+    },
+    {
+     "kind": "shape",
+     "x": 64,
+     "y": 424,
+     "w": 344,
+     "h": 96,
+     "props": {
+      "shape": "arrow",
+      "fill": "var(--primary)",
+      "text": "Next",
+      "textColor": "#fff"
+     },
+     "hover": "grow",
+     "id": "shapes4",
+     "z": 4
+    }
+   ]
+  },
+  "source": "synthetic v1",
+  "v1": {
+   "id": "fx-shapes",
+   "height": 560,
+   "phoneHeight": 1096,
+   "phoneBoard": false,
+   "blocks": [
+    {
+     "id": "shapes0",
+     "x": 0,
+     "y": 0,
+     "w": 1200,
+     "h": 360,
+     "phone": null,
+     "dark": null
+    },
+    {
+     "id": "shapes1",
+     "x": 64,
+     "y": 48,
+     "w": 160,
+     "h": 160,
+     "phone": null,
+     "dark": null
+    },
+    {
+     "id": "shapes2",
+     "x": 992,
+     "y": 40,
+     "w": 144,
+     "h": 144,
+     "phone": null,
+     "dark": null
+    },
+    {
+     "id": "shapes3",
+     "x": 280,
+     "y": 72,
+     "w": 640,
+     "h": 216,
+     "phone": null,
+     "dark": null
+    },
+    {
+     "id": "shapes4",
+     "x": 64,
+     "y": 424,
+     "w": 344,
+     "h": 96,
+     "phone": null,
+     "dark": null
+    }
+   ],
+   "phoneBoardBlocks": null
+  }
+ },
+ {
+  "name": "preset blank",
+  "doc": {
+   "id": "fx-blank",
+   "title": "Blank",
+   "blocks": []
+  },
+  "source": "synthetic v1",
+  "v1": {
+   "id": "fx-blank",
+   "height": 240,
+   "phoneHeight": 240,
+   "phoneBoard": false,
+   "blocks": [],
+   "phoneBoardBlocks": null
+  }
+ }
+]

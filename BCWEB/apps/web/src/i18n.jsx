@@ -8515,6 +8515,14 @@ const DICT = {
     'acc.proj.r.pages.h': 'Modifier la page : aperçu, présentation, chronologie, config. Pas la publication ni la visibilité.',
     'acc.proj.r.studio.h': 'Dessiner les pages studio de cette page, tant qu’un administrateur y laisse le studio activé.',
     'rm.scope.r.studio': 'Dessiner ses pages studio', 'rm.scope.r.studio.s': 'studio',
+    // Studio phase 3 (agent-studio-3) : le plateau libre, les cadres, la validation stricte.
+    'cst.frame.off': 'Hors cadre', 'cst.frame.off.h': 'En dehors du cadre de la page : le bloc reste sur le plateau, et les visiteurs ne le voient jamais',
+    'cst.zoom.fitframe': 'Ajuster le cadre au volet (0)', 'cst.zoom.all': 'Tout voir, y compris les blocs hors cadre (Maj+1)',
+    'cst.frame.fit': 'Ajuster le cadre au contenu : la page grandit et rétrécit de nouveau avec ses blocs',
+    'cst.keys.showall': 'Tout voir, y compris les blocs hors cadre', 'cst.keys.wheel': 'Molette, pincement', 'cst.keys.wheel.h': 'Zoomer autour du pointeur',
+    'cst.keys.panwith': 'Espace, bouton du milieu, deux doigts', 'cst.keys.pan': 'Déplacer le plan',
+    'cst.save.why.unknown_field': 'un champ inconnu', 'cst.save.why.bad_type': 'une valeur du mauvais type', 'cst.save.why.bad_value': 'une valeur non autorisée',
+    'cst.save.why.out_of_bounds': 'une position ou une taille hors limites', 'cst.save.why.too_many': 'trop d’éléments', 'cst.save.why.too_long': 'un texte trop long',
     'rm.scope.r.studio.h': 'Ouvrir le studio sur ces projets et dessiner leurs pages studio, tant que leur studio est activé. Pas le texte de la page.',
     // Studio: le dock (panneaux déplaçables), la feuille de raccourcis et les outils ajoutés.
     'cst.dock.panels': 'Panneaux', 'cst.dock.panels.h': 'Quels panneaux sont ouverts, et où ils se placent',

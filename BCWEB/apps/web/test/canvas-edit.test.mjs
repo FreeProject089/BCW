@@ -5,7 +5,7 @@
 // both look fine for the first few drags.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { dragTo, resizeTo, alignmentGuides, bringTo, DESIGN_WIDTH, GRID } from '../src/lib/canvas.js';
+import { dragTo, resizeTo, alignmentGuides, bringTo, GRID, BOUND } from '../src/lib/canvas.js';
 
 // 96/200/96 are all multiples of the 8px grid: an off-grid fixture would make every
 // expectation below also an assertion about snapping, which has its own test.
@@ -33,11 +33,19 @@ test('a drag is measured from where it began, so nothing creeps', () => {
   assert.equal(last.x, Math.round(60 / GRID) * GRID, 'ends where 60px of travel should land');
 });
 
-test('a block cannot be dragged out of reach', () => {
+// CHANGED in studio phase 3 (PLAN-STUDIO-2026): this was "a block cannot be dragged out of
+// reach" and asserted the v1 clamp (x >= 0, y >= 0, right edge at 1200), the rule phase 3
+// exists to remove. On the v2 board a block goes anywhere, stays grabbable in the editor and
+// is simply not shown to a reader; only the ±BOUND guard rail stops it.
+test('v2: a block goes off the page in every direction, and only the guard rail stops it', () => {
   const start = B({ x: 0, y: 0, w: 200 });
-  assert.equal(dragTo(start, -500, -500, 1).x, 0, 'not off the left, where you could never grab it');
-  assert.equal(dragTo(start, -500, -500, 1).y, 0);
-  assert.equal(dragTo(start, 5000, 0, 1).x, DESIGN_WIDTH - 200, 'its right edge stops at the design edge');
+  assert.deepEqual(dragTo(start, -500, -500, 1), { x: -496, y: -496 }, 'off the left and above the page, on the grid');
+  assert.equal(dragTo(start, 5000, 0, 1).x, 5000, 'past the right edge of the frame');
+  assert.equal(dragTo(start, -1e9, 1e9, 1).x, -BOUND, 'the guard rail, not the page, is the limit');
+  assert.equal(dragTo(start, -1e9, 1e9, 1).y, BOUND);
+  // And back: the same block, dragged home from far off the page, lands where it started.
+  const away = dragTo(start, -2400, -800, 1);
+  assert.deepEqual(dragTo({ ...start, ...away }, 2400, 800, 1), { x: 0, y: 0 });
 });
 
 test('holding the snap off gives pixel placement', () => {

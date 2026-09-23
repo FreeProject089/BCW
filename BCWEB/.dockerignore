@@ -15,9 +15,9 @@
 #
 # Every path a Dockerfile here COPYs is deliberately still included:
 #   api          native/{package.json,package-lock.json,Cargo.toml,Cargo.lock,build.rs,src,core},
-#                apps/api/{package.json,src}, packages/db
+#                apps/api/{package.json,src}, packages/db, packages/studio
 #   provisioner  apps/provisioner/{package.json,src}, packages/db
-#   web          apps/web/ (whole), packages/bmd, packages/bmd-editor
+#   web          apps/web/ (whole), packages/bmd, packages/bmd-editor, packages/studio
 
 # Installed dependencies — re-installed inside every image from the lockfile.
 **/node_modules

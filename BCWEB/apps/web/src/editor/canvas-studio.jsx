@@ -16,7 +16,7 @@ import {
   ArrowLeft, Save, Tablet, FileText, RotateCcw, Blocks, Puzzle, SlidersHorizontal, LayoutTemplate,
   Plus, RefreshCw, Unlink, ZoomIn, ZoomOut, Maximize,
   BringToFront, SendToBack, StretchHorizontal, StretchVertical, MoreHorizontal, Keyboard, PanelsTopLeft, X,
-  Hand, MonitorSmartphone, GraduationCap,
+  Hand, MonitorSmartphone, GraduationCap, Expand, FoldVertical,
 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { Button, Field, Input, Textarea, Select, Modal, useToast } from '../ui/ui.jsx';
@@ -31,7 +31,7 @@ import {
 import { lazy, Suspense, memo } from 'react';
 import { PATTERNS } from '../lib/patterns.js';
 import { sanitizeSvg, svgRefusals } from '../lib/svg-safe.js';
-import { scopeCss } from '../lib/css-scope.js';
+import { scopeCss, safeCssValue } from '../lib/css-scope.js';
 // The full B.MD editor is heavy and most sessions never open it: loaded on first use.
 const LazyMarkdownEditor = lazy(() => import('./markdown-editor.jsx').then((m) => ({ default: m.MarkdownEditor })));
 import CanvasView, { CanvasBlock } from '../ui/canvas-view.jsx';
@@ -41,11 +41,12 @@ import {
 } from './studio-dock.jsx';
 import ShortcutsModal from './studio-shortcuts.jsx';
 import {
-  normalizeCanvas, paintOrder, dragTo, resizeTo, alignmentGuides, bringTo,
+  normalizeCanvas, serializeDoc, paintOrder, dragTo, resizeTo, alignmentGuides, bringTo,
+  inFrame, boardBlocks, boardFrame, offFrameIds, toBoard, zoomAt, wheelZoom, pinchView, fitFrameView, showAllView, revealView,
   emptyHistory, pushHistory, undo as undoHist, redo as redoHist,
   boundsOf, blocksInRect, moveMany, alignMany, distributeMany, phoneOrder, resolveBlock,
-  phoneBoardBlocks, reorder, DESIGN_WIDTH, PHONE_WIDTH, GRID, HANDLES,
-  serializeCanvas, alignOnBoard, distributeOnBoard, matchSizeOnBoard, duplicateOnBoard, placeOnBoard, dragPatch,
+  reorder, DESIGN_WIDTH, GRID, HANDLES,
+  alignOnBoard, distributeOnBoard, matchSizeOnBoard, duplicateOnBoard, placeOnBoard, dragPatch,
   ANIM_KINDS, ANIM_TRIGGERS, ANIM_EASINGS, STAGGER_STEPS, BUTTON_VARIANTS, BUTTON_ACTIONS, LEGACY_ACTIONS, buttonTarget, menuItemHref, SHADOWS, HOVER_EFFECTS, GRID_SIZES, TEXT_ALIGNS, SHAPES,
 } from '../lib/canvas.js';
 import StudioTour, { TourButton, useStudioTour } from './studio-tour.jsx';
@@ -60,6 +61,9 @@ const uid = () => `b${Date.now().toString(36)}${Math.random().toString(36).slice
  * instead of leaving an id nothing can render.
  */
 const PANEL_IDS = ['blocks', 'layers', 'components', 'props'];
+
+/** How far the snapping guides are drawn, in board px: past the ±20 000 guard rail both ways. */
+const BOARD_REACH = 40_000;
 
 const NEW_BLOCK = {
   text: { kind: 'text', w: 400, h: 160, props: { md: '## Titre\n\nÉcris ici.' } },
@@ -102,7 +106,16 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
   const [snapOn, setSnapOn] = useState(true);
   const [showGrid, setShowGrid] = useState(true);
   const [layersOpen, setLayersOpen] = useState(false);
-  const [zoom, setZoom] = useState('fit');            // 'fit' | a number
+  /**
+   * The camera over the board: `{ x, y, s, fit }` (PLAN-STUDIO-2026, phase 3).
+   *
+   * The board used to be a scrolled box as wide as the page, so nothing could exist left of
+   * it or above it, and "zoom" was the scale of that box. It is now an infinite plane drawn
+   * through ONE transform, and this is where the plane is looked at from. `fit: true` means
+   * "fit the frame to the pane", recomputed from the pane's size on every render, so a pane
+   * that is resized or a board switched to the phone stays fitted without an effect.
+   */
+  const [cam, setCam] = useState(() => ({ ...fitFrameView({ w: DESIGN_WIDTH }, DESIGN_WIDTH, 0), fit: true }));
   const [pageOpen, setPageOpen] = useState(false);
   const [mdFor, setMdFor] = useState(null);           // block id whose text is in the B.MD editor
   const clip = useRef([]);                           // copied blocks (also written to the clipboard)
@@ -302,19 +315,36 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
   // Which board: the 1200px desktop plane, or the 390px phone board. Everything that clamps
   // or scales reads this rather than DESIGN_WIDTH.
   const phoneBoard = editTheme === 'phone';
-  const boardW = phoneBoard ? PHONE_WIDTH : DESIGN_WIDTH;
-  const boardH = phoneBoard ? canvas.phoneHeight : canvas.height;
-  const fitScale = Math.min(1, Math.max(0.3, vw / boardW));
-  const scale = zoom === 'fit' ? fitScale : Number(zoom);
+  // The FRAME being edited: the 1200px page (light and dark share it) or the 390px phone. The
+  // board around it is infinite; the frame is what a reader gets.
+  const frame = boardFrame(canvas, editTheme);
+  const boardW = frame.w;
+  const boardH = frame.h;
+  const frameRef = useRef(frame); frameRef.current = frame;
+  const fitView = fitFrameView(frame, vw, vh);
+  const fitScale = fitView.s;
+  // The camera in use: the fitted one while "fit" is on, the author's own once they zoomed or
+  // panned. Every pointer is converted to the board through THIS (toBoard), never through a
+  // scroll offset: there is no scrolling left.
+  const camView = cam.fit ? fitView : cam;
+  const scale = camView.s;
+  const zoom = cam.fit ? 'fit' : cam.s;
+  /** Zoom to a level, about the centre of the pane; 'fit' fits the frame again. */
+  const setZoom = (z) => {
+    if (z === 'fit') { setCam({ ...fitView, fit: true }); return; }
+    setCam({ ...zoomAt(camView, (vw || DESIGN_WIDTH) / 2, (vh || 0) / 2, Number(z)), fit: false });
+  };
+  /** Everything: the frame and every block, parked ones included, whole in the pane. */
+  const showAll = () => setCam({ ...showAllView(frame, view.blocks, vw || DESIGN_WIDTH, vh || 480), fit: false });
   // The author's grid step. Snapping, the drawn grid and the keyboard nudge all read it.
   const grid = canvas.grid || GRID;
   // The board and the panel both show the target being authored — resolveBlock and
   // phoneBoardBlocks are the SAME functions the public page uses, so "what the author sees"
   // cannot drift from what is served. On the phone board every block has a place, hand-placed
   // or laid in reading order under the placed ones.
-  const view = useMemo(() => (phoneBoard
-    ? { ...canvas, blocks: phoneBoardBlocks(canvas.blocks.map((b) => resolveBlock(b, 'light'))) }
-    : { ...canvas, blocks: canvas.blocks.map((b) => resolveBlock(b, editTheme)) }), [canvas, editTheme, phoneBoard]);
+  const view = useMemo(() => ({ ...canvas, blocks: boardBlocks(canvas, editTheme) }), [canvas, editTheme]);
+  /** Blocks a reader would not see on this board: entirely outside its frame. */
+  const offIds = useMemo(() => offFrameIds(canvas, editTheme), [canvas, editTheme]);
   const sel = view.blocks.find((b) => b.id === selId) || null;
   /** Does this block say anything of its own on the dark theme? Drives the badge and Reset. */
   const rawSel = canvas.blocks.find((b) => b.id === selId) || null;
@@ -322,13 +352,14 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
 
   // Every change goes through here, and every change records an undo point FIRST — the state
   // as it was, keyed by the gesture, so a sixty-frame drag collapses into one entry.
-  // What goes out is serializeCanvas(), never the normalised canvas itself: normalisation
-  // COMPUTES the height, and writing that back pinned it, so every block added afterwards was
-  // cut (PLAN-STUDIO-2026 bug A.1). Undo points are serialised the same way.
+  // What goes out is serializeDoc(), never the normalised canvas itself: normalisation
+  // COMPUTES a frame's height when it follows its content, and writing that back pinned it,
+  // so every block added afterwards was cut (PLAN-STUDIO-2026 bug A.1). A v2 document goes
+  // out, whatever came in. Undo points are serialised the same way.
   const emit = useCallback((blocks, extra = {}, key = null) => {
-    setHist((h) => pushHistory(h, serializeCanvas(canvas, value), key));
-    onChange({ ...serializeCanvas(canvas, value, extra), blocks });
-  }, [canvas, value, onChange]);
+    setHist((h) => pushHistory(h, serializeDoc(canvas), key));
+    onChange(serializeDoc(canvas, { ...extra, blocks }));
+  }, [canvas, onChange]);
 
   /**
    * Change one block — into the base, or into the theme overlay.
@@ -412,16 +443,27 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
 
   // Where a new thing lands: below everything already there, so it never arrives hidden
   // under a block.
-  const nextY = () => canvas.blocks.reduce((m, b) => Math.max(m, b.y + b.h), 0) + 24;
+  const nextY = () => canvas.blocks.filter((b) => inFrame(b, { w: DESIGN_WIDTH, h: Infinity })).reduce((m, b) => Math.max(m, b.y + b.h), 0) + 24;
   // A block that was just added, to bring into view once it is drawn.
   const [revealId, setRevealId] = useState(null);
   // Brought into view once drawn: a block added at the bottom of a long page used to arrive
   // out of sight, which reads as "nothing happened".
+  // The board does not scroll, so "into view" is a camera move, and only when the block is
+  // not already on screen (revealView hands back the same view then, and fit stays on).
   useEffect(() => {
     if (!revealId) return;
-    const el = hostRef.current?.querySelector?.(`[data-cst-block="${revealId}"]`);
-    el?.scrollIntoView?.({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+    const b = view.blocks.find((x) => x.id === revealId);
+    const host = hostRef.current;
+    if (b && host && host.clientWidth && host.clientHeight) {
+      const w = host.clientWidth; const h = host.clientHeight;
+      setCam((c) => {
+        const base = c.fit ? fitFrameView(frameRef.current, w, h) : c;
+        const next = revealView(base, b, w, h);
+        return next === base ? c : { ...next, fit: false };
+      });
+    }
     setRevealId(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revealId, canvas]);
   /** New blocks (add, paste, component): placed on the board being EDITED (placeOnBoard), so
    *  on the phone board they get a phone place instead of landing at the bottom of the desktop
@@ -568,6 +610,9 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
   // setPointerCapture means a fast drag that leaves the block (or the window) still tracks
   // instead of dropping it wherever the pointer left.
   const onDown = (e, b, handle) => {
+    // A pan gesture that starts ON a block is still a pan: the middle button, space held or
+    // the Hand tool. Left to bubble to the board, which starts it.
+    if (e.button === 1 || spaceRef.current || panMode || pinchRef.current) return;
     e.preventDefault(); e.stopPropagation();
     const additive = e.shiftKey || e.ctrlKey || e.metaKey;
     let ids;
@@ -628,38 +673,41 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
   // and re-rendering the board to remember a scroll offset would make it stutter.
   const panRef = useRef(null);
   const spaceRef = useRef(false);
-  // getBoundingClientRect() is the host's box on screen, which is where the board STARTS only
-  // while nothing is scrolled. Zoomed past "fit" the host scrolls, and without its scroll
-  // offset the rubber band was drawn one scrollLeft to the left of the pointer.
+  // Every pointer is read in the HOST's box and converted to the board through the camera
+  // (toBoard). The border is part of getBoundingClientRect but not of the camera's space, so
+  // it is taken off (clientLeft/Top) or the rubber band sits one pixel off the pointer.
+  const hostPoint = (e) => {
+    const host = hostRef.current; if (!host) return { x: 0, y: 0 };
+    const r = host.getBoundingClientRect();
+    return { x: e.clientX - r.left - (host.clientLeft || 0), y: e.clientY - r.top - (host.clientTop || 0) };
+  };
   const onCanvasDown = (e) => {
     const host = hostRef.current; if (!host) return;
-    // Panning, before anything else claims the press. The board could be zoomed past its pane
-    // and then only a scrollbar moved it — a scrollbar the touch author does not get at all.
-    // Middle button, space held, or the Hand tool: three ways in, one gesture.
+    if (pinchRef.current) return;
+    // Panning, before anything else claims the press. Middle button, space held, or the Hand
+    // tool: three ways in, one gesture. Two fingers are the fourth (the pinch, below).
     if (e.button === 1 || spaceRef.current || panMode) {
       e.preventDefault();
-      panRef.current = { x: e.clientX, y: e.clientY, sl: host.scrollLeft, st: host.scrollTop };
+      panRef.current = { x: e.clientX, y: e.clientY, cam: camView };
       e.currentTarget.setPointerCapture?.(e.pointerId);
       return;
     }
-    const r = host.getBoundingClientRect();
-    const x = (e.clientX - r.left + host.scrollLeft) / scale, y = (e.clientY - r.top + host.scrollTop) / scale;
-    marqueeRef.current = { x, y, additive: e.shiftKey || e.ctrlKey || e.metaKey, base: selIds };
+    if (e.pointerType === 'mouse' && e.button !== 0) return;   // a right click selects nothing
+    const p = toBoard(camView, hostPoint(e).x, hostPoint(e).y);
+    marqueeRef.current = { x: p.x, y: p.y, additive: e.shiftKey || e.ctrlKey || e.metaKey, base: selIds };
     if (!marqueeRef.current.additive) setSelIds([]);
   };
   const onMarqueeMove = (e) => {
     const p = panRef.current;
     if (p) {
-      const host = hostRef.current; if (!host) return;
-      host.scrollLeft = p.sl - (e.clientX - p.x);
-      host.scrollTop = p.st - (e.clientY - p.y);
+      // From where the pan STARTED, like a drag: no accumulated rounding, no drift.
+      setCam({ ...p.cam, x: p.cam.x + (e.clientX - p.x), y: p.cam.y + (e.clientY - p.y), fit: false });
       return;
     }
     const m = marqueeRef.current; if (!m) return;
-    const host = hostRef.current; if (!host) return;
-    const r = host.getBoundingClientRect();
-    const rect = { x: m.x, y: m.y, w: (e.clientX - r.left + host.scrollLeft) / scale - m.x, h: (e.clientY - r.top + host.scrollTop) / scale - m.y };
-    if (Math.abs(rect.w) < 4 && Math.abs(rect.h) < 4) return;   // a click, not a drag
+    const q = toBoard(camView, hostPoint(e).x, hostPoint(e).y);
+    const rect = { x: m.x, y: m.y, w: q.x - m.x, h: q.y - m.y };
+    if (Math.abs(rect.w) * scale < 4 && Math.abs(rect.h) * scale < 4) return;   // a click, not a drag
     setMarquee(rect);
     // The rubber band tests the blocks as DRAWN on this board (bug A.2).
     const hit = blocksInRect(view.blocks, rect).map((b) => b.id);
@@ -667,12 +715,67 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
   };
   const onMarqueeUp = () => { marqueeRef.current = null; panRef.current = null; setMarquee(null); };
 
+  // ── Two fingers: pan and pinch as one gesture ─────────────────────────────────────
+  // Touch pointers are tracked in the CAPTURE phase, before a block's own handler sees them:
+  // the second finger may land on a block, and it must not start dragging it. From two
+  // fingers on, the gesture belongs to the camera (pinchView, from where it started) and the
+  // events stop at the board.
+  const touches = useRef(new Map());
+  const pinchRef = useRef(null);
+  const onTouchDown = (e) => {
+    if (e.pointerType !== 'touch') return;
+    touches.current.set(e.pointerId, hostPoint(e));
+    if (touches.current.size === 2) {
+      const [a, b] = [...touches.current.values()];
+      pinchRef.current = { cam: camView, a, b };
+      drag.current = null; marqueeRef.current = null; panRef.current = null;
+      setMarquee(null); setGuides({ v: null, h: null });
+      e.stopPropagation();
+    }
+  };
+  const onTouchMove = (e) => {
+    if (e.pointerType !== 'touch' || !touches.current.has(e.pointerId)) return;
+    touches.current.set(e.pointerId, hostPoint(e));
+    const p = pinchRef.current;
+    if (!p || touches.current.size < 2) return;
+    e.stopPropagation();
+    const [a, b] = [...touches.current.values()];
+    setCam({ ...pinchView(p.cam, p.a, p.b, a, b), fit: false });
+  };
+  const onTouchEnd = (e) => {
+    if (e.pointerType !== 'touch') return;
+    touches.current.delete(e.pointerId);
+    if (touches.current.size < 2) pinchRef.current = null;
+  };
+
+  // The wheel zooms about the pointer (wheelZoom keeps the board point under it still). A
+  // native listener, because React's is passive and could not stop the page from scrolling.
+  // In the MODAL form the board sits in a scrolling settings screen, so there only a pinch on
+  // a trackpad (which arrives as Ctrl+wheel) or Ctrl/Cmd+wheel zooms and the wheel still
+  // scrolls the form; the full-page studio owns the wheel.
+  useEffect(() => {
+    const host = hostRef.current; if (!host) return undefined;
+    const onWheel = (e) => {
+      if (!pageMode && !(e.ctrlKey || e.metaKey)) return;
+      e.preventDefault();
+      const r = host.getBoundingClientRect();
+      const x = e.clientX - r.left - (host.clientLeft || 0); const y = e.clientY - r.top - (host.clientTop || 0);
+      const w = host.clientWidth; const h = host.clientHeight;
+      setCam((c) => ({ ...wheelZoom(c.fit ? fitFrameView(frameRef.current, w, h) : c, x, y, e.deltaY, e.deltaMode), fit: false }));
+    };
+    host.addEventListener('wheel', onWheel, { passive: false });
+    return () => host.removeEventListener('wheel', onWheel);
+    // Re-bound when the board (un)mounts, like the size observer above.
+  }, [pageMode, preview, stacked, pane]);
+
   // ── The page's own height ──────────────────────────────────────────────────
   // One key for the whole gesture, so a drag from 600 to 1400 is one undo step and not eight
   // hundred — the same rule every other drag in this file follows.
   const heightRef = useRef(null);
   const setBoardHeight = (n) => emit(canvas.blocks, phoneBoard
-    ? { phoneHeight: Math.max(200, Math.round(n)) } : { height: Math.max(200, Math.round(n)) }, 'canvas-height');
+    ? { phoneHeight: Math.max(40, Math.round(n)) } : { height: Math.max(40, Math.round(n)) }, 'canvas-height');
+  /** Give the frame's height back to its content (`fit: 'content'`): the opposite of the handle. */
+  const fitFrameToContent = () => emit(canvas.blocks, { frames: { [phoneBoard ? 'phone' : 'desktop']: { fit: 'content' } } });
   const onHeightDown = (e) => {
     e.preventDefault(); e.stopPropagation();
     heightRef.current = { y: e.clientY, h: boardH };
@@ -735,6 +838,8 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
         if (e.key === '+' || e.key === '=') { e.preventDefault(); zoomBy(1); return; }
         if (e.key === '-') { e.preventDefault(); zoomBy(-1); return; }
         if (e.key === '0') { e.preventDefault(); setZoom('fit'); return; }
+        // Shift+1 (the design-tool convention): the whole board, parked blocks included.
+        if (e.shiftKey && e.code === 'Digit1') { e.preventDefault(); showAll(); return; }
         if (e.key === '1') { e.preventDefault(); setZoom(1); return; }
         if (e.key.toLowerCase() === 'g') { e.preventDefault(); setShowGrid((v) => !v); return; }
         if (e.key.toLowerCase() === 'l' && selIds.length) { e.preventDefault(); toggleFlag('locked'); return; }
@@ -755,7 +860,8 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
           // used to keep every field it came with until the next save (S8). Offset on the
           // desktop plane, then placed on the board being edited.
           const clean = normalizeCanvas({ blocks: list.slice(0, 200) }).blocks;
-          addBlocks(clean.map((b) => ({ ...b, id: uid(), x: Math.min(Math.max(0, b.x + GRID * 3), DESIGN_WIDTH - b.w), y: b.y + GRID * 3, component: null })));
+          // Offset, not clamped (v2): a block copied from beside the page lands beside it.
+          addBlocks(clean.map((b) => ({ ...b, id: uid(), x: b.x + GRID * 3, y: b.y + GRID * 3, component: null })));
         };
         e.preventDefault();
         navigator.clipboard?.readText?.().then((txt) => { try { const j = JSON.parse(txt); if (Array.isArray(j?.bcwBlocks)) return paste(j.bcwBlocks); } catch { /* not ours */ } paste(clip.current); }).catch(() => paste(clip.current));
@@ -793,7 +899,7 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
     // `zoom` and `fitScale` are here because the bare +/- keys step FROM the current zoom:
     // without them the handler kept the zoom it was created with and every press walked from
     // the same place.
-  }, [selIds, canvas.blocks, emit, patch, doUndo, doRedo, chrome, pageMode, zoom, fitScale]);
+  }, [selIds, canvas.blocks, emit, patch, doUndo, doRedo, chrome, pageMode, zoom, fitScale, cam, vw, vh]);
 
   // ── The pieces, assembled differently by the two layouts ─────────────────
   const toolbarProps = {
@@ -801,7 +907,7 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
     selCount: selIds.length, doAlign, doDistribute, grid, setGrid, layersOpen, setLayersOpen, zoom, setZoom, pageOpen, setPageOpen,
     pageMode, showGrid, setShowGrid, zoomBy, fitScale, onSaveComponent: () => setCompOpen(true),
     doZ, matchSize, toggleFlag, stagger, selBlocks: chosen, onKeys: () => setKeysOpen(true),
-    panMode, setPanMode,
+    panMode, setPanMode, onShowAll: showAll, frameFit: frame.fit, onFitContent: fitFrameToContent,
   };
   const modals = (<>
     {keysOpen && <ShortcutsModal t={t} onClose={() => setKeysOpen(false)} />}
@@ -843,60 +949,76 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
         : t('cst.board.phone.h0', 'Phones get the reading-order stack until you place something here. Move or resize a block and the board takes over.')}</span>
     )}
   </>);
+  // The page's own stylesheet, scoped to the page as the public renderer scopes it, so the
+  // board finally shows what a reader gets (PLAN-STUDIO-2026 1.6: the board painted neither
+  // the background nor the CSS, and an author only saw either in a preview).
+  const pageCss = canvas.css ? scopeCss(canvas.css, `[data-cv="${String(canvas.id).replace(/[^\w-]/g, '')}"]`).css : '';
+  const pageBg = safeCssValue(canvas.bg);
   const boardHost = (
     /* `touchAction: none` is what makes this usable with a finger at all: without it the
        browser claims the gesture and drags scroll the page instead of moving the block —
        and a design surface you cannot drag on is not a design surface. The modal body
-       around it still scrolls, so nothing is trapped. */
-    <div ref={hostRef} className={`cst-board ${scale > fitScale || boardSize.h ? 'overflow-auto' : 'overflow-hidden'} rounded-xl border border-[var(--line)] bg-[var(--surface-2)] ${panMode ? 'is-panning' : ''}`}
-      style={{ touchAction: 'none' }}
+       around it still scrolls, so nothing is trapped.
+       The host does not scroll any more: the board is an infinite plane seen through a
+       camera (translate + scale on ONE element), so blocks may sit left of the page, above
+       it or far beyond it and stay reachable by panning. */
+    <div ref={hostRef} className={`cst-board overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--surface-2)] ${panMode ? 'is-panning' : ''}`}
+      data-cst-host
+      style={{ touchAction: 'none', position: 'relative', ...(boardSize.h ? {} : { height: pageMode ? 'max(360px, calc(100dvh - 210px))' : 'min(70vh, 720px)' }) }}
+      onPointerDownCapture={onTouchDown}
+      onPointerMoveCapture={onTouchMove}
+      onPointerUpCapture={onTouchEnd}
+      onPointerCancelCapture={onTouchEnd}
       onPointerMove={(e) => { onMarqueeMove(e); onMove(e); }}
       onPointerUp={(e) => { onMarqueeUp(); onUp(e); }}
       onPointerCancel={(e) => { onMarqueeUp(); onUp(e); }}
       onPointerDown={onCanvasDown}>
-      {/* The scaled board is `transform`ed, and a transform takes no room: with no width of
-          its own this wrapper was exactly as wide as the host, so zooming past "fit" produced
-          no horizontal scrollbar and the right-hand third of a 1200px board could not be
-          reached at all. The width is the board's OWN width times the scale, which is the
-          space the picture actually occupies. */}
-      {/* +10px of empty room under the plane, and for one reason: the page's own bottom edge
-          is drawn AT `boardH * scale` and this wrapper is what the host clips to. Without the
-          room the handle was half outside the scroll area and elementFromPoint never returned
-          it — a control that is drawn and cannot be pressed. */}
-      <div style={{ width: boardW * scale, height: boardH * scale + 10, position: 'relative', ...(phoneBoard ? { margin: '0 auto' } : {}) }}>
-        <div style={{ width: boardW, height: boardH, transform: `scale(${scale})`, transformOrigin: 'top left', position: 'absolute', top: 0, left: 0 }}>
-          {/* The grid, drawn so placement is legible rather than guessed at. Switchable: a
-              finished page is easier to judge without it. */}
+      {/* The world: board coordinates, one transform. `data-cv` is the page's scope, so the
+          author's stylesheet reaches the blocks here exactly as on the page. */}
+      <div data-cst-world data-cv={canvas.id}
+        style={{ position: 'absolute', left: 0, top: 0, width: 0, height: 0, transformOrigin: '0 0',
+          transform: `translate(${camView.x}px, ${camView.y}px) scale(${scale})` }}>
+        {pageCss ? <style>{pageCss}</style> : null}
+        {/* The FRAME: the page a reader gets. Painted with the page's own background (the
+            site's when there is none); everything around it is the grey of the desk, and a
+            block out there is drawn dimmed with an "off frame" badge. */}
+        <div aria-hidden data-cst-frame={phoneBoard ? 'phone' : 'desktop'} data-fit={frame.fit}
+          style={{ position: 'absolute', left: 0, top: 0, width: boardW, height: boardH, pointerEvents: 'none',
+            background: pageBg || 'var(--bg)', boxShadow: '0 0 0 1px var(--line-strong), 0 10px 40px -18px rgba(0,0,0,.45)' }}>
+          {/* The grid, drawn so placement is legible rather than guessed at. On the page only:
+              the desk around it is for parking, not for composing. */}
           {showGrid && <div aria-hidden style={{
             position: 'absolute', inset: 0, pointerEvents: 'none', opacity: 0.5,
             backgroundImage: 'linear-gradient(to right, var(--line) 1px, transparent 1px), linear-gradient(to bottom, var(--line) 1px, transparent 1px)',
             backgroundSize: `${Math.max(32, grid * 4)}px ${Math.max(32, grid * 4)}px`,
           }} />}
-          {paintOrder(view.blocks).map((b) => (
-            <BoardBlock key={b.id} b={b} on={selIds.includes(b.id)} only={selIds.length === 1 && selIds[0] === b.id} down={stableDown} />
-          ))}
-          {/* Guides, drawn only while a drag is snapping to something. */}
-          {guides.v && <div aria-hidden style={{ position: 'absolute', left: guides.v.at, top: 0, bottom: 0, width: 1, background: 'var(--primary)', pointerEvents: 'none' }} />}
-          {guides.h && <div aria-hidden style={{ position: 'absolute', top: guides.h.at, left: 0, right: 0, height: 1, background: 'var(--primary)', pointerEvents: 'none' }} />}
-          {marquee && (
-            <div aria-hidden style={{ position: 'absolute', pointerEvents: 'none',
-              left: Math.min(marquee.x, marquee.x + marquee.w), top: Math.min(marquee.y, marquee.y + marquee.h),
-              width: Math.abs(marquee.w), height: Math.abs(marquee.h),
-              border: '1px solid var(--primary)', background: 'color-mix(in srgb, var(--primary) 12%, transparent)' }} />
-          )}
         </div>
-        {/* The page's own bottom edge. The canvas height had no control anywhere — not in the
-            inspector, which edits a block, and not in the Page panel, which edits the
-            background and the CSS — so the one dimension of the thing being built was the one
-            thing that could not be changed. Dragged in DESIGN pixels, so it means the same at
-            every zoom. */}
-        <div className="cst-board-hedge" role="separator" aria-orientation="horizontal" tabIndex={0}
-          style={{ top: boardH * scale, width: boardW * scale }}
-          aria-label={t('cst.page.h2', 'Drag to set how tall this page is')}
-          title={`${t('cst.page.h2', 'Drag to set how tall this page is')} · ${boardH}px`}
-          onPointerDown={onHeightDown} onPointerMove={onHeightMove}
-          onPointerUp={onHeightUp} onPointerCancel={onHeightUp} onKeyDown={onHeightKey} />
+        {paintOrder(view.blocks).map((b) => (
+          <BoardBlock key={b.id} b={b} on={selIds.includes(b.id)} only={selIds.length === 1 && selIds[0] === b.id} down={stableDown}
+            off={offIds.has(b.id)} offLabel={t('cst.frame.off', 'Off frame')} />
+        ))}
+        {/* Guides, drawn only while a drag is snapping to something. Long, because the board
+            has no edges for them to stop at. */}
+        {guides.v && <div aria-hidden style={{ position: 'absolute', left: guides.v.at, top: -BOARD_REACH, height: BOARD_REACH * 2, width: 1 / scale, background: 'var(--primary)', pointerEvents: 'none' }} />}
+        {guides.h && <div aria-hidden style={{ position: 'absolute', top: guides.h.at, left: -BOARD_REACH, width: BOARD_REACH * 2, height: 1 / scale, background: 'var(--primary)', pointerEvents: 'none' }} />}
+        {marquee && (
+          <div aria-hidden style={{ position: 'absolute', pointerEvents: 'none',
+            left: Math.min(marquee.x, marquee.x + marquee.w), top: Math.min(marquee.y, marquee.y + marquee.h),
+            width: Math.abs(marquee.w), height: Math.abs(marquee.h),
+            border: `${1 / scale}px solid var(--primary)`, background: 'color-mix(in srgb, var(--primary) 12%, transparent)' }} />
+        )}
       </div>
+      {/* The frame's bottom edge: its height, dragged in BOARD pixels so it means the same at
+          every zoom. Outside the transform, in pane pixels, so the handle keeps a fingertip's
+          size however far the board is zoomed out. Dragging it makes the height FIXED; "fit
+          the frame to its content" hands it back to the blocks. */}
+      <div className="cst-board-hedge" role="separator" aria-orientation="horizontal" tabIndex={0}
+        data-fit={frame.fit}
+        style={{ top: camView.y + boardH * scale, left: camView.x, width: boardW * scale }}
+        aria-label={t('cst.page.h2', 'Drag to set how tall this page is')}
+        title={`${t('cst.page.h2', 'Drag to set how tall this page is')} · ${boardH}px`}
+        onPointerDown={onHeightDown} onPointerMove={onHeightMove}
+        onPointerUp={onHeightUp} onPointerCancel={onHeightUp} onKeyDown={onHeightKey} />
     </div>
   );
   /**
@@ -959,7 +1081,7 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
     // written once here rather than at each of the four places that name a panel.
     const panels = {
       blocks: { title: t('cst.pane.blocks', 'Blocks'), icon: Blocks, render: () => <BlocksPanel {...{ t, add, addShape }} /> },
-      layers: { title: t('cst.layers', 'Layers'), icon: LayoutList, render: () => <LayersPanel {...{ t, canvas, view, selIds, setSelIds, patch, emit, add }} bare /> },
+      layers: { title: t('cst.layers', 'Layers'), icon: LayoutList, render: () => <LayersPanel {...{ t, canvas, view, selIds, setSelIds, patch, emit, add, offIds }} bare /> },
       components: { title: t('cst.cmp', 'Components'), icon: Puzzle, render: () => <ComponentsPanel {...{ t, components, insertComponent, deleteComponent }} /> },
       props: { title: t('cst.pane.props', 'Properties'), icon: SlidersHorizontal, render: () => inspector },
     };
@@ -1148,7 +1270,7 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
             canvas would just be a smaller canvas. */}
         <div className={`lg:static lg:mt-0 ${sel ? 'sticky bottom-0 z-20 mt-2 max-h-[46vh] overflow-auto rounded-t-2xl border-t lg:border-t-0 border-[var(--line-strong)] lg:rounded-t-none lg:max-h-none lg:overflow-visible lg:shadow-none shadow-[0_-10px_30px_-12px_rgba(0,0,0,0.35)]' : 'mt-2'}`}
           style={sel ? { background: 'var(--bg-solid)' } : undefined}>
-          {layersOpen && <LayersPanel {...{ t, canvas, view, selIds, setSelIds, patch, emit, add }} />}
+          {layersOpen && <LayersPanel {...{ t, canvas, view, selIds, setSelIds, patch, emit, add, offIds }} />}
           {inspector}
         </div>
       </div>
@@ -1571,7 +1693,7 @@ function EmptyBoard({ t, onAdd, onOpenBlocks }) {
  * and the two arrows. The one place a hidden block can be found again, and the one place a
  * block under three others can be selected without moving them.
  */
-function LayersPanel({ t, canvas, view, selIds, setSelIds, patch, emit, add, bare = false }) {
+function LayersPanel({ t, canvas, view, selIds, setSelIds, patch, emit, add, bare = false, offIds = null }) {
   const rows = paintOrder(view.blocks).slice().reverse();
   return (
     // `bare` is the dock's form: the panel already has a title bar and a border of its own, and
@@ -1602,6 +1724,13 @@ function LayersPanel({ t, canvas, view, selIds, setSelIds, patch, emit, add, bar
                 {b.name || t(`cst.kind.${b.kind}`, b.kind)}
                 {!b.name && <span className="text-[var(--faint)] ms-1">#{b.id.slice(-3)}</span>}
               </span>
+              {/* Outside the page frame: kept on the board, never shown to a reader. Said here
+                  because the board itself may be zoomed so the block is nowhere on screen. */}
+              {offIds?.has(b.id) && (
+                <span className="cst-offframe" data-off-frame title={t('cst.frame.off.h', 'Outside the page frame: it stays on the board, and visitors never see it')}>
+                  {t('cst.frame.off', 'Off frame')}
+                </span>
+              )}
               <button type="button" className="p-0.5 rounded hover:bg-[var(--surface-2)] disabled:opacity-30" disabled={i === 0} onClick={(e) => { e.stopPropagation(); emit(reorder(canvas.blocks, b.id, 'up')); }} title={t('cst.layer.up', 'Move up')} aria-label={t('cst.layer.up', 'Move up')}><ChevronUp size={12} /></button>
               <button type="button" className="p-0.5 rounded hover:bg-[var(--surface-2)] disabled:opacity-30" disabled={i === rows.length - 1} onClick={(e) => { e.stopPropagation(); emit(reorder(canvas.blocks, b.id, 'down')); }} title={t('cst.layer.down', 'Move down')} aria-label={t('cst.layer.down', 'Move down')}><ChevronDown size={12} /></button>
               <button type="button" className={`p-0.5 rounded hover:bg-[var(--surface-2)] ${b.locked ? 'text-[var(--accent-ink)]' : 'text-[var(--faint)]'}`} onClick={(e) => { e.stopPropagation(); patch(b.id, { locked: !b.locked }); }} title={b.locked ? t('cst.layer.unlock', 'Unlock') : t('cst.layer.lock', 'Lock')} aria-label={b.locked ? t('cst.layer.unlock', 'Unlock') : t('cst.layer.lock', 'Lock')}>{b.locked ? <Lock size={12} /> : <LockOpen size={12} />}</button>
@@ -1787,14 +1916,18 @@ function BlockBody({ b }) {
 // (the block painter is imported from canvas-view.jsx — see CanvasBlock there)
 
 /** One block on the board. Memoised: only the block whose props changed re-renders. */
-const BoardBlock = memo(function BoardBlock({ b, on, only, down }) {
+const BoardBlock = memo(function BoardBlock({ b, on, only, down, off = false, offLabel = '' }) {
   return (
     <div
       data-cst-block={b.id}
+      data-off-frame={off ? '1' : undefined}
       onPointerDown={(e) => down(e, b, null)}
-      style={{ position: 'absolute', left: b.x, top: b.y, width: b.w, height: b.h, zIndex: (b.z || 0) + (on ? 1000 : 0), cursor: b.locked ? 'default' : 'move', touchAction: 'none', opacity: b.hidden ? 0.3 : undefined, transform: b.rotate ? `rotate(${b.rotate}deg)` : undefined }}>
+      // Off the frame: drawn and grabbable like any block (it is on the board), dimmed, because
+      // a reader will never see it.
+      style={{ position: 'absolute', left: b.x, top: b.y, width: b.w, height: b.h, zIndex: (b.z || 0) + (on ? 1000 : 0), cursor: b.locked ? 'default' : 'move', touchAction: 'none', opacity: b.hidden ? 0.3 : off ? 0.55 : undefined, transform: b.rotate ? `rotate(${b.rotate}deg)` : undefined }}>
       <BlockBody b={b} />
-      <div style={{ position: 'absolute', inset: 0, outline: on ? '2px solid var(--primary)' : '1px dashed var(--line-strong)', outlineOffset: 0, pointerEvents: 'none' }} />
+      <div style={{ position: 'absolute', inset: 0, outline: on ? '2px solid var(--primary)' : off ? '1px dashed var(--warning)' : '1px dashed var(--line-strong)', outlineOffset: 0, pointerEvents: 'none' }} />
+      {off && <span aria-hidden className="cst-offframe cst-offframe-board">{offLabel}</span>}
       {(b.locked || b.hidden || b.component) && (
         <span aria-hidden data-component={b.component ? b.component.id : undefined} style={{ position: 'absolute', left: 2, top: 2, display: 'inline-flex', gap: 2, background: 'var(--bg-solid)', borderRadius: 6, padding: '1px 4px', pointerEvents: 'none' }}>
           {b.locked && <Lock size={10} />}{b.hidden && <EyeOff size={10} />}{b.component && <Puzzle size={10} />}
@@ -1907,7 +2040,7 @@ function CssFields({ t, p, setProp }) {
 
 function Toolbar({ t, preview, setPreview, snapOn, setSnapOn, add, addShape, sel, duplicate, remove, doUndo, doRedo, hist, selCount, doAlign, doDistribute, stagger, grid, setGrid, layersOpen, setLayersOpen, zoom, setZoom, pageOpen, setPageOpen,
   pageMode = false, showGrid = true, setShowGrid, zoomBy, fitScale = 1, onSaveComponent,
-  doZ, matchSize, toggleFlag, selBlocks = [], narrow = false, onKeys, panMode = false, setPanMode }) {
+  doZ, matchSize, toggleFlag, selBlocks = [], narrow = false, onKeys, panMode = false, setPanMode, onShowAll, frameFit = 'content', onFitContent }) {
   const zoomPct = Math.round((zoom === 'fit' ? fitScale : Number(zoom)) * 100);
   const anyLocked = selBlocks.some((b) => b.locked);
   const anyHidden = selBlocks.some((b) => b.hidden);
@@ -1941,7 +2074,11 @@ function Toolbar({ t, preview, setPreview, snapOn, setSnapOn, add, addShape, sel
         {zoom !== 'fit' && ![0.5, 0.75, 1].includes(Number(zoom)) && <option value="custom">{zoomPct}%</option>}
       </select>
       {pageMode && zoomBy && <Button size="sm" variant="ghost" className="!px-2" onClick={() => zoomBy(1)} title={t('cst.zoom.in', 'Zoom in')} aria-label={t('cst.zoom.in', 'Zoom in')}><ZoomIn size={14} /></Button>}
-      {pageMode && zoom !== 'fit' && <Button size="sm" variant="ghost" className="!px-2" onClick={() => setZoom('fit')} title={t('cst.zoom.fit', 'Fit')} aria-label={t('cst.zoom.fit', 'Fit')}><Maximize size={14} /></Button>}
+      {pageMode && zoom !== 'fit' && <Button size="sm" variant="ghost" className="!px-2" onClick={() => setZoom('fit')} title={t('cst.zoom.fitframe', 'Fit the frame to the pane (0)')} aria-label={t('cst.zoom.fitframe', 'Fit the frame to the pane (0)')}><Maximize size={14} /></Button>}
+      {onShowAll && <Button size="sm" variant="ghost" className="!px-2" onClick={onShowAll} title={t('cst.zoom.all', 'Show everything, blocks off the frame included (Shift+1)')} aria-label={t('cst.zoom.all', 'Show everything, blocks off the frame included (Shift+1)')}><Expand size={14} /></Button>}
+      {/* Only while the height is pinned: a frame that already follows its content has
+          nothing to be handed back. */}
+      {onFitContent && frameFit === 'fixed' && <Button size="sm" variant="ghost" className="!px-2" onClick={onFitContent} data-fit-content title={t('cst.frame.fit', 'Fit the frame to its content: the page grows and shrinks with its blocks again')} aria-label={t('cst.frame.fit', 'Fit the frame to its content: the page grows and shrinks with its blocks again')}><FoldVertical size={14} /></Button>}
       {/* The hand. Zoomed past the pane the board could only be moved by a scrollbar, which a
           touch author never gets; space-drag and the middle button do the same thing. */}
       {pageMode && setPanMode && (

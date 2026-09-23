@@ -23,6 +23,17 @@ test('draft and handoff keys are per target, and the draft is per canvas', () =>
   assert.ok(draftKey('project', 'bmm', 0).startsWith('bcw_studio_draft:'));
 });
 
+test('a v2 page REPLACES the stored one (no v1 field left beside the frames), keeping its id', () => {
+  const cfg = { canvases: [{ id: 'a', title: 'A', height: 900, phoneBoard: true, blocks: [] }] };
+  const out = withCanvasAt(cfg, 0, { v: 2, title: 'A2', frames: { desktop: { w: 1200, fit: 'content' }, phone: { w: 390, fit: 'content', mode: 'stack' } }, blocks: [] });
+  assert.equal(out.canvases[0].id, 'a');
+  assert.equal(out.canvases[0].height, undefined);
+  assert.equal(out.canvases[0].phoneBoard, undefined);
+  const home = { customSections: [{ id: 's', title: { en: 'S' }, canvas: { id: 'cv', height: 500, blocks: [] } }] };
+  const h = withCanvasAt(home, 0, { v: 2, frames: {}, blocks: [] }, 'home').customSections[0];
+  assert.equal(h.canvas.id, 'cv'); assert.equal(h.canvas.height, undefined); assert.equal(h.title.en, 'S');
+});
+
 test('writing one canvas leaves the rest of the config alone', () => {
   const cfg = { studioEnabled: true, links: { github: 'x' }, canvases: [{ id: 'a', title: 'A', blocks: [] }, { id: 'b', title: 'B', blocks: [] }] };
   const out = withCanvasAt(cfg, 1, { id: 'b', title: 'B', blocks: [{ id: 'k', kind: 'box', x: 0, y: 0, w: 10, h: 10 }] });
@@ -39,8 +50,12 @@ test('zoom walks the steps in both directions and stops at the ends', () => {
   assert.equal(stepZoom(1, -1), 0.75);
   assert.equal(stepZoom('fit', 1, 0.6), 0.67, 'from fit, the next step above the fit scale');
   assert.equal(stepZoom('fit', -1, 0.6), 0.5);
-  assert.equal(stepZoom(2, 1), 2);
-  assert.equal(stepZoom(0.25, -1), 0.25);
+  // CHANGED in studio phase 3: the ends moved with the board camera's range, 25-200 % became
+  // 10-400 % (PLAN-STUDIO-2026). Still asserted: the ends hold instead of running off.
+  assert.equal(stepZoom(2, 1), 3);
+  assert.equal(stepZoom(4, 1), 4);
+  assert.equal(stepZoom(0.25, -1), 0.1);
+  assert.equal(stepZoom(0.1, -1), 0.1);
   assert.equal(stepZoom(0.67, 1), 0.75, 'a step exactly on a level goes to the next one, not itself');
   assert.ok(ZOOM_STEPS.includes(1), 'there is a 100%');
 });

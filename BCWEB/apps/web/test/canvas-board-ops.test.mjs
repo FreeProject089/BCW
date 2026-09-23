@@ -33,15 +33,19 @@ describe('A.1: the height is never frozen by a save', () => {
     assert.ok(n.y + n.h <= again.height, `the new block ends at ${n.y + n.h} but the page is ${again.height} tall: it is cut`);
   });
 
-  test('an author-pinned height survives the round trip', () => {
+  // CHANGED in studio phase 3 (PLAN-STUDIO-2026): the stored format is v2, so a pinned height
+  // is now written as a FIXED FRAME (`frames.desktop = { h, fit: 'fixed' }`) instead of the v1
+  // `height` / `phoneHeight` / `phoneBoard` fields. The rule asserted is the same one.
+  test('an author-pinned height survives the round trip (as a fixed frame)', () => {
     const serializeCanvas = fn('serializeCanvas');
     const raw = { id: 'c1', height: 2000, phoneHeight: 1500, phoneBoard: true, blocks: [B('a', 0, 0, 200, 100)] };
     const stored = serializeCanvas(normalizeCanvas(raw), raw);
-    assert.equal(stored.height, 2000);
-    assert.equal(stored.phoneHeight, 1500);
-    assert.equal(stored.phoneBoard, true);
+    assert.equal(stored.v, 2);
+    assert.deepEqual(stored.frames.desktop, { w: 1200, h: 2000, fit: 'fixed' });
+    assert.deepEqual(stored.frames.phone, { w: 390, h: 1500, fit: 'fixed', mode: 'board' });
+    for (const k of ['height', 'phoneHeight', 'phoneBoard']) assert.equal(stored[k], undefined, `the v1 field ${k} was written next to the frames`);
     // ... and one set by the height handle in this very edit.
-    assert.equal(serializeCanvas(normalizeCanvas({ blocks: [] }), {}, { height: 900 }).height, 900);
+    assert.deepEqual(serializeCanvas(normalizeCanvas({ blocks: [] }), {}, { height: 900 }).frames.desktop, { w: 1200, h: 900, fit: 'fixed' });
   });
 
   test('D4: a stored height shorter than the content grows to the content', () => {
@@ -110,8 +114,11 @@ describe('A.2: operations on the phone board touch the phone board only', () => 
     const out = duplicateOnBoard(c, ['w'], 'phone', () => `d${n++}`);
     const copy = out.blocks.find((b) => b.id === out.ids[0]);
     assert.notEqual(copy.phone.y, 16, 'the copy lands exactly on the original on the phone');
-    assert.ok(copy.x >= 0 && copy.x + copy.w <= DESIGN_WIDTH, `the desktop copy was clamped into the phone width: x=${copy.x}`);
-    assert.equal(copy.x, 800, 'a 400px block at 900 duplicated on the phone should keep its desktop place inside 1200');
+    // CHANGED in studio phase 3: v1 pulled the desktop copy back inside 1200 (x = 800). The
+    // v2 board has no page edge, so the copy is offset like any other (904 + 24); what is
+    // still asserted is the bug A.2 guard, that it was NOT squeezed into the phone's 390.
+    assert.ok(copy.x > PHONE_WIDTH, `the desktop copy was clamped into the phone width: x=${copy.x}`);
+    assert.equal(copy.x, 928, 'a block at 900 (904 once snapped on read, as v1 did) duplicated on the phone keeps its desktop place, offset by three grid steps');
     assert.equal(out.blocks.find((b) => b.id === 'w').phone.y, 16, 'the original moved');
   });
 

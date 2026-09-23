@@ -46,7 +46,7 @@ describe('opacity', () => {
 describe('the theme overlay', () => {
   // Grid-aligned on purpose: normalizeCanvas snaps every coordinate to GRID, so a test written
   // with 100 and 50 asserts against 104 and 48 and reads like a bug in the overlay.
-  const base = canvas([B({ id: 'a', x: 96, y: 48, w: 400, h: 200, props: { md: 'hi', alt: 'kept' },
+  const base = canvas([B({ id: 'a', x: 96, y: 48, w: 400, h: 200, props: { md: 'hi', align: 'center' },
     themes: { dark: { y: 80, opacity: 0.5, props: { md: 'dark hi' } } } })]).blocks[0];
 
   test('light is the block itself when nothing was written for it', () => {
@@ -66,7 +66,9 @@ describe('the theme overlay', () => {
   test('props MERGE — an overlay that changes one prop must not drop the others', () => {
     const d = resolveBlock(base, 'dark');
     assert.equal(d.props.md, 'dark hi');
-    assert.equal(d.props.alt, 'kept', 'the alt text was dropped by the dark overlay');
+    // CHANGED in studio phase 3: the fixture's second prop was `alt`, which a TEXT block
+    // never reads and the per-kind allow-list now drops; `align` is one it does read.
+    assert.equal(d.props.align, 'center', 'a prop the overlay did not name was dropped by the dark overlay');
   });
 
   test('a block can be hidden in one theme only', () => {

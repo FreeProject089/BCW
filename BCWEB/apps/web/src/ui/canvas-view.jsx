@@ -9,7 +9,7 @@
 // B.MD later shows up here without this file changing.
 import { useEffect, useRef, useState } from 'react';
 import Markdown from './md.jsx';
-import { normalizeCanvas, layoutFor, phoneOrder, paintOrder, resolveBlock, keepsHeightStacked, phoneBoardBlocks, buttonTarget, menuItemHref, safeLink, EASING_CURVES, DESIGN_WIDTH, PHONE_WIDTH } from '../lib/canvas.js';
+import { normalizeDoc, layoutFor, frameBlocks, buttonTarget, menuItemHref, safeLink, EASING_CURVES, DESIGN_WIDTH, PHONE_WIDTH } from '../lib/canvas.js';
 import { markdownConfig } from '@bettercommunity/bmd/config';
 import { sanitizeSvg } from '../lib/svg-safe.js';
 import { scopeCss, safeClasses, safeInlineStyle, safeCssValue } from '../lib/css-scope.js';
@@ -365,7 +365,7 @@ const CONFINE = { contain: 'layout paint', transform: 'translateZ(0)' };
  *        purely a measurement is that an author on a desktop cannot otherwise ever see it.
  */
 export default function CanvasView({ canvas: raw, stackPreview = false, themePreview = null }) {
-  const canvas = normalizeCanvas(raw);
+  const canvas = normalizeDoc(raw);
   const hostRef = useRef(null);
   const [vw, setVw] = useState(DESIGN_WIDTH);
 
@@ -401,15 +401,20 @@ export default function CanvasView({ canvas: raw, stackPreview = false, themePre
   const mode = themePreview || theme;
 
   const L = stackPreview ? { mode: 'stack' } : layoutFor(vw, canvas);
+  // The page is the FRAME (v2, PLAN-STUDIO-2026 2.2): a block entirely outside it is parked on
+  // the author's board, not part of the page, and is not MOUNTED here at all: no image or
+  // video request for a picture nobody can see, no iframe loading in the dark. Which blocks
+  // those are is decided once, in the package (frameBlocks), and tested there.
 
   // Stacked: the canvas is abandoned and the blocks become a column — in the order the author
   // set for phones where they set one, and in reading order everywhere else.
   // Sizes go with it: a width measured in design pixels means nothing in a column.
+  // Only what is ON the desktop page reaches the column: the stack is that page, read in order.
   if (L.mode === 'stack') {
     return (
       <div ref={hostRef} className="space-y-4" data-cv={canvas.id} style={{ background: safeCssValue(canvas.bg) || undefined, ...CONFINE }}>
         <ScopedCss canvas={canvas} />
-        {phoneOrder(canvas.blocks).map((raw2) => resolveBlock(raw2, mode)).filter((b) => !b.hidden).map((b) => (
+        {frameBlocks(canvas, 'stack', mode).map((b) => (
           <Animated key={b.id} id={b.id} anim={b.anim} className="min-w-0" style={b.opacity < 1 ? { opacity: b.opacity } : undefined}>
             <BlockShell b={b}><CanvasBlock b={b} stacked /></BlockShell>
           </Animated>
@@ -428,14 +433,15 @@ export default function CanvasView({ canvas: raw, stackPreview = false, themePre
   const phone = L.mode === 'phone';
   const planeW = phone ? PHONE_WIDTH : DESIGN_WIDTH;
   const planeH = phone ? canvas.phoneHeight : canvas.height;
-  const blocks = phone
-    ? phoneBoardBlocks(canvas.blocks.map((raw2) => resolveBlock(raw2, mode)).filter((b) => !b.hidden))
-    : paintOrder(canvas.blocks).map((raw2) => resolveBlock(raw2, mode)).filter((b) => !b.hidden);
+  // Off the frame = not mounted (frameBlocks, see above). On the phone board a block the
+  // author did not place there and that is off the DESKTOP page is parked too.
+  const blocks = frameBlocks(canvas, phone ? 'phone' : 'scale', mode);
   return (
     <div ref={hostRef} className="w-full overflow-hidden" data-cv={canvas.id} style={{ background: safeCssValue(canvas.bg) || undefined, ...CONFINE }}>
       <ScopedCss canvas={canvas} />
       <div style={{ height: planeH * L.scale, position: 'relative', ...(phone ? { width: planeW * L.scale, margin: '0 auto' } : {}) }}>
         <div
+          data-cv-frame={phone ? 'phone' : 'desktop'}
           style={{
             width: planeW,
             height: planeH,
@@ -444,6 +450,12 @@ export default function CanvasView({ canvas: raw, stackPreview = false, themePre
             position: 'absolute',
             top: 0,
             left: 0,
+            // Clipped to the FRAME, not to the container: on a window wider than 1200 the
+            // container is wider than the page, and a block crossing the frame's right edge
+            // used to show its overhang there. `contain: paint` clips even where `overflow:
+            // clip` is not supported, and keeps a fixed box inside (S5).
+            overflow: 'clip',
+            contain: 'layout paint',
           }}
         >
           {blocks.map((b) => (

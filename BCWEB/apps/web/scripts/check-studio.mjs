@@ -199,6 +199,48 @@ if (wideHtml) {
     'the tour opened itself although nothing could say whether this viewer had seen it');
 }
 
+// ── The free board (PLAN-STUDIO-2026, phase 3). ─────────────────────────────────────
+// The board is an infinite plane seen through ONE transform, the page is a FRAME drawn on it,
+// and a block outside the frame is still a block: drawn, grabbable, marked. And the board
+// paints the page's own background and stylesheet, which it never did before.
+try {
+  const FREE = {
+    v: 2, id: 'fb1', title: 'Free', bg: '#123456', css: '.hero{letter-spacing:.1em}',
+    frames: { desktop: { w: 1200, h: 400, fit: 'fixed' }, phone: { w: 390, fit: 'content', mode: 'stack' } },
+    blocks: [
+      { id: 'in1', kind: 'box', x: 40, y: 40, w: 300, h: 100, z: 0 },
+      { id: 'park', kind: 'image', x: -700, y: 40, w: 300, h: 200, z: 1, props: { src: '/parked-offframe.png' } },
+      { id: 'edge', kind: 'box', x: 1100, y: 40, w: 300, h: 100, z: 2 },
+    ],
+  };
+  const free = withWindow(mq(true, false), () => renderPage(FREE));
+  const world = /<div[^>]*data-cst-world[^>]*>/.exec(free)?.[0] || '';
+  must(/transform:\s*translate\([^)]*\)\s*scale\(/.test(world), `the board is not drawn through one translate+scale camera: ${world.slice(0, 200)}`);
+  must(/data-cv="fb1"/.test(world), 'the board world does not carry the page scope, so the page stylesheet cannot reach its blocks');
+  const frameEl = /<div[^>]*data-cst-frame="desktop"[^>]*>/.exec(free)?.[0] || '';
+  must(!!frameEl, 'the page frame is not drawn on the board');
+  must(/width:\s*1200px/.test(frameEl) && /height:\s*400px/.test(frameEl), `the frame is not the page's 1200 x 400: ${frameEl.slice(0, 200)}`);
+  must(/background:\s*#123456/.test(frameEl), 'the board does not paint the page background');
+  must(/<style>[^<]*\[data-cv=(?:"|&quot;)fb1(?:"|&quot;)\] \.hero/.test(free), 'the board does not apply the page stylesheet, scoped');
+  const parked = /<div[^>]*data-cst-block="park"[^>]*>/.exec(free)?.[0] || '';
+  must(/data-off-frame="1"/.test(parked), 'a block left of the page is not marked as off the frame');
+  must(/cursor:\s*move/.test(parked) && /touch-action:\s*none/.test(parked), 'a block off the frame cannot be grabbed again');
+  must(/left:\s*-700px/.test(parked), 'the parked block was clamped back onto the page');
+  must(!/data-off-frame/.test(/<div[^>]*data-cst-block="edge"[^>]*>/.exec(free)?.[0] || ''), 'a block crossing the frame edge is marked off the frame, but a reader sees half of it');
+  must(/data-fit-content/.test(free), 'a frame with a pinned height offers no way back to "fit to content"');
+  must(/class="cst-board-hedge"/.test(free), 'the frame has no height handle');
+  must(/data-off-frame(?:="")?[^>]*>[^<]*(?:Off frame|Hors cadre)/.test(free) || /(?:Off frame|Hors cadre)/.test(free), 'the off-frame block carries no badge');
+  // What a READER gets from the same document: the frame, clipped, and the parked block NOT
+  // MOUNTED (its image is never requested).
+  const served2 = page(FREE, 'light');
+  must(!/parked-offframe\.png/.test(served2), 'the public page mounts a block that is entirely outside the frame');
+  must(/left:40px;top:40px/.test(served2) && /left:1100px;top:40px/.test(served2), 'a block inside or crossing the frame is missing from the public page');
+  must(!/left:-700px/.test(served2), 'the parked block is on the public page');
+  const plane = /<div[^>]*data-cv-frame="desktop"[^>]*>/.exec(served2)?.[0] || '';
+  must(/overflow:\s*clip/.test(plane) && /contain:\s*layout paint/.test(plane), `the public page is not clipped to the frame: ${plane.slice(0, 200)}`);
+  must(!/parked-offframe\.png/.test(stack(FREE)), 'the stacked phone column mounts a block that is off the desktop page');
+} catch (e) { problems.push(`the free board threw: ${e?.message || e}`); }
+
 // -- A document that belongs to NO page. ----------------------------------------------
 // The page preview used to be dropped from the group entirely when there was no page to show,
 // which left an author looking at a preview group with one fewer control than the one their

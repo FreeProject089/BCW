@@ -81,17 +81,27 @@ export function withCanvasAt(config, index, canvas, kind = 'project') {
     // `mode: 'canvas'` as well: saving a drawing from the studio means the drawing is what
     // the page shows. Without it a section opened by URL (no handoff from the form) stayed
     // `md`, the save succeeded, and the home page went on rendering the Markdown.
-    list[index] = { ...list[index], mode: 'canvas', canvas: { ...(list[index].canvas || {}), ...canvas } };
+    list[index] = { ...list[index], mode: 'canvas', canvas: over(list[index].canvas, canvas) };
     return { ...c, customSections: list };
   }
   const list = Array.isArray(c.canvases) ? c.canvases.slice() : [];
   if (index < 0 || index >= list.length) return c;
-  list[index] = { ...list[index], ...canvas };
+  list[index] = over(list[index], canvas);
   return { ...c, canvases: list };
 }
 
-/** The zoom levels the +/- buttons walk. 'fit' sits wherever the fit scale falls. */
-export const ZOOM_STEPS = [0.25, 0.33, 0.5, 0.67, 0.75, 1, 1.25, 1.5, 2];
+/** One canvas written over another. A v2 document (studio phase 3) REPLACES the stored one,
+ *  keeping only its id: merged, the v1 `height` / `phoneBoard` of the old page would ride
+ *  along next to the v2 frames, and the API refuses a v2 page carrying v1 fields. A v1 one
+ *  still merges, as before. */
+function over(prev, canvas) {
+  const p = prev && typeof prev === 'object' ? prev : {};
+  return canvas && canvas.v === 2 ? { ...(p.id ? { id: p.id } : {}), ...canvas } : { ...p, ...canvas };
+}
+
+/** The zoom levels the +/- buttons walk. 'fit' sits wherever the fit scale falls. The range
+ *  is the board camera's, 10 % to 400 % (studio phase 3, ZOOM_MIN / ZOOM_MAX in the package). */
+export const ZOOM_STEPS = [0.1, 0.25, 0.33, 0.5, 0.67, 0.75, 1, 1.25, 1.5, 2, 3, 4];
 
 /** The next step up or down from the current zoom ('fit' resolves to the fit scale first). */
 export function stepZoom(current, dir, fitScale = 1) {

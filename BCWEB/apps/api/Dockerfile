@@ -36,6 +36,11 @@ RUN npm ci
 # Schema at the conventional ./prisma so the CLI finds it + this project's package.json.
 COPY packages/db ./prisma
 COPY apps/api/src ./src
+# The studio document package (validateDoc, the same module the web renders with). The API
+# imports it by the RELATIVE path it has in the repo, src/lib -> ../../../../packages/studio;
+# from /app/src/lib those four steps up end at the filesystem root, so the package sits at
+# /packages/studio and the one import line works unchanged here and in a checkout.
+COPY packages/studio /packages/studio
 RUN npx prisma generate
 
 # Native addon next to the app root (lib/native.mjs looks in ../../native from src/lib).

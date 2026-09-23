@@ -1,0 +1,38 @@
+{
+  "name": "@bettercommunity/studio",
+  "version": "2.0.0",
+  "description": "The BetterCommunity studio document: a free board with desktop and phone frames, its v1 to v2 migration, a tolerant normaliser for rendering and a strict validator for saving, plus the CSS scoper and SVG sanitiser the renderer uses. Pure ESM, no dependencies.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "exports": {
+    ".": "./src/index.js",
+    "./canvas": "./src/canvas.js",
+    "./validate": "./src/validate.js",
+    "./css-scope": "./src/css-scope.js",
+    "./svg-safe": "./src/svg-safe.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "keywords": [
+    "canvas",
+    "page-builder",
+    "studio",
+    "validation",
+    "bettercommunity"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BetterDCS/BCW.git",
+    "directory": "BCWEB/packages/studio"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

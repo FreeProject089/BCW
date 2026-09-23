@@ -72,14 +72,19 @@ describe('the phone board', () => {
     assert.equal(normalizeCanvas({ blocks, phoneHeight: 900 }).phoneHeight, 900);
   });
 
-  test('the movers clamp to the board they are given, not always to 1200', () => {
+  // CHANGED in studio phase 3 (PLAN-STUDIO-2026): this asserted that the movers clamp to the
+  // board's width (390 on the phone, 1200 on the desktop). v2 removes that clamp on both
+  // boards; what must still hold is that the two boards behave the SAME, so a caller that
+  // still passes `width` gets the same free movement.
+  test('v2: the movers have no page edge on either board', () => {
     const start = { x: 300, y: 0, w: 200, h: 80 };
-    assert.equal(dragTo(start, 2000, 0, 1, { width: PHONE_WIDTH }).x, PHONE_WIDTH - 200);
-    assert.equal(dragTo(start, 2000, 0, 1).x, DESIGN_WIDTH - 200, 'the default is still the desktop plane');
+    assert.equal(dragTo(start, 2000, 0, 1, { width: PHONE_WIDTH }).x, 2304, 'past the phone frame');
+    assert.equal(dragTo(start, 2000, 0, 1).x, 2304, 'past the desktop frame, the same way');
     const r = resizeTo(start, 'e', 2000, 0, 1, { width: PHONE_WIDTH });
-    assert.equal(r.x + r.w, PHONE_WIDTH);
+    assert.equal(r.x + r.w, 2504, 'a resize crosses the frame too');
     const moved = moveMany([{ id: 'a', ...start }], ['a'], 2000, 0, 1, { width: PHONE_WIDTH });
-    assert.equal(moved[0].x, PHONE_WIDTH - 200);
+    assert.equal(moved[0].x, 2304, 'a group move too');
+    assert.ok(DESIGN_WIDTH > PHONE_WIDTH);
   });
 });
 

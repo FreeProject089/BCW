@@ -1,15 +1,16 @@
 // The studio document, checked on SAVE (lib/studio-doc.mjs) — and checked against the web.
 //
 // The renderer (apps/web/src/ui/canvas-view.jsx) filters every author value on the way out;
-// the API refuses the same values on the way in. They are two copies of one rule until the
-// studio package exists (PLAN-STUDIO-2026 phase 3), so the PARITY block below imports the
-// web's own functions and asserts that the API refuses at least everything the renderer would
-// neutralise. A new hole in either copy turns this red.
+// the API refuses the same values on the way in. Since phase 3 of PLAN-STUDIO-2026 both read
+// ONE module, the studio package (BCWEB/packages/studio): the PARITY block below asserts that
+// the API's validator IS the package's function and the web's re-export IS the same one, and
+// keeps the corpus comparison so a future second copy would still be caught.
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { studioDocProblems, configStudioProblems, sectionsStudioProblems, safeLink, cssValueOk, pinsToViewport, ID_SHAPE } from '../src/lib/studio-doc.mjs';
 import * as web from '../../web/src/lib/canvas.js';
 import * as webCss from '../../web/src/lib/css-scope.js';
+import * as pkg from '../../../packages/studio/src/index.js';
 
 const BS = String.fromCharCode(92);
 const HOSTILE_LINKS = ['javascript:alert(1)', 'JaVaScRiPt:alert(1)', ' javascript:x', '\x01javascript:x', 'java\nscript:x',
@@ -105,6 +106,13 @@ describe('a config, against what is stored', () => {
 // For every value in the corpus: if the web neutralises it, the API must refuse it. (The API
 // may be stricter; it may never be looser.)
 describe('parity with the web renderer', () => {
+  test('one validator: the API one IS the package one, and the web re-exports the same function', () => {
+    assert.equal(studioDocProblems, pkg.validateDoc, 'the API validates with something other than the package');
+    assert.equal(web.validateDoc, pkg.validateDoc, 'the web re-exports a different validateDoc');
+    assert.equal(web.normalizeDoc, pkg.normalizeDoc);
+    assert.equal(webCss.safeCssValue, pkg.safeCssValue, 'the web renders colours with a different filter');
+    assert.equal(safeLink, pkg.safeLink); assert.equal(web.safeLink, pkg.safeLink);
+  });
   const corpus = [...HOSTILE_LINKS, ...OK_LINKS, ...HOSTILE_CSS, ...OK_CSS, '', ' ', '#', '/', 'mailto:', 'https://', `/a${BS}b`, 'ftp://x', 'tel:1'];
   test('links', () => {
     for (const v of corpus) if (!web.safeLink(v)) assert.equal(safeLink(v), '', `web refuses ${JSON.stringify(v)}, the API accepts it`);
@@ -122,5 +130,44 @@ describe('parity with the web renderer', () => {
   });
   test('ids', () => {
     for (const id of ['ok', 'a-b_c', 'x"]{}', 'a b', 'x'.repeat(61), '']) assert.equal(ID_SHAPE.test(id), web.ID_SHAPE.test(id), id);
+  });
+});
+
+// ── v2 (PLAN-STUDIO-2026, phase 3): unknown fields refused, sizes capped. ─────────────────
+describe('the v2 document: strict on write', () => {
+  const v2 = (blocks, extra = {}) => ({ v: 2, id: 'c2', title: 't', frames: { desktop: { w: 1200, fit: 'content' }, phone: { w: 390, fit: 'content', mode: 'stack' } }, blocks, ...extra });
+  test('what serializeDoc writes is accepted, for every preset', () => {
+    for (const p of pkg.CANVAS_PRESETS) {
+      const stored = pkg.serializeDoc(pkg.normalizeDoc({ id: `c-${p.id}`, title: p.name, blocks: pkg.presetBlocks(p.id) }));
+      assert.deepEqual(reasons(stored), [], p.id);
+    }
+  });
+  test('an unknown field is refused wherever it is, with its path', () => {
+    assert.deepEqual(reasons(v2([], { script: 'x' })), ['script:unknown_field']);
+    assert.deepEqual(reasons(v2([], { height: 900 })), ['height:unknown_field'], 'a v1 field next to v2 frames is not silently ignored');
+    assert.deepEqual(reasons(v2([{ id: 'b1', kind: 'box', x: 0, y: 0, w: 10, h: 10, onclick: 'x' }])), ['blocks[0].onclick:unknown_field']);
+    assert.deepEqual(reasons(v2([{ id: 'b1', kind: 'box', x: 0, y: 0, w: 10, h: 10, props: { md: '# not a box prop' } }])), ['blocks[0].props.md:unknown_field']);
+    assert.deepEqual(reasons(v2([{ id: 'b1', kind: 'button', props: { action: { type: 'link', href: '/', method: 'POST' } } }])), ['blocks[0].props.action.method:unknown_field']);
+    assert.deepEqual(reasons(v2([{ id: 'b1', kind: 'box', themes: { dark: { x: 1, evil: 1 } } }])), ['blocks[0].themes.dark.evil:unknown_field']);
+    assert.deepEqual(reasons(v2([], { frames: { desktop: { w: 1200, fit: 'content', z: 1 }, phone: { w: 390, fit: 'content', mode: 'stack' } } })), ['frames.desktop.z:unknown_field']);
+  });
+  test('the board is free, within the guard rail', () => {
+    assert.deepEqual(reasons(v2([{ id: 'b1', kind: 'box', x: -600, y: -40, w: 400, h: 100 }])), [], 'off the frame is a place');
+    assert.deepEqual(reasons(v2([{ id: 'b1', kind: 'box', x: 20_001, y: 0, w: 10, h: 10 }])), ['blocks[0].x:out_of_bounds']);
+    assert.deepEqual(reasons(v2([{ id: 'b1', kind: 'box', x: 0, y: 0, w: 0, h: 10 }])), ['blocks[0].w:out_of_bounds']);
+    assert.deepEqual(reasons(v2([{ id: 'b1', kind: 'box', x: '12', y: 0, w: 10, h: 10 }])), ['blocks[0].x:bad_type']);
+    assert.deepEqual(reasons(v2([], { frames: { desktop: { w: 1300, fit: 'content' }, phone: { w: 390, fit: 'content', mode: 'stack' } } })), ['frames.desktop.w:bad_value'], 'a frame is 1200 wide, not what the author says');
+  });
+  test('sizes are capped', () => {
+    const many = Array.from({ length: 501 }, (_, i) => ({ id: `b${i}`, kind: 'box', x: 0, y: 0, w: 8, h: 8 }));
+    assert.deepEqual(reasons(v2(many)), ['blocks:too_many']);
+    assert.deepEqual(reasons(v2([], { title: 'x'.repeat(201) })), ['title:too_long']);
+    const items = Array.from({ length: 21 }, () => ({ label: 'a', href: '/' }));
+    assert.deepEqual(reasons(v2([{ id: 'b1', kind: 'button', props: { variant: 'dropdown-down', items } }])), ['blocks[0].props.items:too_many']);
+    assert.deepEqual(reasons(v2([{ id: 'b1', kind: 'svg', props: { svg: 'x'.repeat(200_001) } }])), ['blocks[0].props.svg:too_long']);
+  });
+  test('a v1 document read from storage migrates to one the validator accepts', () => {
+    const v1 = { id: 'c1', title: 'x', height: 600, phoneBoard: true, blocks: [{ id: 'a', kind: 'text', x: -40, y: 10, w: 1300, h: 99, props: { md: 'x', alt: 'junk' }, phone: { x: 500, y: 0 } }] };
+    assert.deepEqual(reasons(pkg.serializeDoc(pkg.normalizeDoc(v1))), []);
   });
 });
