@@ -10,7 +10,6 @@ import { useDialog, useToast } from '../ui/ui.jsx';
 import { useI18n } from '../i18n.jsx';
 import { useAuth } from '../pages/auth.jsx';
 import { api, uploadMedia } from '../lib/api.js';
-import CanvasStudio from './canvas-studio.jsx';
 import { MarkdownEditor } from './markdown-editor.jsx';
 import { CANVAS_PRESETS, presetBlocks } from '../lib/canvas.js';
 import IconPicker from './icon-picker.jsx';
@@ -455,22 +454,21 @@ function CommitImport({ slug }) {
 }
 
 export default function ProjectConfigEditor({ value, onChange, slug, isShowcase }) {
-  // Which studio page is open on its own surface, if any. A canvas is a page; editing one
-  // inside a settings column meant designing at 1200px in 600px of room.
-  const [studioAt, setStudioAt] = useState(null);
   const [tabAt, setTabAt] = useState(null);
   const navigate = useNavigate();
   /**
-   * Open a canvas in the studio PAGE (/studio/:kind/:id/:index — pages/studio.jsx).
+   * Open a canvas in the studio PAGE (/studio/:kind/:id/:index, pages/studio.jsx).
+   *
+   * The ONLY studio (decision D1 of PLAN-STUDIO-2026): the modal that used to open here when
+   * the form did not know its page was a second surface with other commands, and the one the
+   * tests did not reach. With no `slug` the button says why it cannot open instead.
    *
    * The config this form holds may not be saved yet, so it is handed over through
-   * sessionStorage and the page starts from it; the page then saves the whole config through
-   * the same PUT this form's Save uses, with that one canvas replaced. When the form does not
-   * know which page it edits (no `slug`), the old in-place modal is used instead — a studio
-   * that cannot save is not an improvement on one that opens small.
+   * sessionStorage: a page added here opens in the studio before the form is saved. The
+   * studio saves THAT page only, by id; the rest of this form is saved by its own Save.
    */
   const openStudio = (i) => {
-    if (!slug) { setStudioAt(i); return; }
+    if (!slug) return;
     const kind = isShowcase ? 'showcase' : 'project';
     try { sessionStorage.setItem(handoffKey(kind, slug), JSON.stringify({ config: c, name: slug, at: Date.now() })); }
     catch { /* no storage: the page fetches the saved config instead */ }
@@ -1156,15 +1154,15 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
                   <span className="text-[11px] text-[var(--faint)] tabular-nums whitespace-nowrap">
                     {t('pce.canvases.n', '{n} block(s)').replace('{n}', (cv.blocks || []).length)}
                   </span>
-                  <Button size="sm" variant="ghost" onClick={() => openStudio(i)}><LayoutTemplate size={13} /> {t('pce.canvases.edit', 'Open the studio')}</Button>
+                  <Button size="sm" variant="ghost" disabled={!slug} onClick={() => openStudio(i)}
+                    title={slug ? undefined : t('pce.canvases.noslug', 'Save this page first: the studio opens on a saved page.')}>
+                    <LayoutTemplate size={13} /> {t('pce.canvases.edit', 'Open the studio')}
+                  </Button>
                   <Button size="sm" variant="ghost" className="!text-error" onClick={() => put(list.filter((_, n) => n !== i))} title={t('common.remove', 'Remove')}>×</Button>
                 </div>
               ))}
-              {studioAt != null && list[studioAt] && (
-                <Modal open onClose={() => setStudioAt(null)} icon={LayoutTemplate} width="max-w-[96vw]"
-                  title={list[studioAt].title || t('pce.canvases.untitled', 'Untitled page')}>
-                  <CanvasStudio value={list[studioAt]} onChange={(next) => patch(studioAt, next)} />
-                </Modal>
+              {c.studioEnabled === true && list.length > 0 && (
+                <p className="text-[11px] text-[var(--faint)]">{t('pce.canvases.saveapart', 'The studio saves its own page. Save this form too if you changed anything else here.')}</p>
               )}
               {/* Start from something. A blank canvas is the worst thing to hand somebody who
                   has never used one — every preset is ordinary blocks the moment it lands. */}

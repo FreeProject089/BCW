@@ -163,3 +163,14 @@ test('two uses of a preset do not share block ids', () => {
   const a = presetBlocks('split'), b = presetBlocks('split');
   assert.equal(new Set([...a, ...b].map((x) => x.id)).size, a.length + b.length);
 });
+
+// The round trip this file used to miss (PLAN-STUDIO-2026 bug A.1): the tests above pin
+// normalizeCanvas alone, and the bug lived in what the EDITOR wrote back. The full set of
+// board operations is in canvas-board-ops.test.mjs; this is the one that belongs here.
+test('a save does not freeze the height, so a block added later is not cut', async () => {
+  const { serializeCanvas } = await import('../src/lib/canvas.js');
+  const raw = { id: 'c', blocks: [{ id: 'a', x: 0, y: 0, w: 100, h: 100 }] };
+  const saved = serializeCanvas(normalizeCanvas(raw), raw);
+  const grown = normalizeCanvas({ ...saved, blocks: [...saved.blocks, { id: 'b', x: 0, y: 400, w: 100, h: 300 }] });
+  assert.ok(grown.height >= 700, `the page is ${grown.height} tall and the new block ends at 700`);
+});

@@ -10,6 +10,7 @@ import { buildEndpointGraph, endpointPathsToFetch } from '../lib/endpoint-graph.
 import { functionEdges, buildFlow, drawableFunctions } from '../lib/code-flow.mjs';
 import { snapshotKey, settingsKey, secretFor, rebuildSnapshot } from './code-webhook.mjs';
 import { projectKeys, isProjectKey, forgetProjectKeys, BUILTIN_PROJECT_KEYS, KEY_SHAPE } from '../lib/project-keys.mjs';
+import { configStudioProblems, studioDocError, configRevs, parsePageSave, replaceConfigPage } from '../lib/studio-doc.mjs';
 
 // Per-project, admin-editable config (downloads, links, contributors, progress,
 // legal, release-notes source) stored as an AdminSetting row `project.<key>`.
@@ -482,6 +483,13 @@ export default async function projectRoutes(app) {
   app.put('/admin/projects/:key/schedule', { preHandler: requireCap('manage_projects') }, async (req, reply) => {
     if (!(await isProjectKey(req.params.key))) return reply.code(404).send({ error: 'unknown_project' });
     const b = z.object({ at: z.string().datetime().nullable(), next: z.object({ config: z.record(z.any()) }).optional() }).safeParse(req.body);
+    // A staged config lands on the public page by itself later: its studio pages are checked
+    // NOW, against what is stored, like any other save (PLAN-STUDIO-2026 phase 0).
+    if (b.success && b.data.next?.config) {
+      const stored = await getConfig(await db(), req.params.key).catch(() => null);
+      const problems = configStudioProblems(b.data.next.config, stored);
+      if (problems.length) return reply.code(400).send(studioDocError(problems));
+    }
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     if (b.data.at && !b.data.next) return reply.code(400).send({ error: 'next_required' });
     const p = await db();
@@ -908,11 +916,47 @@ export default async function projectRoutes(app) {
     // The studio switch is an admin decision; a per-project grantee editing their own page
     // must not be able to grant it to themselves through the free-form config.
     const cur = await p.adminSetting.findUnique({ where: { key: k } }).catch(() => null);
+    // The studio pages inside the config are author-written documents a visitor's browser
+    // renders: a hostile href, colour, id or position is refused here, with the path of the
+    // field (lib/studio-doc.mjs). A value already stored is tolerated, see there.
+    const problems = configStudioProblems(b.data.config, cur?.value);
+    if (problems.length) return reply.code(400).send(studioDocError(problems));
     const cfg = guardStudioFlag(b.data.config, cur?.value, canManageProjects(req.user));
     await p.adminSetting.upsert({ where: { key: k }, create: { key: k, value: cfg }, update: { value: cfg } });
     await snapshotVersion(p, req.params.key, cfg);
     await snapshotConfigRevision(p, req.params.key, cfg, req.user?.uid);
     return { ok: true };
+  });
+
+  // ── The studio's own door ───────────────────────────────────────────────────────────
+  // Loading a page FOR EDITING asks the same question as saving it. The studio used to read
+  // the config through the public GET above, so a grantee of project A opened, and edited,
+  // project B's studio; only the save answered 403 (PLAN-STUDIO-2026 section 1.5).
+  app.get('/admin/projects/:key/studio', { preHandler: requireEditor() }, async (req, reply) => {
+    if (!(await isProjectKey(req.params.key))) return reply.code(404).send({ error: 'unknown_project' });
+    if (!(await canEditProject(req.user, req.params.key))) return reply.code(403).send({ error: 'forbidden' });
+    const config = (await getConfig(await db(), req.params.key)) || {};
+    return { config, revs: await configRevs(config) };
+  });
+
+  // ONE page, by id, from the revision it was opened at. Everything else in the config is
+  // what is stored NOW, not what the studio read when it opened: a text fix saved in the
+  // config editor meanwhile survives, and a page that moved under the author is a 409 with
+  // the stored page, never a silent overwrite.
+  app.put('/admin/projects/:key/studio/pages/:pageId', { preHandler: requireEditor(), bodyLimit: 600 * 1024 }, async (req, reply) => {
+    if (!(await isProjectKey(req.params.key))) return reply.code(404).send({ error: 'unknown_project' });
+    if (!(await canEditProject(req.user, req.params.key))) return reply.code(403).send({ error: 'forbidden' });
+    const b = parsePageSave(req.body);
+    if (!b.ok) return reply.code(400).send({ error: b.error });
+    const p = await db();
+    const k = settingKey(req.params.key);
+    const cur = await p.adminSetting.findUnique({ where: { key: k } }).catch(() => null);
+    const r = await replaceConfigPage(cur?.value, String(req.params.pageId), b.canvas, b.base);
+    if (r.status) return reply.code(r.status).send(r.body);
+    await p.adminSetting.upsert({ where: { key: k }, create: { key: k, value: r.config }, update: { value: r.config } });
+    await snapshotVersion(p, req.params.key, r.config);
+    await snapshotConfigRevision(p, req.params.key, r.config, req.user?.uid);
+    return { ok: true, rev: r.rev };
   });
 
   // One snapshot per SAVE, capped.

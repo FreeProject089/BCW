@@ -130,3 +130,33 @@ describe('the home page in the studio', () => {
     assert.equal(canvasAt(cfg, 0, 'home'), null);
   });
 });
+
+// ── Loading for editing, and saving ONE page (PLAN-STUDIO-2026 phase 0) ─────────────────
+// The studio read a project through the PUBLIC `GET /projects/:key`, so a grantee of project
+// A opened B's studio; it now loads through the route that asks what saving asks. And it saves
+// one page, by id, from the revision it opened, instead of the whole config at an index.
+describe('where the studio loads and saves', async () => {
+  const lib = await import('../src/lib/studio-page.js');
+  test('loading goes through the guarded admin route, never the public GET', () => {
+    assert.equal(typeof lib.studioLoadPath, 'function', 'studioLoadPath is not exported');
+    assert.equal(lib.studioLoadPath('project', 'bmm'), '/admin/projects/bmm/studio');
+    assert.equal(lib.studioLoadPath('showcase', 'my slug'), '/admin/showcase/my%20slug/studio');
+    assert.equal(lib.studioLoadPath('home', 'home'), '/admin/site/home');
+    for (const k of ['project', 'showcase', 'home']) assert.ok(!lib.studioLoadPath(k, 'x').startsWith('/projects/'), `${k} loads through the public route`);
+  });
+  test('a page is saved by id, alone', () => {
+    assert.equal(typeof lib.studioSaveRequest, 'function', 'studioSaveRequest is not exported');
+    const cv = { id: 'c1', blocks: [] };
+    assert.deepEqual(lib.studioSaveRequest('project', 'bmm', 'c1', cv, 'r1'), { path: '/admin/projects/bmm/studio/pages/c1', body: { canvas: cv, base: 'r1' } });
+    assert.equal(lib.studioSaveRequest('showcase', 'ck123', 'c 2', cv, '').path, '/admin/showcase/ck123/studio/pages/c%202');
+    assert.deepEqual(lib.studioSaveRequest('home', 'home', 'sec-1', cv, 'r2'), { path: '/admin/site/home', body: { studioSection: { id: 'sec-1', canvas: cv, base: 'r2' } } });
+    // Never the whole config: a save carries one page and the revision it started from.
+    for (const k of ['project', 'showcase', 'home']) assert.ok(!('config' in lib.studioSaveRequest(k, 'x', 'p', cv, '').body), `${k} still sends a whole config`);
+  });
+  test('the page id at an index: the canvas id, or the home section id', () => {
+    assert.equal(typeof lib.pageIdAt, 'function', 'pageIdAt is not exported');
+    assert.equal(lib.pageIdAt({ canvases: [{ id: 'a' }, { id: 'b' }] }, 1, 'project'), 'b');
+    assert.equal(lib.pageIdAt({ customSections: [{ id: 's1', canvas: { id: 'cv-s1' } }] }, 0, 'home'), 's1');
+    assert.equal(lib.pageIdAt({ canvases: [] }, 3, 'project'), null);
+  });
+});

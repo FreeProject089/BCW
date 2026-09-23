@@ -38,6 +38,7 @@ import { MessageSquare } from 'lucide-react';
 import { Button, Card, Badge, PageHeader, EmptyState, Spinner, Modal, Input, Textarea, Field, useToast } from '../ui/ui.jsx';
 import { useDraft, DraftBanner } from '../ui/drafts.jsx';
 import { ProjectContactBar } from '../ui/project-contact.jsx';
+import { useFramedDraft, canvasTabsFor } from '../lib/studio-preview.js';
 
 // Which tab is actually shown. A `?tab=` naming one that is switched OFF must not render it:
 // hiding the link while still serving the content means an admin who turns a tab off has not
@@ -321,7 +322,11 @@ function CountdownPanel({ announcement, onReveal }) {
  *        sees the page exactly as a visitor will — same tabs, same renderer — with the draft
  *        canvas in place. Absent on the real route.
  */
-export default function ProjectPage({ preview = null }) {
+export default function ProjectPage({ preview: previewProp = null }) {
+  // The studio's page preview frames THIS route and posts the draft (lib/studio-preview.js);
+  // absent, and on every real visit, this is null and nothing changes.
+  const framed = useFramedDraft('project');
+  const preview = previewProp || framed;
   const params = useParams();
   const key = preview?.key ?? params.key;
   const { t } = useI18n();
@@ -348,8 +353,9 @@ export default function ProjectPage({ preview = null }) {
   // projects people actually visit were the ones that could not be personalised at all.
   const customTabs = (Array.isArray(c.customTabs) ? c.customTabs : [])
     .filter((ct) => ct && ct.id && String(ct.title || '').trim() && String(ct.body || '').trim());
-  const canvasTabs = (c.studioEnabled === true && Array.isArray(c.canvases) ? c.canvases : [])
-    .filter((cv) => cv && cv.id && String(cv.title || '').trim() && Array.isArray(cv.blocks) && cv.blocks.length);
+  // One rule for both project pages (lib/studio-preview.js). In the studio's preview the page
+  // being previewed is offered whatever its state, or the preview fell back to Overview.
+  const canvasTabs = canvasTabsFor(c, preview ? preview.tab : null, t('pce.canvases.untitled', 'Untitled page'));
   const tabs = [
     ['overview', t('proj.overview'), ListTodo],
     c.releaseNotes && ['releases', t('proj.releases'), ScrollText],
@@ -1435,7 +1441,9 @@ function ShowcaseLegal({ legal, lang }) {
 
 // A showcase project page — same tabs as BMM/BSM, driven entirely by admin config.
 /** `preview` — see ProjectPage: `{ project, tab }`, the studio's page preview with a draft config. */
-export function ShowcaseProjectPage({ preview = null }) {
+export function ShowcaseProjectPage({ preview: previewProp = null }) {
+  const framed = useFramedDraft('showcase');
+  const preview = previewProp || framed;
   const params = useParams();
   const slug = preview?.project?.slug ?? params.slug;
   const { t, lang } = useI18n();
@@ -1470,8 +1478,7 @@ export function ShowcaseProjectPage({ preview = null }) {
   // Hand-placed pages, from the studio. Same rule as a custom tab: one that would open onto
   // nothing is not offered at all. A canvas with no blocks IS nothing — an empty plane reads
   // as a broken tab, not as a design choice.
-  const canvasTabs = (cfg.studioEnabled === true && Array.isArray(cfg.canvases) ? cfg.canvases : [])
-    .filter((cv) => cv && cv.id && String(cv.title || '').trim() && Array.isArray(cv.blocks) && cv.blocks.length);
+  const canvasTabs = canvasTabsFor(cfg, preview ? preview.tab : null, t('pce.canvases.untitled', 'Untitled page'));
   // Inline countdown → adds a "Countdown" FIRST tab, page stays reachable.
   const inlineCountdown = data.announcement && data.announcementInline ? data.announcement : null;
   const c = {

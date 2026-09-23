@@ -110,3 +110,38 @@ export function saveState({ dirty, saving, error }) {
   if (error) return 'error';
   return dirty ? 'dirty' : 'saved';
 }
+
+// ── Loading for editing, saving one page ────────────────────────────────────────────────
+// The studio used to read a project through the PUBLIC `GET /projects/:key`: a grantee of
+// project A could open, and edit, project B's studio, and only the save said no. It loads
+// through the admin routes now, which ask exactly what saving asks. And it saves ONE page, by
+// id, from the revision it opened (the server answers 409 when that page moved meanwhile),
+// instead of the whole config it read at open time, put back at an index.
+
+/** Where the studio reads a target FOR EDITING. Never the public route. */
+export function studioLoadPath(kind, id) {
+  // The home page is ONE setting, read by its own ADMIN route, which carries `studioRevs`.
+  if (kind === 'home') return '/admin/site/home';
+  const ref = encodeURIComponent(String(id));
+  return kind === 'showcase' ? `/admin/showcase/${ref}/studio` : `/admin/projects/${ref}/studio`;
+}
+
+/** The PUT that saves ONE page: `{ path, body }`. `saveId` is the showcase row id (the URL
+ *  may carry its slug). The home page's section rides on the home route, whose guard it
+ *  shares: `{ studioSection: { id, canvas, base } }`. */
+export function studioSaveRequest(kind, saveId, pageId, canvas, base) {
+  const pid = encodeURIComponent(String(pageId));
+  if (kind === 'home') return { path: '/admin/site/home', body: { studioSection: { id: String(pageId), canvas, base } } };
+  const ref = encodeURIComponent(String(saveId));
+  const path = kind === 'showcase' ? `/admin/showcase/${ref}/studio/pages/${pid}` : `/admin/projects/${ref}/studio/pages/${pid}`;
+  return { path, body: { canvas, base } };
+}
+
+/** The stable id of the page at an index: the canvas id, or for the home page the SECTION id
+ *  (a section that was never drawn has no canvas yet, and its id is what the route names). */
+export function pageIdAt(config, index, kind = 'project') {
+  const c = config && typeof config === 'object' ? config : {};
+  const list = kind === 'home' ? c.customSections : c.canvases;
+  const row = Array.isArray(list) && index >= 0 && index < list.length ? list[index] : null;
+  return row && typeof row.id === 'string' && row.id ? row.id : null;
+}

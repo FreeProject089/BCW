@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { db, requireCap, requireEditor, optionalAuth, slugify, pageVisibilitySchema, pageAccountEntrySchema, canViewPage, applyScheduledUpdate, canManageShowcase, canEditShowcase, projectGrants , guardStudioFlag} from '../lib/lib.mjs';
+import { configStudioProblems, studioDocError, configRevs, parsePageSave, replaceConfigPage } from '../lib/studio-doc.mjs';
 import { computeActivity, releaseMarkers } from '../lib/git-activity.mjs';
 
 /** applyScheduledUpdate, plus the version-history entry it does not know to write.
@@ -228,6 +229,8 @@ export default async function showcaseRoutes(app) {
   app.post('/admin/showcase', { preHandler: requireCap('manage_showcase') }, async (req, reply) => {
     const b = upsertSchema.safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input', details: b.error.flatten() });
+    const born = configStudioProblems(b.data.config, null);
+    if (born.length) return reply.code(400).send(studioDocError(born));
     const p = await db();
     const base = slugify(b.data.name) || 'project';
     let slug = base; for (let i = 1; await p.showcaseProject.findUnique({ where: { slug } }); i++) slug = `${base}-${i}`;
@@ -252,6 +255,9 @@ export default async function showcaseRoutes(app) {
     // be defended too, or a grantee turns it on for themselves by hand-crafting the body.
     if (data.config !== undefined) {
       const cur = await p.showcaseProject.findUnique({ where: { id: req.params.id }, select: { config: true } }).catch(() => null);
+      // Studio pages are checked on the way in, with the path of the field (lib/studio-doc.mjs).
+      const problems = configStudioProblems(data.config, cur?.config);
+      if (problems.length) return reply.code(400).send(studioDocError(problems));
       data.config = guardStudioFlag(data.config, cur?.config, canManageShowcase(req.user));
     }
     if (data.announceRevealAt !== undefined) data.announceRevealAt = data.announceRevealAt ? new Date(data.announceRevealAt) : null;
@@ -269,6 +275,48 @@ export default async function showcaseRoutes(app) {
     }
     invalidate('showcase.list');
     return { ok: true };
+  });
+
+  // ── The studio's own door (see the same pair in projects.mjs) ─────────────────────────
+  // Loading for editing asks what saving asks. The row is found by id, slug or short, because
+  // the admin editor names a page by its slug and the save route wants the id.
+  async function studioRow(p, ref) {
+    const r = String(ref || '').slice(0, 80);
+    return (await p.showcaseProject.findUnique({ where: { id: r } }).catch(() => null))
+      || (await p.showcaseProject.findUnique({ where: { slug: r } }).catch(() => null))
+      || (await p.showcaseProject.findFirst({ where: { short: { equals: r, mode: 'insensitive' } } }).catch(() => null));
+  }
+  app.get('/admin/showcase/:id/studio', { preHandler: requireEditor() }, async (req, reply) => {
+    const p = await db();
+    const row = await studioRow(p, req.params.id);
+    // Unknown and forbidden answer alike for a non-editor: the id space is not an oracle.
+    if (!row || !(await canEditShowcase(req.user, row.id))) return reply.code(row ? 403 : 404).send({ error: row ? 'forbidden' : 'not_found' });
+    const config = row.config || {};
+    return {
+      config, revs: await configRevs(config),
+      project: { id: row.id, slug: row.slug, name: row.name, short: row.short, icon: row.icon, published: row.published },
+    };
+  });
+  app.put('/admin/showcase/:id/studio/pages/:pageId', { preHandler: requireEditor(), bodyLimit: 600 * 1024 }, async (req, reply) => {
+    if (!(await canEditShowcase(req.user, req.params.id))) return reply.code(403).send({ error: 'forbidden' });
+    const b = parsePageSave(req.body);
+    if (!b.ok) return reply.code(400).send({ error: b.error });
+    const p = await db();
+    const cur = await p.showcaseProject.findUnique({ where: { id: req.params.id }, select: { config: true } }).catch(() => null);
+    if (!cur) return reply.code(404).send({ error: 'not_found' });
+    const r = await replaceConfigPage(cur.config, String(req.params.pageId), b.canvas, b.base);
+    if (r.status) return reply.code(r.status).send(r.body);
+    const row = await p.showcaseProject.update({ where: { id: req.params.id }, data: { config: r.config } });
+    const version = typeof row.config?.version === 'string' ? row.config.version.trim().slice(0, 40) : '';
+    if (version) {
+      await p.projectVersion.upsert({
+        where: { target_version: { target: `sc:${row.id}`, version } },
+        create: { target: `sc:${row.id}`, version, config: row.config },
+        update: { config: row.config },
+      }).catch(() => {});
+    }
+    invalidate('showcase.list');
+    return { ok: true, rev: r.rev };
   });
 
   // Public: version history for a showcase project (by slug). Mirrors /projects/:key/versions.
@@ -298,6 +346,11 @@ export default async function showcaseRoutes(app) {
   // fields the first time the page is read after `at` (see applyScheduledUpdate
   // in lib.mjs). Passing at:null cancels a pending schedule.
   app.put('/admin/showcase/:id/schedule', { preHandler: requireCap('manage_showcase') }, async (req, reply) => {
+    if (req.body?.next?.config && typeof req.body.next.config === 'object') {
+      const cur = await (await db()).showcaseProject.findUnique({ where: { id: req.params.id }, select: { config: true } }).catch(() => null);
+      const problems = configStudioProblems(req.body.next.config, cur?.config);
+      if (problems.length) return reply.code(400).send(studioDocError(problems));
+    }
     const b = z.object({
       at: z.string().datetime().nullable(),
       next: z.object({ name: z.string().min(2).max(60).optional(), short: z.string().min(1).max(5).optional(), config: configSchema.optional() }).optional(),

@@ -31,6 +31,7 @@ import { HomeV2, HomeV3 } from './home-variants.jsx';
 // Resolved before React mounted, so asking here is a synchronous read and not a request the
 // page renders around. That is what keeps a built page from arriving after the default one.
 import { heroCtas, heroNote, closingCta } from '../lib/home-ctas.js';
+import { useFramedDraft } from '../lib/studio-preview.js';
 
 /* ─────────────────────────  Home  ───────────────────────── */
 function useScrollReveal() {
@@ -340,7 +341,10 @@ function PollSlider({ polls }) {
  * else (posts, stats, reviews, the showcase) is live: a preview of unsaved WORDING should
  * not also invent the content around it.
  */
-export function Home({ draft = null }) {
+export function Home({ draft: draftProp = null }) {
+  // The studio's page preview frames this route and posts the draft (lib/studio-preview.js).
+  const framed = useFramedDraft('home');
+  const draft = draftProp || framed?.config || null;
   const { data } = useAsync(() => api.get('/blog?home=1'), []);
   const { data: stats } = useAsync(() => api.get('/stats').catch(() => null), []);
   // The same public endpoint /myo reads. `null` on failure so a landing page never fails to

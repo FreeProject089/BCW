@@ -23,6 +23,7 @@ import { Button, Field, Input, Textarea, Select, Modal, useToast } from '../ui/u
 import { useI18n } from '../i18n.jsx';
 import { api, uploadMedia } from '../lib/api.js';
 import { stepZoom } from '../lib/studio-page.js';
+import { PAGE_DEVICES } from '../lib/studio-preview.js';
 import {
   componentFromBlocks, instantiateComponent, detachBlocks, updateInstances, componentIdsIn,
   thumbnailSvg, normalizeComponents, COMPONENT_LIMITS,
@@ -44,7 +45,8 @@ import {
   emptyHistory, pushHistory, undo as undoHist, redo as redoHist,
   boundsOf, blocksInRect, moveMany, alignMany, distributeMany, phoneOrder, resolveBlock,
   phoneBoardBlocks, reorder, DESIGN_WIDTH, PHONE_WIDTH, GRID, HANDLES,
-  ANIM_KINDS, ANIM_TRIGGERS, ANIM_EASINGS, STAGGER_STEPS, BUTTON_VARIANTS, BUTTON_ACTIONS, SHADOWS, HOVER_EFFECTS, GRID_SIZES, TEXT_ALIGNS, SHAPES,
+  serializeCanvas, alignOnBoard, distributeOnBoard, matchSizeOnBoard, duplicateOnBoard, placeOnBoard, dragPatch,
+  ANIM_KINDS, ANIM_TRIGGERS, ANIM_EASINGS, STAGGER_STEPS, BUTTON_VARIANTS, BUTTON_ACTIONS, LEGACY_ACTIONS, buttonTarget, menuItemHref, SHADOWS, HOVER_EFFECTS, GRID_SIZES, TEXT_ALIGNS, SHAPES,
 } from '../lib/canvas.js';
 import StudioTour, { TourButton, useStudioTour } from './studio-tour.jsx';
 
@@ -320,10 +322,13 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
 
   // Every change goes through here, and every change records an undo point FIRST — the state
   // as it was, keyed by the gesture, so a sixty-frame drag collapses into one entry.
+  // What goes out is serializeCanvas(), never the normalised canvas itself: normalisation
+  // COMPUTES the height, and writing that back pinned it, so every block added afterwards was
+  // cut (PLAN-STUDIO-2026 bug A.1). Undo points are serialised the same way.
   const emit = useCallback((blocks, extra = {}, key = null) => {
-    setHist((h) => pushHistory(h, canvas, key));
-    onChange({ ...canvas, ...extra, blocks });
-  }, [canvas, onChange]);
+    setHist((h) => pushHistory(h, serializeCanvas(canvas, value), key));
+    onChange({ ...serializeCanvas(canvas, value, extra), blocks });
+  }, [canvas, value, onChange]);
 
   /**
    * Change one block — into the base, or into the theme overlay.
@@ -408,29 +413,58 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
   // Where a new thing lands: below everything already there, so it never arrives hidden
   // under a block.
   const nextY = () => canvas.blocks.reduce((m, b) => Math.max(m, b.y + b.h), 0) + 24;
+  // A block that was just added, to bring into view once it is drawn.
+  const [revealId, setRevealId] = useState(null);
+  // Brought into view once drawn: a block added at the bottom of a long page used to arrive
+  // out of sight, which reads as "nothing happened".
+  useEffect(() => {
+    if (!revealId) return;
+    const el = hostRef.current?.querySelector?.(`[data-cst-block="${revealId}"]`);
+    el?.scrollIntoView?.({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+    setRevealId(null);
+  }, [revealId, canvas]);
+  /** New blocks (add, paste, component): placed on the board being EDITED (placeOnBoard), so
+   *  on the phone board they get a phone place instead of landing at the bottom of the desktop
+   *  page and out of view (bug A.2). */
+  const addBlocks = (fresh) => {
+    if (!fresh.length) return;
+    const out = placeOnBoard(canvas, fresh, editTheme);
+    emit(out.blocks, out.extra);
+    setSelIds(fresh.map((b) => b.id));
+    setRevealId(fresh[0].id);
+    if (!wide) setPane('canvas');
+  };
   const add = (kind, over = {}) => {
     const base = NEW_BLOCK[kind];
     const spec = { ...base, ...over, props: { ...(base.props || {}), ...(over.props || {}) } };
-    const b = { id: uid(), x: 64, y: nextY(), z: canvas.blocks.length, ...spec };
-    emit([...canvas.blocks, b]);
-    setSelId(b.id);
-    if (!wide) setPane('canvas');
+    addBlocks([{ id: uid(), x: 64, y: nextY(), z: canvas.blocks.length, ...spec }]);
   };
   const addShape = (shape) => add('shape', { props: { shape, fill: 'var(--primary)', corner: 16 } });
 
   const chosen = canvas.blocks.filter((b) => selIds.includes(b.id));
+  // Offset on the board being edited: on the phone the copy no longer lands exactly on its
+  // original, and its desktop copy is no longer squeezed into 390px (bug A.2).
   const duplicate = () => {
     if (!chosen.length) return;
-    const copies = chosen.map((b) => ({ ...b, id: uid(), x: Math.min(b.x + GRID * 3, boardW - b.w), y: b.y + GRID * 3 }));
-    emit([...canvas.blocks, ...copies]);
-    setSelIds(copies.map((b) => b.id));
+    const out = duplicateOnBoard(canvas, selIds, editTheme, uid);
+    emit(out.blocks, out.extra);
+    setSelIds(out.ids);
   };
   // A locked block survives Delete — the lock is there so a finished background cannot be
   // taken out by a keypress meant for whatever sits on it.
-  const remove = () => { if (!chosen.length) return; emit(canvas.blocks.filter((b) => !selIds.includes(b.id) || b.locked)); setSelIds([]); };
+  // By EXPLICIT ids: the phone list's trash used to set the selection and call remove() in the
+  // same handler, and remove() read the OLD selection from its closure, so it deleted nothing
+  // or the wrong block (bug A.4).
+  const removeIds = (ids) => {
+    if (!ids.length) return;
+    emit(canvas.blocks.filter((b) => !ids.includes(b.id) || b.locked));
+    setSelIds((cur) => cur.filter((x) => !ids.includes(x)));
+  };
+  const remove = () => removeIds(chosen.map((b) => b.id));
   const setGrid = (n) => emit(canvas.blocks, { grid: n });
-  const doAlign = (how) => emit(alignMany(canvas.blocks, selIds, how));
-  const doDistribute = (axis) => emit(distributeMany(canvas.blocks, selIds, axis));
+  // On the board being EDITED: aligning on the phone moved the desktop page (bug A.2).
+  const doAlign = (how) => { const out = alignOnBoard(canvas, selIds, how, editTheme); emit(out.blocks, out.extra); };
+  const doDistribute = (axis) => { const out = distributeOnBoard(canvas, selIds, axis, editTheme); emit(out.blocks, out.extra); };
   const zoomBy = (dir) => setZoom(stepZoom(zoom, dir, fitScale));
   /**
    * Front and back for the WHOLE selection.
@@ -455,11 +489,8 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
    */
   const matchSize = (axis) => {
     if (selIds.length < 2) return;
-    const model = canvas.blocks.find((b) => b.id === selIds[0]);
-    if (!model) return;
-    emit(canvas.blocks.map((b) => (selIds.includes(b.id) && !b.locked
-      ? { ...b, [axis]: model[axis], ...(axis === 'w' ? { x: Math.min(b.x, boardW - model.w) } : {}) }
-      : b)));
+    const out = matchSizeOnBoard(canvas, selIds, axis, editTheme);
+    emit(out.blocks, out.extra);
   };
   /** Lock or hide the whole selection. The state flipped is the FIRST block's, so a mixed
    *  selection lands on one answer instead of inverting each block against itself. */
@@ -507,12 +538,10 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
     showPanel('components');
     toast.success(t('cst.cmp.saved', 'Component saved.'));
   };
+  // Instantiated on the DESKTOP plane (it used to be squeezed into 390px when inserted on the
+  // phone board), then placed on the board being edited.
   const insertComponent = (comp) => {
-    const copy = instantiateComponent(comp, { x: 64, y: nextY() }, canvas.blocks.length, uid, boardW);
-    if (!copy.length) return;
-    emit([...canvas.blocks, ...copy]);
-    setSelIds(copy.map((b) => b.id));
-    if (!wide) setPane('canvas');
+    addBlocks(instantiateComponent(comp, { x: 64, y: nextY() }, canvas.blocks.length, uid, DESIGN_WIDTH));
   };
   const deleteComponent = (id) => persistComponents(components.filter((c) => c.id !== id));
   const detach = () => { if (!chosen.length) return; emit(detachBlocks(canvas.blocks, selIds)); };
@@ -551,14 +580,15 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
     setSelIds(ids);
     // Locked: selectable (the panel still edits it), never dragged or resized.
     if (b.locked) return;
-    const startBB = boundsOf(canvas.blocks.filter((x) => ids.includes(x.id)));
+    const startBB = boundsOf(view.blocks.filter((x) => ids.includes(x.id)));
     drag.current = { id: b.id, ids, handle, sx: e.clientX, sy: e.clientY, start: { ...b }, startBB };
     e.currentTarget.setPointerCapture?.(e.pointerId);
   };
   const onMove = (e) => {
     const d = drag.current; if (!d) return;
     const dx = e.clientX - d.sx; const dy = e.clientY - d.sy;
-    const others = canvas.blocks.filter((b) => b.id !== d.id);
+    // The guides compare with the blocks AS DRAWN on this board, not the desktop base.
+    const others = view.blocks.filter((b) => b.id !== d.id);
     if (d.handle) {
       patch(d.id, resizeTo(d.start, d.handle, dx, dy, scale, { snap: snapOn, grid, width: boardW }), `resize:${d.id}:${d.handle}`);
       return;
@@ -578,7 +608,9 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
       if (g.h) next = { ...next, y: next.y + g.h.delta };
       setGuides(g);
     }
-    patch(d.id, next, `drag:${d.id}`);
+    // On the phone the size goes with the first move, so an unplaced block keeps the width it
+    // is drawn at (bug A.3).
+    patch(d.id, dragPatch(d.start, next, editTheme), `drag:${d.id}`);
   };
   const onUp = () => { drag.current = null; setGuides({ v: null, h: null }); };
   // The handler the memoised blocks hold never changes; it reads the current one through a
@@ -629,7 +661,8 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
     const rect = { x: m.x, y: m.y, w: (e.clientX - r.left + host.scrollLeft) / scale - m.x, h: (e.clientY - r.top + host.scrollTop) / scale - m.y };
     if (Math.abs(rect.w) < 4 && Math.abs(rect.h) < 4) return;   // a click, not a drag
     setMarquee(rect);
-    const hit = blocksInRect(canvas.blocks, rect).map((b) => b.id);
+    // The rubber band tests the blocks as DRAWN on this board (bug A.2).
+    const hit = blocksInRect(view.blocks, rect).map((b) => b.id);
     setSelIds(m.additive ? [...new Set([...m.base, ...hit])] : hit);
   };
   const onMarqueeUp = () => { marqueeRef.current = null; panRef.current = null; setMarquee(null); };
@@ -717,10 +750,12 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
       }
       if (mod && e.key.toLowerCase() === 'v' && !typing) {
         const paste = (list) => {
-          if (!list?.length) return;
-          const copies = list.map((b) => ({ ...b, id: uid(), x: Math.min(Math.max(0, (b.x || 0) + GRID * 3), boardW - (b.w || GRID)), y: (b.y || 0) + GRID * 3 }));
-          emit([...canvas.blocks, ...copies]);
-          setSelIds(copies.map((b) => b.id));
+          if (!Array.isArray(list) || !list.length) return;
+          // Through the normaliser first: the clipboard is outside input, and a pasted block
+          // used to keep every field it came with until the next save (S8). Offset on the
+          // desktop plane, then placed on the board being edited.
+          const clean = normalizeCanvas({ blocks: list.slice(0, 200) }).blocks;
+          addBlocks(clean.map((b) => ({ ...b, id: uid(), x: Math.min(Math.max(0, b.x + GRID * 3), DESIGN_WIDTH - b.w), y: b.y + GRID * 3, component: null })));
         };
         e.preventDefault();
         navigator.clipboard?.readText?.().then((txt) => { try { const j = JSON.parse(txt); if (Array.isArray(j?.bcwBlocks)) return paste(j.bcwBlocks); } catch { /* not ours */ } paste(clip.current); }).catch(() => paste(clip.current));
@@ -886,7 +921,7 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
       </>)}
     </div>
   );
-  const stackList = <StackList {...{ t, canvas, emit, selIds, setSelId, setSelIds, remove, add }} />;
+  const stackList = <StackList {...{ t, canvas, emit, selIds, setSelId, setSelIds, removeIds, add }} />;
   const previewEl = preview ? (
     <PreviewSurface key={previewKey} t={t} preview={preview} canvas={canvas} renderPage={renderPage}
       pageNote={t('cst.preview.page.none2', 'This document is not part of a page yet: it is being edited on its own, so there is no surrounding page to show it in. Add it to a page from the page settings and the page preview appears here.')}
@@ -1125,7 +1160,7 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
  * The reading-order list a phone edits — the blocks as a column, each row painted by the same
  * component the public page uses, with move / hide / delete controls sized for a thumb.
  */
-function StackList({ t, canvas, emit, selIds, setSelId, setSelIds, remove, add }) {
+function StackList({ t, canvas, emit, selIds, setSelId, setSelIds, removeIds, add }) {
   const order = phoneOrder(canvas.blocks);
   /**
    * Reorder the PHONE stack, and nothing else.
@@ -1168,7 +1203,7 @@ function StackList({ t, canvas, emit, selIds, setSelId, setSelIds, remove, add }
               <Button size="sm" variant="ghost" className="!px-2" disabled={i === 0} onClick={(e) => { e.stopPropagation(); swap(i, -1); }} title={t('cst.up', 'Move up')}><ArrowUp size={14} /></Button>
               <Button size="sm" variant="ghost" className="!px-2" disabled={i === order.length - 1} onClick={(e) => { e.stopPropagation(); swap(i, 1); }} title={t('cst.down', 'Move down')}><ArrowDown size={14} /></Button>
               <Button size="sm" variant="ghost" className="!px-2" onClick={(e) => { e.stopPropagation(); togglePhoneHidden(b); }} title={t('cst.phone.hide', 'Leave this out of the phone version')}><EyeOff size={14} /></Button>
-              <Button size="sm" variant="ghost" className="!px-2 !text-[var(--error)]" onClick={(e) => { e.stopPropagation(); setSelIds([b.id]); remove(); }} title={t('cst.del', 'Delete')}><Trash2 size={14} /></Button>
+              <Button size="sm" variant="ghost" className="!px-2 !text-[var(--error)]" onClick={(e) => { e.stopPropagation(); removeIds([b.id]); }} title={t('cst.del', 'Delete')}><Trash2 size={14} /></Button>
             </div>
             {/* The block exactly as the reader gets it, stacked — the same component the
                 public page paints with, so this is not a second opinion about how it looks.
@@ -1226,6 +1261,11 @@ function PreviewSurface({ t, preview, canvas, renderPage, onReplay, pageNote = n
    */
   const frame = DEVICE_WIDTHS[preview] || null;
   const onPage = preview === 'page';
+  // The page preview is the REAL route in a frame (editor/studio-page-frame.jsx), at the width
+  // of a device, so its own header, footer, backdrop and media queries are the ones a visitor
+  // on that device gets. The width is the frame's, not this pane's: wider than the pane, the
+  // preview scrolls sideways rather than lying about the width.
+  const [pageDevice, setPageDevice] = useState('desktop');
   const label = onPage
     ? t('cst.preview.page', 'The whole project page, with this block in place')
     : { desktop: t('cst.preview.desktop', 'Desktop preview'), tablet: t('cst.preview.tablet', 'Tablet preview'), phone: t('cst.phone.h', 'What a phone gets: the canvas stacks') }[preview] || '';
@@ -1245,11 +1285,20 @@ function PreviewSurface({ t, preview, canvas, renderPage, onReplay, pageNote = n
         <p className="mb-3 text-xs text-[var(--muted)] rounded-xl border border-dashed border-[var(--line)] p-3">{pageNote}</p>
       )}
       {onPage && renderPage ? (
-        /* `.cst-page-frame` is a containing block for `position: fixed` (see index.css): the
-           real page hands this preview its own fixed furniture — the 3D hero's backdrop, an
-           event effect — and without that, every one of them resolves against the VIEWPORT
-           and covers the studio instead of sitting in the preview. */
-        <div className="cst-page-frame">{renderPage(canvas)}</div>
+        <>
+          <div className="flex items-center gap-1 flex-wrap mb-2" role="group" aria-label={t('cst.preview.devices', 'Device width')}>
+            {Object.entries(PAGE_DEVICES).map(([k, w]) => (
+              <Button key={k} size="sm" variant={pageDevice === k ? 'primary' : 'ghost'} aria-pressed={pageDevice === k} onClick={() => setPageDevice(k)}>
+                {t(`cst.preview.dev.${k}`, k)} · {w}px
+              </Button>
+            ))}
+          </div>
+          <div className="overflow-x-auto">
+            <div className="mx-auto" style={{ width: PAGE_DEVICES[pageDevice] }} data-page-device={pageDevice}>
+              {renderPage(canvas, PAGE_DEVICES[pageDevice])}
+            </div>
+          </div>
+        </>
       ) : (
         <div className={frame ? 'cst-device mx-auto max-w-full' : ''} style={frame ? { width: frame } : undefined}>
           <CanvasView canvas={canvas} stackPreview={preview === 'phone'} />
@@ -1569,6 +1618,8 @@ function LayersPanel({ t, canvas, view, selIds, setSelIds, patch, emit, add, bar
 function ButtonFields({ t, p, setProp }) {
   const act = p.action || { type: 'link' };
   const setAct = (k, v) => setProp('action', { ...act, [k]: v });
+  // The same decision the page makes (lib/canvas.js), so the editor's red is the page's inert.
+  const target = buttonTarget(act);
   const items = Array.isArray(p.items) ? p.items : [];
   const itemsText = items.map((it) => `${it.label || ''} | ${it.href || ''}`).join('\n');
   const isDropdown = (p.variant || 'button').startsWith('dropdown');
@@ -1599,27 +1650,33 @@ function ButtonFields({ t, p, setProp }) {
     {isDropdown ? (
       <Field label={t('cst.btn.items', 'Menu items, one per line: label | link')}>
         <Textarea rows={4} value={itemsText} onChange={(e) => setProp('items', e.target.value.split('\n').map((l) => { const [label, href] = l.split('|'); return { label: (label || '').trim(), href: (href || '').trim() }; }).filter((it) => it.label))} />
+        {items.some((it) => it.href && !menuItemHref(it.href)) && (
+          <p className="text-[11px] text-error mt-1" role="alert">
+            {t('cst.btn.items.unsafe', 'Refused, these entries lead nowhere for visitors: {list}').replace('{list}', items.filter((it) => it.href && !menuItemHref(it.href)).map((it) => it.label).join(', '))}
+          </p>
+        )}
       </Field>
     ) : (<>
+      {/* An action this page may no longer run is said, in red, with the reason (D5): the
+          button renders inert for visitors, and an author must never discover that by a
+          silent button. The select offers only the actions that still exist. */}
+      {LEGACY_ACTIONS[act.type] && (
+        <div className="rounded-lg border border-[var(--error-border)] p-2 text-[11px] text-error" data-legacy-action={act.type} role="alert">
+          {t('cst.btn.legacy.api', 'This button called the site API with the visitor’s own session. That action was removed for security: the button does nothing for visitors now. Pick another action below.')}
+        </div>
+      )}
       <Field label={t('cst.btn.action', 'On press')}>
-        <Select value={act.type || 'link'} onChange={(e) => setAct('type', e.target.value)}>
+        <Select value={LEGACY_ACTIONS[act.type] ? '' : (act.type || 'link')} onChange={(e) => setProp('action', { type: e.target.value, ...(act.href ? { href: act.href } : {}), ...(act.text ? { text: act.text } : {}), ...(act.target ? { target: act.target } : {}) })}>
+          {LEGACY_ACTIONS[act.type] && <option value="">{t('cst.btn.a.pick', 'Choose an action')}</option>}
           {BUTTON_ACTIONS.map((v) => <option key={v} value={v}>{t(`cst.btn.a.${v}`, v)}</option>)}
         </Select>
       </Field>
       {(act.type === 'link' || act.type === 'download' || !act.type) && <Field label={t('cst.btn.href', 'Link')}><Input value={act.href || ''} onChange={(e) => setAct('href', e.target.value)} placeholder="/hosting · https://…" /></Field>}
+      {target.reason === 'unsafe_url' && <p className="text-[11px] text-error" role="alert">{t('cst.btn.unsafe', 'This link is refused: only a path on this site, an anchor (#), an http(s) address or a mailto. It does nothing for visitors.')}</p>}
       {act.type === 'copy' && <Field label={t('cst.btn.copytext', 'Text to copy')}><Input value={act.text || ''} onChange={(e) => setAct('text', e.target.value)} /></Field>}
-      {act.type === 'scroll' && <Field label={t('cst.btn.target', 'Scroll to (CSS selector)')}><Input value={act.target || ''} onChange={(e) => setAct('target', e.target.value)} placeholder="#plans" /></Field>}
-      {act.type === 'api' && (<>
-        <div className="grid grid-cols-[80px_1fr] gap-2">
-          <Field label={t('cst.btn.method', 'Method')}>
-            <Select value={act.method || 'GET'} onChange={(e) => setAct('method', e.target.value)}><option>GET</option><option>POST</option></Select>
-          </Field>
-          <Field label={t('cst.btn.path', 'API path')}><Input value={act.path || ''} onChange={(e) => setAct('path', e.target.value)} placeholder="/updates/bmm/latest" /></Field>
-        </div>
-        <Field label={t('cst.btn.open', 'Open the URL found at (optional, e.g. asset.url)')}><Input value={act.open || ''} onChange={(e) => setAct('open', e.target.value)} /></Field>
-        <p className="text-[11px] text-[var(--muted)]">{t('cst.btn.api.h', 'Calls /api + path with the reader’s session. Only paths on this site.')}</p>
-      </>)}
-      <Field label={t('cst.btn.done', 'Label after (copy / API)')}><Input value={p.doneLabel || ''} onChange={(e) => setProp('doneLabel', e.target.value)} placeholder="✓" /></Field>
+      {act.type === 'scroll' && <Field label={t('cst.btn.target.id', 'Scroll to (an element id, e.g. #plans)')}><Input value={act.target || ''} onChange={(e) => setAct('target', e.target.value)} placeholder="#plans" /></Field>}
+      {target.reason === 'bad_scroll_target' && <p className="text-[11px] text-error" role="alert">{t('cst.btn.badscroll', 'Only an element id is accepted here (# then letters, digits, - or _), not a CSS selector. The button does nothing for visitors until it is one.')}</p>}
+      <Field label={t('cst.btn.done.copy', 'Label after copying')}><Input value={p.doneLabel || ''} onChange={(e) => setProp('doneLabel', e.target.value)} placeholder="✓" /></Field>
     </>)}
   </>);
 }
@@ -1733,6 +1790,7 @@ function BlockBody({ b }) {
 const BoardBlock = memo(function BoardBlock({ b, on, only, down }) {
   return (
     <div
+      data-cst-block={b.id}
       onPointerDown={(e) => down(e, b, null)}
       style={{ position: 'absolute', left: b.x, top: b.y, width: b.w, height: b.h, zIndex: (b.z || 0) + (on ? 1000 : 0), cursor: b.locked ? 'default' : 'move', touchAction: 'none', opacity: b.hidden ? 0.3 : undefined, transform: b.rotate ? `rotate(${b.rotate}deg)` : undefined }}>
       <BlockBody b={b} />

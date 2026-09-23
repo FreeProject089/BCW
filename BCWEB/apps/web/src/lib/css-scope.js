@@ -127,6 +127,37 @@ function refuseImageFns(s, refused) {
   return out + s.slice(i);
 }
 
+/** A declaration that takes a box out of the page's flow and pins it to the viewport. */
+const POSITION_ESCAPE = /^\s*(fixed|sticky)\s*(!\s*important\s*)?$/i;
+const POSITION_ESCAPE_G = /position\s*:\s*(fixed|sticky)\s*(?:!\s*important\s*)?;?/gi;
+
+/**
+ * One author-typed CSS VALUE (a background, a colour, a border colour) that is written into a
+ * `style` attribute on a public page. Returns it when it is safe, '' when it is not.
+ *
+ * The page stylesheet and the inline-style field go through `scopeCss` / `safeInlineStyle`;
+ * the inspector's own colour and background fields did not, so `background: url(https://…)`
+ * typed there fetched a third-party pixel from every visitor (S4). Same rules, read on the
+ * DECODED text: no url() off this site, no image-set()/src() with a URL, none of the refused
+ * constructs, and no `;`, `{`, `}` or `<` — a value is one value, not a way to start another
+ * declaration.
+ */
+export function safeCssValue(input) {
+  const raw = typeof input === 'string' ? input.trim().slice(0, 600) : '';
+  if (!raw) return '';
+  const read = decodeCssEscapes(raw);
+  if (/[;{}<>]/.test(read) || /[\x00-\x08\x0b\x0e-\x1f\x7f]/.test(read)) return '';
+  if (REFUSE.some(([re]) => re.test(read))) return '';
+  const urls = [...read.matchAll(URL_RE)];
+  if (urls.some((m) => !urlOk(m[2]))) return '';
+  // A `url(` the pattern above could not read (an unterminated one, a nested quote) is not
+  // a value this function can vouch for: every opening must be one that was checked.
+  if ((read.match(/url\s*\(/gi) || []).length !== urls.length) return '';
+  const refused = new Set();
+  refuseImageFns(read, refused);
+  return refused.size ? '' : raw;
+}
+
 const BLOCK_AT = /^@(media|supports|container|layer|scope)\b/i;
 const KEEP_AT = /^@(keyframes|-webkit-keyframes|font-face|property|counter-style|page)\b/i;
 
@@ -178,6 +209,12 @@ export function scopeCss(input, scope) {
   // refused and a second, valid rule do nothing.
   s = s.replace(/@(import|charset)\b[^;}]*;?/gi, (all, name) => { refused.add(`@${name.toLowerCase()}`); return ''; });
   for (const [re, name] of REFUSE) if (re.test(s)) { refused.add(name); s = s.replace(new RegExp(re.source, 'gi'), '/*refused*/'); }
+  // `position: fixed` / `sticky`: the declaration is taken out, the rule around it is kept.
+  // A prefixed selector confines what a rule MATCHES, not where a fixed box is PAINTED: it
+  // resolves against the viewport unless an ancestor has a transform, and the stacked phone
+  // layout had none — so a block could cover the whole site, header included (S5). Same
+  // refusal as B.MD's style-safe.js, for the same reason.
+  s = s.replace(POSITION_ESCAPE_G, (all, how) => { refused.add(`position: ${how.toLowerCase()}`); return ''; });
   s = s.replace(URL_RE, (all, q, u) => { if (urlOk(u)) return all; refused.add(`url(${u.slice(0, 40)})`); return 'none'; });
   // After url(), because a url() inside an image-set has already been dealt with and a
   // refused one now reads `none`, which is a legal image-set entry.
@@ -210,6 +247,8 @@ export function safeInlineStyle(input) {
     const prop = decl.slice(0, k).trim().toLowerCase(); const val = decl.slice(k + 1).trim();
     if (!/^[a-z-]+$/.test(prop) || !val) continue;
     const read = decodeCssEscapes(val);
+    // See POSITION_ESCAPE: the stack layout gave a fixed box nothing to be confined by.
+    if (decodeCssEscapes(prop) === 'position' && POSITION_ESCAPE.test(read)) continue;
     if (/url\s*\(/i.test(read) && !urlOk((read.match(URL_RE) ? read.replace(URL_RE, (a, q, u) => u) : ''))) continue;
     const refused = new Set();
     refuseImageFns(read, refused);

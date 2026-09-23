@@ -9,11 +9,10 @@
 // B.MD later shows up here without this file changing.
 import { useEffect, useRef, useState } from 'react';
 import Markdown from './md.jsx';
-import { normalizeCanvas, layoutFor, phoneOrder, paintOrder, resolveBlock, keepsHeightStacked, phoneBoardBlocks, EASING_CURVES, DESIGN_WIDTH, PHONE_WIDTH } from '../lib/canvas.js';
-import { api } from '../lib/api.js';
+import { normalizeCanvas, layoutFor, phoneOrder, paintOrder, resolveBlock, keepsHeightStacked, phoneBoardBlocks, buttonTarget, menuItemHref, safeLink, EASING_CURVES, DESIGN_WIDTH, PHONE_WIDTH } from '../lib/canvas.js';
 import { markdownConfig } from '@bettercommunity/bmd/config';
 import { sanitizeSvg } from '../lib/svg-safe.js';
-import { scopeCss, safeClasses, safeInlineStyle } from '../lib/css-scope.js';
+import { scopeCss, safeClasses, safeInlineStyle, safeCssValue } from '../lib/css-scope.js';
 import { patternStyle } from '../lib/patterns.js';
 
 /** One block's own painting, shared by both modes so they cannot look different.
@@ -78,11 +77,15 @@ function Animated({ anim, id, style, className, children }) {
     ...(EASING_CURVES[anim.easing] ? { '--cv-ease': EASING_CURVES[anim.easing] } : null),
   };
   const cls = `${className || ''} cv-anim cv-anim-${anim.kind}${on ? ' in' : ''}${anim.loop ? ' cv-loop' : ''}${trigger === 'hover' ? ' cv-hover' : ''}`;
+  // The id goes into a selector inside a <style> element, so it is reduced to a name HERE as
+  // well as at normalisation (S3): this component is exported and nothing forces a caller to
+  // have normalised first.
+  const cssId = String(id ?? '').replace(/[^\w-]/g, '').slice(0, 60) || 'x';
   const custom = anim.kind === 'custom' && anim.custom
-    ? `@keyframes cv-${id}{${keyframeBody(anim.custom)}}[data-anim="${id}"].in,[data-anim="${id}"].cv-hover:hover{animation-name:cv-${id}}`
+    ? `@keyframes cv-${cssId}{${keyframeBody(anim.custom)}}[data-anim="${cssId}"].in,[data-anim="${cssId}"].cv-hover:hover{animation-name:cv-${cssId}}`
     : null;
   return (
-    <div ref={ref} style={{ ...style, ...vars }} className={cls} data-anim={id}>
+    <div ref={ref} style={{ ...style, ...vars }} className={cls} data-anim={cssId}>
       {custom ? <style>{custom}</style> : null}
       {children}
     </div>
@@ -120,35 +123,35 @@ function BlockShell({ b, children }) {
 /** Whether the wrapper must stop clipping so the shell's effects can paint outside the box. */
 const spills = (b) => b.kind === 'button' || !!b.rotate || !!b.shadow || !!b.hover;
 
-/** What a button does when pressed. */
+/**
+ * What a button does when pressed.
+ *
+ * Decided by `buttonTarget` (lib/canvas.js), the one place an action becomes an href: the
+ * link policy is applied there, never here (S1). An action the page may no longer run (the
+ * old `api` one, S2; a scroll to a selector) renders INERT, a button that does nothing, with
+ * `aria-disabled`, rather than one that does something nobody reviewed.
+ */
 function useButtonAction(p) {
   const [state, setState] = useState('');
   const act = p.action || {};
-  const type = act.type || 'link';
-  const href = String(act.href || '').trim();
-  const external = /^https?:\/\//i.test(href);
+  const target = buttonTarget(act);
   const run = async (e) => {
-    if (type === 'link' || type === 'download') return;   // the anchor does it
+    if ((target.type === 'link' || target.type === 'download') && target.href) return;   // the anchor does it
     e.preventDefault();
+    if (target.type === 'inert' || (!target.href && target.type !== 'copy')) return;
     try {
-      if (type === 'copy') { await navigator.clipboard.writeText(String(act.text || '')); setState('done'); }
-      else if (type === 'scroll') { const target = document.querySelector(String(act.target || '').trim() || '#top'); target?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
-      else if (type === 'api') {
-        setState('busy');
-        const path = String(act.path || '').trim();
-        if (!path.startsWith('/')) throw new Error('path');
-        const method = String(act.method || 'GET').toUpperCase() === 'POST' ? 'post' : 'get';
-        const res = await api[method](path, method === 'post' ? {} : undefined);
-        const open = String(act.open || '').trim();
-        const url = open && res && typeof res === 'object' ? open.split('.').reduce((o, k) => (o == null ? o : o[k]), res) : null;
-        if (url && typeof url === 'string') window.open(url, '_blank', 'noopener');
-        setState('done');
+      if (target.type === 'copy') { await navigator.clipboard.writeText(String(act.text || '')); setState('done'); }
+      else if (target.type === 'scroll') {
+        // An element id, looked up as one: never handed to querySelector as a selector.
+        const el = target.href === '#top' ? (document.getElementById('top') || document.body) : document.getElementById(target.href.slice(1));
+        el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
     } catch { setState('err'); }
     setTimeout(() => setState(''), 1800);
   };
-  const anchorProps = type === 'link' && href ? { href, ...(external ? { target: '_blank', rel: 'noreferrer' } : {}) }
-    : type === 'download' && href ? { href, download: true }
+  const anchorProps = target.type === 'link' && target.href ? { href: target.href, ...(target.external ? { target: '_blank', rel: 'noopener noreferrer' } : {}) }
+    : target.type === 'download' && target.href ? { href: target.href, download: true, ...(target.external ? { rel: 'noopener noreferrer' } : {}) }
+    : target.type === 'inert' ? { role: 'button', 'aria-disabled': true, tabIndex: -1, 'data-inert': target.reason }
     : { href: '#', role: 'button' };
   return { run, state, anchorProps };
 }
@@ -156,7 +159,8 @@ function useButtonAction(p) {
 function CanvasButton({ p }) {
   const variant = p.variant || 'button';
   const size = ['sm', 'md', 'lg'].includes(p.size) ? p.size : 'md';
-  const style = p.color ? { '--btn': p.color } : undefined;
+  const btn = safeCssValue(p.color);
+  const style = btn ? { '--btn': btn } : undefined;
   const { run, state, anchorProps } = useButtonAction(p);
   const [open, setOpen] = useState(false);
   const face = state === 'done' ? (p.doneLabel || '✓') : state === 'err' ? '✕' : (p.label || 'Button');
@@ -179,9 +183,10 @@ function CanvasButton({ p }) {
         {open && (
           <div className="cv-dd-menu" role="menu">
             {items.length ? items.map((it, i) => {
-              const h = String(it.href || '').trim();
+              // Through the link policy (S1): a menu item is an href like any other.
+              const h = menuItemHref(it.href);
               const ext = /^https?:\/\//i.test(h);
-              return <a key={i} role="menuitem" className="cv-dd-item" href={h || '#'} {...(ext ? { target: '_blank', rel: 'noreferrer' } : {})} onClick={() => setOpen(false)}>{it.label}</a>;
+              return <a key={i} role="menuitem" className="cv-dd-item" href={h || '#'} {...(ext ? { target: '_blank', rel: 'noopener noreferrer' } : {})} onClick={() => setOpen(false)}>{it.label}</a>;
             }) : <span className="cv-dd-item cv-dd-empty">—</span>}
           </div>
         )}
@@ -194,7 +199,10 @@ function CanvasButton({ p }) {
 }
 
 /** A shape as inline SVG, stretched to the block, with an optional label in the middle. */
-export function ShapeSvg({ p }) {
+export function ShapeSvg({ p: raw }) {
+  // Every colour here lands in an SVG paint attribute, where `url(...)` is a paint server
+  // reference: through the same value filter as the block's own colours (S4).
+  const p = { ...raw, fill: safeCssValue(raw.fill), fill2: safeCssValue(raw.fill2), stroke: safeCssValue(raw.stroke), textColor: safeCssValue(raw.textColor) };
   const fill = p.fill || 'var(--primary)';
   const stroke = p.stroke || 'none';
   const sw = Number(p.strokeWidth) || 0;
@@ -242,14 +250,20 @@ export function CanvasBlock({ b, stacked }) {
   }
   // A tiling pattern rides on top of a plain colour; a gradient background keeps the
   // shorthand and the pattern is skipped — two images in one shorthand is a syntax lesson.
-  const pat = p.pattern?.id ? patternStyle(p.pattern) : null;
-  const gradient = /gradient\(/i.test(String(p.bg || ''));
+  // Every author colour through safeCssValue (S4): a `background: url(https://...)` typed in
+  // the inspector fetched a third-party pixel from every visitor, because these fields never
+  // met the filter the page stylesheet goes through.
+  const bg = safeCssValue(p.bg);
+  const border = safeCssValue(p.border);
+  const color = safeCssValue(p.color);
+  const pat = p.pattern?.id ? patternStyle({ ...p.pattern, color: safeCssValue(p.pattern.color) || undefined }) : null;
+  const gradient = /gradient\(/i.test(bg);
   const style = {
-    ...(pat && !gradient ? { backgroundColor: p.bg || undefined, ...pat } : { background: p.bg || undefined }),
-    border: p.border ? `1px solid ${p.border}` : undefined,
+    ...(pat && !gradient ? { backgroundColor: bg || undefined, ...pat } : { background: bg || undefined }),
+    border: border ? `1px solid ${border}` : undefined,
     borderRadius: p.radius != null ? `${p.radius}px` : undefined,
     padding: p.pad != null ? `${p.pad}px` : undefined,
-    color: p.color || undefined,
+    color: color || undefined,
   };
   // The size a media block takes in a column: its own, because none of these has an intrinsic
   // height and `100%` of an auto-height parent is zero — the way `box` used to vanish.
@@ -264,7 +278,7 @@ export function CanvasBlock({ b, stacked }) {
         // and every browser blocks it anyway — so it would be a setting that does nothing.
         autoPlay={!!p.autoplay && !!p.muted}
         preload={p.autoplay ? 'auto' : 'metadata'}
-        style={{ ...boxed, objectFit: p.fit || 'contain', background: p.bg || '#000' }}
+        style={{ ...boxed, objectFit: p.fit || 'contain', background: bg || '#000' }}
       />
     );
   }
@@ -277,7 +291,9 @@ export function CanvasBlock({ b, stacked }) {
       return (
         <div style={{ ...boxed, display: 'grid', placeItems: 'center', padding: 12, textAlign: 'center' }}
           className="text-[12px] text-[var(--muted)] border border-dashed border-[var(--line)] rounded-xl">
-          {url ? <a href={url} target="_blank" rel="noreferrer noopener" className="underline break-all">{url}</a> : null}
+          {/* Shown as text, and as a link only when it passes the link policy: a refused
+              embed URL must not become a `javascript:` href on the way to being explained. */}
+          {url ? (safeLink(url) ? <a href={safeLink(url)} target="_blank" rel="noreferrer noopener" className="underline break-all">{url}</a> : <span className="break-all">{url}</span>) : null}
         </div>
       );
     }
@@ -331,6 +347,17 @@ export function CanvasBlock({ b, stacked }) {
 }
 
 /**
+ * The canvas root is a CONTAINING BLOCK for everything inside it, in every mode (S5).
+ *
+ * `position: fixed` resolves against the viewport unless an ancestor has a transform (or
+ * `contain: paint`). The scaled plane had one; the stacked phone column did not, so a block
+ * styled fixed covered the whole site on a phone, header included. With both on the root, a
+ * fixed box is at worst a box inside this canvas. `translateZ(0)` rather than `none`: `none`
+ * creates no containing block.
+ */
+const CONFINE = { contain: 'layout paint', transform: 'translateZ(0)' };
+
+/**
  * @param {object} props
  * @param {object} props.canvas  the stored canvas (raw; normalised here)
  * @param {boolean} [props.stackPreview]  force the stacked rendering, for the editor's
@@ -380,7 +407,7 @@ export default function CanvasView({ canvas: raw, stackPreview = false, themePre
   // Sizes go with it: a width measured in design pixels means nothing in a column.
   if (L.mode === 'stack') {
     return (
-      <div ref={hostRef} className="space-y-4" data-cv={canvas.id} style={{ background: canvas.bg || undefined }}>
+      <div ref={hostRef} className="space-y-4" data-cv={canvas.id} style={{ background: safeCssValue(canvas.bg) || undefined, ...CONFINE }}>
         <ScopedCss canvas={canvas} />
         {phoneOrder(canvas.blocks).map((raw2) => resolveBlock(raw2, mode)).filter((b) => !b.hidden).map((b) => (
           <Animated key={b.id} id={b.id} anim={b.anim} className="min-w-0" style={b.opacity < 1 ? { opacity: b.opacity } : undefined}>
@@ -405,7 +432,7 @@ export default function CanvasView({ canvas: raw, stackPreview = false, themePre
     ? phoneBoardBlocks(canvas.blocks.map((raw2) => resolveBlock(raw2, mode)).filter((b) => !b.hidden))
     : paintOrder(canvas.blocks).map((raw2) => resolveBlock(raw2, mode)).filter((b) => !b.hidden);
   return (
-    <div ref={hostRef} className="w-full overflow-hidden" data-cv={canvas.id} style={{ background: canvas.bg || undefined }}>
+    <div ref={hostRef} className="w-full overflow-hidden" data-cv={canvas.id} style={{ background: safeCssValue(canvas.bg) || undefined, ...CONFINE }}>
       <ScopedCss canvas={canvas} />
       <div style={{ height: planeH * L.scale, position: 'relative', ...(phone ? { width: planeW * L.scale, margin: '0 auto' } : {}) }}>
         <div

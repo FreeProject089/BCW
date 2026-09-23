@@ -5,16 +5,16 @@
 // had to: WHERE the config comes from, WHERE it goes back, and what happens to an edit that
 // was never saved.
 //
-//   From: the config editor hands over the config it has in memory (sessionStorage, keyed by
-//   target) so an unsaved edit made in the form is what the studio starts from; with no
-//   handoff — a bookmark, a reload — the config is fetched. Fixed projects come from
-//   GET /projects/:key; showcase pages from the admin list, matched by slug or short, because
-//   the editor knows the slug and the save route wants the id.
+//   From: ALWAYS the admin route that asks what saving asks (studioLoadPath): the public
+//   GET /projects/:key used to be enough to open, so a grantee of project A edited B's studio
+//   and only the save said no. The config editor may still hand over the config it holds in
+//   memory (sessionStorage, keyed by target), so a page added in the form and not saved yet
+//   opens; the handoff is used only once the guarded load has answered.
 //
-//   Back: the SAME write the editor's Save makes — PUT /projects/:key { config } or
-//   PUT /admin/showcase/:id { config } — with this one canvas replaced (withCanvasAt). The
-//   modal wrote through `patch(studioAt, next)` into the editor's state and the editor saved
-//   the whole config; this saves the whole config too, from the same starting point.
+//   Back: ONE page, by id, with the revision it was opened at (studioSavePath). The server
+//   puts that page back into the config as stored NOW, so a text fix saved meanwhile in the
+//   config editor, or another page saved from another tab, survives; and if this page itself
+//   moved meanwhile the answer is a 409 and the author chooses, never a silent overwrite.
 //
 //   Unsaved: every change is kept as a draft in sessionStorage for this tab, restored on the
 //   next open with a way to discard it, and leaving with unsaved changes asks first.
@@ -25,43 +25,30 @@ import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { Button, EmptyState, Spinner, useDialog, useToast } from '../ui/ui.jsx';
 import CanvasStudio from '../editor/canvas-studio.jsx';
-import ProjectPage, { ShowcaseProjectPage } from './project.jsx';
-import { parseStudioParams, handoffKey, draftKey, canvasAt, blankCanvasAt, withCanvasAt, saveState, studioPath } from '../lib/studio-page.js';
-import { Home as HomePage } from './home.jsx';
+import { parseStudioParams, handoffKey, draftKey, canvasAt, blankCanvasAt, withCanvasAt, saveState, studioPath, studioLoadPath, studioSaveRequest, pageIdAt } from '../lib/studio-page.js';
+import StudioPageFrame from '../editor/studio-page-frame.jsx';
+import { framedPreviewUrl, previewReasons } from '../lib/studio-preview.js';
 
 const readJson = (key) => { try { const raw = sessionStorage.getItem(key); return raw ? JSON.parse(raw) : null; } catch { return null; } };
 const writeJson = (key, v) => { try { sessionStorage.setItem(key, JSON.stringify(v)); } catch { /* quota, private mode */ } };
 const drop = (key) => { try { sessionStorage.removeItem(key); } catch { /* nothing to clear */ } };
 
-/** Where the config lives for each kind, and where "Back" goes. */
+/** Where the config lives for each kind, and where "Back" goes. Every kind is read through
+ *  the guarded admin route, which answers 403 to somebody who could not save it either. */
 async function loadTarget(kind, id) {
+  const r = await api.get(studioLoadPath(kind, id));
   // The landing page. It has no id of its own — there is one home page — so the route carries
   // `home` as a placeholder and the config is the site setting the Home page screen edits.
   if (kind === 'home') {
-    const r = await api.get('/admin/site/home');
-    return { config: r || {}, saveId: 'home', back: '/admin?s=homepage', name: 'Home' };
+    const { variants: _v, studioRevs, ...config } = r || {};
+    return { config, revs: studioRevs || {}, saveId: 'home', back: '/admin?s=homepage', name: 'Home' };
   }
-  if (kind === 'project') {
-    const r = await api.get(`/projects/${encodeURIComponent(id)}`);
-    return { config: r.config || {}, saveId: id, back: `/admin?s=projects&key=${encodeURIComponent(id)}`, name: id.toUpperCase() };
-  }
-  // The editor passes the slug (or the short, lower-cased) — the save route wants the id.
-  const r = await api.get('/admin/showcase');
-  const rows = r.projects || [];
-  const row = rows.find((x) => x.slug === id) || rows.find((x) => String(x.short || '').toLowerCase() === id.toLowerCase()) || rows.find((x) => x.id === id);
+  const revs = r?.revs && typeof r.revs === 'object' ? r.revs : {};
+  if (kind === 'project') return { config: r?.config || {}, revs, saveId: id, back: `/admin?s=projects&key=${encodeURIComponent(id)}`, name: id.toUpperCase() };
+  // The editor passes the slug (or the short); the route finds the row and the save wants its id.
+  const row = r?.project;
   if (!row) throw Object.assign(new Error('not_found'), { status: 404 });
-  return { config: row.config || {}, saveId: row.id, back: '/admin?s=showcase', name: row.name || row.slug, slug: row.slug, row };
-}
-
-async function saveTarget(kind, saveId, config) {
-  if (kind === 'project') return api.put(`/projects/${encodeURIComponent(saveId)}`, { config });
-  // The home config is not nested under a `config` key, and only the parts this screen owns
-  // are sent: `variants` comes back on the GET as a catalogue and is not a setting.
-  if (kind === 'home') {
-    const { variants: _v, ...rest } = config || {};
-    return api.put('/admin/site/home', rest);
-  }
-  return api.put(`/admin/showcase/${encodeURIComponent(saveId)}`, { config });
+  return { config: r.config || {}, revs, saveId: row.id, back: '/admin?s=showcase', name: row.name || row.slug, slug: row.slug, row };
 }
 
 export default function StudioPage() {
@@ -86,18 +73,14 @@ export default function StudioPage() {
     let alive = true;
     setErr(null); setTarget(null); setCanvas(null);
     const hand = readJson(handoffKey(kind, id));
-    const fromHand = hand && hand.config && typeof hand.config === 'object'
-      ? Promise.resolve({ config: hand.config, saveId: hand.saveId || null, back: hand.back || null, name: hand.name || id })
-      : null;
-    (fromHand || loadTarget(kind, id))
-      .then(async (tg) => {
-        // A handoff carries the config but not always the id the save route wants (showcase);
-        // fetch that half when it is missing, keeping the handed-over config.
-        if (!tg.saveId) {
-          try { const full = await loadTarget(kind, id); tg = { ...full, config: tg.config, name: tg.name || full.name }; }
-          catch (e) { if (kind !== 'project') throw e; tg = { ...tg, saveId: id, back: `/admin?s=projects&key=${encodeURIComponent(id)}` }; }
-        }
+    // The guarded load FIRST, always: a handoff in sessionStorage is not a permission. Only
+    // once the server has said yes is the handed-over config (unsaved form edits) used.
+    loadTarget(kind, id)
+      .then((tg) => {
+        if (hand && hand.config && typeof hand.config === 'object') tg = { ...tg, config: hand.config };
         if (!alive) return;
+        // The page is addressed by its id from here on: the index only picked it.
+        tg = { ...tg, pageId: index != null && Number.isInteger(index) ? pageIdAt(tg.config, index, kind) : null };
         setTarget(tg);
         if (index != null && Number.isInteger(index)) {
           // A home section that was never drawn has no canvas yet. It used to land on the
@@ -138,22 +121,65 @@ export default function StudioPage() {
 
   const save = useCallback(async () => {
     if (!target || !canvas || saving) return;
+    const pageId = target.pageId;
+    if (!pageId) { setSaveErr(true); toast.error(t('cst.save.noid', 'This page has no id, it cannot be saved from the studio.')); return; }
     setSaving(true); setSaveErr(false);
-    try {
-      const cfg = withCanvasAt(target.config, index, canvas, kind);
-      await saveTarget(kind, target.saveId, cfg);
-      setTarget((tg) => ({ ...tg, config: cfg }));
+    // One page, from the revision it was opened at ('' = a page that was never stored).
+    const put = (base) => { const rq = studioSaveRequest(kind, target.saveId, pageId, canvas, base); return api.put(rq.path, rq.body); };
+    const landed = (rev) => {
+      setTarget((tg) => ({ ...tg, config: withCanvasAt(tg.config, index, canvas, kind), revs: { ...(tg.revs || {}), [pageId]: rev } }));
       setSavedCanvas(canvas);
       setDraftRestored(false);
       drop(draftKey(kind, id, index));
       // The handoff described a config that is now stale; the editor will fetch the saved one.
       drop(handoffKey(kind, id));
       toast.success(t('cst.save.done', 'Page saved.'));
+    };
+    try {
+      const r = await put(target.revs?.[pageId] ?? '');
+      landed(r?.rev ?? '');
     } catch (e) {
+      const err = e?.data?.error;
+      if (e?.status === 409 && err === 'conflict') {
+        // Somebody saved THIS page after it was opened here. Nothing is overwritten without
+        // the author saying so, and nothing of theirs is lost either way: Escape keeps editing.
+        setSaving(false);
+        const mine = await dialog.confirm({
+          title: t('cst.conflict.title', 'Saved elsewhere meanwhile'),
+          message: t('cst.conflict.msg', 'Somebody saved this page after you opened it. Replace their version with yours? Your version stays in this tab whatever you choose.'),
+          okLabel: t('cst.conflict.mine', 'Replace with mine'),
+          cancelLabel: t('cst.conflict.other', 'Other choices'),
+          danger: true,
+        });
+        if (mine) {
+          setSaving(true);
+          try { const r2 = await put(e.data.rev ?? ''); landed(r2?.rev ?? ''); }
+          catch { setSaveErr(true); toast.error(t('cst.save.fail', 'The page could not be saved. Your changes are kept as a draft in this tab.')); }
+          finally { setSaving(false); }
+          return;
+        }
+        const theirs = await dialog.confirm({
+          title: t('cst.conflict.theirs.title', 'Load the saved version?'),
+          message: t('cst.conflict.theirs.msg', 'Your changes in this tab are replaced by the version that was saved. Choose Keep editing to keep yours and decide later.'),
+          okLabel: t('cst.conflict.theirs', 'Load the saved version'),
+          cancelLabel: t('cst.conflict.keep', 'Keep editing'),
+          danger: true,
+        });
+        if (theirs && e.data.current) {
+          setCanvas(e.data.current); setSavedCanvas(e.data.current);
+          setTarget((tg) => ({ ...tg, config: withCanvasAt(tg.config, index, e.data.current, kind), revs: { ...(tg.revs || {}), [pageId]: e.data.rev ?? '' } }));
+          drop(draftKey(kind, id, index)); setDraftRestored(false);
+        } else setSaveErr(true);
+        return;
+      }
       setSaveErr(true);
-      toast.error(e?.data?.error === 'forbidden' ? t('cst.save.forbidden', 'You cannot edit this page.') : t('cst.save.fail', 'The page could not be saved. Your changes are kept as a draft in this tab.'));
+      if (err === 'invalid_studio_doc') {
+        toast.error(t('cst.save.invalid', 'Refused by the server: {what} ({where}). Your changes are kept as a draft in this tab.')
+          .replace('{what}', t(`cst.save.why.${e.data.reason}`, e.data.reason || '?')).replace('{where}', String(e.data.path || '').replace(/^(canvases|customSections)\[\d+\]\.(canvas\.)?/, '')));
+      } else if (err === 'page_gone') toast.error(t('cst.save.gone', 'This page was deleted elsewhere since you opened it. Your changes are kept as a draft in this tab.'));
+      else toast.error(err === 'forbidden' ? t('cst.save.forbidden', 'You cannot edit this page.') : t('cst.save.fail', 'The page could not be saved. Your changes are kept as a draft in this tab.'));
     } finally { setSaving(false); }
-  }, [target, canvas, saving, kind, id, index, t, toast]);
+  }, [target, canvas, saving, kind, id, index, t, toast, dialog]);
 
   const back = useCallback(async () => {
     if (dirty) {
@@ -175,24 +201,36 @@ export default function StudioPage() {
     setDraftRestored(false);
   }, [kind, id, index, savedCanvas]);
 
-  // The whole public page, with THIS canvas in its tab — the same component visitors get,
-  // fed the draft config instead of a fetch.
+  // The whole public page, with THIS canvas in its tab: the REAL route, framed at a device
+  // width, fed the draft (editor/studio-page-frame.jsx, lib/studio-preview.js). It used to be
+  // the page component mounted in here, without the site around it, at the studio's width,
+  // and a page with no title fell back to its Overview (PLAN-STUDIO-2026 bug B).
   const renderPage = useMemo(() => {
     if (!target || index == null) return null;
-    return (cv) => {
+    return (cv, width) => {
       const config = withCanvasAt(target.config, index, cv, kind);
       const tab = `c-${cv?.id || ''}`;
-      // The landing page, with the section being drawn in its place. The same component a
-      // visitor gets, so what is on screen while editing is the page, not an approximation of
-      // it: the header, the neighbouring sections and the real width are all there.
-      if (kind === 'home') return <HomePage draft={config} />;
-      if (kind === 'project') return <ProjectPage preview={{ key: id, config, tab }} />;
+      const title = t('cst.preview.page', 'The whole project page, with this block in place');
+      if (kind === 'home') {
+        // The section being drawn is shown even while it is switched off: that is what is
+        // being looked at. The note above the frame says visitors do not see it yet.
+        const section = (target.config.customSections || [])[index] || null;
+        const sections = (config.customSections || []).map((s, i) => (i === index ? { ...s, enabled: true } : s));
+        return <StudioPageFrame key={width} src={framedPreviewUrl('home')} kind="home" payload={{ config: { ...config, customSections: sections } }}
+          title={title} reasons={previewReasons('home', config, cv, section)} t={t} />;
+      }
+      if (kind === 'project') {
+        return <StudioPageFrame key={width} src={framedPreviewUrl('project', id, cv?.id)} kind="project" payload={{ key: id, config, tab }}
+          title={title} reasons={previewReasons('project', config, cv)} t={t} />;
+      }
       // The public page reads `project` the way GET /showcase/:slug shapes it; the admin row
       // carries every one of those fields, with the draft config in place of the saved one.
       const row = target.row || { id: target.saveId, slug: target.slug || id, name: target.name, short: '', icon: null };
-      return <ShowcaseProjectPage preview={{ project: { ...row, config, tagline: config.tagline || '' }, tab }} />;
+      return <StudioPageFrame key={width} src={framedPreviewUrl('showcase', row.slug || id, cv?.id)} kind="showcase"
+        payload={{ project: { ...row, config, tagline: config.tagline || '' }, tab }}
+        title={title} reasons={previewReasons('showcase', config, cv)} t={t} />;
     };
-  }, [target, index, kind, id]);
+  }, [target, index, kind, id, t]);
 
   // ── The states a URL can land in ──────────────────────────────────────────
   if (!kind || !id || (index != null && Number.isNaN(index))) {

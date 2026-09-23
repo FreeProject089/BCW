@@ -37,6 +37,9 @@ try {
     "import CanvasView from '../src/ui/canvas-view.jsx';",
     "export const page = (value, theme) => renderToStaticMarkup(",
     '  <I18nProvider><CanvasView canvas={value} themePreview={theme} /></I18nProvider>);',
+    // The stacked phone column: the layout where a fixed box had nothing to confine it (S5).
+    "export const stack = (value) => renderToStaticMarkup(",
+    '  <I18nProvider><CanvasView canvas={value} stackPreview /></I18nProvider>);',
     // Rendered inside the real provider, the way the app mounts it. Its network fetch lives in
     // an effect, which renderToStaticMarkup never runs.
     'export const render = (value) => renderToStaticMarkup(',
@@ -76,8 +79,8 @@ try {
   cleanup(); process.exit(2);
 }
 
-let render; let page; let renderPage; let renderLoose;
-try { ({ render, page, renderPage, renderLoose } = await import(pathToFileURL(bundle).href)); }
+let render; let page; let renderPage; let renderLoose; let stack;
+try { ({ render, page, renderPage, renderLoose, stack } = await import(pathToFileURL(bundle).href)); }
 catch (e) { console.error(`✗ the studio would not load: ${e?.message || e}`); cleanup(); process.exit(1); }
 
 const problems = [];
@@ -299,6 +302,54 @@ try {
   must(/left:\s*96px/.test(dark), 'the dark overlay dropped a coordinate the author never touched');
   must(/width:\s*400px/.test(dark), 'the dark overlay dropped the width');
 } catch (e) { problems.push(`rendering both themes threw: ${e?.message || e}`); }
+
+// ── A HOSTILE document (PLAN-STUDIO-2026, S1 to S5). ─────────────────────────────────
+// Everything a per-project editor can type into a studio page and a visitor then receives,
+// rendered through the real component, in both the scaled and the stacked layout. Each rule
+// below was checked by breaking the filter it guards and watching it go red.
+const EVIL = 'https://evil.example/p.png';
+const FORGED = 'x"]{}body{background:url(https://evil.example/id)}[data-anim="';
+const HOSTILE = {
+  id: 'h1', title: '', height: 900,
+  bg: `url(${EVIL})`,
+  css: '.a{position:fixed;inset:0;z-index:99}.b{position:\\66 ixed}.c{color:red}',
+  blocks: [
+    { id: 's1', kind: 'button', x: 0, y: 0, w: 200, h: 60, props: { label: 'Go', action: { type: 'link', href: 'javascript:alert(1)' } } },
+    { id: 's2', kind: 'button', x: 0, y: 80, w: 200, h: 60, props: { label: 'Get', action: { type: 'download', href: ' JaVaScRiPt:alert(2)' } } },
+    { id: 's3', kind: 'button', x: 0, y: 160, w: 200, h: 60, props: { label: 'Up', variant: 'dropdown-down', items: [{ label: 'x', href: 'java\nscript:alert(3)' }, { label: 'y', href: '/\\evil.example' }] } },
+    { id: 's4', kind: 'button', x: 0, y: 240, w: 200, h: 60, props: { label: 'Api', action: { type: 'api', path: '/admin/users', method: 'POST', open: 'url' } } },
+    { id: FORGED, kind: 'box', x: 0, y: 320, w: 200, h: 60, anim: { kind: 'custom', trigger: 'load', custom: 'from{opacity:0}to{opacity:1}' }, props: { bg: `url(${EVIL})` } },
+    { id: 's6', kind: 'box', x: 0, y: 400, w: 200, h: 60, props: { bg: '\\75 rl(https://evil.example/esc)', border: `red url(${EVIL})`, color: `image-set("${EVIL}" 1x)`, style: 'position: fixed; inset: 0' } },
+    { id: 's7', kind: 'button', x: 0, y: 480, w: 200, h: 60, props: { label: 'C', color: `url(${EVIL})` } },
+    { id: 's8', kind: 'shape', x: 0, y: 560, w: 200, h: 60, props: { shape: 'rect', fill: `url(${EVIL})`, stroke: `url(${EVIL})` } },
+    { id: 's9', kind: 'embed', x: 0, y: 640, w: 200, h: 60, props: { url: 'javascript:alert(9)' } },
+    { id: 's10', kind: 'box', x: 0, y: 720, w: 200, h: 60, link: 'javascript:alert(10)', props: {} },
+  ],
+};
+const decodeAttr = (v) => v.replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+const hrefOk = (h) => /^(\/(?![/\\])|#|https?:\/\/|mailto:)/i.test(h);
+for (const [name, renderIt] of [['scaled', () => page(HOSTILE, 'light')], ['stacked', () => stack(HOSTILE)]]) {
+  let out = '';
+  try { out = renderIt(); } catch (e) { problems.push(`the hostile document threw in the ${name} layout: ${e?.message || e}`); continue; }
+  const hrefs = [...out.matchAll(/\shref="([^"]*)"/g)].map((m) => decodeAttr(m[1]));
+  const badHrefs = hrefs.filter((h) => !hrefOk(h));
+  must(!badHrefs.length, `${name}: an author href reached the page outside the link policy: ${badHrefs.join(' | ')}`);
+  must(!/javascript|vbscript/i.test(hrefs.join(' ')), `${name}: a script URL reached an href`);
+  const styles = [...out.matchAll(/\sstyle="([^"]*)"/g)].map((m) => decodeAttr(m[1]));
+  const offsite = styles.filter((st) => /evil\.example/.test(st) || /url\((?!\s*['"]?(?:\/(?!\/)|#|data:image\/))/i.test(st));
+  must(!offsite.length, `${name}: a style attribute fetches from another host: ${offsite.join(' | ').slice(0, 200)}`);
+  must(!/position:\s*fixed/i.test(styles.join(';')), `${name}: an author's position:fixed reached a style attribute`);
+  const sheets = [...out.matchAll(/<style>([\s\S]*?)<\/style>/g)].map((m) => decodeAttr(m[1])).join('\n');
+  must(!/evil\.example|"\]\{/.test(sheets), `${name}: a forged block id reached a <style> element: ${sheets.slice(0, 200)}`);
+  must(!/position\s*:\s*(?:fixed|sticky)/i.test(sheets), `${name}: the page stylesheet kept position:fixed`);
+  must(/color:red/.test(sheets), `${name}: the page stylesheet lost an ordinary rule while refusing the bad one`);
+  must(/data-inert="api_removed"/.test(out), `${name}: the old api action is not rendered inert with its reason`);
+  must(!/<a[^>]*href="[^"]*"[^>]*data-inert/.test(out), `${name}: an inert button still carries an href`);
+  // The root is a containing block for fixed boxes, in EVERY layout.
+  const root = /<div[^>]*data-cv="h1"[^>]*>/.exec(out)?.[0] || '';
+  must(/contain:\s*layout paint/.test(root) && /transform:\s*translateZ\(0\)/.test(root),
+    `${name}: the canvas root does not confine position:fixed (needs contain: layout paint and a transform): ${root.slice(0, 200)}`);
+}
 
 cleanup();
 

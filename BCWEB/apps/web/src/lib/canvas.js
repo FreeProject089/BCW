@@ -95,8 +95,15 @@ export const EASING_CURVES = {
 export const STAGGER_STEPS = [40, 60, 80, 120, 200];
 /** What a button block can look like. */
 export const BUTTON_VARIANTS = ['button', 'card', 'dropdown-down', 'dropdown-up'];
-/** What pressing it does. */
-export const BUTTON_ACTIONS = ['link', 'copy', 'scroll', 'download', 'api'];
+/** What pressing it does — the choices the editor OFFERS.
+ *
+ *  `api` is gone from this list (PLAN-STUDIO-2026, S2 and decision D5). It fired any `/api`
+ *  request with the CLICKING visitor's session, so a button on a public page could make an
+ *  admin who looked at it do something authenticated. A page saved with it still loads: the
+ *  button renders inert and the editor shows it in red with the reason (`LEGACY_ACTIONS`). */
+export const BUTTON_ACTIONS = ['link', 'copy', 'scroll', 'download'];
+/** Action types a stored page may carry that are no longer honoured, and why. */
+export const LEGACY_ACTIONS = { api: 'api_removed' };
 /** Drop shadows a block may carry. The CSS is `.cv-shadow-<name>` in index.css. */
 export const SHADOWS = ['sm', 'md', 'lg', 'glow'];
 /** What a block does under the pointer. The CSS is `.cv-hov-<name>` in index.css. */
@@ -112,13 +119,83 @@ export const TEXT_ALIGNS = ['left', 'center', 'right', 'justify'];
  * (see check-url-schemas.mjs for the API side of the same rule).
  */
 export function safeLink(raw) {
-  const s = typeof raw === 'string' ? raw.trim().slice(0, 2000) : '';
+  // Read the URL the way the BROWSER does before judging it: tabs and newlines anywhere are
+  // deleted, and C0 controls and spaces at either end are trimmed. `java\nscript:` and
+  // `/\t/evil.example` are a script and another host to a browser, and neither looks like one
+  // to a prefix test on the raw string.
+  const s = typeof raw === 'string'
+    ? raw.slice(0, 2000).replace(/[\t\n\r]/g, '').replace(/^[\x00-\x20]+|[\x00-\x20]+$/g, '')
+    : '';
   if (!s) return '';
-  if (s.startsWith('/') && !s.startsWith('//')) return s;
+  // A path, but not `//host` or `/\host`: a browser reads a backslash as a slash in an http
+  // URL, so both are protocol-relative links to somebody else's site.
+  if (s.startsWith('/')) return /^\/[/\\]/.test(s) ? '' : s;
   if (s.startsWith('#')) return s;
   if (/^https?:\/\//i.test(s)) return s;
   if (/^mailto:[^\s]+$/i.test(s)) return s;
   return '';
+}
+
+/** An element id a `scroll` button may target: `#` and an id, never a CSS selector. */
+const SCROLL_TARGET = /^#[A-Za-z][\w-]{0,79}$/;
+
+/**
+ * What a button does, decided once, from the stored action — for the renderer AND the editor.
+ *
+ *   link      a `safeLink` (path, anchor, http(s), mailto)
+ *   download  a file: a same-site path or http(s), never an anchor or a mail address
+ *   scroll    `#id` only (`#top` when empty); a selector is inert
+ *   copy      the text; no URL at all
+ *   api / anything else   inert, with the reason the editor shows in red
+ *
+ * `reason` is '' when the action works, else a key the editor turns into words.
+ */
+export function buttonTarget(action) {
+  const a = action && typeof action === 'object' ? action : {};
+  const type = typeof a.type === 'string' && a.type ? a.type : 'link';
+  const inert = (reason) => ({ type: 'inert', href: '', external: false, reason });
+  if (LEGACY_ACTIONS[type]) return inert(LEGACY_ACTIONS[type]);
+  if (type === 'link' || type === 'download') {
+    const href = safeLink(a.href);
+    if (!href) return { type, href: '', external: false, reason: String(a.href || '').trim() ? 'unsafe_url' : '' };
+    if (type === 'download' && !(href.startsWith('/') || /^https?:\/\//i.test(href))) return { type, href: '', external: false, reason: 'unsafe_url' };
+    return { type, href, external: /^https?:\/\//i.test(href), reason: '' };
+  }
+  if (type === 'scroll') {
+    const target = String(a.target || '').trim();
+    if (!target) return { type, href: '#top', external: false, reason: '' };
+    return SCROLL_TARGET.test(target) ? { type, href: target, external: false, reason: '' } : inert('bad_scroll_target');
+  }
+  if (type === 'copy') return { type, href: '', external: false, reason: '' };
+  return inert('unknown_action');
+}
+
+/** A dropdown item's link: the same policy as every other link on a canvas. */
+export const menuItemHref = (raw) => safeLink(raw);
+
+/**
+ * The shape a block or canvas id must have.
+ *
+ * An id is interpolated into selectors (`[data-anim="…"]`, `[data-cv="…"]`) inside a `<style>`
+ * element. One that carries `"]{}` closes the selector and opens a rule for the whole site
+ * (S3), so an id is a NAME, never free text. The API refuses anything else on save
+ * (apps/api/src/lib/studio-doc.mjs); this rewrites it on read, for a page stored before.
+ */
+export const ID_SHAPE = /^[A-Za-z0-9_-]{1,60}$/;
+function safeId(raw, fallback, taken) {
+  let id = typeof raw === 'string' && ID_SHAPE.test(raw) ? raw : '';
+  if (!id) {
+    // Derived, not random: the editor selects by id, and a fresh one on every render would
+    // make a legacy block impossible to keep selected.
+    const base = String(raw ?? '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40);
+    id = `${fallback}${base ? `-${base}` : ''}`.slice(0, 60);
+  }
+  if (taken) {
+    let n = 1; const root = id.slice(0, 54);
+    while (taken.has(id)) id = `${root}-${n++}`;
+    taken.add(id);
+  }
+  return id;
 }
 
 /** Kinds whose height is theirs to keep in a stack — a media box with no intrinsic height in
@@ -143,6 +220,7 @@ export const snap = (v, grid = GRID) => Math.round(num(v) / grid) * grid;
  */
 export function normalizeCanvas(raw) {
   const c = raw && typeof raw === 'object' ? raw : {};
+  const taken = new Set();
   const blocks = (Array.isArray(c.blocks) ? c.blocks : [])
     .map((b, i) => {
       if (!b || typeof b !== 'object') return null;
@@ -152,7 +230,8 @@ export function normalizeCanvas(raw) {
         // A stable id matters: it keys the React list and it is what the editor selects by.
         // Falling back to the index keeps an id-less legacy block editable instead of making
         // every one of them the "same" block.
-        id: String(b.id || `b${i}`),
+        // A NAME, filtered (S3): see ID_SHAPE.
+        id: safeId(b.id == null || b.id === '' ? `b${i}` : String(b.id), `b${i}`, taken),
         kind,
         x: clamp(snap(num(b.x, 0)), 0, DESIGN_WIDTH - GRID),
         y: Math.max(0, snap(num(b.y, 0))),
@@ -187,18 +266,21 @@ export function normalizeCanvas(raw) {
     })
     .filter(Boolean);
   return {
-    id: String(c.id || 'canvas'),
+    id: safeId(c.id == null || c.id === '' ? 'canvas' : String(c.id), 'canvas'),
     title: String(c.title || ''),
-    // The canvas is as tall as its content unless the author pinned a height. Computed rather
-    // than stored so deleting the bottom block does not leave a page of blank space behind it.
-    height: Math.max(240, num(c.height, 0) || contentHeight(blocks)),
+    // The canvas is as tall as its content, or as the height the author pinned when that is
+    // TALLER (decision D4). Computed rather than stored so deleting the bottom block does not
+    // leave a page of blank space behind it; never shorter than the content, because a height
+    // that was frozen by accident (bug A.1, see serializeCanvas) cut every block added below
+    // it, in the editor and for visitors.
+    height: Math.max(240, num(c.height, 0), contentHeight(blocks)),
     bg: typeof c.bg === 'string' ? c.bg : '',
     blocks,
     // Set the moment an author places anything on the phone board. Until then a phone gets
     // the reading-order stack it always got, so a canvas that never touched this renders
     // exactly as before.
     phoneBoard: c.phoneBoard === true || blocks.some((b) => b.phone?.x != null && b.phone?.y != null),
-    phoneHeight: Math.max(240, num(c.phoneHeight, 0) || phoneContentHeight(blocks)),
+    phoneHeight: Math.max(240, num(c.phoneHeight, 0), phoneContentHeight(blocks)),
     // The snapping step. Stored positions are NOT re-snapped to it — a coarser grid is a
     // choice about the next drag, not a reflow of what is already placed.
     grid: GRID_SIZES.includes(num(c.grid, GRID)) ? num(c.grid, GRID) : GRID,
@@ -688,6 +770,143 @@ export function distributeMany(blocks, ids, axis = 'x') {
   at.set(first.id, num(first[pos]));
   at.set(last.id, num(last[pos]));
   return blocks.map((b) => (at.has(b.id) ? { ...b, [pos]: at.get(b.id) } : b));
+}
+
+// ── Saving what was authored, not what was computed ─────────────────────────────────
+/**
+ * The canvas to STORE, from the normalised one the editor works on.
+ *
+ * normalizeCanvas COMPUTES `height`, `phoneHeight` and `phoneBoard`. The editor used to send
+ * the normalised canvas back as the document, so the computed height went into storage at the
+ * first edit and every later read took it for a PINNED one: a block added below was cut, in
+ * the editor and for visitors (PLAN-STUDIO-2026, bug A.1). A derived value is kept only when
+ * the author set it: already stored (`raw`), or set by this very change (`extra`, the height
+ * handle, the phone board switch).
+ */
+export function serializeCanvas(canvas, raw, extra = {}) {
+  const r = raw && typeof raw === 'object' ? raw : {};
+  const e = extra && typeof extra === 'object' ? extra : {};
+  const out = { ...canvas, ...e };
+  const pinned = (k) => (num(e[k], 0) > 0 ? num(e[k]) : num(r[k], 0) > 0 ? num(r[k]) : null);
+  for (const k of ['height', 'phoneHeight']) { const v = pinned(k); if (v == null) delete out[k]; else out[k] = v; }
+  if (e.phoneBoard !== true && r.phoneBoard !== true) delete out.phoneBoard;
+  return out;
+}
+
+// ── Operations on the board being EDITED ──────────────────────────────────────────
+// The editor draws one of three boards: the desktop plane in the light theme (the base
+// layout), the same plane in the dark theme (the `themes.dark` overlay), or the 390px phone
+// board (the `phone` overlay). Every operation below READS the board it is given and WRITES
+// that board's layer only. The editor used to run half of them on the desktop base whatever
+// board was on screen, so aligning two blocks on the phone moved the desktop page
+// (PLAN-STUDIO-2026, bug A.2). `board` is 'light' | 'dark' | 'phone'.
+
+/** The blocks as the editor draws them on `board`: the same functions the public page uses. */
+export function boardBlocks(canvas, board = 'light') {
+  const blocks = Array.isArray(canvas?.blocks) ? canvas.blocks : [];
+  if (board === 'phone') return phoneBoardBlocks(blocks.map((b) => resolveBlock(b, 'light')));
+  return blocks.map((b) => resolveBlock(b, board === 'dark' ? 'dark' : 'light'));
+}
+const boardWidth = (board) => (board === 'phone' ? PHONE_WIDTH : DESIGN_WIDTH);
+const geometry = (b) => ({ x: num(b.x), y: num(b.y), w: num(b.w), h: num(b.h) });
+
+/**
+ * Write geometry computed on a board back into the document, on that board's layer.
+ * `before` and `after` are board views; only blocks whose geometry changed are written.
+ * On the phone the WHOLE geometry is written, so a block laid there by reading order becomes
+ * a placed block exactly where it was drawn, width included (bug A.3).
+ * @returns {{ blocks: object[], extra: object }}
+ */
+export function commitGeometry(blocks, before, after, board = 'light') {
+  const prev = new Map((before || []).map((b) => [b.id, b]));
+  const changed = new Map();
+  for (const b of after || []) {
+    const p = prev.get(b.id); if (!p) continue;
+    const d = {};
+    for (const k of ['x', 'y', 'w', 'h']) if (num(b[k]) !== num(p[k])) d[k] = num(b[k]);
+    if (Object.keys(d).length) changed.set(b.id, { d, full: geometry(b) });
+  }
+  const extra = {};
+  const out = (blocks || []).map((b) => {
+    const c = changed.get(b.id); if (!c) return b;
+    if (board === 'phone') { extra.phoneBoard = true; return { ...b, phone: { ...(b.phone || {}), ...c.full } }; }
+    if (board === 'dark') return { ...b, themes: { ...(b.themes || {}), dark: { ...(b.themes?.dark || {}), ...c.d } } };
+    return { ...b, ...c.d };
+  });
+  return { blocks: out, extra };
+}
+
+const onBoard = (canvas, board, op) => {
+  const view = boardBlocks(canvas, board);
+  return commitGeometry(canvas.blocks, view, op(view), board);
+};
+/** alignMany, on the board being edited. */
+export const alignOnBoard = (canvas, ids, how, board = 'light') => onBoard(canvas, board, (v) => alignMany(v, ids, how));
+/** distributeMany, on the board being edited. */
+export const distributeOnBoard = (canvas, ids, axis, board = 'light') => onBoard(canvas, board, (v) => distributeMany(v, ids, axis));
+/**
+ * Give every selected block the width (or height) of the FIRST one picked, the one the author
+ * clicked deliberately; a widened block is pulled left so it stays on the board.
+ */
+export function matchSizeMany(blocks, ids, axis, width = DESIGN_WIDTH) {
+  if (!Array.isArray(ids) || ids.length < 2 || (axis !== 'w' && axis !== 'h')) return blocks;
+  const model = blocks.find((b) => b.id === ids[0]);
+  if (!model) return blocks;
+  return blocks.map((b) => (ids.includes(b.id) && !b.locked
+    ? { ...b, [axis]: num(model[axis]), ...(axis === 'w' ? { x: Math.max(0, Math.min(num(b.x), width - num(model.w))) } : {}) }
+    : b));
+}
+export const matchSizeOnBoard = (canvas, ids, axis, board = 'light') => onBoard(canvas, board, (v) => matchSizeMany(v, ids, axis, boardWidth(board)));
+
+/** What a single-block drag writes: on the phone the size goes with the place (bug A.3). */
+export function dragPatch(view, next, board = 'light') {
+  return board === 'phone' ? { ...next, w: num(view.w), h: num(view.h) } : next;
+}
+
+/**
+ * Duplicate the selection, offset on the board being edited. The desktop copy stays inside
+ * the 1200px plane (it used to be clamped into the phone's 390 when duplicated there), and the
+ * phone copy is offset on the phone instead of landing exactly on its original.
+ * @returns {{ blocks: object[], ids: string[], extra: object }}
+ */
+export function duplicateOnBoard(canvas, ids, board, newId) {
+  const OFF = GRID * 3;
+  const view = new Map(boardBlocks(canvas, board).map((b) => [b.id, b]));
+  const out = []; const made = [];
+  for (const b of canvas.blocks || []) {
+    if (!ids.includes(b.id)) continue;
+    const id = newId();
+    const copy = { ...b, id, x: clamp(num(b.x) + OFF, 0, Math.max(0, DESIGN_WIDTH - num(b.w))), y: num(b.y) + OFF };
+    if (b.themes?.dark && (b.themes.dark.x != null || b.themes.dark.y != null)) {
+      const d = b.themes.dark;
+      copy.themes = { ...b.themes, dark: { ...d, ...(d.x != null ? { x: clamp(num(d.x) + OFF, 0, Math.max(0, DESIGN_WIDTH - num(d.w ?? b.w))) } : {}), ...(d.y != null ? { y: num(d.y) + OFF } : {}) } };
+    }
+    const v = view.get(b.id);
+    if (board === 'phone' && v) copy.phone = { ...(b.phone || {}), x: clamp(num(v.x) + OFF, 0, Math.max(0, PHONE_WIDTH - num(v.w))), y: num(v.y) + OFF, w: num(v.w), h: num(v.h) };
+    else if (b.phone?.x != null && b.phone?.y != null) copy.phone = { ...b.phone, x: clamp(num(b.phone.x) + OFF, 0, Math.max(0, PHONE_WIDTH - num(b.phone.w ?? GRID))), y: num(b.phone.y) + OFF };
+    out.push(copy); made.push(id);
+  }
+  return { blocks: [...(canvas.blocks || []), ...out], ids: made, extra: board === 'phone' && made.length ? { phoneBoard: true } : {} };
+}
+
+/**
+ * New blocks (added, pasted, inserted from a component) placed on the board being edited.
+ * They arrive with DESKTOP coordinates, which they keep; on the phone board they also get a
+ * phone place, below everything already there, inside 390px, keeping their arrangement.
+ * @returns {{ blocks: object[], extra: object }}
+ */
+export function placeOnBoard(canvas, fresh, board = 'light') {
+  const list = Array.isArray(fresh) ? fresh : [];
+  if (board !== 'phone' || !list.length) return { blocks: [...(canvas.blocks || []), ...list], extra: {} };
+  const bottom = phoneBoardBlocks(canvas.blocks || []).reduce((m, b) => Math.max(m, num(b.y) + num(b.h)), 0);
+  const top = bottom ? bottom + 16 : 16;
+  const bb = boundsOf(list);
+  const placed = list.map((b) => {
+    const w = Math.min(snap(PHONE_WIDTH - 32), num(b.w, 320));
+    const x = clamp(snap(16 + num(b.x) - bb.x), 0, PHONE_WIDTH - w);
+    return { ...b, phone: { ...(b.phone || {}), x, y: snap(top + num(b.y) - bb.y), w, h: num(b.h, 120) } };
+  });
+  return { blocks: [...(canvas.blocks || []), ...placed], extra: { phoneBoard: true } };
 }
 
 // ── Presets ──────────────────────────────────────────────────────────────────
