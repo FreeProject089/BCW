@@ -97,7 +97,7 @@ export function MyoPage() {
       {/* ── Hero ── */}
       <div className="plate relative text-center max-w-2xl mx-auto mb-8 sm:mb-10">
         <div aria-hidden className="absolute left-1/2 -translate-x-1/2 -top-24 w-[680px] max-w-[135%] h-80 rounded-full tint-primary blur-3xl -z-10" />
-        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold uppercase tracking-wider text-[var(--accent-ink)] tint-primary-soft border b-primary mb-4">
+        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold uppercase tracking-wider text-[var(--accent-ink)] tint-primary-solid border b-primary mb-4">
           <Sparkles size={13} /> {t('myo.eyebrow', 'Made to order')}
         </span>
         <h1 className="text-3xl sm:text-[2.7rem] font-extrabold tracking-tight leading-[1.08]">{t('myo.title', 'We build it for you')}</h1>

@@ -620,12 +620,12 @@ export function Hosting() {
           sentence about SLAs, and whatever they wrote arrived filed as "Something else".
           Each button carries its own ?topic=, which sets the form's kind AND its template —
           so the queue counts what people actually asked for. */}
-      <SectionLead
-        title={t('hosting.talk.h', 'Then tell us what you need')}
-        sub={t('hosting.talk.h.sub', 'Three doors, so what you write arrives where somebody can answer it.')} />
-      {/* The heading above already says what this is. It used to say it, and then the card
-          said it again in a larger font beside a building icon. */}
-      <Card className="p-6">
+      {/* The heading is INSIDE the card it introduces. On the backdrop it needed a ground of
+          its own, and the one it had (a page-coloured plate) was reported as a slab behind the
+          title; the card right under it is the ground it belongs on. */}
+      <Card className="p-6 mt-14 sm:mt-20">
+        <h2 className="text-2xl sm:text-[1.75rem] font-extrabold tracking-tight text-balance">{t('hosting.talk.h', 'Then tell us what you need')}</h2>
+        <p className="text-[var(--muted)] mt-2 mb-5 text-[15px] leading-relaxed max-w-2xl">{t('hosting.talk.h.sub', 'Three doors, so what you write arrives where somebody can answer it.')}</p>
         <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
           {[
             ['hosting-plan', Server, t('hosting.talk.plan', 'A bigger hosting plan'),

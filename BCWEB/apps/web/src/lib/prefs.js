@@ -92,16 +92,14 @@ export function setGlassPrefs({ on, pct }) {
   applyGlassPrefs({ on, pct: pct ?? getGlassPrefs().pct });
 }
 
-// Page grain: the noise tiles on the page backdrop, the footer band and `.tex-surface`
-// (index.css, `--tex` / `--tex-page`). One switch, not a level: the grain only has to be
-// subtle or absent, and a slider for "how much dirt" is a question nobody wants asked.
+// Grain: the noise recipes in index.css (`--grain-fine` / `--grain-medium`), carried by the page
+// backdrop, the footer band, the hero cards (.grain-hero) and a few large quiet cards
+// (.grain-fine); nothing text-dense carries any. One switch, not a level: the grain only has
+// to be there or not, and a slider for "how much dirt" is a question nobody wants asked.
 //
-// ON by default, and that default was earned by measurement rather than taste: the two tiles
-// composited onto the page colour and the pixels read back give an sRGB standard deviation of
-// 3.86/255 (1.5%) in the light theme and 1.71/255 (0.67%) in the dark one, moving the mean
-// relative luminance 0.868 -> 0.851 and 0.00275 -> 0.00292. At the intensity the first pass
-// shipped (.30 light) it was 10.9/255 with single specks at 2.12:1 against the page, which is
-// the reading that came back as "it looks bad" — that one would not have defaulted on.
+// ON by default, earned by measurement: no speck on any carrier reaches 1.5:1 against its own
+// surface (the table is at `--grain-fine` in index.css), so text keeps its contrast on all of
+// them.
 //
 // Applied as `data-texture` on <html>; forced colours and reduced transparency turn it off in
 // CSS whatever this says. Older values ('soft' / 'rich', from the first pass) read as on.

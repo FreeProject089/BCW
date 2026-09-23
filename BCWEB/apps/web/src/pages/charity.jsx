@@ -254,7 +254,7 @@ export function CharityCard({ pot, design, t, onGive, preview = false }) {
   if (d.mode === 'code') return <CharityCodeCard {...{ d, pot, t, L, scoped, cls, giveBtn, voteBtn, moreBtn, buttonRow }} />;
   if (!custom) {
     return (
-      <Card className="charity-card-glow p-6 md:p-8 max-w-xl mx-auto text-center relative overflow-hidden">
+      <Card className="grain-hero charity-card-glow p-6 md:p-8 max-w-xl mx-auto text-center relative overflow-hidden">
         <div className="absolute -bottom-16 left-1/2 -translate-x-1/2 w-96 h-96 rounded-full opacity-30 pointer-events-none" style={{ background: 'radial-gradient(circle, var(--primary-glow), transparent 62%)' }} />
         <div className="absolute top-3 right-3 text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-full bg-[var(--surface-2)] text-[var(--muted)]">{new Date().toLocaleString(undefined, { month: "long" })}</div>
         <div className="relative">

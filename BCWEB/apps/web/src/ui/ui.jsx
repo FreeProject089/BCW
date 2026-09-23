@@ -550,7 +550,7 @@ export function EmptyState({ icon: Icon, title, sub, hint, action, children, as:
     // gives, not the content — `break-words` covers the unbreakable id or URL a title
     // sometimes carries, and the sentence is capped so it does not run edge to edge on a
     // wide screen.
-    <Card className="p-6 sm:p-12 text-center">
+    <Card className="grain-fine p-6 sm:p-12 text-center">
       {Icon && <Icon size={32} className="mx-auto text-[var(--faint)] mb-3" />}
       <TitleTag className="font-semibold break-words">{title}</TitleTag>
       {sub && <div className="text-sm text-[var(--muted)] mt-1 mx-auto max-w-sm break-words">{sub}</div>}

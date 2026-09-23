@@ -883,7 +883,7 @@ export function Home({ draft: draftProp = null }) {
 
       {/* CTA / support */}
       <section className="reveal-on-scroll pb-4">
-        <Card className="p-10 md:p-14 text-center relative overflow-hidden">
+        <Card className="grain-hero p-10 md:p-14 text-center relative overflow-hidden">
           {/* Plain surface, like every other section. It was a solid orange slab, which
               made this one block shout over a page that is otherwise white cards on a
               neutral ground — and forced its own button palette, since an orange
@@ -954,7 +954,7 @@ function BuildTabs({ myoOn, queueFull }) {
   return (
     <section>
       <div className="reveal-on-scroll">
-        <Card className="p-6 sm:p-10 relative overflow-hidden">
+        <Card className="grain-hero p-6 sm:p-10 relative overflow-hidden">
           <div className="absolute inset-0 pointer-events-none opacity-[0.07]"
             style={{ background: `radial-gradient(60% 120% at ${tab === 'dev' ? '85%' : '15%'} 0%, var(--primary) 0%, transparent 70%)`, transition: 'background .4s' }} />
           <div className="relative max-w-3xl">

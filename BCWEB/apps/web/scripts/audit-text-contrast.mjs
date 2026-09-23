@@ -25,8 +25,19 @@
 //     [--pages /,/catalog] [--widths 375,768,1280] [--themes light,dark] [--glass off,on]
 //     [--texture off,on] [--json out.json] [--top 25] [--max-steps 8]
 //
+// `--halo` keeps every text-shadow while the glyphs are hidden. Text on the backdrop gets its
+// legibility from its own shadow (index.css, `.plate` / `.on-backdrop`), not from a box, and a
+// run without this flag measures that text as if the shadow did not exist. With it, the pixels
+// read back under a text box are the ones the glyphs are actually drawn on. Conservative: the
+// halo is densest AT the glyphs, and the sampling grid also reads the gaps between words.
+//
+// Signed-in screens (/dashboard, /admin?s=…): set AUDIT_EMAIL, AUDIT_PASSWORD and, for a 2FA
+// account (every staff account), AUDIT_TOTP (the base32 secret). Each worker signs in once
+// before its pages. Use a throwaway fixture account on a dev database, never a real one.
+//
 // Exit code is 0: this is a measurement, not a gate. Read the table.
 import { existsSync, writeFileSync } from 'node:fs';
+import { createHmac } from 'node:crypto';
 
 const args = Object.fromEntries(process.argv.slice(2).reduce((acc, a, i, all) => {
   if (a.startsWith('--')) acc.push([a.slice(2), all[i + 1] && !all[i + 1].startsWith('--') ? all[i + 1] : '1']);
@@ -182,8 +193,34 @@ async function sample(dataUrl, boxes) {
 }
 
 // ---------------------------------------------------------------- driver
-const HIDE = '*,*::before,*::after{color:transparent!important;-webkit-text-fill-color:transparent!important;text-shadow:none!important;caret-color:transparent!important;transition:none!important}';
+const HALO = args.halo === '1';
+const HIDE = '*,*::before,*::after{color:transparent!important;-webkit-text-fill-color:transparent!important;'
+  + (HALO ? '' : 'text-shadow:none!important;') + 'caret-color:transparent!important;transition:none!important}';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// RFC 6238, the same computation as apps/api/src/lib/totp.mjs.
+function totpNow(secretB32) {
+  const A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  let bits = '';
+  for (const c of secretB32.replace(/[=\s]/g, '').toUpperCase()) bits += A.indexOf(c).toString(2).padStart(5, '0');
+  const key = Buffer.from(bits.match(/.{8}/g).map((b) => parseInt(b, 2)));
+  const ctr = Buffer.alloc(8); ctr.writeBigUInt64BE(BigInt(Math.floor(Date.now() / 30000)));
+  const h = createHmac('sha1', key).update(ctr).digest(); const o = h[h.length - 1] & 15;
+  return String((h.readUInt32BE(o) & 0x7fffffff) % 1e6).padStart(6, '0');
+}
+async function signIn(page) {
+  const email = process.env.AUDIT_EMAIL, password = process.env.AUDIT_PASSWORD;
+  if (!email || !password) return;
+  await page.goto(BASE + '/auth', { waitUntil: 'load', timeout: 30000 });
+  const call = (url, body) => page.evaluate(async (u, b) => fetch(u, { method: 'POST', credentials: 'include',
+    headers: { 'content-type': 'application/json' }, body: JSON.stringify(b) }).then((r) => r.json()).catch(() => ({})), url, body);
+  const one = await call('/api/auth/login', { email, password });
+  if (one.twoFactorRequired || one.tempToken) {
+    if (!process.env.AUDIT_TOTP) throw new Error('the account needs 2FA: set AUDIT_TOTP');
+    const two = await call('/api/auth/login/2fa', { tempToken: one.tempToken, code: totpNow(process.env.AUDIT_TOTP) });
+    if (two.error) throw new Error('2fa refused: ' + two.error);
+  } else if (one.error) throw new Error('sign-in refused: ' + one.error);
+}
 
 // One browser per worker, not one tab per worker: a background tab in a shared browser does
 // not render (no animation frames, no intersection callbacks), so lazy sections never mount
@@ -217,6 +254,7 @@ async function run(browser, { combo, width }) {
         localStorage.setItem('bcweb_skip_intro', '1');
       } catch { /* storage refused */ }
     }, combo);
+    await signIn(page);
     for (const path of PAGES) {
       const row = { ...combo, width, path, texts: 0, measured: 0, fail: 0, noSurface: 0, noSurfaceFail: 0 };
       try {

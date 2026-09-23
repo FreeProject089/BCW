@@ -3,6 +3,7 @@ import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Boxes, Server, Download, ArrowRight, Search, Upload, Bell, CheckCircle2, XCircle, Clock, Package, ShieldCheck, Inbox, TrendingUp, Lock, LayoutDashboard, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, Receipt, Copy, Globe, BadgeCheck, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, AlertTriangle, Ticket, Gift, Info, Save, Users, BarChart3, HardDriveDownload, FileJson, Sparkles, Mic, ShoppingBag, Backpack, Coins, HardDrive, Zap, Users as UsersIcon, BellRing, Bot, Cloud, LayoutGrid, UserCog } from 'lucide-react';
 import { Button, Card, Badge, Input, Textarea, Select, Field, EmptyState, Explain, Spinner, Modal, useDialog, useToast, copyText, SkeletonCard } from '../ui/ui.jsx';
+import { PointsHistoryTable } from '../ui/points-history.jsx';
 import { api, uploadPayload } from '../lib/api.js';
 import { onNotifsChanged, applyNotifChange, markNotifRead, markAllNotifsRead, deleteNotif, deleteAllNotifs } from '../lib/notifs.js';
 import { useReportsUnseen } from '../lib/reports-unseen.js';
@@ -225,7 +226,7 @@ function EconomyShop({ view = 'shop', onView }) {
   };
   const purchases = d.purchases || [];
   const pending = purchases.filter((p) => p.status === 'pending').length;
-  const LK = { levelup: t('eco.lk.levelup', 'Level-up'), grant: t('eco.lk.grant', 'Staff'), purchase: t('eco.lk.purchase', 'Purchase'), casino: t('eco.lk.casino', 'Casino'), gift_out: t('eco.lk.gift_out', 'Gift sent'), gift_in: t('eco.lk.gift_in', 'Gift received'), gift_item_out: t('eco.lk.gift_item_out', 'Item given'), gift_item_in: t('eco.lk.gift_item_in', 'Item received'), refund: t('eco.lk.refund', 'Refund') };
+  const LK = { levelup: t('eco.lk.levelup', 'Level-up'), grant: t('eco.lk.grant', 'Staff'), purchase: t('eco.lk.purchase', 'Purchase'), casino: t('eco.lk.casino', 'Casino'), gift_out: t('eco.lk.gift_out', 'Gift sent'), gift_in: t('eco.lk.gift_in', 'Gift received'), gift_item_out: t('eco.lk.gift_item_out', 'Item given'), gift_item_in: t('eco.lk.gift_item_in', 'Item received'), refund: t('eco.lk.refund', 'Refund'), season: t('eco.lk.season', 'New season'), giveaway: t('eco.lk.giveaway', 'Giveaway') };
   return (
     <div>
       <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
@@ -316,8 +317,8 @@ function EconomyShop({ view = 'shop', onView }) {
               </div>
             </Card>
           )}
-          <div>
-            <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+          <Card className="p-4">
+            <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
               <div className="text-sm font-semibold flex items-center gap-2">
                 <Clock size={15} className="text-[var(--accent-ink)]" /> {t('eco.hist.title', 'Point history')}
                 {/* The count is the server's total, not hist.length: the list below is one page. */}
@@ -326,16 +327,7 @@ function EconomyShop({ view = 'shop', onView }) {
               <button type="button" onClick={() => loadHist(0)} className="text-xs text-[var(--muted)] hover:text-[var(--text)] inline-flex items-center gap-1"><RefreshCw size={12} /> {t('common.refresh', 'Refresh')}</button>
             </div>
             {hist === null ? <SkeletonCard /> : !hist.length ? <EmptyState icon={Clock} title={t('eco.hist.empty.t', 'Nothing yet')} sub={t('eco.hist.empty.s', 'Earn, buy, play or gift and it shows up here.')} /> : (<>
-              <div className="rounded-xl border border-[var(--line)] divide-y divide-[var(--line)]">
-                {hist.map((h) => { const m = h.meta || {}; const detail = h.kind === 'purchase' ? m.name : h.kind === 'casino' ? `${m.game || ''} ×${m.multiplier ?? ''}` : h.kind === 'gift_out' ? `→ ${m.toName || ''}${m.note ? ` “${m.note}”` : ''}` : h.kind === 'gift_in' ? `← ${m.fromName || ''}${m.note ? ` “${m.note}”` : ''}` : h.kind === 'levelup' ? `Lv ${m.level}` : m.name || m.reason || ''; return (
-                  <div key={h.id} className="px-3 py-2 flex items-center gap-3 text-xs">
-                    <span className="text-[var(--faint)] tabular-nums shrink-0 w-32">{new Date(h.createdAt).toLocaleString()}</span>
-                    <span className="flex-1 min-w-0 truncate" title={detail ? `${LK[h.kind] || h.kind} · ${detail}` : (LK[h.kind] || h.kind)}><span className="font-medium">{LK[h.kind] || h.kind}</span>{detail ? <span className="text-[var(--faint)]"> · {detail}</span> : null}</span>
-                    <span className={`tabular-nums font-semibold shrink-0 ${h.delta > 0 ? 'text-success' : h.delta < 0 ? 'text-error' : 'text-[var(--faint)]'}`}>{h.delta > 0 ? '+' : ''}{h.delta.toLocaleString()}</span>
-                    <span className="tabular-nums text-[var(--faint)] shrink-0 w-20 text-end">{h.balance.toLocaleString()}</span>
-                  </div>
-                ); })}
-              </div>
+              <PointsHistoryTable rows={hist} kindLabel={(k) => LK[k] || k} currency={cur} />
               {/* An explicit button, not infinite scroll: this panel sits above the rest of the
                   tab, and a list that grows as you scroll past it never lets you reach what is
                   under it. */}
@@ -344,7 +336,7 @@ function EconomyShop({ view = 'shop', onView }) {
                 {histMore && <Button size="sm" disabled={histBusy} onClick={() => loadHist(hist.length)}>{histBusy ? <Spinner /> : <ChevronDown size={14} />} {t('common.loadmore', 'Load more')}</Button>}
               </div>
             </>)}
-          </div>
+          </Card>
         </div>
       )}
     </div>

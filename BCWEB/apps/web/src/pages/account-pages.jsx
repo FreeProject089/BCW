@@ -188,7 +188,7 @@ export function Settings() {
               <span className="text-xs font-medium tabular-nums w-10 text-end">{glass.pct}%</span>
             </div>
           )}
-          <Row icon={SprayCan} title={t('set.texture', 'Page grain')} desc={t('set.texture.d2', 'A fine grain on the page behind the content, so the backdrop is not perfectly smooth.')}>
+          <Row icon={SprayCan} title={t('set.texture', 'Page grain')} desc={t('set.texture.d3', 'A grain on the page backdrop, the footer and a few large cards. Never on text-heavy panels, tables or fields.')}>
             <Switch on={texture !== 'off'} onChange={(v) => { const next = v ? 'on' : 'off'; setTextureState(next); setTexturePref(next); }} />
           </Row>
         </Group>

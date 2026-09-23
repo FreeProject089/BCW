@@ -380,7 +380,7 @@ export default function ProjectPage({ preview: previewProp = null }) {
         {APP_LOGO[key]
           ? <img src={APP_LOGO[key]} alt="" className="logo-plate w-16 h-16 rounded-2xl object-contain shrink-0 bg-[var(--surface-2)] border border-[var(--line)] p-1.5" />
           : <div className="grid place-items-center w-16 h-16 rounded-2xl bg-gradient-to-br from-brand to-brand-2 shrink-0"><span className="text-2xl font-extrabold text-[var(--on-primary)]">{c.name?.[0] || 'B'}</span></div>}
-        <div className="flex-1">
+        <div className="flex-1 on-backdrop">
           <div className="flex items-center gap-3 flex-wrap"><h1 className="text-3xl font-extrabold">{c.name}</h1>{c.version && <button onClick={() => setShowVersions(true)} title={t('ver.open', 'Version history')} className="press-sm"><Badge tone="primary"><Clock size={11} /> v{c.version}</Badge></button>}</div>
           <p className="text-[var(--muted)] mt-1">{c.tagline}</p>
         </div>
@@ -401,7 +401,7 @@ export default function ProjectPage({ preview: previewProp = null }) {
               "Sign in" at once. */}
           {canEditProject(user, key) && (
             <Link to={`/admin?s=projects&key=${key}`}>
-              <Button variant="ghost" title={t('proj.edit.h', 'Edit this page, text, links, downloads, and the How it runs diagram')}>
+              <Button title={t('proj.edit.h', 'Edit this page, text, links, downloads, and the How it runs diagram')}>
                 <Pencil size={15} /> {t('proj.edit', 'Edit page')}
               </Button>
             </Link>
@@ -1514,7 +1514,7 @@ export function ShowcaseProjectPage({ preview: previewProp = null }) {
         {proj.icon
           ? <div className="grid place-items-center w-16 h-16 rounded-2xl bg-[var(--surface-2)] border border-[var(--line)] shrink-0 p-2 text-[var(--accent-ink)]"><ShowcaseIcon icon={proj.icon} size={44} rounded={10} /></div>
           : <div className="grid place-items-center w-16 h-16 rounded-2xl bg-gradient-to-br from-brand to-brand-2 shrink-0"><span className="text-xl font-extrabold text-[var(--on-primary)]">{proj.short}</span></div>}
-        <div className="flex-1"><div className="flex items-center gap-3 flex-wrap"><h1 className="text-3xl font-extrabold">{proj.name}</h1>{cfg.version && <button onClick={() => setShowVersions(true)} title={t('ver.open', 'Version history')} className="press-sm"><Badge tone="primary"><Clock size={11} /> v{cfg.version}</Badge></button>}</div>{cfg.tagline && <p className="text-[var(--muted)] mt-1">{cfg.tagline}</p>}</div>
+        <div className="flex-1 on-backdrop"><div className="flex items-center gap-3 flex-wrap"><h1 className="text-3xl font-extrabold">{proj.name}</h1>{cfg.version && <button onClick={() => setShowVersions(true)} title={t('ver.open', 'Version history')} className="press-sm"><Badge tone="primary"><Clock size={11} /> v{cfg.version}</Badge></button>}</div>{cfg.tagline && <p className="text-[var(--muted)] mt-1">{cfg.tagline}</p>}</div>
         <div className="flex flex-wrap items-start gap-2">
           <DownloadMenu downloads={cfg.downloads} />
           {!preview && <ProjectContactBar projectRef={`sc:${slug}`} />}

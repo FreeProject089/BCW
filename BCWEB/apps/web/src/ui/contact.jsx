@@ -15,7 +15,7 @@ import { Button, Modal, Input, Textarea, Field, Select, useToast, copyText } fro
 import { useDraft, DraftBanner, DraftKeptNote } from './drafts.jsx';
 import { topicLabel } from './topic-label.js';
 
-export function ContactButton({ kind, targetId, targetLabel, size = 'sm', variant = 'ghost', className = '', label }) {
+export function ContactButton({ kind, targetId, targetLabel, size = 'sm', variant = 'default', className = '', label }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   return (

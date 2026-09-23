@@ -14,6 +14,7 @@ import { Bug as BugIcon } from 'lucide-react';
 // The `all` sub-tab on Hosting settings; nothing else here needs a plain list glyph.
 import { List, FlaskConical } from 'lucide-react';
 import { Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, EmptyState, Spinner, Modal, ActionBar, ByteSize, formatBytes, useDialog, useToast, copyText, ColorInput, Explain } from '../ui/ui.jsx';
+import { PointsHistoryTable } from '../ui/points-history.jsx';
 import { AppLogo } from '../ui/brand.jsx';
 import Markdown, { IconGlyph, ShowcaseIcon } from '../ui/md.jsx';
 import IconPicker from '../editor/icon-picker.jsx';
@@ -15917,7 +15918,7 @@ function EconomyHistoryRetentionCard() {
 }
 
 // Admin: the whole point ledger — purchases, casino, gifts, grants — searchable by member.
-const LEDGER_KIND = { levelup: 'Level-up', grant: 'Staff grant', purchase: 'Purchase', casino: 'Casino', gift_out: 'Gift sent', gift_in: 'Gift received', gift_item_out: 'Item given', gift_item_in: 'Item received', refund: 'Refund' };
+const LEDGER_KIND = { levelup: 'Level-up', grant: 'Staff grant', purchase: 'Purchase', casino: 'Casino', gift_out: 'Gift sent', gift_in: 'Gift received', gift_item_out: 'Item given', gift_item_in: 'Item received', refund: 'Refund', season: 'New season', giveaway: 'Giveaway' };
 function EconomyHistoryCard({ currency }) {
   const { t } = useI18n();
   const [q, setQ] = useState(''); const [kind, setKind] = useState('');
@@ -15929,24 +15930,11 @@ function EconomyHistoryCard({ currency }) {
       <div className="flex gap-2 flex-wrap">
         <div className="relative flex-1 min-w-[160px]"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" /><Input className="!ps-9 !py-1.5 !text-sm" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && reload()} placeholder={t('db.eco.search', 'Search a member…')} /></div>
         <Select className="!w-auto !py-1.5 !text-sm" value={kind} onChange={(e) => setKind(e.target.value)}><option value="">{t('db.eco.lk.all', 'Everything')}</option>{Object.keys(LEDGER_KIND).map((k) => <option key={k} value={k}>{label(k)}</option>)}</Select>
-        <Button size="sm" variant="ghost" onClick={reload}><RefreshCw size={13} /></Button>
+        <Button size="sm" variant="ghost" onClick={reload} title={t('common.refresh', 'Refresh')} aria-label={t('common.refresh', 'Refresh')}><RefreshCw size={13} /></Button>
       </div>
-      {loading ? <Spinner /> : !rows.length ? <div className="text-xs text-[var(--faint)]">{t('db.eco.hist.none', 'Nothing recorded yet.')}</div> : (
-        <div className="max-h-[46vh] overflow-auto pe-1 text-xs">
-          <table className="w-full">
-            <thead className="text-[10px] uppercase tracking-wider text-[var(--faint)] text-start"><tr><th className="font-normal py-1 text-start">{t('db.eco.h.when', 'When')}</th><th className="font-normal py-1 text-start">{t('db.eco.h.who', 'Member')}</th><th className="font-normal py-1 text-start">{t('db.eco.h.what', 'What')}</th><th className="font-normal py-1 text-end">Δ</th><th className="font-normal py-1 text-end">{t('db.eco.h.bal', 'Balance')}</th></tr></thead>
-            <tbody>
-              {rows.map((r) => { const m = r.meta || {}; const detail = r.kind === 'purchase' ? m.name : r.kind === 'casino' ? `${m.game || ''} ×${m.multiplier ?? ''}` : r.kind === 'gift_out' ? `→ ${m.toName || ''}` : r.kind === 'gift_in' ? `← ${m.fromName || ''}` : r.kind === 'levelup' ? `Lv ${m.level}` : r.kind === 'grant' ? (m.reason || '') : m.name || ''; return (
-                <tr key={r.id} className="border-t border-[var(--line)]">
-                  <td className="py-1 text-[var(--faint)] whitespace-nowrap">{new Date(r.createdAt).toLocaleString()}</td>
-                  <td className="py-1"><Link to={`/u/${r.userId}`} className="hover:text-[var(--accent-ink)]">{r.displayName}</Link></td>
-                  <td className="py-1"><span className="text-[var(--muted)]">{label(r.kind)}</span>{detail ? <span className="text-[var(--faint)]"> · {detail}</span> : null}</td>
-                  <td className={`py-1 text-end tabular-nums font-medium ${r.delta > 0 ? 'text-success' : r.delta < 0 ? 'text-error' : 'text-[var(--faint)]'}`}>{r.delta > 0 ? '+' : ''}{r.delta.toLocaleString()}</td>
-                  <td className="py-1 text-end tabular-nums text-[var(--muted)]">{r.balance.toLocaleString()} {currency}</td>
-                </tr>
-              ); })}
-            </tbody>
-          </table>
+      {loading ? <Spinner /> : !rows.length ? <div className="text-sm text-[var(--muted)] mt-3">{t('db.eco.hist.none', 'Nothing recorded yet.')}</div> : (
+        <div className="max-h-[52vh] overflow-auto rounded-[var(--r-md)] mt-3">
+          <PointsHistoryTable rows={rows} kindLabel={label} currency={currency} showMember />
         </div>
       )}
     </ModuleCard>

@@ -27,17 +27,17 @@ export function ProjectContactBar({ projectRef }) {
   return (
     <>
       {info.enabled && info.topics.length > 0 && (
-        <Button variant="ghost" onClick={() => setWriting(true)}><MessageSquare size={15} /> {t('cm.contact', 'Contact')}</Button>
+        <Button onClick={() => setWriting(true)}><MessageSquare size={15} /> {t('cm.contact', 'Contact')}</Button>
       )}
       {info.canReadInbox && (
         <Link to={`/dashboard?s=reports&project=${encodeURIComponent(info.ref)}`}>
-          <Button variant="ghost" title={t('pct.inbox.h', 'The conversations people started with this project')}>
+          <Button title={t('pct.inbox.h', 'The conversations people started with this project')}>
             <Inbox size={15} /> {t('pct.inbox', 'Inbox')}{info.unread > 0 && <Badge tone="amber" className="ms-1">{info.unread}</Badge>}
           </Button>
         </Link>
       )}
       {info.canConfigure && (
-        <Button variant="ghost" onClick={() => setSettings(true)} title={t('pct.settings', 'Contact settings')} aria-label={t('pct.settings', 'Contact settings')}><Settings2 size={15} /></Button>
+        <Button onClick={() => setSettings(true)} title={t('pct.settings', 'Contact settings')} aria-label={t('pct.settings', 'Contact settings')}><Settings2 size={15} /></Button>
       )}
       {writing && <ContactModal kind="project" targetId={info.ref} targetLabel={info.name} topics={info.topics} onClose={() => setWriting(false)} />}
       {settings && <ProjectContactSettings projectRef={info.ref} onClose={() => { setSettings(false); load(); }} />}

@@ -323,13 +323,34 @@ export function ThemePreviewScope({ theme, onToggle, children }) {
 export function SiteLogo({ className = '', size, alt = '', plain = false, ...rest }) {
   const ctx = useTheme();
   // Rendered outside the provider (a standalone preview, a test harness) it still has to
-  // draw something — a logo that vanishes when the context is missing is worse than the
+  // draw something: a logo that vanishes when the context is missing is worse than the
   // bundled mark.
-  // On the plate unless the caller says otherwise (an avatar fallback fills its circle).
-  // The plate is white whatever the scheme, so the mark ON it is always the light-scheme
-  // one: a site whose dark mark is a white glyph drew white-on-white and vanished.
-  const src = plain ? (ctx?.logo || siteLogo(ctx?.theme || 'light')) : siteLogo('light');
-  return <img src={src} alt={alt} width={size} height={size} className={`${plain ? '' : 'logo-plate '}${className}`} {...rest} />;
+  //
+  // ON THE PLATE (the default) the plate is white whatever the scheme, so only a mark drawn
+  // for a light ground may go on it: the configured LIGHT logo, then the bundled one. It used
+  // to go through siteLogo('light'), which falls back to the DARK logo when that is the only
+  // one configured, and a dark-scheme mark is usually a white glyph: white on white, a blank
+  // square, exactly what the comment above it said it prevented. The topbar's BrandMark
+  // (App.jsx) had the same two failures and the same fix; this is the other half.
+  // PLAIN (an avatar fallback filling its circle) keeps the scheme's own mark.
+  // Either way a URL that fails to load moves to the next candidate, and when none loads the
+  // initials are drawn: `.logo-plate` paints its white fill whether or not an image arrives,
+  // so a dead URL was the other way to get the blank square.
+  const logos = ctx?.logos || siteLogos();
+  const candidates = (plain
+    ? [ctx?.logo, siteLogo(ctx?.theme || 'light'), BUNDLED_LOGO]
+    : [logos?.light, BUNDLED_LOGO]).filter(Boolean);
+  const [failed, setFailed] = useState(() => new Set());
+  const src = candidates.find((u) => !failed.has(u));
+  if (!src) {
+    return (
+      <span role={alt ? 'img' : undefined} aria-label={alt || undefined} aria-hidden={alt ? undefined : true}
+        style={size ? { width: size, height: size } : undefined}
+        className={`${plain ? '' : 'logo-plate '}brand-mark-fallback ${className}`} {...rest}>BC</span>
+    );
+  }
+  return <img key={src} src={src} alt={alt} width={size} height={size} className={`${plain ? '' : 'logo-plate '}${className}`}
+    onError={() => setFailed((prev) => new Set(prev).add(src))} {...rest} />;
 }
 
 // Clean sliding switch: a single high-contrast knob carrying the current mode's icon

@@ -104,7 +104,7 @@ export function ClosingBand({ user, t }) {
   const cta = closingCta(user, t);
   return (
     <section>
-      <Card className="p-8 md:p-12 text-center">
+      <Card className="grain-hero p-8 md:p-12 text-center">
         <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight">{cta.title}</h2>
         <p className="text-[var(--muted)] mt-3 max-w-lg mx-auto leading-relaxed">{cta.sub}</p>
         <div className="flex flex-wrap gap-3 justify-center mt-6">

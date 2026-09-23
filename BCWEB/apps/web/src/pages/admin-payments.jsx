@@ -56,8 +56,11 @@ export function AdminPendingPayments() {
     </div>
   );
 
+  // One card for the whole screen. It was a bare <div>: the title, the explanation, the
+  // counters and both lists sat straight on the page backdrop, which is why "Translucent
+  // surfaces" looked ignored here: there was no surface for it to govern.
   return (
-    <div>
+    <Card className="p-4 sm:p-5">
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <h2 className="font-semibold flex items-center gap-2"><CreditCard size={16} className="text-[var(--accent-ink)]" /> {t('adpay.title', 'Pending payments')}</h2>
         <div className="flex items-center gap-2">
@@ -69,9 +72,9 @@ export function AdminPendingPayments() {
       <Explain className="text-sm mb-4 max-w-2xl">{t('adpay.sub', 'Every Stripe checkout is written here when it opens and finished by the webhook. A row that stays open after payment means the webhook never ran; the reconciler (at boot, every ten minutes, or the button) asks Stripe and delivers what was paid for. Paid-but-undelivered cases also raise an alert on the Errors page and notify super-admins.')}</Explain>
 
       {stale.length > 0 && (
-        <Card className="p-3 mb-4 border-[var(--warning)]">
+        <div className="p-3 mb-4 rounded-lg border b-warning tint-warning-soft">
           <div className="flex items-center gap-2 text-sm"><AlertTriangle size={14} className="text-[var(--warning)]" /> {t('adpay.stale', '{n} checkout(s) open for more than 15 minutes.').replace('{n}', stale.length)}</div>
-        </Card>
+        </div>
       )}
 
       {last && (
@@ -85,13 +88,13 @@ export function AdminPendingPayments() {
       )}
 
       <h3 className="text-sm font-medium mb-2">{t('adpay.open', 'Open')} <Badge tone="">{open.length}</Badge></h3>
-      {!open.length ? <div className="text-sm text-[var(--faint)] mb-6">{t('adpay.none', 'Nothing in flight.')}</div> : (
+      {!open.length ? <div className="text-sm text-[var(--muted)] mb-6">{t('adpay.none', 'Nothing in flight.')}</div> : (
         <div className="space-y-1.5 mb-6">{open.map((r) => <Row key={r.id} r={r} />)}</div>
       )}
       <h3 className="text-sm font-medium mb-2">{t('adpay.finished', 'Recently finished')}</h3>
-      {!finished.length ? <div className="text-sm text-[var(--faint)]">{t('adpay.nonefinished', 'None yet.')}</div> : (
+      {!finished.length ? <div className="text-sm text-[var(--muted)]">{t('adpay.nonefinished', 'None yet.')}</div> : (
         <div className="space-y-1.5">{finished.map((r) => <Row key={r.id} r={r} />)}</div>
       )}
-    </div>
+    </Card>
   );
 }
