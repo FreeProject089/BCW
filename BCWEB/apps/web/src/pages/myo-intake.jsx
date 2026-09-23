@@ -23,6 +23,7 @@ import { AlertTriangle, ArrowLeft, ArrowRight, Check, Clock, CreditCard, Pencil 
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { Modal, Button, Input, Textarea, Spinner, useToast } from '../ui/ui.jsx';
+import { useDraft, DraftBanner } from '../ui/drafts.jsx';
 import { fmtMoney } from '../lib/money.js';
 
 // Catalogues carry their own en/fr, the way KIND_META does in myo.jsx — a dictionary key per
@@ -169,6 +170,15 @@ export default function MyoIntakeWizard({ cards = [], cfg, onClose, inline = fal
   const kind = chosen?.kind || 'custom';
   const set = (k, v) => setA((s) => ({ ...s, [k]: v }));
   const toggle = (k, id) => setA((s) => ({ ...s, [k]: s[k].includes(id) ? s[k].filter((x) => x !== id) : [...s[k], id] }));
+
+  // A kept draft (ui/drafts.jsx). A brief written one question at a time is the most
+  // expensive thing on this site to lose: eight answers and a paragraph, and the last step is
+  // a redirect to Stripe — a visitor who backs out of checkout comes back to this page, and
+  // used to come back to a blank one. The question they were on rides along as `meta`.
+  const draft = useDraft({
+    scope: 'myo-intake', id: null, value: a, meta: { i },
+    onRestore: (v, m) => { setA((s) => ({ ...s, ...v })); if (Number.isInteger(m?.i)) setI(m.i); },
+  });
 
   const urgent = DEADLINES.find((d) => d.id === a.deadline)?.urgent === true;
   const fee = urgent ? cfg.urgentConsultationCents : cfg.consultationCents;
@@ -319,7 +329,9 @@ export default function MyoIntakeWizard({ cards = [], cfg, onClose, inline = fal
         name: a.name.trim(), logo: a.logo.trim() || null, objective: a.objective.trim(),
         target: a.target, description: buildBrief(a, kind, a.lang), lang: a.lang, urgent,
       });
-      if (res?.checkoutUrl) { window.location.href = res.checkoutUrl; return; }
+      // The request exists on the server now, so the local brief is spent even though the
+      // browser is about to leave for Stripe.
+      if (res?.checkoutUrl) { draft.clear(); window.location.href = res.checkoutUrl; return; }
       toast.error(t('myo.e.pay', 'Could not start checkout.')); setBusy(false);
     } catch (x) {
       const e = x.data?.error;
@@ -353,6 +365,7 @@ export default function MyoIntakeWizard({ cards = [], cfg, onClose, inline = fal
   // The same wizard, two shells: a card ON the page (this is what /myo opens on now) or the
   // modal it used to be, kept for anywhere that still opens it over something else.
   const inner = (<>
+      <DraftBanner draft={draft} what={t('draft.w.request', 'request')} className="mb-4" />
       {/* Progress: which of the N questions, and how far along. */}
       <div className="mb-4">
         <div className="flex items-center justify-between text-[11px] text-[var(--faint)] mb-1.5">

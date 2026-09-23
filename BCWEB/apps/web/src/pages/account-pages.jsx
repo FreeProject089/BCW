@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { BadgeCheck, Lock, Cookie, Palette, Shield, CheckCircle2, XCircle, Eye, Globe, Mail, Orbit, Package, Server, ShieldCheck, Users, Activity, Box, Clapperboard, Moon, Sun, Play, PartyPopper, SprayCan, MousePointerClick, Settings as SettingsIcon, Undo2, LogOut, AlertTriangle } from 'lucide-react';
+import { BadgeCheck, Lock, Cookie, Palette, Shield, CheckCircle2, XCircle, Eye, Globe, Mail, Orbit, Package, Server, ShieldCheck, Users, Activity, Box, Clapperboard, Moon, Sun, Play, PartyPopper, SprayCan, MousePointerClick, Settings as SettingsIcon, Undo2, LogOut, AlertTriangle, FileText } from 'lucide-react';
 import { Button, Card, Explain, PageHeader, Select, Spinner, useToast, useDialog } from '../ui/ui.jsx';
 import { fxPref, setFxPref, prefersReducedMotion } from '../lib/fx-pref.js';
 import { useI18n } from '../i18n.jsx';
 import { useTheme } from '../ui/theme.jsx';
 import { useAuth } from './auth.jsx';
 import { api } from '../lib/api.js';
-import { getGlassPrefs, setGlassPrefs, getOrbTransitionPref, setOrbTransitionPref, getUndoDisabled, setUndoDisabled, getLogoutConfirm, setLogoutConfirm, getForceConfirm, setForceConfirm, getHero3dDisabled, setHero3dDisabled, getTexturePref, setTexturePref } from '../lib/prefs.js';
+import { getGlassPrefs, setGlassPrefs, getOrbTransitionPref, setOrbTransitionPref, getUndoDisabled, setUndoDisabled, getLogoutConfirm, setLogoutConfirm, getForceConfirm, setForceConfirm, getHero3dDisabled, setHero3dDisabled, getTexturePref, setTexturePref, getDraftsDisabled, setDraftsDisabled } from '../lib/prefs.js';
+import { clearAllDrafts } from '../ui/draft-store.js';
 import { getConsent, setConsent } from '../lib/consent.js';
 import { SKIP_KEY } from '../ui/IntroContext.jsx';
 
@@ -90,6 +91,7 @@ export function Settings() {
   const [undoOff, setUndoOff] = useState(() => getUndoDisabled());
   const [logoutConfirm, setLogoutConfirmState] = useState(() => getLogoutConfirm());
   const [forceConfirm, setForceConfirmState] = useState(() => getForceConfirm());
+  const [draftsOff, setDraftsOff] = useState(() => getDraftsDisabled());
 
   const setFx = (v) => { setFxState(v); setFxPref(v); };
   const setIntro = (skip) => { setSkipIntro(skip); try { skip ? localStorage.setItem(SKIP_KEY, '1') : localStorage.removeItem(SKIP_KEY); } catch {} };
@@ -101,6 +103,16 @@ export function Settings() {
   const setCookie = (v) => { setConsentState(v); setConsent(v); toast.success(t('set.saved', 'Saved.')); };
   const applyGlass = (next) => { setGlass(next); setGlassPrefs(next); };
   const setUndo = (off) => { setUndoOff(off); setUndoDisabled(off); };
+  // Turning drafts off empties the ones already kept, in the same click. Otherwise "off"
+  // would mean "this browser still holds what you typed, it just will not offer it back",
+  // which is not what anybody reading the switch understands by it.
+  const setDrafts = (off) => {
+    setDraftsOff(off); setDraftsDisabled(off);
+    if (!off) return;
+    let n = 0;
+    try { n = clearAllDrafts(sessionStorage); } catch { /* storage refused, there was nothing to clear */ }
+    if (n > 0) toast.success(t('set.drafts.cleared', '{n} draft(s) cleared.').replace('{n}', String(n)));
+  };
 
   // One setting per line: the icon, the name and the control on the first line, and
   // everything that EXPLAINS it underneath, across the card's whole width.
@@ -213,6 +225,10 @@ export function Settings() {
         <Group icon={MousePointerClick} title={t('set.behaviour', 'Actions')}>
           <Row icon={Undo2} title={t('set.undo', 'Undo window')} more={t('set.undo.d', 'Saving, publishing and deleting wait a few seconds behind an “Undo” toast, so a mistake costs nothing. Turn this off to apply every action immediately.')}>
             <Switch on={!undoOff} onChange={(v) => setUndo(!v)} />
+          </Row>
+          <Row icon={FileText} title={t('set.drafts', 'Keep drafts')}
+            more={t('set.drafts.d', 'Long forms and editors keep what you write in this browser tab and offer it back the next time you open them, so a mis-click, a reload or a crash costs nothing. Nothing is sent, nothing leaves this tab, and a draft older than 24 hours is forgotten. Turn it off on a shared machine: nothing at all is written any more, and the drafts already kept are cleared straight away.')}>
+            <Switch on={!draftsOff} onChange={(v) => setDrafts(!v)} />
           </Row>
           <Row icon={LogOut} title={t('set.logoutconfirm', 'Ask before signing out')} more={t('set.logoutconfirm.d', 'The sign-out button is an icon in the topbar, one mis-click from your profile, and with 2FA on, getting back in is not one click.')}>
             <Switch on={logoutConfirm} onChange={(v) => { setLogoutConfirmState(v); setLogoutConfirm(v); }} />

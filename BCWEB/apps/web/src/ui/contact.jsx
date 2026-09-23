@@ -5,13 +5,14 @@
 // leaves an e-mail and follows the thread by a link. Beside the button, the public pages
 // show what the owner declared — the team's card, and for a repo served from the owner's
 // own server, the contact e-mail they were required to give.
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { MessageSquare, Mail, Phone, Users, Copy } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { useAuth } from '../pages/auth.jsx';
 import { Button, Modal, Input, Textarea, Field, Select, useToast, copyText } from './ui.jsx';
+import { useDraft, DraftBanner, DraftKeptNote } from './drafts.jsx';
 import { topicLabel } from './topic-label.js';
 
 export function ContactButton({ kind, targetId, targetLabel, size = 'sm', variant = 'ghost', className = '', label }) {
@@ -36,6 +37,17 @@ export function ContactModal({ kind, targetId, targetLabel, onClose, topics = nu
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState(null);
+
+  // A kept draft (ui/drafts.jsx). Worth it here and not on every two-field box: this is six
+  // hundred words of "here is what is wrong with your download" typed into a modal that any
+  // click outside closes, and there is no copy of it anywhere until it is sent. Scoped to the
+  // thing being written to, so a half-written message to one repo is not offered on another.
+  const value = useMemo(() => ({ topic, subject, body, email, name }), [topic, subject, body, email, name]);
+  const draft = useDraft({
+    scope: 'contact', id: `${kind}.${targetId}`, value,
+    onRestore: (v) => { setTopic(v.topic || ''); setSubject(v.subject || ''); setBody(v.body || ''); setEmail(v.email || ''); setName(v.name || ''); },
+  });
+
   const send = async () => {
     if (topics?.length && !topic) return toast.error(t('cm.needtopic', 'Pick what it is about.'));
     if (subject.trim().length < 2) return toast.error(t('cm.needsubject', 'Give the message a subject.'));
@@ -50,6 +62,7 @@ export function ContactModal({ kind, targetId, targetLabel, onClose, topics = nu
         payload.email = email.trim(); if (name.trim()) payload.name = name.trim();
       }
       const r = await api.post('/threads', payload);
+      draft.clear();   // it is a message now, not a draft
       setSent(r);
       if (user) { toast.success(t('cm.sent', 'Sent, follow the conversation in your dashboard → Messages.')); onClose(); }
     } catch (x) {
@@ -83,6 +96,7 @@ export function ContactModal({ kind, targetId, targetLabel, onClose, topics = nu
         </div>
       ) : (
         <div className="space-y-3">
+          <DraftBanner draft={draft} what={t('draft.w.message', 'message')} />
           {topics?.length > 0 && (
             <Field label={t('cm.topic', 'About')}>
               <Select value={topic} onChange={(e) => setTopic(e.target.value)}>
@@ -99,6 +113,7 @@ export function ContactModal({ kind, targetId, targetLabel, onClose, topics = nu
               <Field label={t('cm.name', 'Your name (optional)')}><Input value={name} maxLength={80} onChange={(e) => setName(e.target.value)} /></Field>
             </div>
           )}
+          <DraftKeptNote draft={draft} />
           <p className="text-[11px] text-[var(--faint)]">{t('cm.note', 'This goes to whoever manages it, not to the site staff. For rule-breaking content use Report; for rights claims use /report.')}</p>
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={onClose}>{t('common.cancel', 'Cancel')}</Button>

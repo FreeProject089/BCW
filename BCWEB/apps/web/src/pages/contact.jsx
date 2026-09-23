@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from './auth.jsx';
 import { useI18n } from '../i18n.jsx';
@@ -8,6 +8,7 @@ import {
   CreditCard, User, ShieldAlert, Bug, Server, Receipt, Download, Trash2, Info, Languages, Boxes,
 } from 'lucide-react';
 import { ContactModal } from '../ui/contact.jsx';
+import { useDraft, DraftBanner } from '../ui/drafts.jsx';
 import { GithubIcon, DiscordIcon, KofiIcon, RedditIcon } from '../ui/brand.jsx';
 import { api } from '../lib/api.js';
 import { ReportModal } from '../ui/report.jsx';
@@ -171,6 +172,24 @@ export function Contact() {
     }
   }, [params, fr]);
 
+  // A kept draft of the WHOLE triage (ui/drafts.jsx): the answers, the destination and the
+  // step, because the destination is what gives the answers their meaning — restoring a
+  // paragraph without the queue it was written for would put a billing question in the
+  // security inbox. `ready` waits a commit so the account prefill and a `?topic=` link have
+  // landed: otherwise the form-as-the-account-filled-it counts as something the person typed,
+  // and an untouched page would offer its own e-mail address back as a draft.
+  const [draftReady, setDraftReady] = useState(false);
+  useEffect(() => { setDraftReady(true); }, []);
+  const draftValue = useMemo(() => ({ step, branch, dest, locate, msg, vals }), [step, branch, dest, locate, msg, vals]);
+  const draft = useDraft({
+    scope: 'contact-triage', id: null, value: draftValue, ready: draftReady,
+    onRestore: (v) => {
+      setMsg(v.msg || { name: '', email: '', body: '' }); setVals(v.vals || {});
+      setDest(v.dest ?? null); setBranch(v.branch ?? null); setLocate(v.locate || '');
+      setStep(v.step || 'q1');
+    },
+  });
+
   const channels = [
     { icon: DiscordIcon, label: 'Discord', sub: fr ? 'Support et communauté, en direct' : 'Fastest support and community', href: 'https://discord.com/invite/CTaaEF9R75' },
     { icon: GithubIcon, label: 'GitHub', sub: fr ? 'Signaler un bug / une issue' : 'Report bugs and issues', href: 'https://github.com/FreeProject089' },
@@ -219,7 +238,7 @@ export function Contact() {
       const pow = await solvePow(() => api.get('/auth/pow')); // anti-spam proof-of-work
       if (dest === 'translation' && dv.scope === 'project' && dv.project) {
         const r = await sendToProject(pow);
-        if (r) { setSent({ project: true, link: r.accessToken ? `${window.location.origin}/messages/t/${r.accessToken}` : '' }); return; }
+        if (r) { draft.clear(); setSent({ project: true, link: r.accessToken ? `${window.location.origin}/messages/t/${r.accessToken}` : '' }); return; }
       }
       await api.post('/contact', {
         name: msg.name.trim(), email: msg.email.trim(), body: msg.body.trim(),
@@ -227,6 +246,7 @@ export function Contact() {
         // cannot file a security report as a data-export request.
         dest, fields: dv, pow,
       });
+      draft.clear();
       setSent(true);
     } catch (x) {
       const err = x.data?.error;
@@ -260,6 +280,8 @@ export function Contact() {
             <div className="text-xs text-[var(--muted)]">{fr ? 'Reçu directement par l’équipe, réponse par email.' : 'Goes straight to the team, we reply by email.'}</div>
           </div>
         </div>
+
+        {!sent && <DraftBanner draft={draft} what={t('draft.w.message', 'message')} className="mx-6 mt-4" />}
 
         {sent ? (
           <div className="p-10 text-center">

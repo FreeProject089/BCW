@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { ArrowRight, Scale,
   Download, Github, MessageCircle, Heart, Globe, BookOpen, Users, ScrollText, ShieldCheck,
@@ -36,6 +36,7 @@ import RrwebPreview from '../hero/RrwebPreview.jsx';
 import { GithubIcon, KofiIcon, DiscordIcon, RedditIcon, AppLogo, APP_LOGO } from '../ui/brand.jsx';
 import { MessageSquare } from 'lucide-react';
 import { Button, Card, Badge, PageHeader, EmptyState, Spinner, Modal, Input, Textarea, Field, useToast } from '../ui/ui.jsx';
+import { useDraft, DraftBanner } from '../ui/drafts.jsx';
 import { ProjectContactBar } from '../ui/project-contact.jsx';
 
 // Which tab is actually shown. A `?tab=` naming one that is switched OFF must not render it:
@@ -1119,6 +1120,19 @@ function RequestListing() {
   const [payAck, setPayAck] = useState(false); // acknowledged the payment is non-refundable
 
   useEffect(() => { api.get('/showcase-requests/config').then(setCfg).catch(() => setCfg(null)); }, []);
+
+  // A kept draft (ui/drafts.jsx). Twelve fields, a pitch written for a human to read, and a
+  // last step that leaves for Stripe — coming back from an abandoned checkout used to mean
+  // coming back to an empty form. `proof` rides along because it is a {key, name} pointing at
+  // an upload that already happened, not the file itself; `tos` and `payAck` deliberately do
+  // not, because an acknowledgement restored from a cache is one nobody gave this time.
+  // Declared above the early return below: hooks cannot be conditional.
+  const draftValue = useMemo(() => ({ f, proof }), [f, proof]);
+  const draft = useDraft({
+    scope: 'showcase-request', id: null, value: draftValue,
+    onRestore: (v) => { if (v.f) setF((s) => ({ ...s, ...v.f })); setProof(v.proof || null); setOpen(true); },
+  });
+
   if (!cfg || (!cfg.requestsEnabled && !cfg.paidEnabled)) return null;
 
   const money = (c, cur) => new Intl.NumberFormat(undefined, { style: 'currency', currency: (cur || 'usd').toUpperCase() }).format((c || 0) / 100);
@@ -1151,6 +1165,7 @@ function RequestListing() {
       });
       // A paid request answers with a checkout URL. Following it is the whole point, so it
       // happens here rather than behind a second button somebody has to find.
+      draft.clear();
       if (r?.checkoutUrl) { window.location.href = r.checkoutUrl; return; }
       toast.success(t('rl.sent2', 'Sent \u2014 we will reply either way. If we need more detail, you will find a thread in your dashboard under Reports & contact.'));
       setOpen(false);
@@ -1184,6 +1199,8 @@ function RequestListing() {
         </div>
         {!open && <Button onClick={() => setOpen(true)}>{t('rl.open', 'Ask to be listed')}</Button>}
       </div>
+
+      <DraftBanner draft={draft} what={t('draft.w.listing', 'listing request')} className="mt-4" />
 
       {open && (
         <div className="mt-4 pt-4 border-t border-[var(--line)]">

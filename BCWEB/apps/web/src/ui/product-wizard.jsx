@@ -6,8 +6,10 @@
 // gone; a validation error surfaced as a toast AFTER the save, naming one field, with no
 // pointer to it. So:
 //
-//   - every keystroke lands in sessionStorage under the product's id (or "new"), and the
-//     next open of the same product restores it — an accidental close costs nothing;
+//   - every keystroke lands in sessionStorage under the product's id (or "new"), and the next
+//     open of the same product OFFERS it back — an accidental close costs nothing. That half
+//     is no longer written here: it is `useDraft` in ui/drafts.jsx, shared with the contact
+//     form, the report forms and the editors;
 //   - each step validates on Next, inline, under the field that is wrong;
 //   - the step indicator is clickable for steps already visited, so "go back and change the
 //     price" is one click, and jumping ahead past an unvisited step is not possible;
@@ -17,32 +19,15 @@
 // The wizard owns navigation and validation. It does NOT own the draft: the parent keeps it
 // in state, because the file-upload slot (which posts to the API and needs the product id)
 // and the payload builder both live there, and moving the draft here would mean moving them.
-import { useEffect, useMemo, useState } from 'react';
-import { Check, ChevronLeft, ChevronRight, Save, RotateCcw, FileText, Package, Coins, Eye, HelpCircle } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Check, ChevronLeft, ChevronRight, Save, FileText, Package, Coins, Eye, HelpCircle } from 'lucide-react';
 import { Button, Field, Input, Textarea, Select, Modal } from './ui.jsx';
+import { useDraft, DraftBanner } from './drafts.jsx';
 import { useI18n } from '../i18n.jsx';
 import { DELIVERY_KINDS, DELIVERY_BY_V, BILLING_MODES, mkdKey } from '../lib/marketplace-delivery.js';
 
 const STEPS = ['basics', 'delivery', 'pricing', 'review'];
 const STEP_ICON = { basics: FileText, delivery: Package, pricing: Coins, review: Eye };
-
-/** Where a draft is kept between opens. sessionStorage, not localStorage: a draft belongs to
- *  this tab's session, and a secret typed into "fixed key" must not outlive it. */
-export const draftKey = (id) => `bcw.mk.draft.${id || 'new'}`;
-
-export function readDraft(id) {
-  try {
-    const raw = sessionStorage.getItem(draftKey(id));
-    const v = raw ? JSON.parse(raw) : null;
-    return v && typeof v === 'object' && v.draft && typeof v.draft === 'object' ? v : null;
-  } catch { return null; }
-}
-export function writeDraft(id, draft, step) {
-  try { sessionStorage.setItem(draftKey(id), JSON.stringify({ savedAt: Date.now(), step, draft })); } catch { /* quota, private mode */ }
-}
-export function clearDraft(id) {
-  try { sessionStorage.removeItem(draftKey(id)); } catch { /* nothing to clear */ }
-}
 
 const isUrl = (s) => { try { const u = new URL(String(s || '')); return u.protocol === 'http:' || u.protocol === 'https:'; } catch { return false; } };
 
@@ -141,29 +126,22 @@ export function ProductWizard({ draft, setDraft, onClose, onPublish, targets, ta
   const [step, setStep] = useState('basics');
   const [visited, setVisited] = useState(() => new Set(['basics']));
   const [showErrors, setShowErrors] = useState({});   // step -> true once Next was pressed there
-  const [restored, setRestored] = useState(false);     // a kept draft was put back — say so, offer to discard
   const [publishing, setPublishing] = useState(false);
   const [explain, setExplain] = useState(false);
-  const [restoreChecked, setRestoreChecked] = useState(false);
 
-  // Restore a kept draft on open. Only once, and only if it differs from what the parent gave
-  // us (an edit re-opened from the list should not silently swap the server's row for a stale
-  // local copy without the notice below).
-  useEffect(() => {
-    if (restoreChecked) return;
-    setRestoreChecked(true);
-    const kept = readDraft(id);
-    if (!kept) return;
-    const same = JSON.stringify({ ...kept.draft, id: undefined }) === JSON.stringify({ ...draft, id: undefined });
-    if (same) return;
-    setDraft((d) => ({ ...d, ...kept.draft, id: d?.id || kept.draft.id }));
-    if (STEPS.includes(kept.step)) { setStep(kept.step); setVisited(new Set(STEPS.slice(0, STEPS.indexOf(kept.step) + 1))); }
-    setRestored(true);
-  }, [restoreChecked, id, draft, setDraft]);
-
-  // Keep the draft after every change. Cheap (one small JSON), and the reason an accidental
-  // close costs nothing.
-  useEffect(() => { if (draft && restoreChecked) writeDraft(id, draft, step); }, [draft, step, id, restoreChecked]);
+  // The kept draft, through the shared hook (ui/drafts.jsx). This used to be four exported
+  // functions and two effects here; the only behaviour that changed is that the draft is now
+  // OFFERED rather than applied: it was put straight onto the form and explained afterwards,
+  // which on an edit meant the server's row was replaced by a local copy before anyone had
+  // said yes to it. The step it was left on rides along as the draft's `meta`.
+  const kept = useDraft({
+    scope: 'product', id, value: draft, meta: { step },
+    onRestore: (v, m) => {
+      setDraft((d) => ({ ...d, ...v, id: d?.id || v.id }));
+      const s = m?.step;
+      if (STEPS.includes(s)) { setStep(s); setVisited(new Set(STEPS.slice(0, STEPS.indexOf(s) + 1))); }
+    },
+  });
 
   const errors = useMemo(() => Object.fromEntries(STEPS.map((s) => [s, validateStep(s, draft || {}, t)])), [draft, t]);
   const set = (k, v) => setDraft((d) => ({ ...d, [k]: v }));
@@ -176,8 +154,7 @@ export function ProductWizard({ draft, setDraft, onClose, onPublish, targets, ta
     if (cur < STEPS.length - 1) go(STEPS[cur + 1]);
   };
   const back = () => { if (cur > 0) go(STEPS[cur - 1]); };
-  const saveDraft = () => { writeDraft(id, draft, step); onClose({ kept: true }); };
-  const discardRestored = () => { clearDraft(id); setRestored(false); onClose({ discarded: true }); };
+  const saveDraft = () => { kept.flush(); onClose({ kept: true }); };
   const publish = async () => {
     // Every step, not just this one: a field changed on step 1 after step 3 was validated is
     // exactly the case a per-step check misses.
@@ -186,7 +163,7 @@ export function ProductWizard({ draft, setDraft, onClose, onPublish, targets, ta
     setPublishing(true);
     try {
       const ok = await onPublish();
-      if (ok) clearDraft(id);
+      if (ok) kept.clear();
     } finally { setPublishing(false); }
   };
 
@@ -214,13 +191,7 @@ export function ProductWizard({ draft, setDraft, onClose, onPublish, targets, ta
     <Modal open onClose={() => onClose({ kept: true })} width="max-w-2xl" footer={footer}
       title={draft.id ? t('mkadm.edit', 'Edit product') : t('mkadm.new', 'New product')}>
       <StepRail step={step} visited={visited} errors={errors} onGo={go} t={t} />
-      {restored && (
-        <div className="mb-3 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] px-3 py-2 text-xs flex items-center gap-2 flex-wrap">
-          <RotateCcw size={13} className="text-[var(--accent-ink)] shrink-0" />
-          <span className="flex-1">{t('mkw.restored', 'Picked up where you left off, this is your unsaved draft, not what is published.')}</span>
-          <Button size="sm" variant="ghost" onClick={discardRestored}>{t('mkw.restored.discard', 'Discard draft')}</Button>
-        </div>
-      )}
+      <DraftBanner draft={kept} what={t('draft.w.product', 'product')} className="mb-3" />
       <div className="text-[11px] text-[var(--faint)] mb-3">{t('mkw.stepn', 'Step {n} of {m}').replace('{n}', String(cur + 1)).replace('{m}', String(STEPS.length))}</div>
 
       {step === 'basics' && (

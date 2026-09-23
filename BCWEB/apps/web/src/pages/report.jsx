@@ -17,6 +17,7 @@ import { Button, Card, Field, Input, Textarea, Select, Badge, useToast } from '.
 import { api } from '../lib/api.js';
 import { useAuth } from './auth.jsx';
 import { useI18n } from '../i18n.jsx';
+import { useDraft, DraftBanner } from '../ui/drafts.jsx';
 
 const KINDS = [
   ['copyright', 'rn.k.copyright', 'Copyright, my work is here without permission'],
@@ -159,6 +160,28 @@ export function ReportPage() {
     setPaste('');
   };
 
+  // A kept draft (ui/drafts.jsx). The longest form on the site — five sections, about twenty
+  // fields, and a sender who is often not signed in, so there is no server-side half-finished
+  // copy of it anywhere. Losing it means writing the whole notice again.
+  //
+  // `stmt` is deliberately NOT in the draft. Those two ticks and that signature are a sworn
+  // statement about the notice as it stands, and restoring them from a cache would have the
+  // form affirm, on somebody's behalf, something they had not read this time round. They are
+  // four seconds to redo and the only part of this form where that matters.
+  const [draftReady, setDraftReady] = useState(false);
+  useEffect(() => { setDraftReady(true); }, []);
+  const draftValue = useMemo(() => ({ targets, kind, explanation, work, who }), [targets, kind, explanation, work, who]);
+  const draft = useDraft({
+    scope: 'rights-notice', id: null, value: draftValue, ready: draftReady,
+    onRestore: (v) => {
+      setTargets(Array.isArray(v.targets) ? v.targets : []);
+      if (v.kind && KINDS.some(([x]) => x === v.kind)) setKind(v.kind);
+      setExplanation(v.explanation || '');
+      setWork({ title: '', urls: '', basis: 'owner', basisText: '', hashes: '', ...(v.work || {}) });
+      setWho({ name: '', email: '', org: '', country: '', address: '', phone: '', ...(v.who || {}) });
+    },
+  });
+
   const isRights = kind === 'copyright' || kind === 'trademark';
   const submit = async (e) => {
     e.preventDefault();
@@ -173,6 +196,7 @@ export function ReportPage() {
         work: isRights ? { title: work.title, urls: work.urls, basis: work.basis, basisText: work.basisText, hashes: work.hashes } : {},
         ...who, onBehalfOf: work.basis, ...stmt, pow,
       });
+      draft.clear();
       setDone(r.notice);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (x) {
@@ -206,6 +230,8 @@ export function ReportPage() {
       </div>
 
       {params.get('code') && <Lookup t={t} initialCode={params.get('code')} />}
+
+      <DraftBanner draft={draft} what={t('draft.w.report', 'report')} />
 
       <form onSubmit={submit} className="space-y-5">
         {/* 1 — where */}

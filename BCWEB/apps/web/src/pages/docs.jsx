@@ -14,6 +14,7 @@ import { useSectionComments, useSectionCommentPills, AuthorsRow } from '../ui/po
 import { MarkdownEditor } from '../editor/markdown-editor.jsx';
 import { useToast, useDialog, Button, Spinner, Input, EmptyState, Explain } from '../ui/ui.jsx';
 import { EntryModal, EntryActions, EntrySection, EntryField, FieldError, LangTabs, MergeBanner, useDirtyForm } from '../ui/entry-modal.jsx';
+import { useDraft, DraftBanner } from '../ui/drafts.jsx';
 
 // BCWEB documentation — a docs space rendered with the B.MD block markdown
 // system. Public read; ADMIN/SUPERADMIN (the "special role") get an inline editor.
@@ -561,6 +562,14 @@ function DocEditor({ page, tree, onClose, onSaved, draft, draftBase, conflictReo
   // guard compares against the loaded page rather than against the blank form it mounted with.
   const [seed, setSeed] = useState(0);
   const dirty = useDirtyForm(f, seed);
+  // A kept draft (ui/drafts.jsx), exactly as the blog editor has one and for the same reason:
+  // the dirty guard stops a close, it does not stop a reload or a crash. `seed` is shared with
+  // useDirtyForm so the body arriving from /docs/:slug is not mistaken for somebody typing.
+  // Named `kept` because `draft` here is the in-memory conflict-reopen prop.
+  const kept = useDraft({
+    scope: 'doc-page', id: page?.id || null, value: f, ready: seed > 0, seed,
+    onRestore: (v) => setF((s2) => ({ ...s2, ...v })),
+  });
   // Concurrent-edit tracking (see blog editor / merge3.js) — two admins editing the
   // same page merge git-style instead of one silently overwriting the other.
   const baseRef = useRef({ version: null, body: '', bodyFr: '' });
@@ -609,6 +618,9 @@ function DocEditor({ page, tree, onClose, onSaved, draft, draftBase, conflictReo
     if (canOptimistic) {
       const snapshot = { ...f };
       const origBase = { ...baseRef.current };
+      // Before the close: unmounting flushes a pending draft write, so a page that was just
+      // saved would otherwise be kept as a draft of itself.
+      kept.clear();
       onClose();
       toast.action({
         tone: 'success', duration: 6000, cancelLabel: t('be.undo', 'Undo'),
@@ -634,6 +646,7 @@ function DocEditor({ page, tree, onClose, onSaved, draft, draftBase, conflictReo
     setBusy(true);
     try {
       const r = page ? await api.patch(`/docs/${page.id}`, b) : await api.post('/docs', b);
+      kept.clear();
       toast.success(page ? t('de.pagesaved', 'Page saved.') : t('de.pagecreated', 'Page created.'));
       onSaved(r.page?.slug);
     } catch (x) {
@@ -699,6 +712,7 @@ function DocEditor({ page, tree, onClose, onSaved, draft, draftBase, conflictReo
           <Eye size={14} className={f.published ? 'text-success' : 'text-[var(--faint)]'} />
           {f.published ? t('de.published', 'Published') : t('de.draft', 'Draft')}
         </label>} />}>
+      <DraftBanner draft={kept} what={t('draft.w.doc', 'documentation page')} className="mb-3" />
       {/* The page's own tools. They used to sit in the footer beside Save, where on a phone
           they pushed it into a fourth wrapped row. */}
       {page && (

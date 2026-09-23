@@ -8,6 +8,7 @@ import { Gauge,
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ReportButton } from '../ui/report.jsx';
+import { useDraft, DraftBanner } from '../ui/drafts.jsx';
 import { api, uploadRepoFile } from '../lib/api.js';
 import { useToast, useDialog, Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, PageHeader, EmptyState, Spinner, Modal, ActionBar, SkeletonGrid, ColorInput } from '../ui/ui.jsx';
 import { startOwnershipTransfer } from './pages.jsx';
@@ -1781,6 +1782,17 @@ function RepoEditor({ repo, onClose, onSaved }) {
   const blocked = missing.length > 0;
   const resendVerify = async () => { setResending(true); try { await api.post('/auth/verify-email/resend', {}); toast.success(t('repos.req.emailsent', 'Verification email sent, check your inbox.')); } catch { toast.error(t('repos.req.emailfail', 'Could not send the email.')); } finally { setResending(false); } };
   useEffect(() => { if (repo) setF({ name: repo.name, description: repo.description || '', repoUrl: repo.repoUrl || '', contactEmail: repo.contactEmail || '', contactPhone: repo.contactPhone || '', tags: (repo.tags || []).join(', '), discord: repo.links?.discord || '', website: repo.links?.website || '', changelog: repo.links?.changelog || '' }); }, [repo]);
+  // A kept draft (ui/drafts.jsx). Nine fields, three of them links somebody had to go and
+  // look up, in a modal a click outside closes. `ready` waits one commit so the seeding
+  // effect above has put the existing repo on the form first: otherwise opening an edit and
+  // closing it would keep a "draft" of the row exactly as it already is.
+  const [draftReady, setDraftReady] = useState(false);
+  useEffect(() => { setDraftReady(true); }, []);
+  const draft = useDraft({
+    scope: 'repo-editor', id: repo?.id || null, value: f, ready: draftReady,
+    onRestore: (v) => setF((s) => ({ ...s, ...v })),
+  });
+
   const save = async () => {
     if (f.name.length < 2) return toast.error(t('repos.nameshort', 'Name too short.'));
     setBusy(true);
@@ -1788,7 +1800,7 @@ function RepoEditor({ repo, onClose, onSaved }) {
     if (!repo?.hosted && f.repoUrl && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.contactEmail || '')) return toast.error(t('repos.f.contact.need', 'A repo served from your own server needs a contact e-mail.'));
     const body = { name: f.name, description: f.description, repoUrl: f.repoUrl || undefined, tags: f.tags.split(',').map((s) => s.trim()).filter(Boolean), links,
       ...(repo?.hosted ? {} : { contactEmail: f.contactEmail || undefined, contactPhone: f.contactPhone || undefined }) };
-    try { if (repo) await api.patch(`/repos/${repo.id}`, body); else await api.post('/repos', body); toast.success(repo ? t('repos.saved', 'Saved.') : t('repos.added', 'Repo added.')); onSaved(); }
+    try { if (repo) await api.patch(`/repos/${repo.id}`, body); else await api.post('/repos', body); draft.clear(); toast.success(repo ? t('repos.saved', 'Saved.') : t('repos.added', 'Repo added.')); onSaved(); }
     catch (x) {
       const e = x.data?.error;
       toast.error(e === 'email_unverified' ? t('repos.gate.email', 'Verify your email address before creating a repo.')
@@ -1800,6 +1812,7 @@ function RepoEditor({ repo, onClose, onSaved }) {
   return (
     <Modal open onClose={onClose} title={repo ? t('repos.edit.title', 'Edit repo') : t('repos.add.title', 'Add a repo')} icon={GitBranch} width="max-w-lg"
       footer={<><Button variant="ghost" onClick={onClose}>{t('common.cancel', 'Cancel')}</Button><Button variant="primary" disabled={busy || blocked} onClick={save}>{busy ? <Spinner /> : (repo ? t('repos.save', 'Save') : t('repos.addshort', 'Add'))}</Button></>}>
+      <DraftBanner draft={draft} what={t('draft.w.repo', 'repository')} className="mb-4" />
       {blocked && (
         <div className="mb-4 rounded-xl border border-[var(--warning-border)] bg-[var(--warning-bg)] p-3">
           <div className="text-sm font-medium text-[var(--warning)] flex items-center gap-2 mb-2"><ShieldCheck size={15} /> {t('repos.gate.title', 'A few steps before you can publish a repo')}</div>

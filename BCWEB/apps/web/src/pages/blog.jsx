@@ -30,6 +30,7 @@ import DiffMergeModal from '../editor/diff-merge-modal.jsx';
 import CommentsModal from '../editor/comments-modal.jsx';
 import { useToast, useDialog, Button, Card, Badge, Input, Textarea, Select, Field, PageHeader, EmptyState, Spinner, Skeleton, SkeletonText, ColorInput, Explain } from '../ui/ui.jsx';
 import { EntryModal, EntryActions, EntrySection, EntryField, FieldError, LangTabs, MergeBanner, useDirtyForm } from '../ui/entry-modal.jsx';
+import { useDraft, DraftBanner } from '../ui/drafts.jsx';
 import BmdEditor from '@bettercommunity/bmd-editor';
 
 // Pick the reader's language version of a post. EN is the base (always present);
@@ -455,6 +456,17 @@ function BlogEditor({ post, scopes, onClose, onSaved, draft, draftBase, conflict
   // guard compares against the loaded post and not against the blank form it mounted with.
   const [seed, setSeed] = useState(0);
   const dirty = useDirtyForm(f, seed);
+  // A kept draft (ui/drafts.jsx), beside the dirty guard rather than instead of it: the guard
+  // stops a close that would lose the article, this survives the closes it cannot stop — a
+  // reload, a crashed tab, a laptop that slept. `seed` is the same signal `useDirtyForm` uses,
+  // so the body arriving from the server is not mistaken for somebody writing it.
+  //
+  // `draft` is already taken here by the conflict-reopen prop, which is in-memory and about a
+  // different problem; this one is called `kept`.
+  const kept = useDraft({
+    scope: 'blog-post', id: post?.id || null, value: f, ready: seed > 0, seed,
+    onRestore: (v) => setF((s) => ({ ...s, ...v })),
+  });
   // Concurrent-edit tracking: the version + body this editor loaded, so a colliding
   // save can 3-way merge against them (git-style). `merge` holds the banner state.
   const baseRef = useRef({ version: null, body: '', bodyFr: '' });
@@ -548,6 +560,10 @@ function BlogEditor({ post, scopes, onClose, onSaved, draft, draftBase, conflict
     if (canOptimistic) {
       const snapshot = { ...f };
       const origBase = { ...baseRef.current };
+      // Before the close, not after: closing unmounts the editor, and unmounting flushes a
+      // pending draft write. Without this the article that was just saved would be written
+      // back as a draft and offered again the next time it is opened.
+      kept.clear();
       onClose();
       toast.action({
         tone: 'success', duration: 6000, cancelLabel: t('be.undo', 'Undo'),
@@ -573,6 +589,7 @@ function BlogEditor({ post, scopes, onClose, onSaved, draft, draftBase, conflict
     setBusy(true);
     try {
       if (post) await api.patch(`/blog/${post.id}`, body); else await api.post('/blog', body);
+      kept.clear();
       toast.success(post ? t('be.updated', 'Post updated.') : t('be.published', 'Post published.')); onSaved();
     } catch (x) {
       // Someone else saved since we loaded → 3-way merge their copy into ours (git-style).
@@ -652,6 +669,7 @@ function BlogEditor({ post, scopes, onClose, onSaved, draft, draftBase, conflict
           <Eye size={14} className={f.publish ? 'text-success' : 'text-[var(--faint)]'} />
           {f.publish ? t('de.published', 'Published') : t('de.draft', 'Draft')}
         </label>} />}>
+      <DraftBanner draft={kept} what={t('draft.w.post', 'post')} className="mb-3" />
       {/* The post's own tools. In the footer they shared a row with Save, which on a phone
           wrapped into a block taller than the buttons that matter. */}
       {post && (

@@ -33,6 +33,25 @@ export function setUndoDisabled(off) {
   try { localStorage.setItem(UNDO_OFF_KEY, off ? '1' : '0'); } catch { /* ignore */ }
 }
 
+// Optional: turn OFF kept drafts. Long forms and editors keep what is typed into them in
+// this tab's sessionStorage (ui/draft-store.js) and offer it back on the next open, so a
+// mis-click that closes a modal, a reload or a crash costs nothing.
+//
+// OFF by default, i.e. drafts are ON, and deliberately so: the mechanism exists because
+// somebody lost a form they had filled in, and a safety net that has to be switched on first
+// is a safety net nobody has the day they need it. The people who want it gone are the ones
+// on a shared machine, and they are also the ones who will go and look for the switch.
+//
+// With this ON, nothing is written at all — not written and ignored. Turning it on also
+// clears the drafts already kept, so "off" means the browser is holding none.
+export const DRAFTS_OFF_KEY = 'bcw_drafts_off';
+export function getDraftsDisabled() {
+  try { return localStorage.getItem(DRAFTS_OFF_KEY) === '1'; } catch { return false; }
+}
+export function setDraftsDisabled(off) {
+  try { localStorage.setItem(DRAFTS_OFF_KEY, off ? '1' : '0'); } catch { /* ignore */ }
+}
+
 // Ask before signing out. OFF by default: a confirmation nobody asked for is friction on a
 // path people take deliberately. It exists because the button is an icon in the topbar, one
 // mis-click from the profile — and on an account with 2FA, getting back in is not one click.
