@@ -11,6 +11,7 @@ import configSrc from '../../../../packages/bmd/src/config.js?raw';
 import urlSrc from '../../../../packages/bmd/src/url.js?raw';
 import pluginsSrc from '../../../../packages/bmd/src/plugins.js?raw';
 import sanitizeSrc from '../../../../packages/bmd/src/sanitize.js?raw';
+import styleSafeSrc from '../../../../packages/bmd/src/style-safe.js?raw';
 import directivesSrc from '../../../../packages/bmd/src/directives.js?raw';
 import blocksSrc from '../../../../packages/bmd/src/blocks.jsx?raw';
 import iconsSrc from '../../../../packages/bmd/src/icons.jsx?raw';
@@ -153,6 +154,7 @@ export function buildKit(on, flavour = 'ts') {
     'url.js': urlSrc,
     'plugins.js': pluginsSrc,
     'sanitize.js': sanitizeSrc,
+    'style-safe.js': styleSafeSrc,
     'directives.js': directivesSrc,
     'blocks.jsx': blocksSrc,
     'icons.jsx': iconsSrc,

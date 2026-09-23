@@ -384,7 +384,10 @@ export default function NotFound({ offline = false }) {
           </>
         ) : (
           <>
-            <div className="text-[86px] leading-none font-black text-[var(--accent-ink)] tracking-tight select-none">404</div>
+            {/* An <h1>, not a <div>: this is the page's heading and it was the only one,
+                so /notfound had no h1 for a screen reader or an outline to land on. The
+                classes are unchanged, so nothing moves. */}
+            <h1 className="text-[86px] leading-none font-black text-[var(--accent-ink)] tracking-tight select-none">404</h1>
             <p className="text-[var(--muted)] mt-1 mb-7">{t('nf.sub', 'That page does not exist. Have a game instead.')}</p>
           </>
         )}
@@ -440,7 +443,7 @@ export default function NotFound({ offline = false }) {
                     ? <Button variant="primary" onClick={resume}><Play size={16} /> {t('nf.resume', 'Resume')}</Button>
                     : <Button variant="primary" onClick={start}>{phase === 'over' ? <><RotateCcw size={16} /> {t('nf.again', 'Play again')}</> : <><Play size={16} /> {t('nf.play', 'Play')}</>}</Button>}
                   {phase !== 'paused' && (
-                    <div className="text-[11px] text-[var(--faint)] mt-3 leading-relaxed">
+                    <div className="text-[12px] text-[var(--faint)] mt-3 leading-relaxed">
                       {t('nf.how2', 'Catch orange, dodge red. Three lives. Five catches in a row doubles what the next ones are worth, and a missed orange one puts you back to nothing.')}
                       <span className="block mt-1">{t('nf.keys', 'Mouse, finger, or hold the left and right arrows. Space pauses.')}</span>
                     </div>
@@ -453,7 +456,7 @@ export default function NotFound({ offline = false }) {
 
         {/* Leaderboard — collapsible (collapsed by default on phones). */}
         <Card className="p-4 w-full md:max-w-xs text-start">
-          <button onClick={() => setBoardOpen((v) => !v)} className="w-full text-sm font-semibold flex items-center gap-2 md:cursor-default" aria-expanded={boardOpen}>
+          <button onClick={() => setBoardOpen((v) => !v)} className="w-full text-sm font-semibold flex items-center gap-2 min-h-[24px] max-lg:min-h-[44px] md:cursor-default" aria-expanded={boardOpen}>
             <Trophy size={15} className="text-warning" /> <span className="flex-1 text-start">{t('nf.leaderboard', 'Leaderboard')}</span>
             <ChevronDown size={16} className={`md:hidden text-[var(--faint)] transition-transform ${boardOpen ? 'rotate-180' : ''}`} />
           </button>
@@ -548,7 +551,7 @@ export default function NotFound({ offline = false }) {
           standing in for, so it does not offer one. */}
       {!offline && (
         <div className="text-center">
-          <Link to="/" className="inline-flex items-center gap-1.5 mt-8 text-sm text-[var(--muted)] hover:text-[var(--text)] transition"><HomeIcon size={15} /> {t('nf.home', 'Back to home')}</Link>
+          <Link to="/" className="inline-flex items-center gap-1.5 mt-8 text-sm min-h-[24px] max-lg:min-h-[44px] text-[var(--muted)] hover:text-[var(--text)] transition"><HomeIcon size={15} /> {t('nf.home', 'Back to home')}</Link>
         </div>
       )}
     </div>

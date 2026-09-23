@@ -878,12 +878,18 @@ export function Nav({ preview = null } = {}) {
           {clusterB.map(renderUtil)}
         </div>
         {/* below lg: profile/sign-in shortcut + menu (the hamburger sheet already
-            has nav links + dashboard/admin/profile/logout, so nothing is lost). */}
-        <div className="lg:hidden flex items-center gap-1 shrink-0">
+            has nav links + dashboard/admin/profile/logout, so nothing is lost).
+
+            A <nav>, not a <div>, and that is the whole point of the element here. The
+            segmented nav above is `hidden lg:flex` and the bottom bar is `md:hidden`, so
+            between 768px and 1023px the page had NO navigation landmark at all: measured on
+            22 pages at 768. This cluster owns the menu at those widths, so it is the
+            landmark. */}
+        <nav aria-label={t('nav.menu.aria', 'Site menu')} className="lg:hidden flex items-center gap-1 shrink-0">
           {user ? <Link to="/profile" onClick={() => setOpen(false)}><Avatar user={user} size={28} /></Link>
             : <Link to="/auth"><Button variant="primary" size="sm" className="rounded-full">{t('nav.signin')}</Button></Link>}
           <button className="nav-link !px-2 shrink-0" onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-label={t('nav.menu.aria', 'Site menu')}>{open ? <X size={20} /> : <Menu size={20} />}</button>
-        </div>
+        </nav>
       </div>
 
       {/* The phone menu (below lg:). Same visual language as the bottom bar: see MobileMenu.
@@ -1181,7 +1187,7 @@ function FooterSocial({ item }) {
   const Brand = SOCIAL_ICONS[String(item.icon || '').toLowerCase()];
   return (
     <a href={item.href} target={/^https?:/i.test(item.href) ? '_blank' : undefined} rel="noreferrer" title={item.label}
-      className="grid place-items-center w-9 h-9 rounded-xl border border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--line-strong)] hover:bg-[var(--surface-2)] transition">
+      className="foot-social grid place-items-center w-9 h-9 rounded-xl border border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--line-strong)] hover:bg-[var(--surface-2)] transition">
       {Brand ? <Brand size={16} className={item.icon === 'kofi' ? 'text-orange-400' : ''} /> : <LucideCdnIcon name={item.icon} size={16} />}
       {/* The label is the accessible name. `title` alone is a tooltip, not a name, so a
           screen reader announced twelve identical "link"s. */}
@@ -1215,12 +1221,12 @@ const showsOn = (item, mobile) => {
 function FooterCol({ title, links }) {
   const [open, setOpen] = useState(false);
   const render = ([l, to, ext]) => ext
-    ? <a key={l} href={to} target="_blank" rel="noreferrer" className="text-sm text-[var(--muted)] hover:text-[var(--accent-ink)] transition w-fit">{l}</a>
-    : <Link key={l} to={to} className="text-sm text-[var(--muted)] hover:text-[var(--accent-ink)] transition w-fit">{l}</Link>;
+    ? <a key={l} href={to} target="_blank" rel="noreferrer" className="foot-link text-sm text-[var(--muted)] hover:text-[var(--accent-ink)] transition w-fit">{l}</a>
+    : <Link key={l} to={to} className="foot-link text-sm text-[var(--muted)] hover:text-[var(--accent-ink)] transition w-fit">{l}</Link>;
   return (
     <div className="border-b border-[var(--line)] md:border-0">
       <button type="button" onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between py-3.5 md:py-0 md:mb-3 md:cursor-default text-start">
+        className="foot-col-head w-full flex items-center justify-between py-3.5 md:py-0 md:mb-3 md:cursor-default text-start">
         {/* `--muted`, not `--faint`: this is a column HEADING, not a caption. On the footer
             band it measured 2.79:1 in the light theme — --faint is sized for text on a card,
             and the band is the page colour with the grain over it. */}
@@ -1291,7 +1297,7 @@ function FooterEgg() {
   };
   return (
     <>
-      <button onClick={onClick} className="flex items-center gap-1.5 hover:text-[var(--muted)] transition select-none" title="✨">
+      <button onClick={onClick} className="foot-egg flex items-center gap-1.5 hover:text-[var(--muted)] transition select-none" title="✨">
         <Sparkles size={12} className="text-[var(--accent-ink)]" /> Built for the Better* community
       </button>
       {open && badge && <Modal open onClose={() => setOpen(false)} title={badge.name || t('egg.title', 'You found a secret!')}

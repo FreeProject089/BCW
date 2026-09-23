@@ -209,7 +209,7 @@ export default function MyoIntakeWizard({ cards = [], cfg, onClose, inline = fal
                   <span className="font-medium text-sm">{c.label}</span>
                   {on && <Check size={13} className="ms-auto text-[var(--accent-ink)]" />}
                 </span>
-                {c.blurb ? <span className="block text-[11.5px] text-[var(--muted)] mt-1 leading-relaxed">{c.blurb}</span> : null}
+                {c.blurb ? <span className="block text-[12px] text-[var(--muted)] mt-1 leading-relaxed">{c.blurb}</span> : null}
               </button>
             );
           })}

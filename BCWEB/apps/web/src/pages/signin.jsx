@@ -31,12 +31,18 @@ const OAUTH_ERRORS = {
 
 // Password field with a show/hide toggle.
 function PwInput({ value, onChange, placeholder = '••••••••' }) {
+  const { t } = useI18n();
   const [show, setShow] = useState(false);
   return (
     <div className="relative">
       <Input type={show ? 'text' : 'password'} value={value} onChange={onChange} placeholder={placeholder} className="!pe-10" />
-      <button type="button" onClick={() => setShow((s) => !s)} aria-label={show ? 'Hide password' : 'Show password'}
-        className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--faint)] hover:text-[var(--text)] p-1">
+      {/* The reveal toggle measured 24x24: fine for a cursor, half a finger on a phone. It is
+          absolutely positioned inside a 44px field, so the larger box costs no layout. The
+          label goes through t() as well - an aria-label is a user-facing string, and
+          i18n:check cannot see one. */}
+      <button type="button" onClick={() => setShow((s) => !s)}
+        aria-label={show ? t('auth.pw.hide', 'Hide password') : t('auth.pw.show', 'Show password')}
+        className="absolute right-2 top-1/2 -translate-y-1/2 grid place-items-center max-lg:w-11 max-lg:h-11 text-[var(--faint)] hover:text-[var(--text)] p-1">
         {show ? <EyeOff size={16} /> : <Eye size={16} />}
       </button>
     </div>
@@ -378,8 +384,8 @@ export function Auth() {
           </>
         )}
         <div className="mt-4 flex flex-col items-center gap-1.5 text-sm">
-          {mode === 'login' && <button className="text-[var(--muted)] hover:text-[var(--text)]" onClick={() => { setEmailTaken(false); setMode('forgot'); }}>{t('auth.forgot')}</button>}
-          <button className="text-[var(--muted)] hover:text-[var(--text)]" onClick={() => { setEmailTaken(false); setMode(mode === 'login' ? 'register' : 'login'); }}>
+          {mode === 'login' && <button className="inline-flex items-center min-h-[24px] max-lg:min-h-[44px] text-[var(--muted)] hover:text-[var(--text)]" onClick={() => { setEmailTaken(false); setMode('forgot'); }}>{t('auth.forgot')}</button>}
+          <button className="inline-flex items-center min-h-[24px] max-lg:min-h-[44px] text-[var(--muted)] hover:text-[var(--text)]" onClick={() => { setEmailTaken(false); setMode(mode === 'login' ? 'register' : 'login'); }}>
             {mode === 'login' ? t('auth.toRegister') : t('auth.toLogin')}
           </button>
         </div>

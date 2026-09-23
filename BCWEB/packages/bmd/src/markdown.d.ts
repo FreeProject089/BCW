@@ -272,6 +272,14 @@ export function remarkDocBlocks(): (tree: unknown) => void;
 /** A heading's id — what `::toc` links and every `#anchor` are built from. */
 export function slugify(s: string): string;
 
+/* ── style-safe.js ─────────────────────────────────────────────────────── */
+
+/** Decodes CSS escapes, so a filter judges what the browser will read, not the text. */
+export function decodeCssEscapes(input: string): string;
+
+/** The `style=` policy: what a document may set on an element, judged after decoding. */
+export function safeStyle(value: string): string;
+
 /* ── sanitize.js ───────────────────────────────────────────────────────── */
 
 /** The rehype-sanitize schema, extended to permit exactly what the kit emits. */

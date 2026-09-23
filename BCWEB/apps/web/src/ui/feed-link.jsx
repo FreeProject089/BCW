@@ -29,14 +29,14 @@ export default function FeedLink({ path, label, hint, className = '' }) {
     <div className={`inline-flex items-center gap-1 ${className}`}>
       <button type="button" onClick={copy}
         title={hint || t('feed.hint', 'Copy this list as a JSON URL, paste it into BMM to add it as a source')}
-        className="inline-flex items-center gap-1.5 text-[12px] px-2.5 py-1.5 rounded-lg border border-[var(--line-strong)] hover:border-[var(--primary)] transition"
+        className="inline-flex items-center gap-1.5 text-[12px] px-2.5 py-1.5 max-lg:min-h-[44px] rounded-lg border border-[var(--line-strong)] hover:border-[var(--primary)] transition"
         style={{ background: 'var(--bg-solid)' }}>
         {done ? <Check size={13} className="text-success" /> : <FileJson size={13} className="text-[var(--accent-ink)]" />}
         {done ? t('feed.copied', 'URL copied') : (label || t('feed.json', 'JSON feed'))}
         {!done && <Copy size={11} className="text-[var(--faint)]" />}
       </button>
       <a href={url} target="_blank" rel="noreferrer" title={t('feed.open', 'Open it in a tab')}
-        className="inline-grid place-items-center w-[30px] h-[30px] rounded-lg border border-[var(--line-strong)] hover:border-[var(--primary)] transition text-[var(--faint)] hover:text-[var(--accent-ink)]"
+        className="inline-grid place-items-center w-[30px] h-[30px] max-lg:w-11 max-lg:h-11 rounded-lg border border-[var(--line-strong)] hover:border-[var(--primary)] transition text-[var(--faint)] hover:text-[var(--accent-ink)]"
         style={{ background: 'var(--bg-solid)' }}>
         <ExternalLink size={13} />
       </a>
@@ -81,7 +81,7 @@ export function FeedMenu({ project = '', kind = '', className = '' }) {
     <div className={`relative inline-block ${className}`}>
       <button type="button" onClick={() => setOpen((o) => !o)}
         title={t('feed.ix.hint', 'Addresses that list catalogs rather than items. Paste one into BMM → Settings → Catalog index.')}
-        className="inline-flex items-center gap-1.5 text-[12px] px-2.5 py-1.5 rounded-lg border border-[var(--line-strong)] hover:border-[var(--primary)] transition"
+        className="inline-flex items-center gap-1.5 text-[12px] px-2.5 py-1.5 max-lg:min-h-[44px] rounded-lg border border-[var(--line-strong)] hover:border-[var(--primary)] transition"
         style={{ background: 'var(--bg-solid)' }}>
         <FileJson size={13} className="text-[var(--accent-ink)]" />
         {t('feed.ix.btn', 'Index feeds')}

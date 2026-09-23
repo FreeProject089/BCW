@@ -51,7 +51,7 @@ export function Catalog() {
       <div className="rounded-2xl border border-[var(--line)] panel p-3 mb-5 space-y-3">
         <div className="flex items-center gap-2 flex-wrap">
           {[['', t('cat.allprojects', 'All')], ['bmm', 'BMM'], ['bsm', 'BSM']].map(([pk, l]) => (
-            <button key={pk} onClick={() => { set('project', pk); if (kind) set('kind', ''); }} className={`px-4 py-1.5 rounded-lg text-sm font-medium transition ${project === pk ? 'bg-gradient-to-br from-brand to-brand-2 text-[var(--on-primary)] shadow-sm' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{l}</button>
+            <button key={pk} onClick={() => { set('project', pk); if (kind) set('kind', ''); }} className={`px-4 py-1.5 min-h-[24px] max-lg:min-h-[44px] rounded-lg text-sm font-medium transition ${project === pk ? 'bg-gradient-to-br from-brand to-brand-2 text-[var(--on-primary)] shadow-sm' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{l}</button>
           ))}
           <div className="flex-1" />
           <Select className="!w-auto" value={sort} onChange={(e) => set('sort', e.target.value)}>{SORTS.map(([v, l]) => <option key={v} value={v}>{t(`cat.sort.${v}`, l)}</option>)}</Select>
@@ -68,7 +68,7 @@ export function Catalog() {
           <div className="flex gap-1.5 flex-wrap">
             {(project === 'bsm' ? ['', 'PRESET'] : ['', ...ALL_KINDS]).map((k) => {
               const I = k ? (KIND_ICON[k] || Package) : Package;
-              return <button key={k} onClick={() => set('kind', k)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm border transition ${kind === k ? 'border-[var(--primary)] panel text-[var(--accent-ink)] font-medium' : 'border-[var(--line)] panel text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--line-strong)]'}`}><I size={14} /> {k ? kindLabel(k, project) : t('cat.all', 'All')}</button>;
+              return <button key={k} onClick={() => set('kind', k)} className={`flex items-center gap-1.5 px-3 py-1.5 min-h-[24px] max-lg:min-h-[44px] rounded-lg text-sm border transition ${kind === k ? 'border-[var(--primary)] panel text-[var(--accent-ink)] font-medium' : 'border-[var(--line)] panel text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--line-strong)]'}`}><I size={14} /> {k ? kindLabel(k, project) : t('cat.all', 'All')}</button>;
             })}
           </div>
         </div>

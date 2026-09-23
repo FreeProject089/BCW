@@ -224,7 +224,15 @@ export const Input = forwardRef((p, ref) => {
 const WRAP_CLASS = /^(!?)(w-|max-w-|min-w-|flex|grow|shrink|basis-|col-span|row-span|m[tbsexy]?-|hidden|block|inline|self-|justify-self|order-)/;
 function splitClasses(cls) {
   const wrap = [], inner = [];
-  for (const c of String(cls || '').split(/\s+/).filter(Boolean)) (WRAP_CLASS.test(c) ? wrap : inner).push(c);
+  // Test the UTILITY, not the whole token: `max-lg:!w-36` and `sm:w-40` are width classes
+  // and belong on the wrapper, but anchored at `^` the regex saw `max-lg:` and `sm:` and sent
+  // them to the INPUT, where a width does nothing the wrapper is not already overriding. It
+  // failed silently - the class was in the DOM, on the wrong element - and it is how a touch
+  // width on the /hosting stepper appeared to be ignored.
+  // Everything after the last `:` is the utility itself; WRAP_CLASS already allows the
+  // leading `!`, wherever Tailwind put it.
+  const bare = (c) => c.slice(c.lastIndexOf(':') + 1);
+  for (const c of String(cls || '').split(/\s+/).filter(Boolean)) (WRAP_CLASS.test(bare(c)) ? wrap : inner).push(c);
   return [wrap.join(' '), inner.join(' ')];
 }
 
@@ -520,7 +528,15 @@ export function PageHeader({ icon: Icon, title, subtitle, actions }) {
 // "every empty state's action is a primary button" and have it be true — a node would have
 // let each call site style its own. Passing a second, lesser action (or anything else)
 // still works through `children`, which renders beside it.
-export function EmptyState({ icon: Icon, title, sub, hint, action, children }) {
+/**
+ * `as` is the heading level of the title, and it defaults to a plain div on purpose.
+ *
+ * An EmptyState is usually a SECTION of a page that already has its own h1 (144 call sites),
+ * and promoting all of them would have given those pages two. But a handful of them ARE the
+ * whole page - "Project not found", the docs hub with nothing published yet - and those
+ * pages had no h1 at all, at every width. Those call sites pass `as="h1"`.
+ */
+export function EmptyState({ icon: Icon, title, sub, hint, action, children, as: TitleTag = 'div' }) {
   const A = action && action.label ? action : null;
   const AIcon = A?.icon;
   const btn = A ? (
@@ -536,7 +552,7 @@ export function EmptyState({ icon: Icon, title, sub, hint, action, children }) {
     // wide screen.
     <Card className="p-6 sm:p-12 text-center">
       {Icon && <Icon size={32} className="mx-auto text-[var(--faint)] mb-3" />}
-      <div className="font-semibold break-words">{title}</div>
+      <TitleTag className="font-semibold break-words">{title}</TitleTag>
       {sub && <div className="text-sm text-[var(--muted)] mt-1 mx-auto max-w-sm break-words">{sub}</div>}
       {/* Center the action row explicitly: the card's `text-center` only centers inline
           content, so a caller passing a flex row (two buttons side by side) got them

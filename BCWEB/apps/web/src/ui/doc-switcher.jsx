@@ -78,7 +78,7 @@ export function DocSwitcher({ options, current, label, className = '' }) {
       <button ref={btnRef} type="button" onClick={() => setOpen((v) => !v)}
         aria-haspopup="listbox" aria-expanded={open}
         onKeyDown={(e) => { if (!open && (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setOpen(true); } }}
-        className="press-sm w-full sm:w-auto sm:min-w-[18rem] sm:max-w-full inline-flex items-center gap-2 rounded-xl border border-[var(--line-strong)] bg-[var(--surface-2)] px-3 py-2 text-start hover:border-[var(--ring)] transition-colors">
+        className="press-sm w-full sm:w-auto sm:min-w-[18rem] sm:max-w-full inline-flex items-center gap-2 rounded-xl border border-[var(--line-strong)] bg-[var(--surface-2)] px-3 py-2 max-lg:min-h-[44px] text-start hover:border-[var(--ring)] transition-colors">
         {cur?.icon}
         {/* No `truncate` anywhere in this control: a document called "Conditions générales
             d'utilisation" must be readable, not shortened to three words and an ellipsis. */}

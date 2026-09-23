@@ -167,7 +167,16 @@ export default function CommandPalette() {
     setPageEls(buildIndex(collectPageElements()));
     setRecent(readRecent());
     const id = setTimeout(() => inputRef.current?.focus(), 20);
-    return () => clearTimeout(id);
+    // Lock the page behind the palette, the way the shared Modal in ui.jsx does. (Spelled
+    // without the angle brackets on purpose: check-modal-open.mjs greps the source for a
+    // Modal tag with no `open` prop, and a comment is source.) This is a real
+    // aria-modal dialog over a full-screen overlay, but the page under it still scrolled:
+    // on a phone, a flick aimed at the result list scrolls the site instead, and the
+    // overlay you are reading slides over different content. Measured by
+    // scripts/audit-ux.mjs --modals as bodyLocked:false while every other modal check passed.
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { clearTimeout(id); document.body.style.overflow = prevOverflow; };
   }, [open]);
 
   // Live docs full-text (the same endpoint the docs page uses), debounced off the DEFERRED

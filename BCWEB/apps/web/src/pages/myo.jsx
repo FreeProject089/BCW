@@ -117,7 +117,7 @@ export function MyoPage() {
             nothing tying the two together. A bordered pill that visibly toggles, and a panel
             under it, so the sequence belongs to the thing you clicked. */}
         <details className="group myo-deal">
-          <summary className="panel mx-auto w-fit cursor-pointer list-none select-none flex items-center gap-2 text-xs text-[var(--muted)] rounded-full border border-[var(--line)] px-3.5 py-1.5 hover:b-primary hover:text-[var(--text)] transition-colors">
+          <summary className="panel mx-auto w-fit cursor-pointer list-none select-none flex items-center gap-2 text-xs text-[var(--muted)] rounded-full border border-[var(--line)] px-3.5 py-1.5 max-lg:min-h-[44px] hover:b-primary hover:text-[var(--text)] transition-colors">
             <Sparkles size={13} className="text-[var(--accent-ink)] shrink-0" />
             <span>{t('myo.deal.fold', 'How it works, and when you are charged')}</span>
             <ChevronDown size={13} className="shrink-0 transition-transform group-open:rotate-180" />
@@ -139,7 +139,7 @@ export function MyoPage() {
             to read the detail. The intake modal repeats it in full at the moment money is
             about to move, which is the moment it must not be foldable. */}
         <details className="plate [--plate-r:0px] mt-4 border-t border-[var(--line)] pt-3.5 max-w-3xl mx-auto">
-          <summary className="text-xs text-[var(--muted)] cursor-pointer flex items-center gap-2.5 list-none">
+          <summary className="text-xs text-[var(--muted)] cursor-pointer flex items-center gap-2.5 list-none min-h-[24px] max-lg:min-h-[44px]">
             <AlertTriangle size={15} className="shrink-0 text-warning" />
             {t('myo.disclaimer.head', 'What the consultation fee covers, and what it does not')}
           </summary>

@@ -2090,3 +2090,118 @@ body::before {
   --brand-kofi:    #ff5e5b;
 }
 /* ════ END: brand mark colours ═════════════════════════════════════════════════════════ */
+
+/* ════ BEGIN: touch, keyboard and anchor targets (scripts/audit-ux.mjs) ════════════════
+   Everything below answers a COUNT from `node scripts/audit-ux.mjs`, not a taste. The
+   audit walks the main pages at 375 / 768 / 1280 and reports interactive boxes under the
+   minimum for the pointer that width implies: 44x44 below 1024 (a finger: WCAG 2.5.5, and
+   the Apple/Material number), 24x24 from 1024 up (a cursor: WCAG 2.5.8 AA).
+
+   Two things are deliberate about the shape of these rules:
+
+   · They raise the HIT BOX, not the type. `min-height` on a flex/inline-flex control grows
+     the box around text that does not move, so nothing is restyled and nothing is cut.
+   · They are width-gated, not `pointer: coarse`. The 768px column of the report is a
+     tablet, which is touch, and `(pointer: coarse)` does not fire in the headless browser
+     that takes the measurement - a rule nobody can measure is a rule that rots.
+
+   Measured before: 442 undersized targets at 375, 1036 at 768, 605 at 1280. The footer
+   alone was 1358 of the 2083 (its link columns are 20px rows and its social tiles 36px),
+   and the topbar another 264. */
+
+/* The footer. `.foot-link` / `.foot-col-head` / `.foot-social` / `.foot-egg` are named in
+   App.jsx for this: matching on `a.text-sm.transition` would have caught half the site. */
+.foot-link { display: flex; align-items: center; min-height: 24px; min-width: 24px; }
+.foot-col-head { min-height: 24px; }
+.foot-egg { min-height: 24px; }
+
+/* Below lg the footer is an accordion and every row is a finger target. The column gap is
+   dropped to 0 at the same time: 44px rows PLUS a 10px gap would have doubled the footer's
+   height for no extra reach. */
+@media (max-width: 1023px) {
+  .foot-link { min-height: 44px; min-width: 44px; }
+  .foot-link + .foot-link { margin-top: -10px; }
+  .foot-col-head { min-height: 44px; }
+  .foot-egg { min-height: 44px; }
+  .foot-social { width: 44px; height: 44px; }
+
+  /* The topbar bar is already 56px tall (`h-14`); its controls were 24 to 34px inside it,
+     so this costs no layout at all - the row just uses the height it already had. */
+  .topbar a, .topbar button, .topbar summary { min-height: 44px; min-width: 44px; }
+  .nav-link { min-height: 44px; }
+
+  /* Shared controls. `.input` measured 43px: one pixel short, on every form on the site. */
+  .btn, .input, select.input, textarea.input { min-height: 44px; }
+  .skip-link { min-height: 44px; display: inline-flex; align-items: center; }
+}
+
+/* A <summary> is a button. `.explain`'s was a 16px line, so it failed at every width; the
+   padding is what grows, so the sentence stays where it was instead of floating in a box. */
+.explain > summary { padding-block: 4px; min-height: 24px; }
+@media (max-width: 1023px) { .explain > summary { padding-block: 14px; } }
+
+/* The range slider was a 6px-tall element with NO focus ring at all (3 of the 3 focus-ring
+   defects at every width were this one control on /hosting). The track keeps its 6px look:
+   the height moves to the ::-webkit-slider-runnable-track / ::-moz-range-track, which Chrome
+   and Firefox centre vertically inside the input's own box, and the thumb is re-centred with
+   a negative margin. So the control grows to a real target and looks identical. */
+.bcw-range { height: 24px; background: transparent; border: 0; }
+.bcw-range::-webkit-slider-runnable-track {
+  height: 6px; border-radius: 99px; background: var(--surface-2); border: 1px solid var(--line);
+}
+.bcw-range::-moz-range-track {
+  height: 6px; border-radius: 99px; background: var(--surface-2); border: 1px solid var(--line);
+}
+.bcw-range::-webkit-slider-thumb { margin-top: -6px; }
+.bcw-range:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; border-radius: 99px; }
+@media (max-width: 1023px) { .bcw-range { height: 44px; } }
+
+/* `<Link><Button/></Link>` is the house pattern for a routed CTA, and the <a> around the
+   button is INLINE: its line box measured 21px tall while the 44px button overflowed it.
+   The anchor is the thing a pointer hits first, so it has to be the same box as its button.
+   `:has` is how the rule finds the pattern without touching every call site. */
+a:has(> .btn), a:has(> button) { display: inline-flex; }
+
+/* The stacked stepper keeps a cursor-sized floor at every width (WCAG 2.5.8 AA is 24px):
+   the container query zeroes the buttons' minimum so they can share one column, which left
+   them at 23px on the desktop /hosting field. */
+.num-wrap > .num-inc, .num-wrap > .num-dec { min-height: 24px; }
+
+/* The number stepper's +/- buttons are 28x23. The wrapper is a 3-column grid, so raising
+   the buttons' minimum raises the whole control together and the field keeps its shape. */
+@media (max-width: 1023px) {
+  /* The wrapper, not the buttons: this is a stretch grid, so raising the CONTROL's minimum
+     raises both buttons and the field together. Raising the buttons alone instead widened
+     the columns and squeezed the number field from 56px to 24px - the fix was worse than
+     the defect, and the audit would not have caught it because a 24px INPUT still measures
+     44px tall. */
+  .num-wrap { min-height: 44px; }
+  /* Below 9rem the control stacks its two buttons in ONE column (a container query inside
+     the component), so a 44px control gives each of them 22px. The /hosting field asks for
+     w-28 = 112px, which is under that threshold; it asks for w-36 on a touch viewport
+     instead, and the side-by-side layout comes back with both buttons at full height. */
+  /* `.btn-sm` is narrow by design; only its WIDTH fell short, on icon-only uses. */
+  .btn-sm { min-width: 44px; }
+}
+
+/* `tap-44`: reach without a restyle.
+   Some controls have a size that IS the design - a 40x24 toggle pill, a dense filter chip -
+   and growing the box would be a restyle, not a fix. So the hit area grows instead: a
+   transparent, absolutely positioned ::after centred on the control, 44x44, which is what
+   the finger lands on. Used only where the control has clear space around it; on a wrapped
+   row of chips, overlapping 44px hit boxes would steal each other's taps, so those chips are
+   given real height instead. scripts/audit-ux.mjs reads the pseudo-element too, so a control
+   fixed this way stops being counted - and one fixed by wishful thinking does not. */
+.tap-44 { position: relative; }
+@media (max-width: 1023px) {
+  .tap-44::after {
+    content: ''; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    width: 44px; height: 44px; border-radius: 12px;
+  }
+}
+
+/* Jumping to an in-page anchor scrolls the target to y=0, which is BEHIND the 68px sticky
+   header. "Skip to content" - the one control a keyboard user reaches first - landed the top
+   of <main> under the topbar on all 22 pages, at all three widths. */
+:is(main, section, article, h1, h2, h3, h4, [data-anchor])[id] { scroll-margin-top: 84px; }
+/* ════ END: touch, keyboard and anchor targets ════════════════════════════════════════ */

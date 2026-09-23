@@ -210,8 +210,11 @@ export default function Docs() {
           </aside>
         </div>, document.body)}
 
-      {/* Content */}
-      <main className="flex-1 min-w-0 w-full max-w-3xl xl:max-w-4xl 2xl:max-w-5xl">
+      {/* Content.
+          A <div>, not a <main>: App.jsx already wraps every route in <main id="main-content">,
+          so this one nested a second main landmark inside the first and /docs reported two at
+          every width. The layout classes are the same. */}
+      <div className="flex-1 min-w-0 w-full max-w-3xl xl:max-w-4xl 2xl:max-w-5xl">
         <div className="flex items-center gap-2 mb-2">
           <button className="btn btn-sm" onClick={() => setSidebar((v) => !v)} title={t('dcs.togglesidebar', "Toggle sidebar")}><PanelLeftClose size={15} className="hidden md:block" /><Menu size={15} className="md:hidden" /></button>
           {page && (canEdit || page.commentsPublic) && <div className="ms-auto flex gap-2">
@@ -247,13 +250,13 @@ export default function Docs() {
               <HelpfulWidget page={page} canEdit={canEdit} />
             </article>
           ) : (
-            <EmptyState icon={BookOpen} title={t('docs.none.title')}
+            <EmptyState as="h1" icon={BookOpen} title={t('docs.none.title')}
               sub={canEdit ? t('docs.none.sub.admin2', 'Guides and reference for the apps live here, and no page has been written yet.') : t('docs.none.sub2', 'Guides and reference for the apps will live here, and nothing has been published yet.')}
               action={canEdit
                 ? { label: t('docs.newpage'), onClick: () => setEditing({}), icon: Plus }
                 : { label: t('docs.none.a', 'Read the blog'), to: '/blog', icon: Newspaper }} />
           )}
-      </main>
+      </div>
 
       {page && <PageToc body={body} />}
 

@@ -339,7 +339,7 @@ export default function ProjectPage({ preview = null }) {
   if (loading) return <div className="flex items-center gap-2 text-[var(--muted)] py-10"><Spinner /> {t('common.loading')}</div>;
   if (err?.status === 403) return <EmptyState icon={Lock} title={t('proj.notAvailable', 'Not available')} sub={t('proj.noAccess', "You don't have access to this page.")}
     action={{ label: t('proj.err.a', 'See the projects'), to: '/projects', icon: Boxes }} />;
-  if (err) return <EmptyState icon={Boxes} title={t('proj.notFound', 'Project not found')}
+  if (err) return <EmptyState as="h1" icon={Boxes} title={t('proj.notFound', 'Project not found')}
     sub={t('proj.notFound.s2', 'This address does not match any project, it may have been renamed or removed.')}
     action={{ label: t('proj.err.a', 'See the projects'), to: '/projects', icon: Boxes }} />;
   const c = data.config;
@@ -1457,7 +1457,7 @@ export function ShowcaseProjectPage({ preview = null }) {
   if (loading) return <div className="flex items-center gap-2 text-[var(--muted)] py-10"><Spinner /> {t('common.loading')}</div>;
   if (err?.status === 403) return <EmptyState icon={Lock} title={t('proj.notAvailable', 'Not available')} sub={t('proj.noAccess', "You don't have access to this page.")}
     action={{ label: t('proj.err.a', 'See the projects'), to: '/projects', icon: Boxes }} />;
-  if (err) return <EmptyState icon={Boxes} title={t('proj.notFound', 'Project not found')}
+  if (err) return <EmptyState as="h1" icon={Boxes} title={t('proj.notFound', 'Project not found')}
     sub={t('proj.notFound.s2', 'This address does not match any project, it may have been renamed or removed.')}
     action={{ label: t('proj.err.a', 'See the projects'), to: '/projects', icon: Boxes }} />;
   // Full-takeover countdown (no page behind it).

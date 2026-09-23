@@ -113,7 +113,7 @@ export function ReposPage() {
   // One chip shape for both rows. They used to be two different treatments (the tiers were
   // bordered pills, the three switches were full `btn`s at 36px) stacked as two wrapping
   // rows, which is most of why there were 557px of controls above the first repo.
-  const chip = (on) => `text-xs px-2.5 py-1 rounded-lg border flex items-center gap-1 shrink-0 whitespace-nowrap transition ${on ? 'border-[var(--primary)] text-[var(--text)] panel' : 'border-[var(--line)] panel text-[var(--muted)] hover:text-[var(--text)]'}`;
+  const chip = (on) => `text-xs px-2.5 py-1 min-h-[24px] max-lg:min-h-[44px] rounded-lg border flex items-center gap-1 shrink-0 whitespace-nowrap transition ${on ? 'border-[var(--primary)] text-[var(--text)] panel' : 'border-[var(--line)] panel text-[var(--muted)] hover:text-[var(--text)]'}`;
 
   return (
     <div>

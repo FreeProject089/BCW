@@ -551,7 +551,7 @@ export function Legal({ page: fixed }) {
         <summary className="px-4 py-3 text-sm font-medium cursor-pointer select-none">{lang === 'fr' ? 'Sur cette page' : 'On this page'}</summary>
         <div className="px-2 pb-2 max-h-[50vh] overflow-y-auto no-scrollbar">
           {d.body.map(([h], i) => (
-            <a key={h} href={`#s${i}`} className="block text-sm py-1.5 px-2 rounded-lg text-[var(--muted)] hover:bg-[var(--surface-2)]">{h}</a>
+            <a key={h} href={`#s${i}`} className="flex items-center text-sm py-1.5 px-2 min-h-[24px] max-lg:min-h-[44px] rounded-lg text-[var(--muted)] hover:bg-[var(--surface-2)]">{h}</a>
           ))}
         </div>
       </details>
@@ -566,7 +566,7 @@ export function Legal({ page: fixed }) {
           <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">{lang === 'fr' ? 'Sur cette page' : 'On this page'}</div>
           {d.body.map(([h], i) => (
             <a key={h} href={`#s${i}`}
-              className={`block text-sm py-1 border-s ps-2 -ms-px transition-colors ${
+              className={`flex items-center text-sm py-1 min-h-[24px] max-lg:min-h-[44px] border-s ps-2 -ms-px transition-colors ${
                 active === i
                   ? 'text-[var(--accent-ink)] border-[var(--primary)] font-medium'
                   : 'text-[var(--muted)] border-transparent hover:text-[var(--accent-ink)] hover:border-[var(--primary)]'

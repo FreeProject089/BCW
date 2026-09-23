@@ -63,7 +63,12 @@ function TermControl({ months, setMonths, term, sample, t }) {
         <label className="text-xs text-[var(--muted)] flex flex-col gap-1 sm:w-40">
           {t('hosting.term.exact', 'Or type it')}
           <span className="flex items-center gap-1.5">
-            <Input type="number" min={min} max={max} step={step} value={months} className="!w-28"
+            {/* w-28 (112px) is under .num-wrap's 9rem container-query threshold, so below it the
+                  stepper STACKS its two buttons in one column and each gets 22px - half a touch
+                  target, and unreachable by the usual fix because the container query cannot be
+                  overridden from outside. w-36 on a touch viewport keeps the side-by-side layout
+                  and the 44px buttons; the desktop width is unchanged. */}
+            <Input type="number" min={min} max={max} step={step} value={months} className="!w-28 max-lg:!w-36"
               aria-label={t('hosting.term.months', 'Months')}
               onChange={(e) => { const v = e.target.value; if (v !== '') pick(v); }}
               onBlur={(e) => pick(e.target.value)} />
@@ -78,7 +83,7 @@ function TermControl({ months, setMonths, term, sample, t }) {
             const active = m === months;
             return (
               <button key={m} type="button" aria-pressed={active} onClick={() => pick(m)}
-                className={`rounded-full border px-2.5 py-1 text-[12px] leading-none transition-colors tabular-nums ${active ? 'border-[var(--primary)] tint-primary-soft text-[var(--accent-ink)] font-semibold' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
+                className={`tap-44 rounded-full border px-2.5 py-1.5 text-[12px] leading-none transition-colors tabular-nums ${active ? 'border-[var(--primary)] tint-primary-soft text-[var(--accent-ink)] font-semibold' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
                 {m} {t('hosting.mo', 'mo')}{d > 0 && <span className={`ms-1 ${active ? '' : 'text-success'}`}>−{d}%</span>}
               </button>
             );

@@ -322,14 +322,16 @@ export function NewsletterSignup() {
   };
   return (
     <div className="mt-12 rounded-2xl border border-[var(--line)] bg-[var(--surface-2)] p-6 sm:p-8 text-center">
-      <h3 className="text-lg font-bold">{t('news.title', 'Get blog updates by email')}</h3>
+      {/* h2, not h3: this sits directly under the page's h1 and skipping a level breaks
+          the document outline (measured at all three widths on /blog). Same type scale. */}
+      <h2 className="text-lg font-bold">{t('news.title', 'Get blog updates by email')}</h2>
       <p className="text-sm text-[var(--muted)] mt-1.5 max-w-md mx-auto">{t('news.sub', 'New posts, straight to your inbox. Double opt-in, and one-click unsubscribe in every email.')}</p>
       {state === 'done'
         ? <p className="mt-4 text-sm text-[var(--accent-ink)] font-semibold">{t('news.check', 'Almost there, check your inbox to confirm your subscription.')}</p>
         : (
           <form onSubmit={submit} className="mt-4 flex flex-col sm:flex-row gap-2 max-w-md mx-auto">
             <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t('news.ph', 'you@example.com')}
-              className="flex-1 rounded-full border border-[var(--line)] bg-[var(--bg-solid)] px-4 py-2.5 text-sm outline-none focus:border-[var(--primary)]" />
+              className="flex-1 rounded-full border border-[var(--line)] bg-[var(--bg-solid)] px-4 py-2.5 text-sm max-lg:min-h-[44px] outline-none focus:border-[var(--primary)]" />
             <Button type="submit" variant="primary" disabled={state === 'sending'}>{state === 'sending' ? t('news.sending', 'Subscribing…') : t('news.cta', 'Subscribe')}</Button>
           </form>
         )}

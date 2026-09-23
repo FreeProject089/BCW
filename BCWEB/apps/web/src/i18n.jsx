@@ -9,7 +9,7 @@ const DICT = {
     'nav.home': 'Home', 'nav.apps': 'Apps', 'nav.bmm': 'BMM', 'nav.bsm': 'BSM', 'nav.installer': 'BI', 'nav.blog': 'Blog',
     'nav.repos': 'Repos', 'nav.hosting': 'Hosting', 'nav.projects': 'Projects', 'nav.dashboard': 'Dashboard', 'nav.admin': 'Admin',
     'nav.dev': 'Developers',
-    'nav.settings': 'Settings', 'nav.docs': 'Docs',
+    'nav.settings': 'Settings', 'nav.docs': 'Docs', 'nav.catalog': 'Catalog',
     'docs.title': 'Documentation', 'docs.search': 'Search…', 'docs.filter': 'Filter pages…', 'docs.newpage': 'New page',
     'docs.edit': 'Edit', 'docs.updated': 'Updated', 'docs.contributors': '{n} contributors', 'docs.empty': '*This page is empty.*', 'docs.onthispage': 'On this page',
     'docs.none.title': 'No documentation yet', 'docs.none.sub.admin': 'Create the first page to get started.', 'docs.none.sub': 'Check back soon.',
@@ -2100,7 +2100,7 @@ const DICT = {
     'auth.err.oauthOnly': "Ce compte a été créé avec GitHub ou Discord, utilise ça pour te connecter, ou définis un mot de passe depuis ton profil une fois connecté.",
     'auth.welcome.toast': 'Bienvenue !',
     'auth.redirecting': 'Déjà connecté, redirection vers ton profil…',
-    'auth.forgot': 'Mot de passe oublié ?',
+    'auth.forgot': 'Mot de passe oublié ?', 'auth.pw.show': 'Afficher le mot de passe', 'auth.pw.hide': 'Masquer le mot de passe',
     'auth.reset.title': 'Réinitialiser le mot de passe', 'auth.reset.sub': 'Saisis ton e-mail pour recevoir un jeton de réinitialisation.',
     'auth.newpw.title': 'Définir un nouveau mot de passe', 'auth.newpw.sub': 'Choisis un nouveau mot de passe pour ton compte.',
     'auth.sendreset': 'Envoyer', 'auth.updatepw': 'Mettre à jour',
@@ -8636,7 +8636,7 @@ export function LangToggle({ type = 'auto', icon = null } = {}) {
       <div className="inline-flex items-center gap-0.5">
         {LIST.map((l) => (
           <button key={l.code} onClick={() => setLang(l.code)} title={nameOf(l)}
-            className={`px-2 py-1 rounded-md text-xs font-semibold uppercase transition ${l.code === lang ? 'tint-primary text-[var(--accent-ink)]' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>
+            className={`px-2 py-1 max-lg:min-h-[44px] max-lg:min-w-[44px] rounded-md text-xs font-semibold uppercase transition ${l.code === lang ? 'tint-primary text-[var(--accent-ink)]' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>
             {l.code}
           </button>
         ))}
@@ -8694,7 +8694,7 @@ export function LangSelect({ className = '', type = 'dropdown' }) {
     const next = LIST[(idx + 1) % LIST.length] || LIST[0];
     return (
       <button type="button" onClick={() => setLang(next.code)} title={`Language — ${nameOf(next)}`} aria-label={t('nav.language', 'Language')}
-        className={`inline-flex items-center gap-1.5 rounded-lg border border-[var(--line-strong)] bg-[var(--surface-2)] px-2.5 py-1.5 text-xs font-medium text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--ring)] transition-colors ${className}`}>
+        className={`inline-flex items-center gap-1.5 max-lg:min-h-[44px] rounded-lg border border-[var(--line-strong)] bg-[var(--surface-2)] px-2.5 py-1.5 text-xs font-medium text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--ring)] transition-colors ${className}`}>
         <Languages size={14} /> <span className="uppercase font-semibold">{lang}</span>
       </button>
     );
@@ -8705,7 +8705,7 @@ export function LangSelect({ className = '', type = 'dropdown' }) {
       <div className={`inline-flex items-center gap-0.5 ${className}`}>
         {LIST.map((l) => (
           <button key={l.code} type="button" onClick={() => setLang(l.code)} title={nameOf(l)}
-            className={`px-2 py-1 rounded-md text-xs font-semibold uppercase transition ${l.code === lang ? 'tint-primary text-[var(--accent-ink)]' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>
+            className={`px-2 py-1 max-lg:min-h-[44px] max-lg:min-w-[44px] rounded-md text-xs font-semibold uppercase transition ${l.code === lang ? 'tint-primary text-[var(--accent-ink)]' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>
             {l.code}
           </button>
         ))}
@@ -8723,7 +8723,7 @@ export function LangSelect({ className = '', type = 'dropdown' }) {
   return (
     <div className={`relative inline-flex ${className}`} ref={ref}>
       <button type="button" onClick={() => setOpen((o) => { const n = !o; if (n) setQ(''); return n; })} aria-haspopup="listbox" aria-expanded={open} aria-label={t('nav.language', 'Language')}
-        className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--line-strong)] bg-[var(--surface-2)] px-2.5 py-1.5 text-xs font-medium text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--ring)] transition-colors">
+        className="inline-flex items-center gap-1.5 max-lg:min-h-[44px] rounded-lg border border-[var(--line-strong)] bg-[var(--surface-2)] px-2.5 py-1.5 text-xs font-medium text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--ring)] transition-colors">
         <Languages size={14} className="shrink-0" /> {nameOf(cur)}
         <ChevronDown size={13} className={`text-[var(--faint)] transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
