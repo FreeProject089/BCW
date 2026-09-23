@@ -136,6 +136,38 @@ ligne d'audit.
 Les décisions de stockage et de facturation ne sont **pas** exposées dans Discord. Elles
 appartiennent au titulaire du compte, sur le site.
 
+### Plans du bot : ce qu'un serveur peut utiliser
+
+Un serveur peut être limité à une **offre gratuite** et débloqué par un **plan du bot** (sept.
+2026). La conception est dans `apps/api/src/lib/bot-entitlements.mjs` ; ce qu'un opérateur doit
+savoir :
+
+- Un plan du bot est un plan d'hébergement avec `kind: "bot"` (pas de stockage, un abonnement
+  Stripe mensuel). Un plan de stockage qui porte aussi des droits bot est une offre groupée
+  « hébergement + bot ». Les plans se règlent dans **Admin → Formules d’hébergement** : type,
+  fonctions, limites et nombre de serveurs couverts.
+- Les fonctions qu'un plan peut donner : `welcome`, `welcomeBanner`, `joinToCreate`, `gating`,
+  `rolePanels`, `blog`, `automod`, `logRouting`. Les limites qu'il peut relever, chacune avec un
+  plafond dur : salons vocaux à la demande 20, règles d'accès 30, panneaux de rôles 20, routes de
+  blog 20, mots de l'automod 500. Un plan couvre au plus 25 serveurs, que l'acheteur choisit parmi
+  ceux qu'il gère, depuis le tableau de bord (revérifié côté serveur).
+- **L'offre gratuite est un réglage, et par défaut elle donne tout.** Tant que la carte « Bot
+  Discord : ce que chaque serveur reçoit sans plan » (sous la liste des plans) n'est pas
+  restreinte, aucun plan ne vend quoi que ce soit. Y lister aussi les serveurs de la plateforme :
+  ils ne sont jamais limités.
+- Rien n'est stocké par serveur. Les droits se calculent à partir de l'offre gratuite et des
+  abonnements actifs qui nomment le serveur : un abonnement qui se termine les retire, et un
+  webhook rejoué ne compte qu'une fois.
+- Contrôlé aux deux bouts. Enregistrer une config (tableau de bord du propriétaire, `/logs` dans
+  Discord) qui active une fonction non couverte, ou dépasse une limite, est refusé en 402 avec le
+  nom de la fonction ; désactiver est toujours permis. Et `/bot/config` / `/bot/rolepanels`
+  servent au bot une copie déjà filtrée : il ne fait jamais plus que ce que le serveur paie, et
+  les réglages enregistrés sont gardés pour un nouvel abonnement.
+- Une fois l'offre gratuite restreinte, un serveur qui avait déjà activé une fonction devenue
+  payante doit la désactiver avant de pouvoir enregistrer ses autres réglages : le tableau de
+  bord affiche le refus avec le nom de la fonction, il ne verrouille pas encore la section à
+  l'avance.
+
 ---
 
 ## 3. Ce que fait chaque fonction
@@ -214,6 +246,11 @@ ou le salon par défaut du serveur.
 Depuis Discord : `/logs setup` crée le forum avec ses tags, `/logs route` envoie une
 catégorie ou un groupe quelque part, `/logs test` poste un exemple là où cette catégorie
 atterrit, et `/logs status` liste chaque catégorie avec sa destination (Gérer le serveur).
+
+Une route vers des salons peut en nommer jusqu'à **5** (`ids`) ; l'entrée part dans chacun, et
+un salon supprimé n'arrête pas les autres. Une ancienne route à un seul salon (`id`) se lit comme
+une liste d'un salon, sans migration, et `id` reste écrit à côté de `ids` pour un bot pas encore
+mis à jour.
 
 Une file par destination fusionne les rafales et respecte les limites de débit de Discord.
 Les **alertes** admin sont globales et non par serveur, et peuvent aussi aller dans un forum

@@ -129,6 +129,34 @@ against.
 Storage and billing decisions are **not** exposed in Discord. They belong to the account
 holder on the site.
 
+### Bot plans: what a server may use
+
+A server can be limited to a **free tier** and unlocked by a **bot plan** (Sept 2026). The
+design is in `apps/api/src/lib/bot-entitlements.mjs`; what an operator needs to know:
+
+- A bot plan is a hosting plan with `kind: "bot"` (no storage, a monthly Stripe subscription).
+  A storage plan that also carries bot entitlements is a bundle, "hosting + bot". Plans are
+  edited in **Admin → Hosting plans**: kind, features, limits and how many servers it covers.
+- The features a plan can grant: `welcome`, `welcomeBanner`, `joinToCreate`, `gating`,
+  `rolePanels`, `blog`, `automod`, `logRouting`. The limits it can raise, each with a hard
+  ceiling: join-to-create lobbies 20, gating rules 30, role panels 20, blog routes 20, automod
+  words 500. One plan covers at most 25 servers, which its buyer picks among the servers they
+  manage, from the dashboard (re-checked server-side).
+- **The free tier is a setting, and its default is everything.** Until the card "Discord bot:
+  what every server gets without a plan" (under the plan list) is narrowed, no plan sells
+  anything. List the platform's own servers there too: they are never limited.
+- Nothing is stored per server. Entitlements are computed from the free tier plus the active
+  subscriptions naming the server, so a subscription that ends withdraws them, and a replayed
+  webhook counts once.
+- Checked at both ends. Writing a config (the owner's dashboard, `/logs` in Discord) that turns
+  on something not covered, or goes past a limit, is refused with 402 and the feature's name;
+  turning something off is always allowed. And `/bot/config` / `/bot/rolepanels` serve the bot
+  an already filtered copy, so it never does more than the server pays for; the saved settings
+  are kept for when it subscribes again.
+- Once the free tier is narrowed, a server that already had a now-paid feature on must turn it
+  off before it can save other settings: the dashboard shows the refusal with the feature's
+  name, it does not yet lock the section in advance.
+
 ---
 
 ## 3. What each feature does
@@ -201,6 +229,10 @@ category wins over its group, both win over the server's default forum or channe
 From Discord: `/logs setup` creates the forum with its tags, `/logs route` points a category
 or a group somewhere, `/logs test` posts a sample entry where that category resolves, and
 `/logs status` lists every category with its destination (Manage Server).
+
+A channel route may name up to **5 text channels** (`ids`); the entry goes to each, and a
+deleted one does not stop the others. An older single-channel route (`id`) reads as a list of
+one, with no migration, and `id` is still written beside `ids` for a bot not yet updated.
 
 A per-destination queue merges bursts and respects Discord's rate limits. Admin **alerts**
 are global rather than per-server, and can also be sent to one forum where each alert kind
