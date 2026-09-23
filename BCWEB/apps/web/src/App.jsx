@@ -1,16 +1,17 @@
 import { useEffect, useState, useRef, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Routes, Route, Link, NavLink, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { Routes, Route, Link, NavLink, Navigate, useLocation, useNavigate, useNavigationType } from 'react-router-dom';
 import { Code2, Boxes, Orbit, Music2, Newspaper, Server, Rocket, LayoutDashboard, Shield, LogOut, Download, Menu, X, Sparkles, Bell, Trash2, CheckCheck, Mail, Home as HomeIcon, ChevronDown, MoreHorizontal, LayoutGrid, ShieldCheck, ArrowUpRight, Info, AlertTriangle, CheckCircle2, Settings as SettingsIcon, BookOpen, Search, Languages, LogIn, Cloud, HelpCircle } from 'lucide-react';
 import { useAuth } from './pages/auth.jsx';
 import { api } from './lib/api.js';
 import { onNotifsChanged, applyNotifChange, markNotifRead, markAllNotifsRead, deleteNotif } from './lib/notifs.js';
 import { useReportsUnseen } from './lib/reports-unseen.js';
 import { getHero3dDisabled } from './lib/prefs.js';
+import { prefersReducedMotion } from './lib/fx-pref.js';
 import WelcomePrefs from './ui/WelcomePrefs.jsx';
 import { Button, useToast, Modal, useDialog } from './ui/ui.jsx';
 import { Badges, BadgeIcon } from './ui/Badges.jsx';
-import { ThemeToggle, SiteLogo, useTheme } from './ui/theme.jsx';
+import { ThemeToggle, useTheme } from './ui/theme.jsx';
 import { UtilGlyph, utilIconFor, utilSize } from './ui/topbar-glyph.jsx';
 
 import { useI18n, LangToggle, LangSelect } from './i18n.jsx';
@@ -233,6 +234,38 @@ function useNavBadge() {
 // Real app icon when /icons/<app>.png exists, otherwise any Lucide icon or Simple Icons
 // brand (via IconGlyph). `item.icon` may be a lucide component (hardcoded NAV) or a string
 // name / "simple:<slug>" (admin-configured nav).
+// The site mark on its white plate: the topbar brand and the footer brand.
+//
+// "The logo is a blank white square" has two causes, both reproduced in the DOM:
+//   1. The image did not load. `.logo-plate` paints its white background whether or not the
+//      <img> inside it ever decodes, so a dead URL (an uploaded mark on a storage bucket that
+//      is down, a draft typed into the admin's live preview, a 404) leaves the white plate and
+//      nothing on it. Measured with /logo.png answered by a 404: naturalWidth 0, background
+//      rgb(255,255,255), i.e. a white square with at most the browser's broken-image glyph.
+//   2. The wrong mark. SiteLogo falls back from the light mark to the DARK one when only the
+//      dark one is set, and a dark-scheme mark is typically a white glyph: white on the white
+//      plate. The plate exists precisely so the mark is always the light-scheme one.
+// So: the light mark or the bundled one (never the dark mark on a plate), and a failed load
+// falls through to the next candidate instead of leaving the plate empty. If even the bundled
+// file cannot load (offline with a cold cache), the plate carries the initials, not nothing.
+const BUNDLED_MARK = '/logo.png';
+function BrandMark({ src: override = '', alt = '', className = '', style }) {
+  const ctx = useTheme();
+  const [failed, setFailed] = useState(() => new Set());
+  const candidates = [override, ctx?.logos?.light, BUNDLED_MARK].filter(Boolean);
+  const src = candidates.find((u) => !failed.has(u));
+  if (!src) {
+    return (
+      <span role={alt ? 'img' : undefined} aria-label={alt || undefined} aria-hidden={alt ? undefined : true}
+        className={`logo-plate brand-mark-fallback ${className}`} style={style}>BC</span>
+    );
+  }
+  return (
+    <img key={src} src={src} alt={alt} className={`logo-plate ${className}`} style={style}
+      onError={() => setFailed((prev) => new Set(prev).add(src))} />
+  );
+}
+
 // A project's own logo, inferred from where the item points. The hardcoded NAV carries an
 // explicit `img`, but the topbar is admin-configurable and the DB copy of it only stores
 // an icon NAME — so a configured "Projects" dropdown fell back to a generic Lucide glyph
@@ -661,12 +694,54 @@ export function Nav({ preview = null } = {}) {
   const loc = useLocation();
   // The phone sheet is an overlay (see the header below), so Escape has to close it: with
   // the page hidden behind it there is no longer anywhere else to click by accident.
+  //
+  // And a press ANYWHERE outside the sheet closes it, not only on the transparent backdrop.
+  // The backdrop lives inside the header's stacking context, so the fixed bottom bar (z-40,
+  // later in the DOM) paints over it: measured at 375x812, a tap on the bar's Search tab
+  // with the menu open opened the command palette ON TOP of the still-open menu. Capture
+  // phase, so it runs before whatever the pressed control does; the toggle is excluded
+  // because its own click is what flips the state.
+  const sheetRef = useRef(null);
+  const toggleRef = useRef(null);
+  const backdropRef = useRef(null);
+  const headerRef = useRef(null);
   useEffect(() => {
-    if (!open) return;
-    const onEsc = (e) => { if (e.key === 'Escape') setOpen(false); };
+    if (!open) return undefined;
+    const onEsc = (e) => {
+      if (e.key !== 'Escape') return;
+      setOpen(false);
+      toggleRef.current?.focus();   // back where the keyboard user opened it from
+    };
+    const onDown = (e) => {
+      const tgt = e.target;
+      if (sheetRef.current?.contains(tgt) || toggleRef.current?.contains(tgt)) return;
+      // The backdrop closes on its own CLICK. Closing on its pointerdown would unmount it
+      // before the click, and the click would then land on whatever page link was under it.
+      if (tgt === backdropRef.current) return;
+      setOpen(false);
+    };
     document.addEventListener('keydown', onEsc);
-    return () => document.removeEventListener('keydown', onEsc);
+    document.addEventListener('pointerdown', onDown, true);
+    return () => { document.removeEventListener('keydown', onEsc); document.removeEventListener('pointerdown', onDown, true); };
   }, [open]);
+  // A route change always closes it (the back button included, which no link's onClick sees).
+  useEffect(() => { setOpen(false); }, [loc.pathname]);
+  // The header's real height, for everything that has to clear it: anchor jumps, the admin
+  // rail's sticky offset and height, the phone sheet's max height. It is not a constant: the
+  // announcement banner rides inside the header. Measured once synchronously (a ResizeObserver
+  // never fires in a background tab) and then observed. Not for the admin's preview copy of
+  // this bar, which lives in a frame and must not rewrite the page's own value.
+  useLayoutEffect(() => {
+    if (preview) return undefined;
+    const el = headerRef.current;
+    if (!el) return undefined;
+    const write = () => document.documentElement.style.setProperty('--header-h', `${Math.round(el.getBoundingClientRect().height)}px`);
+    write();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver(write);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [preview]);
   const segNavRef = useRef(null);
   const neededRef = useRef(0);                     // seg-nav width needed WITH labels
   const [compact, setCompact] = useState(false);   // icons-only (pills + Dashboard/Admin) when tight
@@ -831,7 +906,7 @@ export function Nav({ preview = null } = {}) {
   const unseen = useReportsUnseen(!!user && !preview);
   const unseenDot = (n, label) => n > 0 && <span className="absolute -top-1 -right-1 min-w-[15px] h-[15px] px-1 rounded-full bg-[var(--primary)] text-[var(--on-primary)] text-[9px] font-bold grid place-items-center" title={label} aria-label={label}>{n > 9 ? '9+' : n}</span>;
   return (
-    <header className="sticky top-0 z-40 px-2 sm:px-3 pt-2 sm:pt-3">
+    <header ref={headerRef} className="sticky top-0 z-40 px-2 sm:px-3 pt-2 sm:pt-3">
       {/* The bar and the phone sheet share this box. It is `relative` and it carries the
           max width, because the sheet hangs off it as an OVERLAY — see below for why. */}
       <div className="max-w-7xl mx-auto relative">
@@ -840,7 +915,7 @@ export function Nav({ preview = null } = {}) {
         <Link to="/" className="flex items-center gap-2 font-extrabold text-[15px] me-1 shrink-0" onClick={() => setOpen(false)}>
           {hasIcon('brand', theme)
             ? <span className="grid place-items-center shrink-0" style={{ width: utilSize('brand', uCfg.brand), height: utilSize('brand', uCfg.brand) }}>{ug('brand')}</span>
-            : <SiteLogo alt="BC" className="rounded-xl object-contain" style={{ width: utilSize('brand', uCfg.brand), height: utilSize('brand', uCfg.brand) }} />}
+            : <BrandMark alt="BC" className="rounded-xl object-contain" style={{ width: utilSize('brand', uCfg.brand), height: utilSize('brand', uCfg.brand) }} />}
           <span className="text-[var(--text)] hidden sm:inline">BetterCommunity</span>
         </Link>
         {/* desktop segmented nav — icons-only when tight, icons+labels at xl+.
@@ -888,7 +963,8 @@ export function Nav({ preview = null } = {}) {
         <nav aria-label={t('nav.menu.aria', 'Site menu')} className="lg:hidden flex items-center gap-1 shrink-0">
           {user ? <Link to="/profile" onClick={() => setOpen(false)}><Avatar user={user} size={28} /></Link>
             : <Link to="/auth"><Button variant="primary" size="sm" className="rounded-full">{t('nav.signin')}</Button></Link>}
-          <button className="nav-link !px-2 shrink-0" onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-label={t('nav.menu.aria', 'Site menu')}>{open ? <X size={20} /> : <Menu size={20} />}</button>
+          <button ref={toggleRef} className={`nav-link !px-2 shrink-0 ${open ? 'nav-menu-open' : ''}`} onClick={() => setOpen((v) => !v)} aria-expanded={open}
+            aria-label={open ? t('nav.menu.close', 'Close the menu') : t('nav.menu.aria', 'Site menu')}>{open ? <X size={20} /> : <Menu size={20} />}</button>
         </nav>
       </div>
 
@@ -902,7 +978,7 @@ export function Nav({ preview = null } = {}) {
           of flow. Nothing below it moves. The sheet keeps its own margins and max-width, so
           the look committed in 20fd0998 is untouched — only the box it sits in changed. */}
       {open && (
-        <div className="absolute left-0 right-0 top-full z-10 lg:hidden">
+        <div ref={sheetRef} className="absolute left-0 right-0 top-full z-10 lg:hidden">
           <MobileMenu cfg={navCfg?.mobileMenu} items={effItems} projectsGroup={projectsDropdown ? projectsGroup : null}
             pinned={projectsDropdown ? [] : pinnedShowcase} user={user} uVisible={uVisible} ug={ug}
             onClose={() => setOpen(false)} onLogout={() => { logout(); setOpen(false); }} />
@@ -913,7 +989,9 @@ export function Nav({ preview = null } = {}) {
           a tap anywhere outside closes, and so does Escape. In flow neither was needed —
           you could always see and reach the page. `-z-10` keeps it behind the sheet and the
           bar while still covering the page. */}
-      {open && <button type="button" className="fixed inset-0 -z-10 lg:hidden cursor-default" aria-hidden tabIndex={-1} onClick={() => setOpen(false)} />}
+      {/* Dimmed, so it reads as "the page is behind the menu, tap it to go back" rather than
+          as a page that has stopped responding (it was fully transparent). */}
+      {open && <button ref={backdropRef} type="button" className="msheet-scrim fixed inset-0 -z-10 lg:hidden cursor-default" aria-hidden tabIndex={-1} onClick={() => setOpen(false)} />}
       {/* Lives inside the same sticky header, so it rides along under the topbar
           pill instead of scrolling away with the page content underneath it. */}
       <AnnouncementBanner />
@@ -1003,8 +1081,18 @@ function MobileMenu({ cfg, items, projectsGroup, pinned, user, uVisible, ug, onC
       <div className={`msheet-grid ${tiles ? 'is-tiles' : 'is-list'}`} style={tiles ? { gridTemplateColumns: `repeat(${m.columns}, minmax(0, 1fr))` } : undefined}>{kids}</div>
     </section>
   );
+  // The grip says "this can be pushed away", so it can: a swipe up on the sheet closes it,
+  // the way a sheet hung from the top of the screen is dismissed. Only from the sheet's own
+  // top (scrollTop 0), so scrolling a long menu back up never closes it by accident.
+  const swipe = useRef(null);
+  const onTouchStart = (e) => { const el = e.currentTarget; swipe.current = el.scrollTop <= 0 ? e.touches[0].clientY : null; };
+  const onTouchEnd = (e) => {
+    const y0 = swipe.current; swipe.current = null;
+    if (y0 != null && y0 - e.changedTouches[0].clientY > 60) onClose();
+  };
   return (
-    <div className="lg:hidden msheet topbar anim-fade" role="navigation" aria-label={t('nav.menu.aria', 'Site menu')}>
+    <div className="lg:hidden msheet topbar anim-fade" role="navigation" aria-label={t('nav.menu.aria', 'Site menu')}
+      onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
       <div className="msheet-grip" aria-hidden />
       {section(t('nav.menu.nav', 'Browse'), nav)}
       {section(t('nav.menu.short', 'Shortcuts'), shortcuts)}
@@ -1015,6 +1103,12 @@ function MobileMenu({ cfg, items, projectsGroup, pinned, user, uVisible, ug, onC
             {ug('login', LogIn)} {t('nav.signin')}
           </Link>
         )}
+      {/* The way out, said in words and at the bottom of the sheet: that is where the thumb
+          already is after reading the tiles. The only close control used to be the X in
+          the top-right corner of the bar, the hardest spot on a phone to reach one-handed. */}
+      <button type="button" className="msheet-close" onClick={onClose}>
+        <X size={16} aria-hidden /> {t('nav.menu.close', 'Close the menu')}
+      </button>
     </div>
   );
 }
@@ -1224,16 +1318,16 @@ function FooterCol({ title, links }) {
     ? <a key={l} href={to} target="_blank" rel="noreferrer" className="foot-link text-sm text-[var(--muted)] hover:text-[var(--accent-ink)] transition w-fit">{l}</a>
     : <Link key={l} to={to} className="foot-link text-sm text-[var(--muted)] hover:text-[var(--accent-ink)] transition w-fit">{l}</Link>;
   return (
-    <div className="border-b border-[var(--line)] md:border-0">
-      <button type="button" onClick={() => setOpen((o) => !o)}
-        className="foot-col-head w-full flex items-center justify-between py-3.5 md:py-0 md:mb-3 md:cursor-default text-start">
+    <div className="border-b border-[var(--line)] last:border-b-0 md:border-0">
+      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open}
+        className="foot-col-head w-full flex items-center justify-between py-2.5 md:py-0 md:mb-3 md:cursor-default text-start">
         {/* `--muted`, not `--faint`: this is a column HEADING, not a caption. On the footer
             band it measured 2.79:1 in the light theme — --faint is sized for text on a card,
             and the band is the page colour with the grain over it. */}
         <span className="text-xs font-semibold text-[var(--muted)] uppercase tracking-wider">{title}</span>
         <ChevronDown size={15} className={`md:hidden text-[var(--muted)] transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
-      <div className={`flex-col gap-2.5 pb-4 md:pb-0 md:flex ${open ? 'flex' : 'hidden'}`}>{links.map(render)}</div>
+      <div className={`foot-col-links flex-col gap-2.5 pb-2 md:pb-0 md:flex ${open ? 'flex' : 'hidden'}`}>{links.map(render)}</div>
     </div>
   );
 }
@@ -1259,7 +1353,7 @@ function FooterNewsletter({ cfg }) {
     finally { setBusy(false); }
   };
   return (
-    <form onSubmit={submit} className="mt-6 max-w-xs">
+    <form onSubmit={submit} className="mt-5 md:mt-6 max-w-md md:max-w-xs">
       <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">{pick(cfg?.title, cfg?.titleFr, t('news.foot', 'Newsletter'))}</div>
       {pick(cfg?.text, cfg?.textFr, '') && <p className="text-xs text-[var(--muted)] mb-2 leading-relaxed">{pick(cfg?.text, cfg?.textFr, '')}</p>}
       <div className="flex gap-2">
@@ -1298,7 +1392,7 @@ function FooterEgg() {
   return (
     <>
       <button onClick={onClick} className="foot-egg flex items-center gap-1.5 hover:text-[var(--muted)] transition select-none" title="✨">
-        <Sparkles size={12} className="text-[var(--accent-ink)]" /> Built for the Better* community
+        <Sparkles size={12} className="text-[var(--accent-ink)]" /> {t('foot.built', 'Built for the Better* community')}
       </button>
       {open && badge && <Modal open onClose={() => setOpen(false)} title={badge.name || t('egg.title', 'You found a secret!')}
         icon={undefined} width="max-w-sm">
@@ -1362,20 +1456,23 @@ function Footer() {
     <footer className="plate plate-band mt-16 md:mt-24 relative clear-both">
       {/* gradient accent line */}
       <div className="h-px bg-gradient-to-r from-transparent via-[var(--primary)] to-transparent" />
-      <div className={`max-w-6xl mx-auto px-4 py-14 md:grid md:gap-10 ${cfg?.mobile?.layout === 'grid' ? 'grid grid-cols-2 gap-x-6 gap-y-8' : 'flex flex-col'}`}
+      {/* Phone (below md): one column in reading order, brand, socials, newsletter, status,
+          then the link columns folded into ONE grouped box, then the fine print. Measured at
+          375 before this pass: 778px of footer, the uptime figure wrapping onto its own line
+          as "· 99.5% over 90 days", and 96px of bottom padding stacked on top of the bottom
+          bar's own spacer (the page already ends above the bar: .mbar-spacer follows). */}
+      <div className={`foot-body max-w-6xl mx-auto px-4 pt-8 pb-6 md:py-14 md:grid md:gap-10 ${cfg?.mobile?.layout === 'grid' ? 'grid grid-cols-2 gap-x-6 gap-y-6' : 'flex flex-col'}`}
         style={{ gridTemplateColumns: `1.4fr repeat(${cols.length || 3}, 1fr)` }}>
         {/* brand block — hidden on a phone when the config says so */}
         {(!isMobile || cfg?.mobile?.brand !== false) && (
-        <div className="mb-4 md:mb-0">
+        <div className={`mb-6 md:mb-0 ${cfg?.mobile?.layout === 'grid' ? 'col-span-2 md:col-span-1' : ''}`}>
           <div className="flex items-center gap-2.5 font-extrabold text-lg">
-            {cfg?.brand?.logo
-              ? <img src={cfg.brand.logo} alt="" className="logo-plate w-8 h-8 rounded-xl object-contain shrink-0" />
-              : <SiteLogo className="w-8 h-8 rounded-xl object-contain shrink-0" />}
+            <BrandMark src={cfg?.brand?.logo || ''} className="w-8 h-8 rounded-xl object-contain shrink-0" />
             {cfg?.brand?.name || 'BetterCommunity'}
           </div>
-          <p className="text-sm text-[var(--muted)] mt-3 max-w-xs leading-relaxed">{frOr(cfg?.brand?.taglineFr, cfg?.brand?.tagline) || t('foot.tagline')}</p>
+          <p className="text-sm text-[var(--muted)] mt-2 md:mt-3 max-w-xs leading-relaxed">{frOr(cfg?.brand?.taglineFr, cfg?.brand?.tagline) || t('foot.tagline')}</p>
           {socials.length > 0 && (
-            <div className="flex items-center gap-2 mt-5 flex-wrap">
+            <div className="flex items-center gap-2 mt-4 md:mt-5 flex-wrap">
               {socials.map((x, i) => <FooterSocial key={`${x.icon}-${i}`} item={x} />)}
             </div>
           )}
@@ -1386,6 +1483,10 @@ function Footer() {
           {cfg?.brand?.status !== false && <FooterStatus only={cfg?.brand?.statusServices || []} style={cfg?.brand?.statusStyle || 'line'} />}
         </div>
         )}
+        {/* On a phone the columns are accordions, grouped in one box so they read as one
+            list of three and not as three stray rules across the page. `md:contents` drops
+            the box from md up, where each column is a cell of the footer grid again. */}
+        <div className={`md:contents ${cfg?.mobile?.layout === 'grid' ? 'col-span-2 grid grid-cols-2 gap-x-6 gap-y-2' : 'foot-cols'}`}>
         {cols.length
           ? cols.map((c) => <FooterCol key={c.title} title={c.title} links={c.links} />)
           // The built-in footer, from the SAME list the admin editor edits and resets to.
@@ -1396,13 +1497,17 @@ function Footer() {
             <FooterCol key={c.key} title={t(c.key, c.title)}
               links={c.links.map((l) => [l.key ? t(l.key, l.label) : l.label, l.to, l.ext])} />
           ))}
+        </div>
       </div>
-      <div className="border-t border-[var(--line)]"><div className="max-w-6xl mx-auto px-4 py-5 flex flex-wrap items-center justify-between gap-x-4 gap-y-3 text-xs text-[var(--faint)] pb-24 md:pb-5">
+      {/* The fine print. Centred and stacked on a phone (copyright, then language + the
+          egg on one row); one justified row from md up. No bottom padding for the phone bar:
+          the .mbar-spacer after the footer is exactly the bar's height already. */}
+      <div className="border-t border-[var(--line)]"><div className="foot-fine max-w-6xl mx-auto px-4 py-4 md:py-5 flex flex-col md:flex-row md:flex-wrap items-center md:justify-between gap-x-4 gap-y-2 text-xs text-[var(--faint)] text-center md:text-start">
         {/* {year} is expanded here so "© {year} …" stays right on 1 January without an edit. */}
         <span>{bottom.copyright === false ? '' : (bottomText
           ? bottomText.replace(/\{year\}/g, year)
           : `© ${year} ${cfg?.brand?.name || 'BetterCommunity'}. ${t('foot.rights')}`)}</span>
-        <div className="flex items-center gap-4 flex-wrap">
+        <div className="flex items-center justify-center gap-x-4 gap-y-1 flex-wrap">
           {bottom.lang !== false && <LangSelect type={bottom.langType || 'dropdown'} />}
           {bottom.egg !== false && <FooterEgg />}
         </div>
@@ -1498,8 +1603,123 @@ function AnnouncementBanner() {
   );
 }
 
+// Where the page is scrolled after a navigation.
+//
+// There was no rule at all: <main> swaps its children and the window keeps its scrollY, so
+// opening a page from the footer of a long one landed you in the footer of the new one.
+// The rules, in order:
+//   · Back / Forward (POP) belong to the browser. Its own restoration puts you back where
+//     you were; overriding it is what makes "back" feel broken.
+//   · A URL with a #fragment scrolls to that element, clearing the sticky header (its
+//     scroll-margin-top, or the header's measured height if that is larger). The element
+//     may not exist yet (a lazy route, data still loading), so it is looked for a few times
+//     over ~3s and the search stops the moment the reader scrolls on their own.
+//   · A new PATH goes to the top.
+//   · The same path with only the query changed does NOT move: that is a tab, a filter or
+//     a sort (the admin's ?s=, the catalogue's filters), and jumping would lose your place.
+//   · A caller can override per navigation with state { scroll: 'top' | 'keep' }.
+// The first load is left alone unless it carries a fragment: a reload restores its own
+// position, and a fresh visit is at the top anyway.
+const ANCHOR_TRIES_MS = 3000;
+function anchorTarget(id) {
+  if (!id) return null;
+  // B.MD prefixes heading ids with `user-content-` when it sanitizes, and the links that
+  // point at them keep the bare slug (see the anchor-prefix trap): try both.
+  return document.getElementById(id) || document.getElementById(`user-content-${id}`)
+    || document.querySelector(`[name="${CSS.escape(id)}"]`);
+}
+function scrollToAnchor(el, smooth) {
+  const header = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--header-h')) || 68;
+  const margin = Math.max(parseFloat(getComputedStyle(el).scrollMarginTop) || 0, header + 12);
+  const top = el.getBoundingClientRect().top + window.scrollY - margin;
+  window.scrollTo({ top: Math.max(0, top), behavior: smooth ? 'smooth' : 'auto' });
+}
+// Where each history entry was scrolled to, by location.key. Needed for Back/Forward: the
+// browser does restore, but it does so at popstate, BEFORE the previous page has rendered
+// again (a lazy chunk, data still loading), so it clamps to whatever height the fallback has.
+// Measured: bottom of /legal/privacy at y=10920, open /faq, Back -> y=456. The browser's
+// attempt stands; this only finishes it once the page is tall enough again.
+const SCROLL_AT = new Map();
+// Retry `attempt` (returns true when done) for up to `ms`, and give up the moment the reader
+// scrolls or types: moving them a second later, once they have started reading, is worse
+// than not moving them at all.
+function retryUntil(attempt, ms) {
+  let done = false;
+  let timer = null;
+  const stop = () => { done = true; };
+  const t0 = Date.now();
+  const tick = () => {
+    if (done) return;
+    if (attempt()) { done = true; return; }
+    if (Date.now() - t0 < ms) timer = setTimeout(tick, 120);
+  };
+  window.addEventListener('wheel', stop, { passive: true });
+  window.addEventListener('touchmove', stop, { passive: true });
+  window.addEventListener('keydown', stop);
+  tick();
+  return () => {
+    done = true; clearTimeout(timer);
+    window.removeEventListener('wheel', stop); window.removeEventListener('touchmove', stop); window.removeEventListener('keydown', stop);
+  };
+}
+function useRouteScroll() {
+  const loc = useLocation();
+  const navType = useNavigationType();
+  // Keyed by location.key, not "the previous run": StrictMode runs every effect twice, and a
+  // plain previous-value ref made the second run see the SAME location as its predecessor,
+  // so a fragment on first load was dropped (measured: /legal/privacy#s3 stayed at y=0).
+  const hist = useRef({ key: null, loc: null, before: null });
+  useEffect(() => {
+    const h = hist.current;
+    if (h.key !== loc.key) { h.before = h.loc; h.key = loc.key; h.loc = loc; }
+    const before = h.before;
+    const first = before === null;
+    const saved = SCROLL_AT.get(loc.key);
+    // Record this entry's position as the reader moves, for when they come back to it.
+    const key = loc.key;
+    const record = () => SCROLL_AT.set(key, window.scrollY);
+    window.addEventListener('scroll', record, { passive: true });
+    const cleanups = [() => window.removeEventListener('scroll', record)];
+    const cleanup = () => cleanups.forEach((f) => f());
+
+    if (navType === 'POP' && !first) {
+      if (saved == null) return cleanup;   // an entry from before this page load: the browser's
+      cleanups.push(retryUntil(() => {
+        if (Math.abs(window.scrollY - saved) <= 2) return true;
+        const max = document.documentElement.scrollHeight - window.innerHeight;
+        if (max + 2 < saved) return false;  // not tall enough yet: the page is still arriving
+        window.scrollTo({ top: saved, left: 0, behavior: 'auto' });
+        return true;
+      }, 2500));
+      return cleanup;
+    }
+    const want = loc.state && typeof loc.state === 'object' ? loc.state.scroll : undefined;
+    if (want === 'keep') return cleanup;
+    const samePath = !first && before.pathname === loc.pathname;
+    let id = '';
+    try { id = decodeURIComponent(loc.hash.replace(/^#/, '')); } catch { id = loc.hash.replace(/^#/, ''); }
+    if (!id) {
+      if (!first && (!samePath || want === 'top')) window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+      return cleanup;
+    }
+    // A fragment. A new page starts from the top, so a target that never turns up leaves
+    // you at the top of the page you asked for rather than at a stale depth.
+    if (!first && !samePath) window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    const smooth = samePath && !prefersReducedMotion();
+    cleanups.push(retryUntil(() => {
+      const el = anchorTarget(id);
+      if (el) scrollToAnchor(el, smooth);
+      return !!el;
+    }, ANCHOR_TRIES_MS));
+    return cleanup;
+    // loc.key changes on every navigation, including a click on the link you are already on.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loc.key]);
+}
+
 export default function App() {
   const loc = useLocation();
+  useRouteScroll();
   const toast = useToast();
   const { t, lang } = useI18n();
   // See BOOTED_OFFLINE above. One-way: it can only be cleared, by the network coming back.

@@ -2205,3 +2205,91 @@ a:has(> .btn), a:has(> button) { display: inline-flex; }
    of <main> under the topbar on all 22 pages, at all three widths. */
 :is(main, section, article, h1, h2, h3, h4, [data-anchor])[id] { scroll-margin-top: 84px; }
 /* ════ END: touch, keyboard and anchor targets ════════════════════════════════════════ */
+
+/* ════ BEGIN: topbar, phone menu, footer, scroll and admin rail (App.jsx + SideDash) ═══════
+   One block for the shell around every page. `--header-h` is the sticky header's real
+   height, written by <Nav> (App.jsx) from a ResizeObserver, because the header is not a
+   constant: an announcement banner rides inside it. 68px is its height with no banner at
+   sm and up, so the fallback is right before the first measurement lands. */
+:root { --header-h: 68px; }
+/* A native fragment jump (a plain <a href="#x">, or a URL opened with #x) parks the target
+   under the sticky header unless it carries a margin. The rule for main/section/h1-h4 above
+   uses a fixed 84px; this one covers ANY target, at the header's real height. */
+:target { scroll-margin-top: calc(var(--header-h) + 12px); }
+
+/* The admin (and every SideDash) sidebar: its own scroll area. It was sticky with no height
+   limit, and a sticky box taller than the viewport cannot stick: measured at 1280x800 the
+   admin rail is 1340px, so its lower 540px stayed below the fold until the page had been
+   scrolled to the end of the content beside it. `self-start` on the element keeps it from
+   stretching to the grid row, which would make it as tall as the content again. */
+@media (min-width: 768px) {
+  .sidedash-rail {
+    position: sticky;
+    top: calc(var(--header-h) + 12px);
+    max-height: calc(100vh - var(--header-h) - 24px);
+    max-height: calc(100dvh - var(--header-h) - 24px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-strong) transparent;
+  }
+}
+
+/* ---- Phone menu: easier to close ------------------------------------------------------
+   The backdrop was fully transparent: the page looked live but every tap on it was eaten.
+   A light scrim says "this is behind the menu"; the page stays readable through it. */
+.msheet-scrim { background: color-mix(in srgb, #000 32%, transparent); }
+@media (prefers-reduced-motion: no-preference) {
+  .msheet-scrim { animation: msheetScrim .18s ease-out; }
+}
+@keyframes msheetScrim { from { opacity: 0; } to { opacity: 1; } }
+/* The toggle, while open, is a CLOSE button: show it as one (a filled pill, not a bare X). */
+.nav-menu-open { background: var(--surface-2); color: var(--text); box-shadow: inset 0 0 0 1px var(--line-strong); }
+/* The close row at the bottom of the sheet: full width, 44px, named in words. */
+.msheet-close {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  width: 100%; min-height: 44px; margin-top: 10px; padding: 10px 14px;
+  border-radius: 14px; border: 1px solid var(--line);
+  background: var(--surface-2); color: var(--text);
+  font-size: 14px; font-weight: 600;
+  -webkit-tap-highlight-color: transparent;
+}
+.msheet-close:hover { border-color: var(--line-strong); }
+.msheet-close:active { transform: scale(.98); }
+/* Never taller than what is left between the header and the bottom bar, so the close row
+   and the last tile are always reachable by scrolling the SHEET (the page behind is not
+   what scrolls). 100vh on a phone includes the collapsing URL bar; dvh does not. */
+.msheet {
+  max-height: calc(100vh - var(--header-h) - 16px - var(--mbar-h) - var(--mbar-gap) * 2);
+  max-height: calc(100dvh - var(--header-h) - 16px - var(--mbar-h) - var(--mbar-gap) * 2 - env(safe-area-inset-bottom, 0px));
+}
+@media (min-width: 768px) {
+  /* No bottom bar from md up. */
+  .msheet { max-height: calc(100dvh - var(--header-h) - 24px); }
+}
+
+/* ---- Brand mark with nothing to show -------------------------------------------------
+   BrandMark (App.jsx) falls back to the initials when no image can load at all, so the
+   plate is never an empty white square. Dark ink: the plate is white in both schemes. */
+.brand-mark-fallback {
+  display: inline-grid; place-items: center; flex: none;
+  font-weight: 800; font-size: 11px; letter-spacing: -.02em; line-height: 1;
+  color: #1a1612;
+}
+
+/* ---- Footer on a phone ---------------------------------------------------------------
+   The link columns become one grouped list: a single rounded box, rows split by hairlines,
+   instead of three full-width rules floating in the band. From md up the wrapper is
+   `display: contents` and none of this applies. */
+@media (max-width: 767px) {
+  .foot-cols {
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: var(--surface);
+    overflow: hidden;
+  }
+  .foot-cols .foot-col-head, .foot-cols .foot-col-links { padding-inline: 16px; }
+  .foot-fine { padding-bottom: 12px; }
+}
+[data-surface-glass] .foot-cols { background: color-mix(in srgb, var(--surface) calc(var(--glass-alpha, 0.85) * 100%), transparent); }
+/* ════ END: topbar, phone menu, footer, scroll and admin rail ═══════════════════════════════ */

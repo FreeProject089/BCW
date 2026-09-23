@@ -441,6 +441,19 @@ export function SideDash({ title, subtitle, icon, tabs, headerActions, children,
   const active = current?.id;
   const activeLeaf = leaf?.id;
   const idx = realTabs.findIndex((t) => t.id === active);
+  // The desktop rail scrolls on its own (see `sidedash-rail`), so the active row can be
+  // below its fold: a deep link (?s=errors) would open the right screen with nothing in the
+  // rail saying so. Bring it into the rail's view, moving the RAIL only. scrollIntoView would
+  // also scroll the page, which is exactly what a sidebar click must not do.
+  const railRef = useRef(null);
+  useEffect(() => {
+    const rail = railRef.current;
+    const row = rail?.querySelector('[aria-current="page"]');
+    if (!rail || !row || rail.scrollHeight <= rail.clientHeight) return;
+    const rr = rail.getBoundingClientRect(); const br = row.getBoundingClientRect();
+    if (br.top < rr.top + 8) rail.scrollTop -= rr.top + 8 - br.top;
+    else if (br.bottom > rr.bottom - 8) rail.scrollTop += br.bottom - (rr.bottom - 8);
+  }, [active]);
   // A section, reused by the desktop sidebar and the mobile sheet so the two can never
   // drift into disagreeing about what is folded.
   const renderSection = (sec, i, big) => {
@@ -478,6 +491,7 @@ export function SideDash({ title, subtitle, icon, tabs, headerActions, children,
   // One row renderer, reused by the desktop sidebar and the mobile sheet.
   const renderTab = (tb, big) => (
     <button key={tb.id} onClick={() => set(leafOf(tb)[0].id)} title={tb.badge && tb.badgeTitle ? tb.badgeTitle : undefined}
+      aria-current={active === tb.id ? 'page' : undefined}
       className={`flex items-center gap-2.5 px-3 ${big ? 'py-2.5' : 'py-2'} rounded-xl text-sm text-start w-full whitespace-nowrap transition-colors press ${active === tb.id ? 'bg-[var(--surface-2)] text-[var(--text)] border border-[var(--line)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)] border border-transparent'}`}>
       <tb.icon size={16} className={`shrink-0 ${active === tb.id ? 'text-[var(--accent-ink)]' : ''}`} /> <span className="min-w-0 truncate" title={tb.label}>{tb.label}</span>
       {(() => {
@@ -577,8 +591,13 @@ export function SideDash({ title, subtitle, icon, tabs, headerActions, children,
 
       <div className="grid md:grid-cols-[220px_1fr] gap-6">
         {/* Desktop sidebar — a real card panel behind the whole nav (not just the
-            active pill) so it feels grounded next to the content cards. */}
-        <nav className="hidden md:flex card p-2 flex-col gap-1 md:sticky md:top-20 self-start pb-2">
+            active pill) so it feels grounded next to the content cards.
+            `sidedash-rail` (index.css) gives it its OWN scroll area: sticky under the header,
+            at most one viewport minus that header tall. It used to be sticky with no height
+            limit, and a sticky box taller than the viewport cannot stick: the admin rail is
+            1340px on an 800px screen, so its lower half only came into view once the page had
+            been scrolled to the END of the content beside it. */}
+        <nav ref={railRef} className="hidden md:flex card p-2 flex-col gap-1 self-start pb-2 sidedash-rail">
           {/* Jump straight to a page instead of hunting the list. Shown only when there are
               enough tabs for hunting to be the problem — on a five-tab dashboard a search box
               is one more thing to read. */}

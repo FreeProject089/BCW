@@ -70,7 +70,11 @@ export function FooterStatus({ only = [], style = 'line' }) {
           {services.map((s) => <Link key={s.key} to="/status" className="inline-flex items-center gap-1.5 text-[var(--muted)] hover:text-[var(--text)]"><span className={`h-1.5 w-1.5 rounded-full ${s.state === 'up' ? 'bg-success' : s.state === 'down' ? 'bg-error' : 'bg-warning'}`} />{s.label}</Link>)}
         </div>
       )}
-      <Link to="/status" className="group inline-flex items-center gap-2 flex-wrap text-sm">
+      {/* Two fixed lines, not one that wraps. As a single flex-wrap row the uptime broke off
+          wherever the width ran out: at 375 it became a second line opening on its own
+          separator ("· 99.5% over 90 days") with the arrow trailing after it. Now the sentence
+          owns line one (dot, words, arrow) and the figure sits under the words, at every width. */}
+      <Link to="/status" className="group inline-grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-0.5 text-sm max-w-full">
         <span className={`h-2 w-2 rounded-full shrink-0 ${allUp ? 'bg-success' : down.length ? 'bg-error' : 'bg-warning'}`} />
         <span className={allUp ? 'text-success' : down.length ? 'text-error' : 'text-warning'}>
           {allUp
@@ -81,12 +85,12 @@ export function FooterStatus({ only = [], style = 'line' }) {
                 ? t('sw.many', 'Several services are down')
                 : t('sw.deg', 'Degraded performance')}
         </span>
+        <ArrowRight size={12} className="text-[var(--faint)] transition-transform group-hover:translate-x-0.5" />
         {worst !== null && (
-          <span className="text-[var(--muted)] tabular-nums">
-            · {pct(worst)} {t('sw.90d', 'over 90 days')}
+          <span className="col-start-2 col-span-2 text-xs text-[var(--muted)] tabular-nums">
+            {pct(worst)} {t('sw.90d', 'over 90 days')}
           </span>
         )}
-        <ArrowRight size={12} className="text-[var(--faint)] transition-transform group-hover:translate-x-0.5" />
       </Link>
     </div>
   );
