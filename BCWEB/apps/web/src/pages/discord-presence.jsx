@@ -15,7 +15,7 @@ import { Plus, Trash2, ChevronLeft, ChevronRight, HeartPulse, CreditCard } from 
 import { useI18n } from '../i18n.jsx';
 import { Input, Field, Dropdown, Button, Explain } from '../ui/ui.jsx';
 import { SP, Panel, Eyebrow, Check, NumField } from '../ui/discord-kit.jsx';
-import { normPresence, presenceForSave, presencePreview, PRESENCE_VARS, PRESENCE_MAX_TEXT, PRESENCE_MAX_ROTATE } from '../lib/bot-presence.js';
+import { normPresence, presenceForSave, presencePreview, PRESENCE_VARS, PRESENCE_MAX_TEXT, PRESENCE_MAX_ROTATE, PRESENCE_MAX_INCIDENT, PRESENCE_MIN_ROTATE_SEC } from '../lib/bot-presence.js';
 import { clamp } from '../lib/discord-config.js';
 
 const DOT = { online: 'var(--success)', idle: 'var(--warning)', dnd: 'var(--error)', invisible: 'var(--faint)' };
@@ -51,6 +51,7 @@ export function BotPresencePanel({ value, onChange, status, botName = 'BetterCom
   // Rotation rows are edited in the normalised shape (empty rows allowed while typing) and
   // cleaned only when another field changes; saving drops blank lines, as the bot would.
   const setRotate = (rotate) => onChange({ ...presenceForSave(v), rotate });
+  const setIncident = (incidentLines) => onChange({ ...presenceForSave(v), incidentLines });
   const [scene, setScene] = useState('ok');
   const [tick, setTick] = useState(0);
 
@@ -68,13 +69,19 @@ export function BotPresencePanel({ value, onChange, status, botName = 'BetterCom
     stripe: { label: t('pr.scene.stripe', 'Stripe degraded'), site: { state: 'operational', services: [], stripe: { state: 'minor', description: 'Partially Degraded Service' } } },
   };
   const lines = [v.text, ...v.rotate].map((x) => x.trim()).filter(Boolean);
+  const incLines = [v.healthText, ...v.incidentLines].map((x) => x.trim()).filter(Boolean);
   const shown = presencePreview({ ...v, enabled: true }, { guilds, members, site: SCENES[scene].site, tick, statusLabel: (s) => SITE_WORDS[s] });
   const prefix = shown && shown.type !== 'custom' ? TYPE[shown.type] : '';
+  // How many different lines this situation cycles through: the arrows step through them.
+  const cycle = shown?.incident ? (v.incidentMode === 'alternate' && lines.length ? 2 * Math.max(lines.length, incLines.length) : incLines.length) : shown?.source === 'stripe' ? 1 : lines.length;
   const why = !v.enabled ? t('pr.why.off', 'Off: the bot keeps the plain online dot and shows no line. This is what it would show once on.')
-    : shown?.source === 'health' ? t('pr.why.health', 'The incident line has taken over, and the dot follows how bad it is.')
-      : shown?.source === 'stripe' ? t('pr.why.stripe', 'Stripe’s own status has taken over the line, and an online dot turns idle.')
-        : lines.length > 1 ? t('pr.why.rotate', 'Line {i} of {n}, changing every {s} seconds.').replace('{i}', (tick % lines.length) + 1).replace('{n}', lines.length).replace('{s}', v.rotateSec)
-          : null;
+    : shown?.incident && v.incidentMode === 'alternate' ? t('prs.why.alt', 'During an incident, an incident line and one of your lines take turns every {s} seconds; the dot stays on the incident.').replace('{s}', v.rotateSec)
+      : shown?.source === 'health' ? (incLines.length > 1
+        ? t('prs.why.healthn', 'The incident lines have taken over, in turn every {s} seconds, and the dot follows how bad it is.').replace('{s}', v.rotateSec)
+        : t('pr.why.health', 'The incident line has taken over, and the dot follows how bad it is.'))
+        : shown?.source === 'stripe' ? t('pr.why.stripe', 'Stripe’s own status has taken over the line, and an online dot turns idle.')
+          : lines.length > 1 ? t('pr.why.rotate', 'Line {i} of {n}, changing every {s} seconds.').replace('{i}', (tick % lines.length) + 1).replace('{n}', lines.length).replace('{s}', v.rotateSec)
+            : null;
 
   return (
     <div className={SP.page}>
@@ -102,10 +109,10 @@ export function BotPresencePanel({ value, onChange, status, botName = 'BetterCom
               {shown?.text ? <>{prefix ? <span className="font-medium">{prefix} </span> : null}{shown.text}</> : <span className="text-[var(--faint)]">{t('pr.noline', 'No line: every line is empty.')}</span>}
             </div>
           </div>
-          {lines.length > 1 && scene === 'ok' && (
+          {cycle > 1 && (
             <span className="flex items-center gap-0.5 shrink-0">
-              <button type="button" onClick={() => setTick((n) => (n + lines.length - 1) % lines.length)} className="p-1 rounded-md text-[var(--muted)] hover:text-[var(--text)]" title={t('pr.prev', 'Previous line')}><ChevronLeft size={14} /></button>
-              <button type="button" onClick={() => setTick((n) => (n + 1) % lines.length)} className="p-1 rounded-md text-[var(--muted)] hover:text-[var(--text)]" title={t('pr.next', 'Next line')}><ChevronRight size={14} /></button>
+              <button type="button" onClick={() => setTick((n) => (n + cycle - 1) % cycle)} className="p-1 rounded-md text-[var(--muted)] hover:text-[var(--text)]" title={t('pr.prev', 'Previous line')} aria-label={t('pr.prev', 'Previous line')}><ChevronLeft size={14} /></button>
+              <button type="button" onClick={() => setTick((n) => (n + 1) % cycle)} className="p-1 rounded-md text-[var(--muted)] hover:text-[var(--text)]" title={t('pr.next', 'Next line')} aria-label={t('pr.next', 'Next line')}><ChevronRight size={14} /></button>
             </span>
           )}
         </div>
@@ -140,7 +147,7 @@ export function BotPresencePanel({ value, onChange, status, botName = 'BetterCom
           )}
           <span className="inline-flex items-center gap-1.5 text-[11.5px] text-[var(--muted)] ms-auto">
             {t('pr.rotate.every', 'Change every')}
-            <NumField value={v.rotateSec} f={{ min: 30, max: 3600, int: true }} clamp={clamp} className="!w-16" ariaLabel={t('pr.rotate.sec', 'seconds (30 minimum)')} onCommit={(n) => set({ rotateSec: n })} />
+            <NumField value={v.rotateSec} f={{ min: PRESENCE_MIN_ROTATE_SEC, max: 3600, int: true }} clamp={clamp} ariaLabel={t('pr.rotate.sec', 'seconds (30 minimum)')} onCommit={(n) => set({ rotateSec: n })} />
             {t('pr.rotate.sec', 'seconds (30 minimum)')}
           </span>
         </div>
@@ -154,6 +161,29 @@ export function BotPresencePanel({ value, onChange, status, botName = 'BetterCom
         </Check>
         {v.health && <LineField label={t('pr.healthText', 'Incident line')} value={v.healthText} onChange={(x) => set({ healthText: x })} vars={['{services}', ...PRESENCE_VARS]} placeholder="Incident: {services}"
           hint={t('pr.healthText.h', '{services} is what is down, in the status page’s own words.')} />}
+        {v.health && (
+          <div className={`${SP.tight} ps-5`}>
+            {/* More incident lines, shown in turn during an incident. */}
+            {v.incidentLines.map((line, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <Input className="flex-1 min-w-0" value={line} maxLength={PRESENCE_MAX_TEXT} aria-label={t('prs.inc.n', 'Incident line {n}').replace('{n}', i + 2)}
+                  placeholder={t('prs.inc.ph', 'e.g. We are on it: {services}')} onChange={(e) => setIncident(v.incidentLines.map((x, k) => (k === i ? e.target.value : x)))} />
+                <button type="button" onClick={() => setIncident(v.incidentLines.filter((_, k) => k !== i))} className="p-1 text-[var(--faint)] hover:text-error shrink-0" title={t('common.remove', 'Remove')} aria-label={t('common.remove', 'Remove')}><Trash2 size={13} /></button>
+              </div>
+            ))}
+            {v.incidentLines.length < PRESENCE_MAX_INCIDENT && (
+              <Button size="sm" variant="ghost" onClick={() => setIncident([...v.incidentLines, ''])}><Plus size={13} /> {t('prs.inc.add', 'Add an incident line')}</Button>
+            )}
+            {/* Switch to the incident lines, or add them to the rotation. */}
+            <div className="flex flex-wrap gap-1.5" role="group" aria-label={t('prs.mode', 'During an incident')}>
+              {[['replace', t('prs.mode.replace', 'Show only the incident lines')], ['alternate', t('prs.mode.alternate', 'Mix them with my lines')]].map(([k, label]) => (
+                <button key={k} type="button" onClick={() => set({ incidentMode: k })} aria-pressed={v.incidentMode === k}
+                  className={`text-[11.5px] px-2 py-1 rounded-lg border transition-colors ${v.incidentMode === k ? 'b-primary tint-primary text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)] hover:border-[var(--line-strong)]'}`}>{label}</button>
+              ))}
+            </div>
+            <p className="text-[11px] text-[var(--faint)]">{t('prs.vars', 'Only {guilds}, {members}, {status}, {stripe} and {services} are filled in; anything else in braces is shown as typed.')}</p>
+          </div>
+        )}
         <Check checked={v.stripe} onChange={(on) => set({ stripe: on })}>
           <CreditCard size={12} className="shrink-0 text-[var(--faint)]" /> {t('pr.stripe', 'Stripe not fully working takes over the line (Stripe’s own published status)')}
         </Check>

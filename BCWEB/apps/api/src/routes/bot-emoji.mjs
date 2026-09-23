@@ -12,6 +12,10 @@
 //   GET  /admin/bot/custom-icons    the admin-added part of the set, + what is already on the app
 //   POST /admin/bot/custom-icons    add or replace one (an uploaded image, or a glyph)
 //   DELETE /admin/bot/custom-icons/:key
+//   POST /admin/bot/emoji-sync/check read the application's emojis ON DISCORD (bot token, REST)
+//   POST /admin/bot/emoji-sync       upload one batch of the missing icons (bot token, REST)
+//   GET  /admin/bot/emoji-kit.zip    the offline kit: every icon + the two fixed scripts
+//   GET  /admin/bot/emoji-kit/:file  one fixed script (sync-icons.bat / sync-icons.sh / README.txt)
 //
 // The map (lib/app-emoji-map.mjs) is what lets the dashboard say which icons are really on
 // Discord, and what lets the bot use an icon the script uploaded without waiting for its own
@@ -21,13 +25,16 @@
 // `bot.customIcons` (lib/bot-custom-icons.mjs), so an icon an admin adds in the dashboard is
 // in the list the bot syncs and the PNG the bot downloads, with no code change and no deploy.
 import { db, botAuth, requireCap, logAudit } from '../lib/lib.mjs';
-import { ICONS, renderEmoji, iconVersion, iconEmojiStatus } from '../lib/bot-emoji.mjs';
+import { z } from 'zod';
+import { ICONS, renderEmoji, iconVersion, iconEmojiStatus, iconEmojiName } from '../lib/bot-emoji.mjs';
 import { SETTING_KEY, parseEmojiMapBody, nextEmojiMap } from '../lib/app-emoji-map.mjs';
 import {
   SETTING_KEY as CUSTOM_KEY, MAX_CUSTOM_ICONS, MAX_SOURCE_BYTES, DISCORD_MAX_EMOJI_BYTES,
   ICON_KEY_RE, prepareCustomIcon, readStore, storeFits, customKeys, renderCustomIcon,
 } from '../lib/bot-custom-icons.mjs';
-import { getBotConfig } from './bot.mjs';
+import { getBotConfig, storedToken } from './bot.mjs';
+import { discordClient, scrubber, readApplication, mapFromDiscord, syncIconBatch, SYNC_BATCH_MAX } from '../lib/app-emoji-sync.mjs';
+import { KIT_FILES, buildEmojiKit } from '../lib/emoji-kit.mjs';
 
 const builtinKeys = (iconStyle) => Object.entries(ICONS).map(([key, v]) => ({ key, label: v.label, version: iconVersion(key, iconStyle) }));
 /** The whole set the bot is asked to put on Discord: the source's icons, then the admin's. */
@@ -116,7 +123,8 @@ export default async function botEmojiRoutes(app) {
 
   app.get('/admin/bot/emoji-status', { preHandler: requireCap('manage_bot') }, async () => {
     const p = await db();
-    return statusView(await getBotConfig(p), await storedMap(p), await storedCustom(p));
+    // canUpload: whether the site holds a token to upload with. A boolean, never the token.
+    return { ...statusView(await getBotConfig(p), await storedMap(p), await storedCustom(p)), canUpload: !!(await storedToken(p)), batchMax: SYNC_BATCH_MAX };
   });
 
   app.put('/admin/bot/emoji-map', { preHandler: requireCap('manage_bot') }, async (req, reply) => {
@@ -193,6 +201,89 @@ export default async function botEmojiRoutes(app) {
     // emoji already uploaded stays on the application until the sync script runs with --prune.
     return { ok: true, count: Object.keys(icons).length, stillOnDiscord: true };
   });
+
+  // ── Putting the set on Discord from the site ──────────────────────────────────────────
+  // Discord's REST API with the token the site already stores (lib/app-emoji-sync.mjs): no
+  // gateway connection, nothing to run on the owner's PC. The dashboard drives it in batches.
+  // One sync at a time per process: two tabs clicking at once would read the same "missing"
+  // list and race each other into Discord's duplicate-name refusal.
+  app.post('/admin/bot/emoji-sync/check', { preHandler: requireCap('manage_bot') }, async (req, reply) => {
+    const p = await db();
+    const token = await storedToken(p);
+    if (!token) return reply.code(409).send({ error: 'no_token' });
+    const call = discordClient({ token });
+    let appId, items;
+    try { ({ appId, items } = await readApplication(call)); } catch (e) { return discordFailure(reply, e, token); }
+    const value = await saveDiscordList(p, appId, items);
+    return { ok: true, ...statusView(await getBotConfig(p), value, await storedCustom(p)), canUpload: true, batchMax: SYNC_BATCH_MAX };
+  });
+
+  const SYNC_BODY = z.object({ keys: z.array(z.string().regex(/^[a-z0-9_]{2,32}$/)).max(200).optional() }).strip();
+  app.post('/admin/bot/emoji-sync', { preHandler: requireCap('manage_bot') }, async (req, reply) => {
+    const body = SYNC_BODY.safeParse(req.body || {});
+    if (!body.success) return reply.code(400).send({ error: 'invalid_body' });
+    if (syncing) return reply.code(409).send({ error: 'sync_busy' });
+    const p = await db();
+    const token = await storedToken(p);
+    if (!token) return reply.code(409).send({ error: 'no_token' });
+    syncing = true;
+    try {
+      const cfg = await getBotConfig(p);
+      const custom = await storedCustom(p);
+      const keys = keysFor(cfg.economy?.iconStyle || {}, custom);
+      const known = new Set(keys.map((k) => k.key));
+      const wanted = body.data.keys ? body.data.keys.filter((k) => known.has(k)) : null;
+      let batch;
+      try {
+        batch = await syncIconBatch({
+          call: discordClient({ token }), keys, wanted, scrub: scrubber(token),
+          renderPng: async (key) => { const png = await iconPng(p, cfg, key); return png === 404 ? null : png; },
+        });
+      } catch (e) { return discordFailure(reply, e, token); }
+      const value = await saveDiscordList(p, batch.appId, batch.items);
+      const uploaded = batch.results.filter((r) => r.status === 'uploaded').length;
+      const failed = batch.results.filter((r) => r.status === 'failed').length;
+      if (uploaded || failed) await logAudit(p, req.user.uid, 'bot.emoji_sync', `${uploaded} uploaded, ${failed} failed`);
+      const view = statusView(cfg, value, custom);
+      return { ok: true, results: batch.results, pending: batch.results.filter((r) => r.status === 'pending').map((r) => r.key), ...view, canUpload: true, batchMax: SYNC_BATCH_MAX };
+    } finally { syncing = false; }
+  });
+
+  // The offline kit. The scripts in it are FIXED FILES (lib/emoji-kit.mjs says why); the icons
+  // are the only part drawn from the site's data, and they are PNGs, not code.
+  app.get('/admin/bot/emoji-kit.zip', { preHandler: requireCap('manage_bot') }, async (req, reply) => {
+    const p = await db();
+    const cfg = await getBotConfig(p);
+    const keys = keysFor(cfg.economy?.iconStyle || {}, await storedCustom(p));
+    const icons = keys.map((k) => ({ key: k.key, want: iconEmojiName(k.key, k.version) }));
+    const { zip } = await buildEmojiKit(icons, async (key) => { const png = await iconPng(p, cfg, key); return png === 404 ? null : png; });
+    return reply.header('Content-Type', 'application/zip').header('Content-Disposition', 'attachment; filename="bettercommunity-icons.zip"').header('Cache-Control', 'no-store').send(zip);
+  });
+
+  app.get('/admin/bot/emoji-kit/:file', { preHandler: requireCap('manage_bot') }, async (req, reply) => {
+    const f = Object.hasOwn(KIT_FILES, req.params.file) ? KIT_FILES[req.params.file] : null;
+    if (!f) return reply.code(404).send({ error: 'not_found' });
+    return reply.header('Content-Type', f.type).header('Content-Disposition', `attachment; filename="${req.params.file}"`).header('X-Content-Type-Options', 'nosniff').send(f.body);
+  });
+}
+
+let syncing = false;
+
+/** Discord's list, after a read or an upload, becomes the stored map (source: the site). */
+async function saveDiscordList(p, appId, items) {
+  const m = mapFromDiscord(items);
+  const r = await saveMap(p, { emojis: m.emojis, animated: m.animated, appId, mode: 'replace' }, 'site');
+  return r.ok ? r.value : await storedMap(p);
+}
+
+/** A Discord failure as an answer the dashboard can word. The message is scrubbed of the token. */
+function discordFailure(reply, e, token) {
+  const msg = scrubber(token)(e?.message || 'failed');
+  if (e?.code === 'bad_token') return reply.code(400).send({ error: 'bad_token', message: msg });
+  if (e?.code === 'forbidden') return reply.code(400).send({ error: 'discord_forbidden', message: msg });
+  if (e?.code === 'network') return reply.code(502).send({ error: 'discord_unreachable', message: msg });
+  if (e?.code === 'rate_limited') return reply.code(503).send({ error: 'discord_rate_limited', message: msg });
+  return reply.code(502).send({ error: 'discord_error', message: msg });
 }
 
 /** One key's PNG, whichever half of the set it belongs to. `404` when it is in neither. */

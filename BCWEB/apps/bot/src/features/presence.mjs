@@ -7,6 +7,9 @@
 //                           {members} {status} {stripe}; `rotate` adds lines shown in turn.
 //   health                → while the site's status page is not all green, the line says what
 //                           is affected and the dot turns idle (partial) or dnd (major).
+//                           `incidentLines` adds more incident lines, shown in turn; with
+//                           `incidentMode: 'alternate'` they are mixed into the normal rotation
+//                           instead of replacing it (rotationLine below).
 //   stripe                → while STRIPE's own published status is not operational, the line
 //                           says so, in Stripe's words. Read by the API from stripestatus.com
 //                           (cached there), never by the bot, and never fatal: no answer = no
@@ -22,7 +25,42 @@ export const STATUSES = ['online', 'idle', 'dnd', 'invisible'];
 export const TYPES = { playing: ActivityType.Playing, listening: ActivityType.Listening, watching: ActivityType.Watching, competing: ActivityType.Competing, custom: ActivityType.Custom };
 const MAX_TEXT = 128;
 
-const fill = (s, vars) => String(s || '').replace(/\{(\w+)\}/g, (m, k) => (vars[k] !== undefined && vars[k] !== null ? String(vars[k]) : m));
+// The ONLY placeholders a line may use. A line is admin text, and the values come from
+// elsewhere (Stripe's published words, the status page's service labels), so the rule is
+// narrow on purpose:
+//   · a fixed allowlist, looked up with Object.hasOwn: `{constructor}` or `{__proto__}` stays
+//     literal text instead of printing a function's source (the old `vars[k] !== undefined`
+//     read Object.prototype);
+//   · one pass: a VALUE that contains `{members}` is printed as is, never expanded again;
+//   · control characters become spaces, so no value can break the line.
+export const PLACEHOLDERS = Object.freeze(['guilds', 'members', 'status', 'stripe', 'services']);
+export const INCIDENT_MODES = Object.freeze(['replace', 'alternate']);
+export const MAX_INCIDENT_LINES = 5;
+export function fill(s, vars) {
+  return String(s || '').replace(/\{([a-z]+)\}/g, (m, k) => (PLACEHOLDERS.includes(k) && Object.hasOwn(vars, k) && vars[k] !== undefined && vars[k] !== null ? String(vars[k]) : m));
+}
+const clean = (s) => String(s || '').replace(/[\u0000-\u001f\u007f\u2028\u2029]+/g, ' ');
+const lineList = (a) => (Array.isArray(a) ? a : []).map((x) => String(x || '').trim()).filter(Boolean);
+
+/**
+ * Which line to show at `tick`. Pure: the rotation the owner configured, and what an incident
+ * does to it.
+ *   no incident            → lines[tick % n]
+ *   incident, 'replace'    → the incident lines only, in turn (the takeover)
+ *   incident, 'alternate'  → an incident line, then a normal one, and so on: the incident is
+ *                            ADDED to the rotation rather than replacing it (it starts on the
+ *                            incident line, so the first update after it opens says so)
+ * @returns { text, incident } where `incident` says the picked line is an incident line.
+ */
+export function rotationLine(lines, incidentLines, { incident = false, mode = 'replace', tick = 0 } = {}) {
+  const k = Math.abs(Math.floor(Number(tick) || 0));
+  const normal = lineList(lines);
+  if (!incident) return { text: normal.length ? normal[k % normal.length] : '', incident: false };
+  const inc = lineList(incidentLines);
+  if (!inc.length) inc.push('Incident: {services}');
+  if (mode !== 'alternate' || !normal.length) return { text: inc[k % inc.length], incident: true };
+  return k % 2 === 0 ? { text: inc[(k / 2) % inc.length], incident: true } : { text: normal[((k - 1) / 2) % normal.length], incident: false };
+}
 
 /**
  * The presence to show, or null when the feature is off.
@@ -42,23 +80,25 @@ export function presenceFor(p, { guilds = 0, members = 0, site = null, tick = 0,
     stripe: stripe?.description || stripe?.state || '',
   };
 
-  const lines = [p.text, ...(Array.isArray(p.rotate) ? p.rotate : [])].map((x) => String(x || '').trim()).filter(Boolean);
-  let text = lines.length ? lines[Math.abs(Math.floor(tick)) % lines.length] : '';
-
   // Health first: the site being down matters more than anything the line normally says.
   const hurt = (site?.services || []).filter((s) => s.state === 'down').map((s) => s.label);
-  if (p.health !== false && (siteState === 'partial' || siteState === 'major') && hurt.length) {
+  const incident = p.health !== false && (siteState === 'partial' || siteState === 'major') && hurt.length > 0;
+  const mode = INCIDENT_MODES.includes(p.incidentMode) ? p.incidentMode : 'replace';
+  const incidentLines = [p.healthText || 'Incident: {services}', ...(Array.isArray(p.incidentLines) ? p.incidentLines.slice(0, MAX_INCIDENT_LINES) : [])];
+  const pick = rotationLine([p.text, ...(Array.isArray(p.rotate) ? p.rotate : [])], incidentLines, { incident, mode, tick });
+  let text;
+  if (incident) {
     status = siteState === 'major' ? 'dnd' : 'idle';
-    text = fill(p.healthText || 'Incident: {services}', { ...vars, services: hurt.join(', ') });
+    text = fill(pick.text, { ...vars, services: hurt.join(', ') });
   } else if (p.stripe !== false && stripe && !['operational', 'unknown'].includes(stripe.state)) {
     // Stripe degraded or in maintenance: worth saying, not worth a red dot of our own.
     if (status === 'online') status = 'idle';
     text = fill(p.stripeText || 'Stripe: {stripe}', vars);
   } else {
-    text = fill(text, vars);
+    text = fill(pick.text, vars);
   }
 
-  text = text.slice(0, MAX_TEXT);
+  text = clean(text).slice(0, MAX_TEXT);
   if (!text) return { status, activities: [] };
   // A custom status is the text alone ("state"); the other types read "Watching <name>".
   const activity = typeKey === 'custom' ? { name: 'Custom Status', type: TYPES.custom, state: text } : { name: text, type: TYPES[typeKey] };

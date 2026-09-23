@@ -86,10 +86,13 @@ const DEFAULT_BOT_CONFIG = {
   //              shown in turn every `rotateSec` (min 30 — Discord rate-limits presence).
   //   health   → while the status page is not all green, the line becomes `healthText`
   //              ({services} = what is affected) and the dot idle (partial) / dnd (major).
+  //              `incidentLines` are more incident lines shown in turn; `incidentMode`
+  //              'replace' shows only them during an incident, 'alternate' mixes them into
+  //              the normal rotation. Only the fixed placeholders are ever filled.
   //   stripe   → while STRIPE's own published status is not operational, say so with
   //              `stripeText` ({stripe} = Stripe's description). Read from stripestatus.com.
   // Off by default: an install that never opens this screen keeps the plain online dot.
-  presence: { enabled: false, status: 'online', type: 'watching', text: '{guilds} servers', rotate: [], rotateSec: 60, health: true, healthText: 'Incident: {services}', stripe: true, stripeText: 'Stripe: {stripe}' },
+  presence: { enabled: false, status: 'online', type: 'watching', text: '{guilds} servers', rotate: [], rotateSec: 60, health: true, healthText: 'Incident: {services}', incidentLines: [], incidentMode: 'replace', stripe: true, stripeText: 'Stripe: {stripe}' },
   // Where each kind of announcement lands, and who gets pinged when one is urgent.
   //
   // Empty means "the general channel", which is what every existing install has been doing —
@@ -242,7 +245,7 @@ export async function getBotConfig(p) {
 // The bot heartbeats while connected; a recent beat with online!==false means it's live.
 const botOnline = (status) => !!status?.at && status.online !== false && (Date.now() - new Date(status.at).getTime()) < 120_000;
 // The effective token: an env DISCORD_TOKEN always wins over the dashboard-stored one.
-async function storedToken(p) {
+export async function storedToken(p) {
   if (process.env.DISCORD_TOKEN) return process.env.DISCORD_TOKEN;
   const row = await p.adminSetting.findUnique({ where: { key: 'bot.token' } });
   return row?.value?.token || null;

@@ -300,7 +300,7 @@ function WarnCount({ r, setRule }) {
           {t('amod.w.from', 'From hit')}
           <NumField value={r.warnEvery} f={MSG_PARAM_FIELDS.warnEvery} clamp={clamp} ariaLabel={t('amod.w.every.a', 'From which hit')} onCommit={(v) => setRule({ warnEvery: v })} />
           {t('amod.w.within', 'within')}
-          <NumField value={r.warnWindowMin} f={MSG_PARAM_FIELDS.warnWindowMin} clamp={clamp} ariaLabel={t('amod.w.window.a', 'Within how many minutes')} className="!w-16" onCommit={(v) => setRule({ warnWindowMin: v })} />
+          <NumField value={r.warnWindowMin} f={MSG_PARAM_FIELDS.warnWindowMin} clamp={clamp} ariaLabel={t('amod.w.window.a', 'Within how many minutes')} onCommit={(v) => setRule({ warnWindowMin: v })} />
           {r.warnWindowMin ? t('amod.w.min', 'minutes.') : t('amod.w.min0', 'minutes: 0 counts every hit until the bot restarts.')}
         </Sentence>
         <p className="text-[11.5px] text-[var(--muted)] leading-relaxed">{rule()}</p>
@@ -538,7 +538,7 @@ export function WarnLadderEditor({ value, onChange, decayHours, onDecayChange })
         {onDecayChange && (
           <span className="inline-flex items-center gap-1.5 text-[11.5px] text-[var(--muted)] ms-auto">
             {t('wl.decay', 'A warning counts for')}
-            <NumField value={decayHours} f={{ min: 0, max: 8760, int: true }} clamp={clamp} ariaLabel={t('wl.decayh', 'hours')} onCommit={onDecayChange} className="!w-16" />
+            <NumField value={decayHours} f={{ min: 0, max: 8760, int: true }} clamp={clamp} ariaLabel={t('wl.decayh', 'hours')} onCommit={onDecayChange} />
             {decayHours === 0 ? t('wl.decay0', 'hours: 0 means for ever') : t('wl.decayh', 'hours')}
           </span>
         )}

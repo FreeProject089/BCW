@@ -16,8 +16,8 @@
 //   SP.row      the padding of one row in a list          (12/16px across, 10px down)
 //   SP.grid     between the columns of a form grid        (12px)
 // Nothing else. A value that is not on the scale is a bug, not a decision.
-import { useEffect, useState } from 'react';
-import { Plus, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Minus, Plus, X } from 'lucide-react';
 import { useI18n } from '../i18n.jsx';
 import { Input, Button } from './ui.jsx';
 
@@ -90,15 +90,73 @@ export const Dot = ({ tone = 'off', className = '' }) => (
  * field can be cleared and retyped without the draft ever holding an empty string.
  * `f` is a bound descriptor: { min, max, int, step }.
  */
-export function NumField({ value, onCommit, f, clamp, className = '', ariaLabel }) {
+//
+// WHY NOT THE SITE'S <Input type="number">: these fields sit INSIDE a sentence ("At [3]
+// warnings, timeout for [60] minutes"), at 11.5px. The shared stepper is a form control: under
+// 9rem wide it stacks its − and + in one column, each with a 24px floor, so every field here
+// became a 56x48 block whose value had 14px of room. "40320" drew 32px wide in it and read as
+// "403", "1000" as "10", and each sentence line jumped to 48px around a 12px word. Measured, not
+// eyeballed: 4 of the 18 fields on the automod screen clipped their own value, at 344px and at
+// 1280px alike. This one is a single row [−][value][+], one line tall, and the value box is
+// sized in `ch` from the field's own bounds, so the widest legal value always fits (`ch` is
+// the width of "0", and tabular-nums makes every digit that wide). On a touch screen `.input`
+// is 44px tall and 16px, so the buttons stretch with it and `ch` grows with the font.
+const digitsOf = (f) => {
+  const w = (n) => String(Math.trunc(Math.abs(Number(n) || 0))).length + (Number(n) < 0 ? 1 : 0);
+  return Math.max(2, w(f.max), w(f.min)) + (f.int ? 0 : 2);
+};
+const STEP_BTN = 'grid place-items-center shrink-0 w-6 min-h-[24px] max-lg:w-8 border border-[var(--control-border)] bg-[var(--surface-2)] text-[var(--muted)] hover:text-[var(--text)] hover:bg-[color-mix(in_srgb,var(--primary)_14%,var(--surface-2))] disabled:opacity-40 disabled:pointer-events-none transition-colors';
+
+export function NumField({ value, onCommit, f, clamp, className = '', ariaLabel, disabled }) {
+  const { t } = useI18n();
   const [txt, setTxt] = useState(String(value ?? ''));
+  const ref = useRef(null);
   useEffect(() => { setTxt(String(value ?? '')); }, [value]);
   const commit = () => { const v = clamp(txt, f, value); onCommit(v); setTxt(String(v)); };
+  // The buttons call the field's own stepUp/stepDown, so min/max/step hold exactly as typing
+  // would, then raise `input` so React's onChange follows the DOM value it did not set.
+  const bump = (dir) => {
+    const el = ref.current;
+    if (!el || el.disabled) return;
+    try { dir > 0 ? el.stepUp() : el.stepDown(); } catch { /* off the step grid: leave it */ }
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  // A focused field steps on the wheel; an unfocused one lets the page scroll (React's onWheel
+  // is passive, so it cannot preventDefault: hence the manual listener).
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    const onWheel = (e) => {
+      if (document.activeElement !== el || e.deltaY === 0) return;
+      e.preventDefault();
+      bump(e.deltaY < 0 ? 1 : -1);
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
+  const n = Number(txt);
+  const atMin = txt !== '' && Number.isFinite(n) && n <= f.min;
+  const atMax = txt !== '' && Number.isFinite(n) && n >= f.max;
+  // tabIndex -1 and a swallowed mousedown: the arrows keys on the field are the keyboard
+  // control, the buttons are for the pointer, and a click must not steal the field's focus.
+  const btn = (dir) => (
+    <button type="button" tabIndex={-1} disabled={disabled || (dir > 0 ? atMax : atMin)}
+      className={`${STEP_BTN} ${dir > 0 ? 'rounded-e-md border-s-0' : 'rounded-s-md border-e-0'}`}
+      aria-label={dir > 0 ? t('num.inc', 'Increase') : t('num.dec', 'Decrease')}
+      onMouseDown={(e) => e.preventDefault()} onClick={() => bump(dir)}>
+      {dir > 0 ? <Plus size={12} /> : <Minus size={12} />}
+    </button>
+  );
   return (
-    <Input type="number" min={f.min} max={f.max} step={f.step ?? (f.int ? 1 : 0.1)} value={txt} aria-label={ariaLabel}
-      className={`!py-0.5 !px-1.5 text-xs tabular-nums !w-14 text-center ${className}`}
-      onChange={(e) => { setTxt(e.target.value); const n = Number(e.target.value); if (e.target.value !== '' && Number.isFinite(n) && n >= f.min && n <= f.max) onCommit(f.int ? Math.round(n) : n); }}
-      onBlur={commit} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commit(); } }} />
+    <span className={`dnum inline-flex items-stretch shrink-0 align-middle max-w-full ${className}`}>
+      {btn(-1)}
+      <Input plain type="number" ref={ref} min={f.min} max={f.max} step={f.step ?? (f.int ? 1 : 0.1)} value={txt} aria-label={ariaLabel} disabled={disabled}
+        className="num-input !rounded-none !py-0.5 !px-1 text-xs tabular-nums text-center [appearance:textfield] min-w-0"
+        style={{ width: `calc(${digitsOf(f)}ch + 10px)` }}
+        onChange={(e) => { setTxt(e.target.value); const v = Number(e.target.value); if (e.target.value !== '' && Number.isFinite(v) && v >= f.min && v <= f.max) onCommit(f.int ? Math.round(v) : v); }}
+        onBlur={commit} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commit(); } }} />
+      {btn(1)}
+    </span>
   );
 }
 

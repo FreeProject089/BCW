@@ -4,11 +4,15 @@
 // The bot already uploads its set on boot (apps/bot/src/features/icons.mjs), but nothing on the
 // site could say whether that worked, and the only way to add an emoji by hand was to paste
 // `<:name:id>` into one of a hundred boxes. So:
-//   1. the owner runs apps/bot/scripts/sync-app-emojis.mjs with the bot token (on their own
-//      machine; the token never comes to the site). It uploads what is missing, skips what is
-//      there at the current version, and sends the resulting `name → id` map to the site;
-//   2. or they import that map here (the file it wrote, or Discord's raw emoji list);
-//   3. each icon then shows present / outdated / missing, from GET /admin/bot/emoji-status.
+//   1. FROM THE SITE: "Upload" calls POST /admin/bot/emoji-sync in batches. The API uses the
+//      bot token it already stores, over Discord's REST API (no gateway login), skips every
+//      icon already there by name, and stores Discord's list as the map. Nothing runs on the
+//      owner's PC (lib/app-emoji-sync.mjs in the API);
+//   2. the fallback, a kit to download: the icons + sync-icons.bat / sync-icons.sh, FIXED files
+//      that ask for the token when they run and write app-emojis.json (lib/emoji-kit.mjs);
+//      the repository script apps/bot/scripts/sync-app-emojis.mjs still works too;
+//   3. the map those write is imported here (or Discord's raw emoji list pasted);
+//   4. each icon shows on Discord / older drawing / missing, from GET /admin/bot/emoji-status.
 // One custom emoji is a key → `<:name:id>` entry in economy.icons (the host's config draft,
 // saved with the page): an existing key is overridden, a new key becomes usable as {ic:key}.
 //
@@ -19,7 +23,7 @@
 // 256 KiB) or a glyph from the families the site already draws. It joins /bot/emoji/keys, so
 // the bot uploads it on its next icon sync exactly like a built-in.
 import { useMemo, useRef, useState } from 'react';
-import { Copy, Upload, FileJson, CheckCircle2, AlertTriangle, XCircle, Plus, Trash2, Terminal, RefreshCw, Smile, ImagePlus, Shapes } from 'lucide-react';
+import { Copy, Upload, FileJson, CheckCircle2, AlertTriangle, XCircle, Plus, Trash2, Terminal, RefreshCw, Smile, ImagePlus, Shapes, ScanSearch, Square, CloudUpload, Download, FileCode2, ShieldCheck } from 'lucide-react';
 import { useI18n } from '../i18n.jsx';
 import { api } from '../lib/api.js';
 import { Button, Card, Input, Textarea, Field, Explain, Spinner, useToast, useDialog, copyText, ColorInput } from '../ui/ui.jsx';
@@ -179,13 +183,21 @@ function CustomIcons({ onReload }) {
  */
 export function BotEmojiSyncCard({ icons = {}, onChange }) {
   const { t } = useI18n(); const toast = useToast();
-  const { data, loading, reload } = useAsync(() => api.get('/admin/bot/emoji-status'), []);
+  const { data: fetched, loading, reload } = useAsync(() => api.get('/admin/bot/emoji-status'), []);
+  // The answer of the last check / upload batch, shown until the next quiet reload lands, so
+  // the grid follows each batch without flashing a spinner in between.
+  const [live, setLive] = useState(null);
+  const data = live || fetched;
   const [filter, setFilter] = useState('attention');
   const [paste, setPaste] = useState('');
   const [busy, setBusy] = useState(false);
   const [issues, setIssues] = useState([]);
   const fileRef = useRef(null);
   const [nk, setNk] = useState({ key: '', token: '' });
+  // The site-side upload: { total, done, results: { key: { status, error } }, running, stopped, error }.
+  const [run, setRun] = useState(null);
+  const [checking, setChecking] = useState(false);
+  const stopRef = useRef(false);
 
   const list = data?.icons || [];
   const counts = data?.counts || { present: 0, outdated: 0, missing: 0 };
@@ -194,6 +206,62 @@ export function BotEmojiSyncCard({ icons = {}, onChange }) {
   const iconKeys = new Set(list.map((s) => s.key));
   const custom = Object.entries(icons || {}).filter(([k, v]) => !iconKeys.has(k) && typeof v === 'string' && v.trim());
   const available = data?.available || [];
+  const todo = list.filter((s) => s.status !== 'present').map((s) => s.key);
+  const canUpload = !!data?.canUpload;
+  const running = !!run?.running;
+
+  // What the API said, in words. The token itself never comes back: only whether it worked.
+  const syncError = (x) => {
+    const code = x?.data?.error;
+    if (code === 'no_token') return t('ems.err.notoken', 'The site has no bot token. Set it in the bot settings, or use the kit below.');
+    if (code === 'bad_token') return t('ems.err.badtoken', 'Discord refused the bot token. Check it in the bot settings.');
+    if (code === 'discord_forbidden') return t('ems.err.forbidden', 'Discord refused: this token may not manage the application emojis.');
+    if (code === 'sync_busy') return t('ems.err.busy', 'An upload is already running. Wait for it to finish.');
+    if (code === 'discord_unreachable') return t('ems.err.net', 'The site could not reach Discord. Try again in a moment.');
+    if (code === 'discord_rate_limited') return t('ems.err.rate', 'Discord is rate limiting. Try again in a minute.');
+    return t('ems.err.other', 'Discord answered with an error. Try again, or use the kit below.');
+  };
+
+  const check = async () => {
+    setChecking(true);
+    try {
+      const r = await api.post('/admin/bot/emoji-sync/check', {});
+      setLive(r);
+      toast.success(t('ems.checked', 'Checked on Discord: {p} of {n} icons are there.').replace('{p}', r.counts?.present ?? 0).replace('{n}', (r.icons || []).length));
+    } catch (x) { toast.error(syncError(x)); }
+    finally { setChecking(false); }
+  };
+
+  // Batches until nothing is pending. Each call re-reads Discord first, so a run that is
+  // stopped, or a second tab, can never upload an icon twice: present BY NAME is skipped.
+  const upload = async () => {
+    if (!todo.length || running) return;
+    stopRef.current = false;
+    const total = todo.length;
+    const results = {};
+    let pending = todo;
+    setRun({ total, done: 0, results: {}, running: true });
+    let error = null;
+    try {
+      for (let round = 0; pending.length && !stopRef.current && round < 100; round += 1) {
+        const r = await api.post('/admin/bot/emoji-sync', { keys: pending });
+        for (const x of r.results || []) if (x.status !== 'pending') results[x.key] = x;
+        setLive(r);
+        const next = (r.pending || []).filter((k) => !results[k]);
+        setRun({ total, done: Object.keys(results).length, results: { ...results }, running: true });
+        if (next.length >= pending.length) break; // no progress: never spin
+        pending = next;
+      }
+    } catch (x) { error = syncError(x); }
+    const vals = Object.values(results);
+    const up = vals.filter((x) => x.status === 'uploaded').length;
+    const failed = vals.filter((x) => x.status === 'failed').length;
+    setRun({ total, done: vals.length, results, running: false, stopped: stopRef.current, error });
+    if (error) toast.error(error);
+    else if (failed) toast.error(t('ems.done.fail', '{u} uploaded, {f} refused by Discord. The reasons are on each icon.').replace('{u}', up).replace('{f}', failed));
+    else toast.success(t('ems.done.ok', 'Done: {u} uploaded, the rest were already there.').replace('{u}', up));
+    reload(true).then(() => setLive(null));
+  };
 
   const importMap = async () => {
     if (!parsed?.ok) return;
@@ -201,7 +269,7 @@ export function BotEmojiSyncCard({ icons = {}, onChange }) {
     try {
       await api.put('/admin/bot/emoji-map', { emojis: parsed.emojis, animated: parsed.animated, ...(parsed.appId ? { appId: parsed.appId } : {}), mode: 'replace' });
       toast.success(t('em.imported', 'Imported: {n} emoji(s).').replace('{n}', Object.keys(parsed.emojis).length));
-      setPaste(''); reload();
+      setPaste(''); setLive(null); reload();
     } catch (x) {
       setIssues(x?.data?.issues || []);
       toast.error(x?.data?.error === 'invalid_emoji_map' ? t('em.bad', 'The site refused this map. The reasons are listed under the box.') : t('common.failed', 'Failed.'));
@@ -225,11 +293,17 @@ export function BotEmojiSyncCard({ icons = {}, onChange }) {
   const FILTERS = [
     ['attention', t('em.f.attention', 'Needs attention ({n})').replace('{n}', counts.outdated + counts.missing)],
     ['missing', t('em.f.missing', 'Missing ({n})').replace('{n}', counts.missing)],
-    ['outdated', t('em.f.outdated', 'Outdated ({n})').replace('{n}', counts.outdated)],
+    ['outdated', t('ems.f.mismatched', 'Older drawing ({n})').replace('{n}', counts.outdated)],
     ['present', t('em.f.present', 'On Discord ({n})').replace('{n}', counts.present)],
     ['all', t('em.f.all', 'All ({n})').replace('{n}', list.length)],
   ];
-  const STATUS = { present: t('em.s.present', 'on Discord'), outdated: t('em.s.outdated', 'an older drawing'), missing: t('em.s.missing', 'missing') };
+  const STATUS = { present: t('em.s.present', 'on Discord'), outdated: t('ems.s.mismatched', 'older drawing'), missing: t('em.s.missing', 'missing') };
+  const RESULT = { uploaded: t('ems.r.uploaded', 'uploaded'), skipped: t('ems.r.skipped', 'already there'), failed: t('ems.r.failed', 'refused') };
+  const source = data?.source === 'script' ? t('em.src.script', 'the script') : data?.source === 'site' ? t('ems.src.site', 'a check from this page') : t('em.src.dash', 'an import here');
+  const pct = list.length ? Math.round((counts.present / list.length) * 100) : 0;
+  const runPct = run?.total ? Math.round((run.done / run.total) * 100) : 0;
+  const failures = Object.values(run?.results || {}).filter((x) => x.status === 'failed');
+  const labelOf = (k) => list.find((s) => s.key === k)?.label || k;
 
   return (
     <Card className="p-4 mb-4">
@@ -237,36 +311,160 @@ export function BotEmojiSyncCard({ icons = {}, onChange }) {
         <div className="flex items-start gap-3 flex-wrap">
           <div className="min-w-0 flex-1">
             <h3 className="text-sm font-semibold flex items-center gap-2"><Smile size={14} className="text-[var(--accent-ink)] shrink-0" /> {t('em.title', 'Icons on Discord')}</h3>
-            <p className="text-[11.5px] text-[var(--muted)] mt-0.5">{t('em.sub', 'The bot draws every icon as an application emoji. Here is which ones Discord really has, and how to add them all at once.')}</p>
+            <p className="text-[11.5px] text-[var(--muted)] mt-0.5">{t('ems.sub', 'The bot draws its buttons with application emojis. This is which ones Discord really has, and the button that puts the rest there.')}</p>
           </div>
-          <Button size="sm" variant="ghost" onClick={reload} title={t('em.refresh', 'Refresh')}><RefreshCw size={13} /></Button>
+          <Button size="sm" variant="ghost" onClick={() => { setLive(null); reload(); }} title={t('em.refresh', 'Refresh')} aria-label={t('em.refresh', 'Refresh')}><RefreshCw size={13} /></Button>
         </div>
 
-        {/* The state of the set, in three numbers. */}
-        {loading ? <Loading /> : (
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px]">
-            {['present', 'outdated', 'missing'].map((k) => { const { I, cls } = TONE[k]; return <span key={k} className={`inline-flex items-center gap-1.5 ${cls}`}><I size={13} className="shrink-0" /> <span className="tabular-nums font-semibold">{counts[k]}</span> <span className="text-[var(--muted)]">{STATUS[k]}</span></span>; })}
-            <span className="text-[11px] text-[var(--faint)] ms-auto">
+        {/* Where the set stands: three numbers and one bar. */}
+        {loading && !data ? <Loading /> : (
+          <div className={SP.tight}>
+            <div className="grid grid-cols-3 gap-2">
+              {['present', 'outdated', 'missing'].map((k) => {
+                const { I, cls } = TONE[k];
+                return (
+                  <button key={k} type="button" onClick={() => setFilter(k)} aria-pressed={filter === k}
+                    className={`text-start rounded-lg border px-3 py-2 min-w-0 transition-colors ${filter === k ? 'b-primary' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
+                    <span className={`flex items-center gap-1.5 ${cls}`}><I size={13} className="shrink-0" /><span className="text-lg font-semibold tabular-nums leading-none">{counts[k]}</span></span>
+                    <span className="block text-[11px] text-[var(--muted)] mt-1 break-words">{STATUS[k]}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="h-1.5 rounded-full overflow-hidden bg-[var(--surface-2)]" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label={t('ems.bar', 'Icons on Discord')}>
+              <div className="h-full bg-[var(--success)] transition-[width]" style={{ width: `${pct}%` }} />
+            </div>
+            <p className="text-[11px] text-[var(--faint)]">
               {data?.updatedAt
-                ? t('em.last', 'Map from {d}, by {s}.').replace('{d}', new Date(data.updatedAt).toLocaleString()).replace('{s}', data.source === 'script' ? t('em.src.script', 'the script') : t('em.src.dash', 'an import here'))
-                : t('em.never', 'No map yet: every icon shows as missing until the script runs or a map is imported.')}
-            </span>
+                ? t('em.last', 'Map from {d}, by {s}.').replace('{d}', new Date(data.updatedAt).toLocaleString()).replace('{s}', source)
+                : t('ems.never', 'Discord has not been checked yet: every icon shows as missing until it is.')}
+            </p>
           </div>
         )}
 
-        {/* 1. Put them all on Discord. */}
+        {/* 1. From the site: the token it already has, Discord's REST API, nothing on your PC. */}
         <Panel className={SP.stack}>
-          <Eyebrow>{t('em.step1', 'Add every icon at once')}</Eyebrow>
-          <p className="text-[11.5px] text-[var(--muted)]">{t('em.step1.d', 'On the machine that runs the bot, with its token in the environment. First a dry run, which only prints what it would do:')}</p>
-          <CommandLine cmd={CMD_DRY} />
-          <p className="text-[11.5px] text-[var(--muted)]">{t('em.step1.d2', 'Then the real run. It uploads what is missing, skips what is already there, writes app-emojis.json and sends the map to this page:')}</p>
-          <CommandLine cmd={CMD_APPLY} />
-          <Explain summary={t('em.env.s', 'It reads DISCORD_TOKEN, BCWEB_API_URL and BOT_SHARED_SECRET from the environment.')}>
+          <div className="flex items-start gap-2 flex-wrap">
+            <div className="min-w-0 flex-1">
+              <Eyebrow>{t('ems.site.t', 'Put them on Discord from here')}</Eyebrow>
+              <p className="text-[11.5px] text-[var(--muted)] mt-1">
+                {canUpload
+                  ? t('ems.site.d', 'The site uploads the missing icons itself, with the bot token it already has. Icons already on Discord are skipped, so it is safe to run again.')
+                  : t('ems.site.none', 'The site has no bot token to upload with. Set it in the bot settings, or use the kit below.')}
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" variant="ghost" disabled={!canUpload || checking || running} onClick={check}>
+              {checking ? <Spinner /> : <ScanSearch size={13} />} {t('ems.check', 'Check on Discord')}
+            </Button>
+            {running ? (
+              <Button size="sm" variant="ghost" onClick={() => { stopRef.current = true; setRun((r) => (r ? { ...r, stopping: true } : r)); }} disabled={run?.stopping}>
+                <Square size={12} /> {run?.stopping ? t('ems.stopping', 'Stopping after this batch') : t('ems.stop', 'Stop')}
+              </Button>
+            ) : (
+              <Button size="sm" variant="primary" disabled={!canUpload || !todo.length || checking} onClick={upload}>
+                <CloudUpload size={13} /> {todo.length ? t('ems.upload', 'Upload {n} icon(s)').replace('{n}', todo.length) : t('ems.upload.none', 'Nothing to upload')}
+              </Button>
+            )}
+          </div>
+          {run && (
+            <div className={SP.tight} aria-live="polite">
+              <div className="flex items-center gap-2 text-[11.5px] text-[var(--muted)]">
+                {run.running && <Spinner />}
+                <span className="tabular-nums">{t('ems.progress', '{d} of {n}').replace('{d}', run.done).replace('{n}', run.total)}</span>
+                {!run.running && (
+                  <span>
+                    {run.error || (run.stopped ? t('ems.stopped', 'Stopped. Run it again to finish: what is there is skipped.') : failures.length
+                      ? t('ems.partial', '{f} refused, the rest are on Discord.').replace('{f}', failures.length)
+                      : t('ems.complete', 'Every icon asked for is on Discord.'))}
+                  </span>
+                )}
+              </div>
+              <div className="h-1.5 rounded-full overflow-hidden bg-[var(--surface-2)]" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={runPct} aria-label={t('ems.progress.a', 'Upload progress')}>
+                <div className={`h-full transition-[width] ${failures.length ? 'bg-[var(--warning)]' : 'bg-[var(--primary)]'}`} style={{ width: `${runPct}%` }} />
+              </div>
+              {failures.length > 0 && (
+                <ul className="text-[11.5px] space-y-1">
+                  {failures.map((x) => (
+                    <li key={x.key} className="flex items-start gap-1.5 min-w-0">
+                      <XCircle size={12} className="text-error shrink-0 mt-0.5" />
+                      <span className="min-w-0 break-words"><span className="font-medium text-[var(--text)]">{labelOf(x.key)}</span> <span className="text-[var(--muted)]">{x.error}</span></span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </Panel>
+
+        {/* Every icon, and where it stands. */}
+        <div className={SP.tight}>
+          <div className="flex flex-wrap gap-1.5">
+            {FILTERS.map(([k, label]) => (
+              <button key={k} type="button" onClick={() => setFilter(k)} aria-pressed={filter === k}
+                className={`text-[11.5px] px-2 py-1 rounded-lg border transition-colors ${filter === k ? 'b-primary tint-primary text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)] hover:border-[var(--line-strong)]'}`}>{label}</button>
+            ))}
+          </div>
+          {!loading && (shown.length ? (
+            <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-2">
+              {shown.map((s) => {
+                const { I, cls } = TONE[s.status];
+                return (
+                  <div key={s.key} className="flex items-start gap-2.5 rounded-lg border border-[var(--line)] px-2.5 py-2 min-w-0">
+                    <img src={`/api/admin/bot/emoji-icon/${s.key}.png`} alt="" loading="lazy" className="w-6 h-6 rounded shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[12px] font-medium break-words">{s.label}</div>
+                      <div className="text-[11px] font-mono text-[var(--faint)] break-all">{s.status === 'present' ? s.emoji.name : s.want}</div>
+                      {s.override && <div className="text-[11px] text-[var(--muted)]">{t('em.override', 'Your own emoji is used instead.')}</div>}
+                    </div>
+                    <div className="flex flex-col items-end gap-0.5 shrink-0">
+                      <span className={`inline-flex items-center gap-1 text-[11.5px] ${cls}`} title={STATUS[s.status]}><I size={12} className="shrink-0" /> {STATUS[s.status]}</span>
+                      {/* What the last upload from this page did to it, when it touched it. */}
+                      {run?.results?.[s.key] && run.results[s.key].status !== 'skipped' && (
+                        <span className={`text-[11px] ${run.results[s.key].status === 'failed' ? 'text-error' : 'text-[var(--muted)]'}`} title={run.results[s.key].error || ''}>{RESULT[run.results[s.key].status]}</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : <p className="text-[11.5px] text-[var(--faint)]">{filter === 'attention' ? t('em.allgood', 'Every icon is on Discord at its current drawing.') : t('em.nothing', 'Nothing here.')}</p>)}
+        </div>
+
+        {/* 2. The fallback: a kit to run on a computer. Fixed scripts, the token typed at run time. */}
+        <Panel className={SP.stack}>
+          <Eyebrow>{t('ems.kit.t', 'Or from your computer')}</Eyebrow>
+          <ol className="space-y-2 text-[11.5px] text-[var(--muted)]">
+            {[
+              t('ems.kit.1', 'Download the kit and unzip it: the icons, and a script for Windows and one for macOS or Linux.'),
+              t('ems.kit.2', 'Windows: double-click sync-icons.bat. macOS or Linux: run sh sync-icons.sh (it needs python3).'),
+              t('ems.kit.3', 'Paste the bot token when it asks. It is typed hidden, sent to Discord only, and saved nowhere.'),
+              t('ems.kit.4', 'It lists each icon as on Discord, older drawing or missing, asks, then uploads what is missing.'),
+              t('ems.kit.5', 'It writes app-emojis.json next to itself: import that file just below.'),
+            ].map((line, i) => (
+              <li key={i} className="flex items-start gap-2">
+                <span className="w-5 h-5 shrink-0 rounded-full grid place-items-center text-[11px] font-semibold tabular-nums bg-[var(--surface-2)] text-[var(--text)]">{i + 1}</span>
+                <span className="min-w-0 pt-0.5">{line}</span>
+              </li>
+            ))}
+          </ol>
+          <div className="flex flex-wrap items-center gap-2">
+            <a href="/api/admin/bot/emoji-kit.zip" download><Button size="sm" variant="primary"><Download size={13} /> {t('ems.kit.dl', 'Download the kit (.zip)')}</Button></a>
+            <a href="/api/admin/bot/emoji-kit/sync-icons.bat" download className="text-[11.5px] text-[var(--accent-ink)] hover:underline inline-flex items-center gap-1"><FileCode2 size={12} /> sync-icons.bat</a>
+            <a href="/api/admin/bot/emoji-kit/sync-icons.sh" download className="text-[11.5px] text-[var(--accent-ink)] hover:underline inline-flex items-center gap-1"><FileCode2 size={12} /> sync-icons.sh</a>
+          </div>
+          <p className="text-[11px] text-[var(--faint)] flex items-start gap-1.5"><ShieldCheck size={12} className="shrink-0 mt-0.5 text-success" /> <span>{t('ems.kit.safe', 'The scripts are the same file for everybody: nothing from this site is written into them, they hold no token, download nothing, and talk to discord.com only.')}</span></p>
+          <Explain summary={t('ems.repo.s', 'From the repository instead (advanced)')}>
+            <p>{t('em.step1.d', 'On the machine that runs the bot, with its token in the environment. First a dry run, which only prints what it would do:')}</p>
+            <CommandLine cmd={CMD_DRY} />
+            <p>{t('em.step1.d2', 'Then the real run. It uploads what is missing, skips what is already there, writes app-emojis.json and sends the map to this page:')}</p>
+            <CommandLine cmd={CMD_APPLY} />
             <p>{t('em.env.d', 'The token is used only to talk to Discord and is never printed or sent to the site. --prune also deletes the older drawings of our own icons; emojis that are not ours are never touched. When the site cannot be reached, import app-emojis.json below instead.')}</p>
           </Explain>
         </Panel>
 
-        {/* 2. Or import the map. */}
+        {/* 3. Import the map the kit (or the repository script) wrote. */}
         <Panel className={SP.stack}>
           <Eyebrow>{t('em.step2', 'Import the map')}</Eyebrow>
           <div className="flex flex-wrap items-center gap-2">
@@ -289,34 +487,6 @@ export function BotEmojiSyncCard({ icons = {}, onChange }) {
             <Button size="sm" variant="primary" disabled={!parsed?.ok || busy} onClick={importMap}>{busy ? <Spinner /> : <><Upload size={13} /> {t('em.import', 'Import')}</>}</Button>
           </div>
         </Panel>
-
-        {/* 3. Every icon, and where it stands. */}
-        <div className={SP.tight}>
-          <div className="flex flex-wrap gap-1.5">
-            {FILTERS.map(([k, label]) => (
-              <button key={k} type="button" onClick={() => setFilter(k)} aria-pressed={filter === k}
-                className={`text-[11.5px] px-2 py-1 rounded-lg border transition-colors ${filter === k ? 'b-primary tint-primary text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)] hover:border-[var(--line-strong)]'}`}>{label}</button>
-            ))}
-          </div>
-          {!loading && (shown.length ? (
-            <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-2">
-              {shown.map((s) => {
-                const { I, cls } = TONE[s.status];
-                return (
-                  <div key={s.key} className="flex items-start gap-2.5 rounded-lg border border-[var(--line)] px-2.5 py-2 min-w-0">
-                    <img src={`/api/admin/bot/emoji-icon/${s.key}.png`} alt="" loading="lazy" className="w-6 h-6 rounded shrink-0" />
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[12px] font-medium break-words">{s.label}</div>
-                      <div className="text-[11px] font-mono text-[var(--faint)] break-all">{s.status === 'present' ? s.emoji.name : s.want}</div>
-                      {s.override && <div className="text-[11px] text-[var(--muted)]">{t('em.override', 'Your own emoji is used instead.')}</div>}
-                    </div>
-                    <span className={`inline-flex items-center gap-1 text-[11.5px] shrink-0 ${cls}`} title={STATUS[s.status]}><I size={12} className="shrink-0" /> {STATUS[s.status]}</span>
-                  </div>
-                );
-              })}
-            </div>
-          ) : <p className="text-[11.5px] text-[var(--faint)]">{filter === 'attention' ? t('em.allgood', 'Every icon is on Discord at its current drawing.') : t('em.nothing', 'Nothing here.')}</p>)}
-        </div>
 
         {/* 4. An icon of your own, added to the set without a code change. */}
         <CustomIcons onReload={reload} />
