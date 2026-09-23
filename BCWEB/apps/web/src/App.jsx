@@ -67,6 +67,7 @@ import { LucideCdnIcon } from './editor/icon-picker.jsx';
 import { FooterStatus } from './pages/status-widget.jsx';
 import { lazyChunk, lazyNamed, installPreloadErrorHandler } from './lib/lazy-chunk.js';
 import { ErrorBoundary } from './ui/ErrorBoundary.jsx';
+import './ui/phone-topbar.css'; // M6: the phone topbar
 installPreloadErrorHandler();
 // Lazy: route-split so the initial bundle no longer ships the whole admin back-office,
 // repo tools, editors, etc. — each loads on demand behind the Suspense boundary below.
@@ -763,7 +764,7 @@ export function Nav({ preview = null } = {}) {
       {/* The bar and the phone sheet share this box. It is `relative` and it carries the
           max width, because the sheet hangs off it as an OVERLAY — see below for why. */}
       <div className="max-w-7xl mx-auto relative">
-      <div className="rounded-2xl border border-[var(--line)] px-2.5 sm:px-3 h-14 flex items-center gap-1 flex-nowrap topbar"
+      <div className="tbar rounded-2xl border border-[var(--line)] px-2.5 sm:px-3 h-14 flex items-center gap-1 flex-nowrap topbar"
         style={{ boxShadow: '0 10px 34px -14px rgba(0,0,0,0.30)' }}>
         {/* D2: the mark is decorative (the name is the link's label), so alt="" and the name on
             the link. alt="BC" printed the letters "BC" on the white plate whenever the image
@@ -802,7 +803,7 @@ export function Nav({ preview = null } = {}) {
             pushes the whole right cluster to the right edge (was left-glued). */}
         <div className="flex-1 min-w-[8px] lg:flex-none lg:w-2 shrink-0" />
         {/* Right cluster A — always visible, admin-configurable order/visibility. */}
-        <div className="flex items-center gap-0.5 shrink-0">
+        <div className="tbar-utils flex items-center gap-0.5 shrink-0">
           {clusterA.map(renderUtil)}
         </div>
         {/* Right cluster B — lg+ account cluster, admin-configurable order/visibility. */}
@@ -817,11 +818,15 @@ export function Nav({ preview = null } = {}) {
             between 768px and 1023px the page had NO navigation landmark at all: measured on
             22 pages at 768. This cluster owns the menu at those widths, so it is the
             landmark. */}
-        <nav aria-label={t('nav.menu.aria', 'Site menu')} className="lg:hidden flex items-center gap-1 shrink-0">
-          {user ? <Link to="/profile" onClick={() => setOpen(false)}><Avatar user={user} size={28} /></Link>
-            : <Link to="/auth"><Button variant="primary" size="sm" className="rounded-full">{t('nav.signin')}</Button></Link>}
-          <button ref={toggleRef} className={`nav-link !px-2 shrink-0 ${open ? 'nav-menu-open' : ''}`} onClick={() => setOpen((v) => !v)} aria-expanded={open}
-            aria-label={open ? t('nav.menu.close', 'Close the menu') : t('nav.menu.aria', 'Site menu')}>{open ? <X size={20} /> : <Menu size={20} />}</button>
+        {/* M6: the phone end of the bar is one capsule (account + menu), styled in
+            ui/phone-topbar.css; the icon turns from bars to a cross. */}
+        <nav aria-label={t('nav.menu.aria', 'Site menu')} className="tbar-phone lg:hidden flex items-center gap-1 shrink-0">
+          {user ? <Link to="/profile" className="tbar-av" title={user.displayName} aria-label={t('nav.profile', 'Profile')} onClick={() => setOpen(false)}><Avatar user={user} size={30} /></Link>
+            : <Link to="/auth" className="tbar-signin"><Button variant="primary" size="sm" className="rounded-full">{t('nav.signin')}</Button></Link>}
+          <button ref={toggleRef} type="button" className={`tbar-menu shrink-0 ${open ? 'is-open' : ''}`} onClick={() => setOpen((v) => !v)} aria-expanded={open}
+            aria-label={open ? t('nav.menu.close', 'Close the menu') : t('nav.menu.aria', 'Site menu')}>
+            <span className="tbar-menu-ic" aria-hidden><Menu size={20} className="tbar-menu-bars" /><X size={20} className="tbar-menu-x" /></span>
+          </button>
         </nav>
       </div>
 

@@ -61,9 +61,9 @@ function PickerPopover({ items, value, onPick, onClose, anchor, footer, searchPl
   };
   return createPortal(<>
     <div className="fixed inset-0 z-[70]" onClick={onClose} />
-    <div ref={boxRef} onKeyDown={onListKey}
+    <div ref={boxRef} onKeyDown={onListKey} data-picker-pop=""
       className="fixed z-[71] rounded-xl border border-[var(--line-strong)] shadow-lg anim-pop overflow-hidden"
-      style={{ top: anchor.top, left: anchor.left, width: anchor.width, background: 'var(--bg-solid)' }}>
+      style={{ top: anchor.top, bottom: anchor.bottom, left: anchor.left, width: anchor.width, background: 'var(--bg-solid)' }}>
       <div className="p-1.5 border-b border-[var(--line)] flex items-center gap-1.5">
         <Search size={13} className="text-[var(--faint)] shrink-0 ms-1" />
         
@@ -91,16 +91,37 @@ function PickerButton({ items, value, onPick, render, placeholder, searchPlaceho
   const [open, setOpen] = useState(false);
   const [anchor, setAnchor] = useState(null);
   const btn = useRef(null);
-  const openIt = () => {
+  // M15: where the popover goes. Under the button when ~330px fit below it, above it
+  // otherwise (a picker on the last row of a screen opened off the bottom of the phone), never
+  // wider than the viewport. Re-read on scroll and resize while open: the popover is `fixed`,
+  // and a position read once left it hanging where the button USED to be once the page moved.
+  const place = () => {
     const r = btn.current?.getBoundingClientRect();
-    if (r) setAnchor({ top: r.bottom + 4, left: Math.max(8, Math.min(r.left, window.innerWidth - Math.max(r.width, 230) - 8)), width: Math.max(r.width, 230) });
-    setOpen(true);
+    if (!r) return null;
+    const width = Math.min(Math.max(r.width, 230), window.innerWidth - 16);
+    const left = Math.max(8, Math.min(r.left, window.innerWidth - width - 8));
+    const below = window.innerHeight - r.bottom;
+    return below >= 330 || below >= r.top ? { top: r.bottom + 4, left, width } : { bottom: window.innerHeight - r.top + 4, left, width };
   };
+  const openIt = () => { const a = place(); if (a) setAnchor(a); setOpen(true); };
+  useEffect(() => {
+    if (!open) return undefined;
+    const follow = (e) => {
+      // A scroll INSIDE the popover (its own list) is not the page moving.
+      if (e?.type === 'scroll' && e.target instanceof Element && e.target.closest?.('[data-picker-pop]')) return;
+      const r = btn.current?.getBoundingClientRect();
+      if (!r || r.bottom < 0 || r.top > window.innerHeight) { setOpen(false); return; }
+      setAnchor(place());
+    };
+    window.addEventListener('scroll', follow, true); window.addEventListener('resize', follow);
+    return () => { window.removeEventListener('scroll', follow, true); window.removeEventListener('resize', follow); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
   return (<>
     <button ref={btn} type="button" disabled={disabled} onClick={() => (open ? setOpen(false) : openIt())}
       aria-haspopup="listbox" aria-expanded={open}
       className={`input !py-1 text-xs flex items-center gap-1.5 text-start disabled:opacity-50 ${className}`}>
-      <span className="flex-1 min-w-0 truncate flex items-center gap-1.5">{render || <span className="text-[var(--faint)]">{placeholder}</span>}</span>
+      <span className="flex-1 min-w-0 truncate flex items-center gap-1.5">{render || <span className="text-[var(--faint)] truncate min-w-0" title={placeholder}>{placeholder}</span>}</span>
       <ChevronDown size={12} className={`text-[var(--muted)] shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
     </button>
     {open && anchor && (
@@ -281,16 +302,17 @@ export function PickerList({ kind, items, onChange, roles, channels, types, sear
       {list.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {list.map((id) => (
-            <span key={id} className="inline-flex items-center gap-1 ps-2 pe-1 py-0.5 rounded-md bg-[var(--surface-2)] border border-[var(--line)] text-[11px] max-w-[200px]">
+            <span key={id} className="inline-flex items-center gap-1 ps-2 pe-1 py-0.5 rounded-md bg-[var(--surface-2)] border border-[var(--line)] text-[11px] max-w-[min(200px,100%)] min-w-0">
               {chip(id)}
               <button type="button" onClick={() => drop(id)} className="text-[var(--faint)] hover:text-error shrink-0" title={t('common.remove', 'Remove')}><X size={11} /></button>
             </span>
           ))}
         </div>
       )}
+      {/* What is already in the list is not offered again (M15). */}
       {list.length < max && (
-        kind === 'role' ? <RolePicker roles={roles} value="" onChange={add} placeholder={placeholder || t('pick.addrole', 'Add a role')} allowNone={false} />
-          : kind === 'channel' ? <ChannelPicker channels={channels} types={types} value="" onChange={add} placeholder={placeholder || t('pick.addchan', 'Add a channel')} allowNone={false} />
+        kind === 'role' ? <RolePicker roles={(roles || []).filter((r) => !list.includes(r.id))} value="" onChange={add} placeholder={placeholder || t('pick.addrole', 'Add a role')} allowNone={false} />
+          : kind === 'channel' ? <ChannelPicker channels={(channels || []).filter((c) => !list.includes(c.id))} types={types} value="" onChange={add} placeholder={placeholder || t('pick.addchan', 'Add a channel')} allowNone={false} />
             : <MemberPicker search={search} value="" onChange={add} placeholder={placeholder || t('pick.adduser', 'Add a member')} />
       )}
     </div>

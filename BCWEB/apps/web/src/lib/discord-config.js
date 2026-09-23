@@ -179,6 +179,11 @@ export function normLadder(raw) {
 /** What is sent: `minutes` only where the action actually takes one. */
 export const ladderForSave = (v) => normLadder(v).map((t) => (LADDER_TIMED.includes(t.action) ? { count: t.count, action: t.action, minutes: t.minutes } : { count: t.count, action: t.action }));
 
+/** How many text channels one log route may name. The bot's MAX_ROUTE_CHANNELS, the API's cap. */
+export const MAX_ROUTE_CHANNELS = 5;
+/** A channel route's channels: `ids` and the older single `id`, merged (routeChannelIds in the bot). */
+export const routeChannelIds = (v) => [...new Set([String(v?.id || '').trim(), ...(Array.isArray(v?.ids) ? v.ids.map((x) => String(x || '').trim()) : [])].filter(Boolean))].slice(0, MAX_ROUTE_CHANNELS);
+
 /** Whatever was stored under `logs` → the full shape. Routes keep only known keys. */
 export function normLogs(raw) {
   const r = raw && typeof raw === 'object' ? raw : {};
@@ -186,9 +191,15 @@ export function normLogs(raw) {
   for (const [k, v] of Object.entries(r.routes && typeof r.routes === 'object' ? r.routes : {})) {
     if (!LOG_CATEGORIES[k] && !LOG_GROUPS.includes(k)) continue;
     if (v === 'off' || v?.kind === 'off') { routes[k] = { kind: 'off', id: '', tags: [] }; continue; }
-    if (typeof v === 'string') { if (v.trim()) routes[k] = { kind: 'channel', id: v.trim(), tags: [] }; continue; }
-    if (v && typeof v === 'object' && (v.kind === 'forum' || v.kind === 'channel')) {
-      routes[k] = { kind: v.kind, id: String(v.id || '').trim(), tags: strList(v.tags, 5) };
+    if (typeof v === 'string') { if (v.trim()) routes[k] = { kind: 'channel', id: v.trim(), ids: [v.trim()], tags: [] }; continue; }
+    // A channel route may name several channels (`ids`); `id` stays its first, for every reader
+    // that wants one. An empty one is kept while it is being edited: logsForSave drops it.
+    if (v && typeof v === 'object' && v.kind === 'channel') {
+      const ids = routeChannelIds(v);
+      routes[k] = { kind: 'channel', id: ids[0] || '', ids, tags: [] };
+    } else if (v && typeof v === 'object' && v.kind === 'forum') {
+      const id = String(v.id || '').trim();
+      routes[k] = { kind: 'forum', id, ids: id ? [id] : [], tags: strList(v.tags, 5) };
     }
   }
   return {
@@ -207,7 +218,8 @@ export function logsForSave(v) {
   const routes = {};
   for (const [k, r] of Object.entries(n.routes)) {
     if (r.kind === 'off') routes[k] = 'off';
-    else if (r.id) routes[k] = r.kind === 'forum' ? { kind: 'forum', id: r.id, tags: r.tags } : { kind: 'channel', id: r.id };
+    // `id` is written beside `ids` so a bot that predates several channels still logs to the first.
+    else if (r.id) routes[k] = r.kind === 'forum' ? { kind: 'forum', id: r.id, tags: r.tags } : { kind: 'channel', id: r.id, ids: r.ids };
   }
   return { ...n, routes };
 }
@@ -224,11 +236,11 @@ export function logsForSave(v) {
 export function resolveLogRoute(logs, key, { legacyChannelId = '' } = {}) {
   const v = normLogs(logs);
   const group = LOG_CATEGORIES[key] || (LOG_GROUPS.includes(key) ? key : null);
-  const off = (from) => ({ kind: 'off', id: '', tags: [], from });
+  const off = (from) => ({ kind: 'off', id: '', ids: [], tags: [], from });
   if (!group) return off('unknown');
   if (!v.enabled) return off('disabled');
   const tag = LOG_GROUP_TAG[group];
-  const take = (r, from) => (r.kind === 'off' ? off(from) : { kind: r.kind, id: r.id, tags: r.kind === 'forum' ? (r.tags.length ? r.tags : [tag]) : [], from });
+  const take = (r, from) => (r.kind === 'off' ? off(from) : { kind: r.kind, id: r.id, ids: r.kind === 'channel' ? r.ids : [r.id], tags: r.kind === 'forum' ? (r.tags.length ? r.tags : [tag]) : [], from });
   // Its own route wins over its group's, both win over the screen's defaults. A group row
   // asks about the group, so it skips the first step.
   const chain = LOG_CATEGORIES[key] ? [[key, 'own'], [group, 'group']] : [[group, 'own']];
@@ -236,9 +248,9 @@ export function resolveLogRoute(logs, key, { legacyChannelId = '' } = {}) {
     const r = v.routes[k];
     if (r && (r.kind === 'off' || r.id)) return take(r, from);
   }
-  if (v.forumId) return { kind: 'forum', id: v.forumId, tags: [tag], from: 'forum' };
-  if (v.channelId) return { kind: 'channel', id: v.channelId, tags: [], from: 'channel' };
-  if (legacyChannelId) return { kind: 'channel', id: legacyChannelId, tags: [], from: 'modlog' };
+  if (v.forumId) return { kind: 'forum', id: v.forumId, ids: [v.forumId], tags: [tag], from: 'forum' };
+  if (v.channelId) return { kind: 'channel', id: v.channelId, ids: [v.channelId], tags: [], from: 'channel' };
+  if (legacyChannelId) return { kind: 'channel', id: legacyChannelId, ids: [legacyChannelId], tags: [], from: 'modlog' };
   return off('nothing');
 }
 

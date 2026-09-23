@@ -23,11 +23,13 @@
 // 256 KiB) or a glyph from the families the site already draws. It joins /bot/emoji/keys, so
 // the bot uploads it on its next icon sync exactly like a built-in.
 import { useMemo, useRef, useState } from 'react';
-import { Copy, Upload, FileJson, CheckCircle2, AlertTriangle, XCircle, Plus, Trash2, Terminal, RefreshCw, Smile, ImagePlus, Shapes, ScanSearch, Square, CloudUpload, Download, FileCode2, ShieldCheck } from 'lucide-react';
+import { Copy, Upload, FileJson, CheckCircle2, AlertTriangle, XCircle, Plus, Trash2, Terminal, RefreshCw, Smile, ImagePlus, Shapes, ScanSearch, Square, CloudUpload, Download, FileCode2, ShieldCheck, KeyRound, Pencil } from 'lucide-react';
 import { useI18n } from '../i18n.jsx';
 import { api } from '../lib/api.js';
-import { Button, Card, Input, Textarea, Field, Explain, Spinner, useToast, useDialog, copyText, ColorInput } from '../ui/ui.jsx';
+import { Button, Card, Input, Textarea, Field, Explain, Spinner, Badge, useToast, useDialog, copyText, ColorInput } from '../ui/ui.jsx';
 import { SP, Panel, Eyebrow } from '../ui/discord-kit.jsx';
+import { IconGlyph } from '../ui/md.jsx';
+import IconPicker from '../editor/icon-picker.jsx';
 import { useAsync, Loading } from './pages.jsx';
 import { parseEmojiPaste, parseEmojiToken, EMOJI_KEY_RE } from '../lib/app-emojis.js';
 
@@ -35,10 +37,80 @@ const CMD_DRY = 'cd apps/bot && node scripts/sync-app-emojis.mjs';
 const CMD_APPLY = 'cd apps/bot && node scripts/sync-app-emojis.mjs --apply';
 
 const TONE = {
-  present: { I: CheckCircle2, cls: 'text-success' },
-  outdated: { I: AlertTriangle, cls: 'text-warning' },
-  missing: { I: XCircle, cls: 'text-error' },
+  present: { I: CheckCircle2, cls: 'text-success', badge: 'green' },
+  outdated: { I: AlertTriangle, cls: 'text-warning', badge: 'amber' },
+  missing: { I: XCircle, cls: 'text-error', badge: 'red' },
 };
+
+// The line to add to the api service in docker-compose.yml. Written once: shown and copied.
+const COMPOSE_LINE = 'DISCORD_TOKEN: ${DISCORD_TOKEN:-}';
+
+/** A name derived from a label: what a key would be if nobody typed one. */
+const slugKey = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+  .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 32);
+
+/**
+ * One icon of the set, as a tile: the picture big, the human name first, where it stands as a
+ * chip, and the technical name last, small and copyable. The technical name (bc_lose_076bf0a6)
+ * is what Discord calls it and what a support question needs, never what a person scans for,
+ * so it is the quietest line of the tile rather than the second one.
+ */
+function IconTile({ src, label, tone, statusLabel, tech, techTitle, note, extra, onRemove }) {
+  const { t } = useI18n(); const toast = useToast();
+  const T = tone ? TONE[tone] : null;
+  return (
+    <div className="relative flex flex-col items-center text-center gap-1.5 rounded-xl border border-[var(--line)] px-2 pt-3 pb-2 min-w-0">
+      {onRemove && (
+        <button type="button" onClick={onRemove} className="absolute top-1 end-1 p-1.5 rounded-md text-[var(--faint)] hover:text-error hover:bg-[var(--surface-2)]"
+          title={t('common.remove', 'Remove')} aria-label={t('common.remove', 'Remove')}><Trash2 size={13} /></button>
+      )}
+      <span className="w-14 h-14 rounded-xl panel grid place-items-center shrink-0">
+        <img src={src} alt="" loading="lazy" width={40} height={40} className="w-10 h-10 object-contain" />
+      </span>
+      <span className="text-[12.5px] font-medium text-[var(--text)] break-words max-w-full leading-snug">{label}</span>
+      {T && <Badge tone={T.badge} className="max-w-full"><T.I size={11} className="shrink-0" /> <span className="inline-block break-words first-letter:uppercase">{statusLabel}</span></Badge>}
+      {note}
+      {extra}
+      {tech && (
+        <button type="button" onClick={async () => { if (await copyText(tech)) toast.success(t('em.copied', 'Copied.')); }}
+          title={techTitle || t('mA.em.copytech', 'Copy the technical name')}
+          className="mt-auto inline-flex items-start gap-1 max-w-full text-[10.5px] font-mono text-[var(--faint)] hover:text-[var(--text)] break-all text-start">
+          <Copy size={10} className="shrink-0 mt-0.5" /><span className="min-w-0">{tech}</span>
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Why the site cannot upload, in terms of the process that is missing the token.
+ *
+ * The site's token is the API's: env DISCORD_TOKEN of the API process, else the one stored in
+ * the bot settings (storedToken in routes/bot.mjs). Under Docker, compose hands DISCORD_TOKEN to
+ * the bot service only, so the usual picture is a bot online with its token and an API with
+ * none, which the old line ("the site has no bot token") made look like a lie.
+ */
+function NoTokenHelp({ botOnline }) {
+  const { t } = useI18n();
+  return (
+    <div className="rounded-lg border border-[var(--warning-border)] bg-[var(--warning-bg)] p-3 space-y-2 text-[11.5px]">
+      <div className="flex items-start gap-2 text-[var(--text)] font-medium">
+        <KeyRound size={14} className="shrink-0 mt-0.5 text-warning" />
+        <span className="min-w-0">{botOnline
+          ? t('mA.em.notoken.online', 'The bot is online with its own token, but the API process has none, so the site cannot upload.')
+          : t('mA.em.notoken', 'The API process has no bot token, so the site cannot upload.')}</span>
+      </div>
+      <ol className="space-y-2 text-[var(--muted)] ps-6 list-decimal">
+        <li>{t('mA.em.fix1', 'Paste the token in the bot settings on this page (switch the bot off while you change it).')}</li>
+        <li className="space-y-1.5">
+          <span className="block">{t('mA.em.fix2', 'Or, if the token is in infra/compose/.env: add this line to the environment of the api service in docker-compose.yml, then recreate the api container.')}</span>
+          <CommandLine cmd={COMPOSE_LINE} />
+        </li>
+      </ol>
+      <p className="text-[var(--faint)]">{t('mA.em.fix3', 'Until then, the kit below uploads from your computer.')}</p>
+    </div>
+  );
+}
 
 function CommandLine({ cmd }) {
   const { t } = useI18n(); const toast = useToast();
@@ -63,37 +135,59 @@ function CommandLine({ cmd }) {
  * the source cap; the server also refuses anything whose 128x128 PNG lands over Discord's own
  * per-emoji limit, so the refusal happens here rather than mid-upload on Discord.
  */
-function CustomIcons({ onReload }) {
+function CustomIcons({ onReload, builtinKeys }) {
   const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
   const { data, loading, reload } = useAsync(() => api.get('/admin/bot/custom-icons'), []);
-  const [form, setForm] = useState({ key: '', label: '', source: 'glyph', icon: 'sparkles', color: '#5865f2', image: '', filename: '' });
+  // M16: one form, fewest steps. The key follows the name until somebody edits it, the glyph
+  // comes from the site's icon picker instead of a typed lucide name, an image is dropped (or
+  // clicked) onto one zone, and every refusal the server would make is said beside the field
+  // before the button is pressed.
+  const blank = (source) => ({ key: '', keyTouched: false, label: '', source, icon: 'sparkles', color: '#5865f2', image: '', filename: '', bytes: 0 });
+  const [form, setForm] = useState(() => blank('glyph'));
   const [busy, setBusy] = useState(false);
   const [issues, setIssues] = useState([]);
+  const [fileErr, setFileErr] = useState('');
+  const [drag, setDrag] = useState(false);
+  const [picking, setPicking] = useState(false);
+  const [editKey, setEditKey] = useState(false);
   const fileRef = useRef(null);
   const icons = data?.icons || [];
   const maxKiB = data?.maxImageKiB || 2048;
-  const keyOk = EMOJI_KEY_RE.test(form.key);
-  const ready = keyOk && form.label.trim() && (form.source === 'glyph' ? !!form.icon.trim() : !!form.image);
+  const key = form.keyTouched ? form.key : slugKey(form.label);
+  const keyOk = EMOJI_KEY_RE.test(key);
+  const isBuiltin = keyOk && (builtinKeys || new Set()).has(key);
+  const replaces = keyOk && icons.find((ic) => ic.key === key);
+  // The bot draws Lucide and Phosphor glyphs; a brand or a project logo has no glyph it can draw.
+  const glyphBad = form.source === 'glyph' && /^(simple|app):/.test(form.icon);
+  const missing = [
+    !form.label.trim() && t('mA.ci.need.name', 'a name'),
+    form.source === 'image' && !form.image && t('mA.ci.need.image', 'an image'),
+    form.source === 'glyph' && !form.icon.trim() && t('mA.ci.need.glyph', 'a glyph'),
+  ].filter(Boolean);
+  const ready = keyOk && !isBuiltin && !glyphBad && !missing.length;
 
   const pickFile = (file) => {
+    setFileErr('');
     if (!file) return;
-    if (file.size > maxKiB * 1024) { toast.error(t('ci.toobig', 'That image is over {n} KiB.').replace('{n}', maxKiB)); return; }
+    if (!/^image\/(png|jpeg|gif|webp)$/.test(file.type)) { setFileErr(t('mA.ci.type', 'That file is not a PNG, JPEG, GIF or WebP image.')); return; }
+    if (file.size > maxKiB * 1024) { setFileErr(t('ci.toobig', 'That image is over {n} KiB.').replace('{n}', maxKiB)); return; }
     const reader = new FileReader();
-    reader.onload = () => setForm((f) => ({ ...f, image: String(reader.result || ''), filename: file.name, source: 'image', label: f.label || file.name.replace(/\.[a-z0-9]+$/i, '').slice(0, 60) }));
-    reader.onerror = () => toast.error(t('common.failed', 'Failed.'));
+    reader.onload = () => setForm((f) => ({ ...f, image: String(reader.result || ''), filename: file.name, bytes: file.size, source: 'image', label: f.label || file.name.replace(/\.[a-z0-9]+$/i, '').replace(/[_-]+/g, ' ').slice(0, 60) }));
+    reader.onerror = () => setFileErr(t('common.failed', 'Failed.'));
     reader.readAsDataURL(file);
   };
+  const onDrop = (e) => { e.preventDefault(); setDrag(false); pickFile(e.dataTransfer?.files?.[0]); };
 
   const add = async () => {
     if (!ready) return;
     setBusy(true); setIssues([]);
     try {
-      const body = { key: form.key, label: form.label.trim(), source: form.source };
+      const body = { key, label: form.label.trim(), source: form.source };
       if (form.source === 'glyph') { body.icon = form.icon.trim(); body.color = form.color; }
       else body.image = form.image;
       await api.post('/admin/bot/custom-icons', body);
       toast.success(t('ci.added', 'Added. The bot uploads it to Discord at its next icon sync.'));
-      setForm({ key: '', label: '', source: form.source, icon: 'sparkles', color: '#5865f2', image: '', filename: '' });
+      setForm(blank(form.source)); setEditKey(false);
       reload(); onReload?.();
     } catch (x) {
       setIssues(x?.data?.issues || []);
@@ -110,6 +204,8 @@ function CustomIcons({ onReload }) {
     catch { toast.error(t('common.failed', 'Failed.')); }
   };
 
+  const SOURCES = [['glyph', Shapes, t('ci.glyph', 'A glyph on a tile')], ['image', ImagePlus, t('ci.image', 'An image of mine')]];
+
   return (
     <Panel className={SP.stack}>
       <Eyebrow>{t('ci.title', 'Icons of your own')}</Eyebrow>
@@ -119,60 +215,99 @@ function CustomIcons({ onReload }) {
       </p>
 
       {loading ? <Loading /> : icons.length > 0 && (
-        <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-6 gap-2">
           {icons.map((ic) => (
-            <div key={ic.key} className="flex items-start gap-2.5 rounded-lg border border-[var(--line)] px-2.5 py-2 min-w-0">
-              <img src={`/api/admin/bot/emoji-icon/${ic.key}.png?v=${ic.version}`} alt="" loading="lazy" className="w-6 h-6 rounded shrink-0" />
-              <div className="min-w-0 flex-1">
-                <div className="text-[12px] font-medium break-words">{ic.label}</div>
-                <code className="text-[11px] font-mono text-[var(--faint)] break-all">{`{ic:${ic.key}}`}</code>
-              </div>
-              <button type="button" onClick={() => remove(ic.key)} className="p-1 shrink-0 text-[var(--faint)] hover:text-error" title={t('common.remove', 'Remove')}><Trash2 size={13} /></button>
-            </div>
+            <IconTile key={ic.key} src={`/api/admin/bot/emoji-icon/${ic.key}.png?v=${ic.version}`} label={ic.label}
+              tech={`{ic:${ic.key}}`} techTitle={t('mA.ci.copyuse', 'Copy what to write in bot texts')} onRemove={() => remove(ic.key)} />
           ))}
         </div>
       )}
 
-      <div className="flex flex-wrap gap-1.5">
-        {[['glyph', Shapes, t('ci.glyph', 'A glyph on a tile')], ['image', ImagePlus, t('ci.image', 'An image of mine')]].map(([k, I, label]) => (
-          <button key={k} type="button" onClick={() => setForm({ ...form, source: k })} aria-pressed={form.source === k}
-            className={`inline-flex items-center gap-1.5 text-[11.5px] px-2 py-1 rounded-lg border transition-colors ${form.source === k ? 'b-primary tint-primary text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)] hover:border-[var(--line-strong)]'}`}><I size={12} /> {label}</button>
-        ))}
-      </div>
-
-      <div className="grid sm:grid-cols-2 gap-2">
-        <Field label={t('ci.key', 'Key')} hint={t('ci.key.h', 'Used in bot texts as {ic:key}.')}>
-          <Input value={form.key} onChange={(e) => setForm({ ...form, key: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 32) })} placeholder="party" />
-        </Field>
-        <Field label={t('ci.label', 'Name')}>
-          <Input value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value.slice(0, 60) })} placeholder={t('ci.label.ph', 'Party popper')} />
-        </Field>
-      </div>
-
-      {form.source === 'glyph' ? (
-        <div className="grid sm:grid-cols-[minmax(0,1fr)_auto] gap-2 items-end">
-          <Field label={t('ci.icon', 'Glyph')} hint={t('ci.icon.h', 'A lucide name (party-popper), or ph:rocket for Phosphor.')}>
-            <Input value={form.icon} onChange={(e) => setForm({ ...form, icon: e.target.value.slice(0, 200) })} placeholder="party-popper" className="font-mono" />
-          </Field>
-          <Field label={t('ci.color', 'Tile')}>
-            <ColorInput value={form.color} onChange={(v) => setForm({ ...form, color: v })} />
-          </Field>
+      {/* The form: a preview on the left, the three things to decide on the right. */}
+      <div className="rounded-xl border border-[var(--line)] p-3 grid gap-3 sm:grid-cols-[auto_minmax(0,1fr)]">
+        <div className="flex sm:flex-col items-center gap-2 sm:w-28">
+          <span className="w-20 h-20 rounded-2xl grid place-items-center shrink-0 overflow-hidden panel" aria-hidden
+            style={form.source === 'glyph' ? { background: form.color, color: '#fff' } : undefined}>
+            {form.source === 'glyph'
+              ? (form.icon && !glyphBad ? <IconGlyph name={form.icon} size={40} /> : <Shapes size={32} className="opacity-60" />)
+              : (form.image ? <img src={form.image} alt="" className="w-full h-full object-contain" /> : <ImagePlus size={30} className="text-[var(--faint)]" />)}
+          </span>
+          <div className="min-w-0 sm:text-center">
+            <div className="text-[12.5px] font-medium break-words">{form.label.trim() || t('mA.ci.preview', 'Preview')}</div>
+            {keyOk && <code className="text-[10.5px] font-mono text-[var(--faint)] break-all">{`{ic:${key}}`}</code>}
+          </div>
         </div>
-      ) : (
-        <div className="flex flex-wrap items-center gap-2">
-          <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/gif,image/webp" className="hidden" onChange={(e) => { pickFile(e.target.files?.[0]); e.target.value = ''; }} />
-          <Button size="sm" variant="ghost" onClick={() => fileRef.current?.click()}><ImagePlus size={13} /> {t('ci.choose', 'Choose an image')}</Button>
-          {form.image
-            ? <span className="inline-flex items-center gap-2 text-[11.5px] text-[var(--muted)] min-w-0"><img src={form.image} alt="" className="w-6 h-6 rounded object-contain shrink-0" /><span className="truncate" title={form.filename}>{form.filename}</span></span>
-            : <span className="text-[11px] text-[var(--faint)]">{t('ci.limits', 'PNG, JPEG, GIF or WebP, up to {n} KiB. It is redrawn as the 128x128 PNG Discord takes.').replace('{n}', maxKiB)}</span>}
-        </div>
-      )}
 
-      {issues.length > 0 && <ul className="text-[11.5px] text-error list-disc ps-5">{issues.map((x) => <li key={x} className="break-words">{x}</li>)}</ul>}
-      {form.key && !keyOk && <p className="text-[11.5px] text-error">{t('em.one.badkey', 'A key is 2 to 32 lower-case letters, digits or _.')}</p>}
-      <div className="flex justify-end">
-        <Button size="sm" variant="primary" disabled={!ready || busy} onClick={add}>{busy ? <Spinner /> : <><Plus size={13} /> {t('ci.add', 'Add to the set')}</>}</Button>
+        <div className={SP.stack}>
+          <div className="seg-rail inline-flex flex-wrap gap-1" role="radiogroup" aria-label={t('mA.ci.source', 'What the icon is made of')}>
+            {SOURCES.map(([k, I, label]) => (
+              <button key={k} type="button" role="radio" aria-checked={form.source === k} onClick={() => { setForm({ ...form, source: k }); setFileErr(''); }}
+                className={`inline-flex items-center gap-1.5 text-[12px] px-2.5 py-1.5 rounded-lg border transition-colors ${form.source === k ? 'b-primary tint-primary text-[var(--text)]' : 'border-transparent text-[var(--muted)] hover:text-[var(--text)]'}`}><I size={13} /> {label}</button>
+            ))}
+          </div>
+
+          <Field label={t('ci.label', 'Name')}>
+            <Input value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value.slice(0, 60) })} placeholder={t('ci.label.ph', 'Party popper')} />
+          </Field>
+          {/* The key: derived from the name, editable on demand. */}
+          <div className="text-[11.5px] text-[var(--muted)] space-y-1.5">
+            {editKey ? (
+              <Field label={t('ci.key', 'Key')} hint={t('ci.key.h', 'Used in bot texts as {ic:key}.')}>
+                <Input value={key} autoFocus onChange={(e) => setForm({ ...form, keyTouched: true, key: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 32) })} placeholder="party" className="font-mono" />
+              </Field>
+            ) : (
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <span>{t('mA.ci.keyline', 'In bot texts:')}</span>
+                <code className="font-mono text-[var(--text)] break-all">{keyOk ? `{ic:${key}}` : '{ic:…}'}</code>
+                <button type="button" onClick={() => { setEditKey(true); setForm((f) => ({ ...f, keyTouched: true, key })); }} className="inline-flex items-center gap-1 text-[var(--accent-ink)] hover:underline">
+                  <Pencil size={11} /> {t('mA.ci.keyedit', 'Change the key')}
+                </button>
+              </div>
+            )}
+            {form.label.trim() && !keyOk && <p className="text-error">{t('em.one.badkey', 'A key is 2 to 32 lower-case letters, digits or _.')}</p>}
+            {isBuiltin && <p className="text-error">{t('mA.ci.builtin', 'That key belongs to a built-in icon. Change that one under Button icons, or pick another key.')}</p>}
+            {replaces && !isBuiltin && <p className="text-warning">{t('mA.ci.replaces', 'You already have an icon with that key ({l}): adding replaces it.').replace('{l}', replaces.label)}</p>}
+          </div>
+
+          {form.source === 'glyph' ? (
+            <div className="flex flex-wrap items-end gap-2">
+              <Field label={t('ci.icon', 'Glyph')}>
+                <Button size="sm" variant="ghost" onClick={() => setPicking(true)} className="max-w-full">
+                  {form.icon && !glyphBad ? <IconGlyph name={form.icon} size={15} /> : <Shapes size={14} />}
+                  <span className="font-mono text-[11.5px] break-all">{form.icon || t('mA.ci.pick', 'Pick an icon')}</span>
+                </Button>
+              </Field>
+              <Field label={t('ci.color', 'Tile')}>
+                <ColorInput value={form.color} onChange={(v) => setForm({ ...form, color: v })} />
+              </Field>
+            </div>
+          ) : (
+            <div>
+              <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/gif,image/webp" className="hidden" onChange={(e) => { pickFile(e.target.files?.[0]); e.target.value = ''; }} />
+              <button type="button" onClick={() => fileRef.current?.click()}
+                onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)} onDrop={onDrop}
+                className={`w-full rounded-xl border-2 border-dashed px-3 py-4 flex flex-col items-center gap-1 text-center transition-colors ${drag ? 'b-primary tint-primary' : 'border-[var(--line-strong)] hover:border-[var(--primary)]'}`}>
+                <ImagePlus size={20} className="text-[var(--faint)]" />
+                <span className="text-[12px] font-medium text-[var(--text)] break-words max-w-full">{form.image ? form.filename : t('mA.ci.drop', 'Drop an image here, or click to choose one')}</span>
+                <span className="text-[11px] text-[var(--faint)]">
+                  {form.image
+                    ? t('mA.ci.dropagain', '{n} KiB. Drop another one to replace it.').replace('{n}', Math.max(1, Math.round(form.bytes / 1024)))
+                    : t('ci.limits', 'PNG, JPEG, GIF or WebP, up to {n} KiB. It is redrawn as the 128x128 PNG Discord takes.').replace('{n}', maxKiB)}
+                </span>
+              </button>
+              {fileErr && <p className="text-[11.5px] text-error mt-1.5">{fileErr}</p>}
+            </div>
+          )}
+          {glyphBad && <p className="text-[11.5px] text-error">{t('mA.ci.glyphbad', 'The bot draws Lucide and Phosphor glyphs only. Pick one of those.')}</p>}
+
+          {issues.length > 0 && <ul className="text-[11.5px] text-error list-disc ps-5">{issues.map((x) => <li key={x} className="break-words">{x}</li>)}</ul>}
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {missing.length > 0 && <span className="text-[11px] text-[var(--faint)] me-auto">{t('mA.ci.missing', 'Still needed: {x}.').replace('{x}', missing.join(', '))}</span>}
+            <Button size="sm" variant="primary" disabled={!ready || busy} onClick={add}>{busy ? <Spinner /> : <><Plus size={13} /> {replaces ? t('mA.ci.replace', 'Replace it') : t('ci.add', 'Add to the set')}</>}</Button>
+          </div>
+        </div>
       </div>
+      {picking && <IconPicker title={t('mA.ci.pick', 'Pick an icon')} onClose={() => setPicking(false)} onPick={(n) => setForm((f) => ({ ...f, icon: n }))} />}
     </Panel>
   );
 }
@@ -204,6 +339,8 @@ export function BotEmojiSyncCard({ icons = {}, onChange }) {
   const parsed = useMemo(() => (paste.trim() ? parseEmojiPaste(paste) : null), [paste]);
   const shown = list.filter((s) => (filter === 'all' ? true : filter === 'attention' ? s.status !== 'present' : s.status === filter));
   const iconKeys = new Set(list.map((s) => s.key));
+  // The source's own icons: a custom icon may not take one of these keys (the API refuses it).
+  const builtinKeys = useMemo(() => new Set(list.filter((s) => !s.custom).map((s) => s.key)), [list]);
   const custom = Object.entries(icons || {}).filter(([k, v]) => !iconKeys.has(k) && typeof v === 'string' && v.trim());
   const available = data?.available || [];
   const todo = list.filter((s) => s.status !== 'present').map((s) => s.key);
@@ -213,7 +350,7 @@ export function BotEmojiSyncCard({ icons = {}, onChange }) {
   // What the API said, in words. The token itself never comes back: only whether it worked.
   const syncError = (x) => {
     const code = x?.data?.error;
-    if (code === 'no_token') return t('ems.err.notoken', 'The site has no bot token. Set it in the bot settings, or use the kit below.');
+    if (code === 'no_token') return t('mA.em.err.notoken', 'The API process has no bot token. The two fixes are shown under Put them on Discord from here.');
     if (code === 'bad_token') return t('ems.err.badtoken', 'Discord refused the bot token. Check it in the bot settings.');
     if (code === 'discord_forbidden') return t('ems.err.forbidden', 'Discord refused: this token may not manage the application emojis.');
     if (code === 'sync_busy') return t('ems.err.busy', 'An upload is already running. Wait for it to finish.');
@@ -347,13 +484,10 @@ export function BotEmojiSyncCard({ icons = {}, onChange }) {
           <div className="flex items-start gap-2 flex-wrap">
             <div className="min-w-0 flex-1">
               <Eyebrow>{t('ems.site.t', 'Put them on Discord from here')}</Eyebrow>
-              <p className="text-[11.5px] text-[var(--muted)] mt-1">
-                {canUpload
-                  ? t('ems.site.d', 'The site uploads the missing icons itself, with the bot token it already has. Icons already on Discord are skipped, so it is safe to run again.')
-                  : t('ems.site.none', 'The site has no bot token to upload with. Set it in the bot settings, or use the kit below.')}
-              </p>
+              {canUpload && <p className="text-[11.5px] text-[var(--muted)] mt-1">{t('ems.site.d', 'The site uploads the missing icons itself, with the bot token it already has. Icons already on Discord are skipped, so it is safe to run again.')}</p>}
             </div>
           </div>
+          {!loading && data && !canUpload && <NoTokenHelp botOnline={!!data.botOnline} />}
           <div className="flex flex-wrap items-center gap-2">
             <Button size="sm" variant="ghost" disabled={!canUpload || checking || running} onClick={check}>
               {checking ? <Spinner /> : <ScanSearch size={13} />} {t('ems.check', 'Check on Discord')}
@@ -407,25 +541,18 @@ export function BotEmojiSyncCard({ icons = {}, onChange }) {
             ))}
           </div>
           {!loading && (shown.length ? (
-            <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-6 gap-2">
               {shown.map((s) => {
-                const { I, cls } = TONE[s.status];
+                const res = run?.results?.[s.key];
                 return (
-                  <div key={s.key} className="flex items-start gap-2.5 rounded-lg border border-[var(--line)] px-2.5 py-2 min-w-0">
-                    <img src={`/api/admin/bot/emoji-icon/${s.key}.png`} alt="" loading="lazy" className="w-6 h-6 rounded shrink-0" />
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[12px] font-medium break-words">{s.label}</div>
-                      <div className="text-[11px] font-mono text-[var(--faint)] break-all">{s.status === 'present' ? s.emoji.name : s.want}</div>
-                      {s.override && <div className="text-[11px] text-[var(--muted)]">{t('em.override', 'Your own emoji is used instead.')}</div>}
-                    </div>
-                    <div className="flex flex-col items-end gap-0.5 shrink-0">
-                      <span className={`inline-flex items-center gap-1 text-[11.5px] ${cls}`} title={STATUS[s.status]}><I size={12} className="shrink-0" /> {STATUS[s.status]}</span>
-                      {/* What the last upload from this page did to it, when it touched it. */}
-                      {run?.results?.[s.key] && run.results[s.key].status !== 'skipped' && (
-                        <span className={`text-[11px] ${run.results[s.key].status === 'failed' ? 'text-error' : 'text-[var(--muted)]'}`} title={run.results[s.key].error || ''}>{RESULT[run.results[s.key].status]}</span>
-                      )}
-                    </div>
-                  </div>
+                  <IconTile key={s.key} src={`/api/admin/bot/emoji-icon/${s.key}.png`} label={s.label}
+                    tone={s.status} statusLabel={STATUS[s.status]}
+                    tech={s.status === 'present' ? s.emoji.name : s.want}
+                    note={s.override && <span className="text-[11px] text-[var(--muted)] break-words">{t('em.override', 'Your own emoji is used instead.')}</span>}
+                    extra={res && res.status !== 'skipped' && (
+                      // What the last upload from this page did to it, when it touched it.
+                      <span className={`text-[11px] break-words max-w-full ${res.status === 'failed' ? 'text-error' : 'text-[var(--muted)]'}`} title={res.error || ''}>{RESULT[res.status]}</span>
+                    )} />
                 );
               })}
             </div>
@@ -489,7 +616,7 @@ export function BotEmojiSyncCard({ icons = {}, onChange }) {
         </Panel>
 
         {/* 4. An icon of your own, added to the set without a code change. */}
-        <CustomIcons onReload={reload} />
+        <CustomIcons onReload={reload} builtinKeys={builtinKeys} />
 
         {/* 4. One emoji of your own. */}
         <Panel className={SP.stack}>

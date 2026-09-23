@@ -34,12 +34,14 @@ describe('the dashboard resolves what the bot resolves', () => {
         'members.ban': { kind: 'forum', id: FORUM, tags: ['Bans'] },  // its own tag
         voice: 'off',                                                // a one-category group off
         economy: { kind: 'channel', id: OTHER },
+        server: { kind: 'channel', ids: [OTHER, CHAN, OTHER] },       // several channels (M15)
+        'members.kick': { kind: 'channel', id: CHAN, ids: [MODLOG] }, // an old id beside new ids
       },
     };
     for (const k of LOG_CATEGORY_KEYS) {
       const web = resolveLogRoute(logs, k, { legacyChannelId: MODLOG });
       const bot = resolveRoute(logs, k, { legacyChannelId: MODLOG });
-      assert.deepEqual([web.kind, web.id, web.tags], [bot.kind, bot.id, bot.tags], k);
+      assert.deepEqual([web.kind, web.id, web.ids, web.tags], [bot.kind, bot.id, bot.ids, bot.tags], k);
     }
   });
 
@@ -50,7 +52,7 @@ describe('the dashboard resolves what the bot resolves', () => {
         for (const k of LOG_CATEGORY_KEYS) {
           const web = resolveLogRoute(logs, k, { legacyChannelId: legacy });
           const bot = resolveRoute(logs, k, { legacyChannelId: legacy });
-          assert.deepEqual([web.kind, web.id], [bot.kind, bot.id], `${k} · ${JSON.stringify(logs)} · legacy=${legacy || 'none'}`);
+          assert.deepEqual([web.kind, web.id, web.ids], [bot.kind, bot.id, bot.ids], `${k} · ${JSON.stringify(logs)} · legacy=${legacy || 'none'}`);
         }
       }
     }

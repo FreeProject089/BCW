@@ -21,6 +21,8 @@
 //     // ('messages') — the exact category wins over its group, both win over the defaults.
 //     //   { kind: 'forum', id: '<forumId>', tags: ['Messages'] }   a forum, with these tag NAMES
 //     //   { kind: 'channel', id: '<textChannelId>' }              a text channel
+//     //   { kind: 'channel', ids: ['<id>', '<id>'] }              several text channels (<= 5):
+//     //                                                           each gets every entry
 //     //   { kind: 'off' }  or the string 'off'                    nothing
 //     //   '<channelId>'                                           shorthand for a text channel
 //     routes: {},
@@ -67,17 +69,30 @@ import { ic } from '../ui.mjs';
 
 // ── Normalisation + routing (pure) ─────────────────────────────────────────────────────────
 const str = (v) => (typeof v === 'string' ? v.trim() : '');
+/** The most text channels one route may fan out to. Also the dashboard's and the API's cap. */
+export const MAX_ROUTE_CHANNELS = 5;
+/**
+ * A channel route's destinations: `ids` (several) and the older single `id`, merged, de-duplicated,
+ * capped. A config saved before several destinations existed has only `id`, and reads as `[id]`:
+ * that is the whole migration, done at read time so no stored config has to be rewritten.
+ */
+export const routeChannelIds = (v) => [...new Set([str(v?.id), ...(Array.isArray(v?.ids) ? v.ids.map(str) : [])].filter(Boolean))].slice(0, MAX_ROUTE_CHANNELS);
 export function normalizeLogs(raw) {
   const r = raw && typeof raw === 'object' ? raw : {};
   const routes = {};
   for (const [k, v] of Object.entries(r.routes && typeof r.routes === 'object' ? r.routes : {})) {
     if (!CATEGORIES[k] && !GROUPS[k]) continue;
     if (v === 'off' || v?.kind === 'off') { routes[k] = { kind: 'off', id: '', tags: [] }; continue; }
-    if (typeof v === 'string') { if (str(v)) routes[k] = { kind: 'channel', id: str(v), tags: [] }; continue; }
+    if (typeof v === 'string') { if (str(v)) routes[k] = { kind: 'channel', id: str(v), ids: [str(v)], tags: [] }; continue; }
     if (v && typeof v === 'object') {
       const kind = v.kind === 'forum' ? 'forum' : v.kind === 'channel' ? 'channel' : '';
+      if (kind === 'channel') {
+        const ids = routeChannelIds(v);
+        if (ids.length) routes[k] = { kind, id: ids[0], ids, tags: [] };
+        continue;
+      }
       const id = str(v.id);
-      if (kind && id) routes[k] = { kind, id, tags: Array.isArray(v.tags) ? v.tags.map(str).filter(Boolean).slice(0, 5) : [] };
+      if (kind && id) routes[k] = { kind, id, ids: [id], tags: Array.isArray(v.tags) ? v.tags.map(str).filter(Boolean).slice(0, 5) : [] };
     }
   }
   return {
@@ -92,22 +107,24 @@ export function normalizeLogs(raw) {
 
 /**
  * Where a category goes. `legacyChannelId` is the /config log channel (BotGuild.logChannelId).
- *   → { kind: 'forum'|'channel'|'off', id, tags: [names], from }
+ *   → { kind: 'forum'|'channel'|'off', id, ids, tags: [names], from }
+ * `ids` is every destination (a channel route may name several text channels; everything else
+ * is one), `id` its first, which is what the older readers of this shape still use.
  * `from` names the rule that decided, for /logs test and for the dashboard.
  */
 export function resolveRoute(cfg, category, { legacyChannelId = '' } = {}) {
   const L = normalizeLogs(cfg);
   const meta = CATEGORIES[category];
   if (!meta) return { kind: 'off', id: '', tags: [], from: 'unknown category' };
-  const off = { kind: 'off', id: '', tags: [], from: 'off' };
+  const off = { kind: 'off', id: '', ids: [], tags: [], from: 'off' };
   if (!L.enabled) return { ...off, from: 'logs disabled' };
   const groupTag = GROUPS[meta.group];
-  const withTags = (r, from) => ({ kind: r.kind, id: r.id, tags: r.kind === 'forum' ? (r.tags.length ? r.tags : [groupTag]) : [], from });
+  const withTags = (r, from) => ({ kind: r.kind, id: r.id, ids: r.kind === 'channel' ? r.ids : [r.id], tags: r.kind === 'forum' ? (r.tags.length ? r.tags : [groupTag]) : [], from });
   if (L.routes[category]) return L.routes[category].kind === 'off' ? { ...off, from: `${category} routed off` } : withTags(L.routes[category], `route for ${category}`);
   if (L.routes[meta.group]) return L.routes[meta.group].kind === 'off' ? { ...off, from: `${meta.group} routed off` } : withTags(L.routes[meta.group], `route for ${meta.group}`);
-  if (L.forumId) return { kind: 'forum', id: L.forumId, tags: [groupTag], from: 'the log forum' };
+  if (L.forumId) return { kind: 'forum', id: L.forumId, ids: [L.forumId], tags: [groupTag], from: 'the log forum' };
   const ch = L.channelId || str(legacyChannelId);
-  if (ch) return { kind: 'channel', id: ch, tags: [], from: L.channelId ? 'the log channel' : 'the /config log channel' };
+  if (ch) return { kind: 'channel', id: ch, ids: [ch], tags: [], from: L.channelId ? 'the log channel' : 'the /config log channel' };
   return { ...off, from: 'nothing configured' };
 }
 
@@ -393,13 +410,31 @@ export async function ensureForumPost(forum, name, { tags = [], summary = '', re
 // The /config legacy channel per guild rides beside the config (guildLogChannels).
 async function legacyChannelFor(guildId) { const cfg = await config().catch(() => null); return cfg?.guildLogChannels?.[guildId] || ''; }
 
-/** The destination for a guild + category, resolved to a channel/thread, or null when off. */
+/**
+ * Every destination for a guild + category, each resolved to a channel/thread:
+ * `[{ route, channel, error }]`, one per id of the route (a channel route may name several).
+ * Empty when there is no client or the bot is off; `[{ route, channel: null }]` when the
+ * category is routed off. One unusable channel does not stop the others.
+ */
+export async function destinationsFor(guildId, category) {
+  if (!client) return [];
+  const cfg = await guildConfig(guildId);
+  if (!cfg?.enabled) return [];
+  const route = resolveRoute(cfg.logs, category, { legacyChannelId: await legacyChannelFor(guildId) });
+  if (route.kind === 'off') return [{ route, channel: null }];
+  const out = [];
+  for (const id of route.ids?.length ? route.ids : [route.id]) out.push(await resolveOne(cfg, category, { ...route, id }));
+  return out;
+}
+
+/** The first usable destination: for a reader that wants one answer. */
 export async function destinationFor(guildId, category) {
   if (!client) return null;
-  const cfg = await guildConfig(guildId);
-  if (!cfg?.enabled) return null;
-  const route = resolveRoute(cfg.logs, category, { legacyChannelId: await legacyChannelFor(guildId) });
-  if (route.kind === 'off') return { route, channel: null };
+  const all = await destinationsFor(guildId, category);
+  return all.find((d) => d.channel) || all[0] || null;
+}
+
+async function resolveOne(cfg, category, route) {
   const ch = client.channels.cache.get(route.id) || await client.channels.fetch(route.id).catch(() => null);
   if (!ch) return { route, channel: null, error: 'channel not found' };
   if (route.kind === 'forum' || isForum(ch)) {
@@ -417,11 +452,19 @@ export async function destinationFor(guildId, category) {
 export async function logEvent(guildId, category, ev = {}) {
   try {
     if (!guildId || !CATEGORIES[category]) return false;
-    const d = await destinationFor(guildId, category);
-    if (!d?.channel) return false;
-    const key = `${d.channel.isThread?.() ? 't' : 'c'}:${d.channel.id}`;
-    queue.push(key, { category, ev: { at: Date.now(), guildId, ...ev } });
-    return true;
+    // Every destination gets the entry, each through its own queue (its own rate limit).
+    const at = Date.now();
+    let sent = false;
+    const seen = new Set();
+    for (const d of await destinationsFor(guildId, category)) {
+      if (!d?.channel) continue;
+      const key = `${d.channel.isThread?.() ? 't' : 'c'}:${d.channel.id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      queue.push(key, { category, ev: { at, guildId, ...ev } });
+      sent = true;
+    }
+    return sent;
   } catch (e) { console.warn('[logs] logEvent failed:', e?.message || e); return false; }
 }
 

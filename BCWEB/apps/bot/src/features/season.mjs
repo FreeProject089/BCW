@@ -12,7 +12,7 @@ import { api, SITE_URL } from '../api.mjs';
 import { config } from '../config.mjs';
 import { makeT, localeOf } from '../i18n.mjs';
 import { routesOf } from './blog.mjs';
-import { destinationFor, _queue } from './logs.mjs';
+import { destinationsFor, _queue } from './logs.mjs';
 
 let lastSeasonNo = null;
 let running = false;
@@ -95,8 +95,10 @@ export async function pollSeason(client) {
       const t = makeT(localeOf({ guildId: guild.id }, cfg), cfg.i18n);
       const card = ui.card({ ...seasonCard(t, { seasonNo: no, affected: last.affected, points: last.points, next: r.next, cur }), buttons: [ui.btn(`${SITE_URL}/dashboard?s=economy`, t('btn.site'), undefined, { emoji: 'site' })] });
       try {
-        const d = await destinationFor(guild.id, 'economy.season');
-        if (d?.channel) { _queue.push(`${d.channel.isThread?.() ? 't' : 'c'}:${d.channel.id}`, { payload: card }); continue; }
+        // Every destination the season category is routed to (a route may name several).
+        const ds = (await destinationsFor(guild.id, 'economy.season')).filter((d) => d?.channel);
+        for (const d of ds) _queue.push(`${d.channel.isThread?.() ? 't' : 'c'}:${d.channel.id}`, { payload: card });
+        if (ds.length) continue;
         const chId = generalChannelFor(cfg, guild);
         const ch = chId ? guild.channels.cache.get(chId) : null;
         if (ch?.send) await ch.send(card);

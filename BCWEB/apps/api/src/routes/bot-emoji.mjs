@@ -124,7 +124,13 @@ export default async function botEmojiRoutes(app) {
   app.get('/admin/bot/emoji-status', { preHandler: requireCap('manage_bot') }, async () => {
     const p = await db();
     // canUpload: whether the site holds a token to upload with. A boolean, never the token.
-    return { ...statusView(await getBotConfig(p), await storedMap(p), await storedCustom(p)), canUpload: !!(await storedToken(p)), batchMax: SYNC_BATCH_MAX };
+    // botOnline: whether the bot heartbeats. Both together say WHICH process lacks the token:
+    // under Docker the bot service gets DISCORD_TOKEN from compose and the api service does not
+    // unless it is added there, so "the bot runs and the site says no token" is the usual case,
+    // and the dashboard needs to say it is the API that is missing it, not the bot.
+    const beat = (await p.adminSetting.findUnique({ where: { key: 'bot.status' } }))?.value || null;
+    const botOnline = !!beat?.at && beat.online !== false && (Date.now() - new Date(beat.at).getTime()) < 120_000;
+    return { ...statusView(await getBotConfig(p), await storedMap(p), await storedCustom(p)), canUpload: !!(await storedToken(p)), botOnline, batchMax: SYNC_BATCH_MAX };
   });
 
   app.put('/admin/bot/emoji-map', { preHandler: requireCap('manage_bot') }, async (req, reply) => {

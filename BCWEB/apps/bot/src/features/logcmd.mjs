@@ -41,7 +41,7 @@ async function saveOrExplain(i, t, r) {
   return false;
 }
 
-const describeRoute = (r) => (r.kind === 'off' ? '— off' : `${r.kind === 'forum' ? 'forum' : 'channel'} <#${r.id}>${r.tags?.length ? ` · ${r.tags.join(', ')}` : ''}`);
+const describeRoute = (r) => (r.kind === 'off' ? '— off' : `${r.kind === 'forum' ? 'forum' : 'channel'} ${(r.ids?.length ? r.ids : [r.id]).map((id) => `<#${id}>`).join(' ')}${r.tags?.length ? ` · ${r.tags.join(', ')}` : ''}`);
 
 export async function cmdLogs(i) {
   const { t } = await tr(i);

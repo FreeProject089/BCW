@@ -1569,12 +1569,12 @@ function SocialConnections() {
   // with its Disconnect: hiding it would leave a link on their public profile that they can no
   // longer see nor remove.
   const configured = CONN_META.filter(([k]) => providers[k] || linked[k]);
-  // Staff get a folded one-liner saying what is hidden and what switches it on, instead of a
-  // dashed row per provider that made the card look unconfigured to the person reading it.
-  const staff = user?.role === 'ADMIN' || user?.role === 'SUPERADMIN';
-  const unconfigured = staff ? CONN_META.filter(([k, , , , kind]) => kind === 'oauth' && !providers[k] && !linked[k]) : [];
+  // M22: a provider the server is not configured for is not shown, and not mentioned, to
+  // anybody, staff included. (Staff used to get a folded "N provider(s) hidden" line with the
+  // env variables; the owner wants nothing there. What each provider needs is in
+  // guides/run/ENV_*.md, which is where a person configuring the server reads.)
   const discordRow = !!discord || signinDiscord;
-  if (configured.length === 0 && !discordRow && unconfigured.length === 0) return null;
+  if (configured.length === 0 && !discordRow) return null;
   const show = new Set(user?.showConnections || []);
   // Disconnecting is one click and reconnecting is a whole OAuth round trip through another
   // site — the asymmetry is the reason this one earns a window rather than a confirm dialog.
@@ -1649,19 +1649,7 @@ function SocialConnections() {
             </label>}
           </div>
         ); })}
-        {unconfigured.length > 0 && (
-          <details className="text-[11px] text-[var(--faint)] px-1 pt-1">
-            <summary className="cursor-pointer select-none">{t('sc.hiddenN', '{n} provider(s) hidden: not configured on this server (staff only)').replace('{n}', unconfigured.length)}</summary>
-            <ul className="mt-1.5 space-y-1">
-              {unconfigured.map(([k, , label]) => (
-                <li key={k}>{label} : {t('sc.unconf', 'Hidden from members: not configured on this server. Set')} <code className="break-all">{CONN_ENV[k]}</code></li>
-              ))}
-            </ul>
-          </details>
-        )}
       </div>
     </Card>
   );
 }
-// What each connect provider needs in infra/compose/.env (shown to staff only).
-const CONN_ENV = { youtube: 'GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET', twitch: 'TWITCH_CLIENT_ID + TWITCH_CLIENT_SECRET', steam: 'STEAM_API_KEY' };

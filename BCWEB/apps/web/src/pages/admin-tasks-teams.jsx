@@ -19,7 +19,7 @@
 // Every button is drawn from what the server said this account may do (`canRunTeams`,
 // `canNameChiefs`, per-team `canManage` / `canAddOutsiders`), never re-derived here.
 import { useState } from 'react';
-import { Users, Plus, Crown, UserPlus, UserMinus, PenSquare, Trash2, Archive, ArchiveRestore, AlertTriangle, ShieldAlert, ClipboardList, Inbox } from 'lucide-react';
+import { Users, Plus, Crown, UserPlus, UserMinus, PenSquare, Trash2, Archive, ArchiveRestore, AlertTriangle, ShieldAlert, ClipboardList, Inbox, ChevronDown } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { Card, Button, Input, Textarea, Field, Badge, Modal, EmptyState, Spinner, Explain, useToast, useDialog } from '../ui/ui.jsx';
@@ -195,11 +195,20 @@ function RosterRow({ m, person, canRemove, busy, onRemove, t }) {
   );
 }
 
+// M14: a long roster folds. Up to this many people the list is simply shown; above it the card
+// opens folded (an avatar row and the count) so one big team no longer stretches the whole
+// grid. The choice is remembered per team, in this browser only.
+const ROSTER_OPEN_UP_TO = 5;
+const rosterKey = (id) => `bcw.admin.tasks.roster.${id}`;
+const readRosterOpen = (id) => { try { const v = localStorage.getItem(rosterKey(id)); return v === null ? null : v === '1'; } catch { return null; } };
+const writeRosterOpen = (id, on) => { try { localStorage.setItem(rosterKey(id), on ? '1' : '0'); } catch { /* private mode: not remembered */ } };
+
 function TeamCard({ team, people, me, canRun, canNameChiefs, onChanged }) {
   const { t } = useI18n();
   const toast = useToast();
   const dialog = useDialog();
   const [busy, setBusy] = useState(false);
+  const [rosterOpen, setRosterOpen] = useState(() => readRosterOpen(team.id));
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState(false);
   const [chiefing, setChiefing] = useState(false);
@@ -264,12 +273,39 @@ function TeamCard({ team, people, me, canRun, canNameChiefs, onChanged }) {
         {team.unassigned > 0 && <Badge tone="amber"><Inbox size={11} className="me-1" />{t('atask.team.pool.n', '{n} in the pool').replace('{n}', String(team.unassigned))}</Badge>}
       </div>
 
-      <ul className="mt-2 divide-y divide-[var(--line)]" aria-label={t('atask.team.roster', 'Who is on this team')}>
-        {roster.map((m) => (
-          <RosterRow key={m.userId} m={m} person={people[m.userId]} t={t} busy={busy}
-            canRemove={team.canManage || m.you} onRemove={() => removeMember(m.userId)} />
-        ))}
-      </ul>
+      {(() => {
+        // Folded by default only when the list is long; whatever the person chose wins.
+        const open = rosterOpen ?? roster.length <= ROSTER_OPEN_UP_TO;
+        const toggle = () => { setRosterOpen(!open); writeRosterOpen(team.id, !open); };
+        const listId = `team-roster-${team.id}`;
+        return (<>
+          {roster.length > 1 && (
+            <button type="button" onClick={toggle} aria-expanded={open} aria-controls={listId}
+              className="mt-2 w-full flex items-center gap-2 rounded-lg px-2 py-1.5 text-start hover:bg-[var(--surface-2)] transition-colors min-w-0">
+              <ChevronDown size={14} className={`shrink-0 text-[var(--faint)] transition-transform ${open ? '' : '-rotate-90'}`} />
+              <span className="text-[12px] font-medium text-[var(--text)] shrink-0">
+                {open ? t('mA.tt.hide', 'Hide the members') : t('mA.tt.show', 'Show the {n} members').replace('{n}', String(roster.length))}
+              </span>
+              {!open && (
+                <span className="flex -space-x-1.5 min-w-0 overflow-hidden ms-auto" aria-hidden="true">
+                  {roster.slice(0, 6).map((m) => (
+                    <span key={m.userId} className="rounded-full ring-2 ring-[var(--bg-solid)] shrink-0"><Avatar user={people[m.userId] || { id: m.userId }} size={20} /></span>
+                  ))}
+                  {roster.length > 6 && <span className="w-5 h-5 rounded-full grid place-items-center text-[9px] font-semibold bg-[var(--surface-2)] text-[var(--muted)] ring-2 ring-[var(--bg-solid)] shrink-0">+{roster.length - 6}</span>}
+                </span>
+              )}
+            </button>
+          )}
+          {(open || roster.length <= 1) && (
+            <ul id={listId} className="mt-1 divide-y divide-[var(--line)]" aria-label={t('atask.team.roster', 'Who is on this team')}>
+              {roster.map((m) => (
+                <RosterRow key={m.userId} m={m} person={people[m.userId]} t={t} busy={busy}
+                  canRemove={team.canManage || m.you} onRemove={() => removeMember(m.userId)} />
+              ))}
+            </ul>
+          )}
+        </>);
+      })()}
       {roster.length <= 1 && <p className="text-xs text-[var(--faint)] mt-1">{t('atask.team.solo', 'Only the chief so far.')}</p>}
 
       {team.canManage && (
@@ -350,7 +386,8 @@ export function AdminTaskTeams({ onChanged, me }) {
         )}
 
       {teams.length ? (
-        <div className="grid gap-3 lg:grid-cols-2">
+        // items-start: a card as tall as its own content, never stretched to its neighbour's.
+        <div className="grid gap-3 lg:grid-cols-2 items-start">
           {teams.map((team) => (
             <TeamCard key={team.id} team={team} people={data?.people || {}} me={me} canRun={canRun}
               canNameChiefs={canNameChiefs} onChanged={refresh} />

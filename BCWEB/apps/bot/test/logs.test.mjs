@@ -20,16 +20,16 @@ describe('routing', () => {
   });
   test('a forum is the default for every category, tagged with its group', () => {
     const r = resolveRoute({ forumId: 'f1' }, 'members.ban');
-    assert.deepEqual(r, { kind: 'forum', id: 'f1', tags: ['Members'], from: 'the log forum' });
+    assert.deepEqual(r, { kind: 'forum', id: 'f1', ids: ['f1'], tags: ['Members'], from: 'the log forum' });
   });
   test('the legacy channel: logs.channelId, else the /config channel', () => {
-    assert.deepEqual(resolveRoute({ channelId: 'c1' }, 'voice'), { kind: 'channel', id: 'c1', tags: [], from: 'the log channel' });
+    assert.deepEqual(resolveRoute({ channelId: 'c1' }, 'voice'), { kind: 'channel', id: 'c1', ids: ['c1'], tags: [], from: 'the log channel' });
     assert.equal(resolveRoute({}, 'voice', { legacyChannelId: 'c-legacy' }).id, 'c-legacy');
     assert.equal(resolveRoute({ forumId: 'f1' }, 'voice', { legacyChannelId: 'c-legacy' }).kind, 'forum', 'a forum beats the legacy channel');
   });
   test('routes: exact category > group > defaults; every accepted spelling', () => {
     const cfg = { forumId: 'f1', routes: { messages: 'c-msg', 'messages.edit': { kind: 'off' }, automod: { kind: 'forum', id: 'f2', tags: ['Custom', 'Automod'] }, voice: 'off', bogus: 'c9' } };
-    assert.deepEqual(resolveRoute(cfg, 'messages.delete'), { kind: 'channel', id: 'c-msg', tags: [], from: 'route for messages' });
+    assert.deepEqual(resolveRoute(cfg, 'messages.delete'), { kind: 'channel', id: 'c-msg', ids: ['c-msg'], tags: [], from: 'route for messages' });
     assert.equal(resolveRoute(cfg, 'messages.edit').kind, 'off');
     assert.deepEqual(resolveRoute(cfg, 'automod').tags, ['Custom', 'Automod']);
     assert.equal(resolveRoute(cfg, 'voice').from, 'voice routed off');

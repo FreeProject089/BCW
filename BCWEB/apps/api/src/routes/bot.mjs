@@ -3107,19 +3107,30 @@ const LOG_CATEGORY_GROUP = {
   'economy.casino': 'economy', 'economy.shop': 'economy', 'economy.season': 'economy',
 };
 const LOG_GROUP_LABEL = { messages: 'Messages', members: 'Members', voice: 'Voice', automod: 'Automod', moderation: 'Moderation', server: 'Server', bot: 'Bot', economy: 'Economy' };
-/** → { kind: 'forum'|'channel'|'off', id, tags, from } — `from` names the rule that decided. */
+/**
+ * → { kind: 'forum'|'channel'|'off', id, ids, tags, from } — `from` names the rule that decided.
+ * A channel route may name several text channels (`ids`, at most MAX_LOG_ROUTE_CHANNELS);
+ * `id` is the first. An older `{ kind: 'channel', id }` reads as `ids: [id]`.
+ */
+const MAX_LOG_ROUTE_CHANNELS = 5;
+const logRouteIds = (v) => [...new Set([String(v?.id || '').trim(), ...(Array.isArray(v?.ids) ? v.ids.map((x) => String(x || '').trim()) : [])].filter(Boolean))].slice(0, MAX_LOG_ROUTE_CHANNELS);
 function resolveLogRoute(rawLogs, category, { legacyChannelId = '' } = {}) {
   const L = rawLogs && typeof rawLogs === 'object' ? rawLogs : {};
   const group = LOG_CATEGORY_GROUP[category];
-  const off = { kind: 'off', id: '', tags: [], from: 'off' };
+  const off = { kind: 'off', id: '', ids: [], tags: [], from: 'off' };
   if (!group) return { ...off, from: 'unknown category' };
   if (L.enabled === false) return { ...off, from: 'logs disabled' };
   const groupTag = LOG_GROUP_LABEL[group];
   const read = (v) => {
     if (v === 'off' || v?.kind === 'off') return { kind: 'off' };
-    if (typeof v === 'string' && v.trim()) return { kind: 'channel', id: v.trim(), tags: [] };
-    if (v && typeof v === 'object' && (v.kind === 'forum' || v.kind === 'channel') && String(v.id || '').trim()) {
-      return { kind: v.kind, id: String(v.id).trim(), tags: Array.isArray(v.tags) ? v.tags.filter(Boolean).slice(0, 5) : [] };
+    if (typeof v === 'string' && v.trim()) return { kind: 'channel', id: v.trim(), ids: [v.trim()], tags: [] };
+    if (v && typeof v === 'object' && v.kind === 'channel') {
+      const ids = logRouteIds(v);
+      return ids.length ? { kind: 'channel', id: ids[0], ids, tags: [] } : null;
+    }
+    if (v && typeof v === 'object' && v.kind === 'forum' && String(v.id || '').trim()) {
+      const id = String(v.id).trim();
+      return { kind: 'forum', id, ids: [id], tags: Array.isArray(v.tags) ? v.tags.filter(Boolean).slice(0, 5) : [] };
     }
     return null;
   };
@@ -3128,18 +3139,19 @@ function resolveLogRoute(rawLogs, category, { legacyChannelId = '' } = {}) {
     const r = read(routes[key]);
     if (!r) continue;
     if (r.kind === 'off') return { ...off, from: `${key} routed off` };
-    return { kind: r.kind, id: r.id, tags: r.kind === 'forum' ? (r.tags.length ? r.tags : [groupTag]) : [], from: why };
+    return { kind: r.kind, id: r.id, ids: r.ids, tags: r.kind === 'forum' ? (r.tags.length ? r.tags : [groupTag]) : [], from: why };
   }
-  if (String(L.forumId || '').trim()) return { kind: 'forum', id: String(L.forumId).trim(), tags: [groupTag], from: 'the log forum' };
+  if (String(L.forumId || '').trim()) return { kind: 'forum', id: String(L.forumId).trim(), ids: [String(L.forumId).trim()], tags: [groupTag], from: 'the log forum' };
   const ch = String(L.channelId || '').trim() || String(legacyChannelId || '').trim();
-  if (ch) return { kind: 'channel', id: ch, tags: [], from: String(L.channelId || '').trim() ? 'the log channel' : 'the /config log channel' };
+  if (ch) return { kind: 'channel', id: ch, ids: [ch], tags: [], from: String(L.channelId || '').trim() ? 'the log channel' : 'the /config log channel' };
   return { ...off, from: 'nothing configured' };
 }
 
 const LOG_ROUTE = z.union([
   z.literal('off'),
   z.string().max(32),
-  z.object({ kind: z.enum(['forum', 'channel', 'off']), id: z.string().max(32).optional(), tags: z.array(z.string().max(40)).max(5).optional() }),
+  // `ids`: several text channels for one channel route (M15); `id` stays accepted alone.
+  z.object({ kind: z.enum(['forum', 'channel', 'off']), id: z.string().max(32).optional(), ids: z.array(z.string().max(32)).max(MAX_LOG_ROUTE_CHANNELS).optional(), tags: z.array(z.string().max(40)).max(5).optional() }),
 ]);
 const LOGS_SCHEMA = z.object({
   enabled: z.boolean().optional(),

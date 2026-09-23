@@ -43,6 +43,14 @@ Discord du propriétaire du serveur) et est repris en moins de 30 secondes, sans
 l'API refuse purement et simplement de changer celui qui est stocké (`PUT /admin/bot/token`
 répond 409 `token_from_env`), et le champ du dashboard est remplacé par une note qui le dit.
 
+**L'API lit aussi le token, dans son propre environnement.** Compose passe `DISCORD_TOKEN` au
+seul service `bot`. Le processus de l'API s'en sert aussi (l'envoi des *Icônes sur Discord*
+depuis le dashboard passe par l'API REST de Discord avec lui) : avec le token seulement dans
+`.env`, le bot se connecte alors que le dashboard dit que le site n'a pas de token de bot. Deux
+corrections : ajouter `DISCORD_TOKEN: ${DISCORD_TOKEN:-}` à l'`environment:` du service `api`
+dans `infra/compose/docker-compose.yml` puis le recréer, ou enregistrer le token dans les
+réglages du bot du dashboard (voir plus bas : éteindre le bot pour le changer).
+
 **Le bot doit être désactivé pour changer le token stocké.** Avec `enabled` encore à vrai, la
 même route répond 409 `bot_enabled`, et le dashboard cache le champ tant que le bot n'est pas
 éteint. Éteins-le, change le token, rallume-le.

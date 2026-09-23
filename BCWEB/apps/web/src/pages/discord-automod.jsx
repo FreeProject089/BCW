@@ -40,7 +40,7 @@ import { ChannelPicker, RolePicker, PickerList, ChannelTag, CHANNEL_TYPES, chann
 
 // The vocabulary and the pure rules live in lib/discord-config.js (testable without a DOM);
 // they are re-exported here so every importer keeps one address for them.
-import { clamp, actionsFor, ROLE_ACTIONS, MSG_PARAM_FIELDS, AUTOMOD_ACTIONS, JOIN_ACTIONS, RAID_ACTIONS, AUTOMOD_RULES, JOIN_RULES, LADDER_ACTIONS, AUTOMOD_DEFAULTS, LADDER_DEFAULTS, RULE_FIELDS, LOG_GROUPS, LOG_CATEGORIES, LOG_CATEGORY_KEYS, LOG_GROUP_TAG, LOGS_DEFAULTS, normAutomod, normLadder, ladderForSave, normLogs, logsForSave, resolveLogRoute } from '../lib/discord-config.js';
+import { clamp, actionsFor, ROLE_ACTIONS, MSG_PARAM_FIELDS, AUTOMOD_ACTIONS, JOIN_ACTIONS, RAID_ACTIONS, AUTOMOD_RULES, JOIN_RULES, LADDER_ACTIONS, AUTOMOD_DEFAULTS, LADDER_DEFAULTS, RULE_FIELDS, LOG_GROUPS, LOG_CATEGORIES, LOG_CATEGORY_KEYS, LOG_GROUP_TAG, LOGS_DEFAULTS, normAutomod, normLadder, ladderForSave, normLogs, logsForSave, resolveLogRoute, MAX_ROUTE_CHANNELS } from '../lib/discord-config.js';
 
 export { AUTOMOD_ACTIONS, JOIN_ACTIONS, RAID_ACTIONS, AUTOMOD_RULES, JOIN_RULES, LADDER_ACTIONS, AUTOMOD_DEFAULTS, LADDER_DEFAULTS, RULE_FIELDS, LOG_GROUPS, LOG_CATEGORIES, LOG_CATEGORY_KEYS, LOG_GROUP_TAG, LOGS_DEFAULTS, normAutomod, normLadder, ladderForSave, normLogs, logsForSave, resolveLogRoute };
 
@@ -122,6 +122,19 @@ function useDestination(channels) {
           <span className="inline-flex items-center gap-1 min-w-0">
             <ChannelTag channel={ch || { type: 15, name }} id={route.id} />
             {tag && <span className="text-[10px] text-[var(--faint)] shrink-0">{t('lg.dest.tag', 'tag {t}').replace('{t}', tag)}</span>}
+          </span>
+        ),
+      };
+    }
+    // A channel route may name several channels (M15): all of them, in their order.
+    const ids = route.ids?.length ? route.ids : [route.id];
+    if (ids.length > 1) {
+      const chs = ids.map((id) => ({ id, ch: channelOf(channels, id) }));
+      return {
+        short: chs.map(({ id, ch: c }) => `#${c?.name || id}`).join(', '),
+        node: (
+          <span className="inline-flex items-center gap-1 flex-wrap min-w-0 max-w-full">
+            {chs.map(({ id, ch: c }) => <ChannelTag key={id} channel={c || { type: 0, name: id }} id={id} />)}
           </span>
         ),
       };
@@ -363,7 +376,7 @@ function RuleDetail({ name, r, setRule, LB, roles, channels }) {
           <span className="font-semibold text-[var(--text)]">{LB.name[name]}</span>
         </Check>
         <span className="flex-1" />
-        <Select className="!w-auto !py-1 text-xs" value={r.action} onChange={(e) => setRule({ action: e.target.value })} aria-label={t('amod.action', 'Action')}>
+        <Select className="!w-auto max-w-full min-w-0 !py-1 text-xs" value={r.action} onChange={(e) => setRule({ action: e.target.value })} aria-label={t('amod.action', 'Action')}>
           {acts.map((a) => <option key={a} value={a}>{LB.action[a]}</option>)}
         </Select>
       </div>
@@ -437,7 +450,7 @@ export function AutomodEditor({ value, onChange, roles, channels, memberSearch, 
     <div key={name}>
       <RuleRow name={name} r={v.rules[name]} selected={sel === name} onSelect={() => setSel(sel === name ? '' : name)} LB={LB} />
       {/* Phone: the detail belongs under the row you tapped. Desktop has a column for it. */}
-      {sel === name && <div className={`md:hidden ${SP.card} border-t border-[var(--line)] panel`}>{detail(name)}</div>}
+      {sel === name && <div className={`lg:hidden ${SP.card} border-t border-[var(--line)] panel`}>{detail(name)}</div>}
     </div>
   ));
 
@@ -458,14 +471,14 @@ export function AutomodEditor({ value, onChange, roles, channels, memberSearch, 
       </div>
 
       {/* The rules: pick one on the left, decide it on the right. */}
-      <div className="grid md:grid-cols-[minmax(0,17rem)_minmax(0,1fr)] gap-3 md:gap-4 items-start">
+      <div className="grid lg:grid-cols-[minmax(0,17rem)_minmax(0,1fr)] gap-3 lg:gap-4 items-start">
         <Rows>
           <div className={`${SP.row} !py-1.5`}><Eyebrow>{t('amod.fam.msg', 'On every message')}</Eyebrow></div>
           {column(MESSAGE_RULES)}
           <div className={`${SP.row} !py-1.5`}><Eyebrow>{t('amod.fam.join', 'At the door')}</Eyebrow></div>
           {column(JOIN_RULES)}
         </Rows>
-        <Panel className="hidden md:block">
+        <Panel className="hidden lg:block">
           {sel ? detail(sel) : <p className="text-[11.5px] text-[var(--faint)]">{t('amod.pick', 'Pick a rule on the left.')}</p>}
         </Panel>
       </div>
@@ -514,7 +527,7 @@ export function WarnLadderEditor({ value, onChange, decayHours, onDecayChange })
               <span>{t('wl.at', 'At')}</span>
               <NumField value={r.count} f={{ min: 1, max: 1000, int: true }} clamp={clamp} ariaLabel={t('wl.warnings', 'warnings,')} onCommit={(n) => upd(i, { count: n })} />
               <span>{t('wl.warnings', 'warnings,')}</span>
-              <Select className="!w-auto !py-1 text-xs" value={r.action} onChange={(e) => upd(i, { action: e.target.value })} aria-label={t('wl.action', 'What happens')}>
+              <Select className="!w-auto max-w-full min-w-0 !py-1 text-xs" value={r.action} onChange={(e) => upd(i, { action: e.target.value })} aria-label={t('wl.action', 'What happens')}>
                 {LADDER_ACTIONS.map((a) => <option key={a} value={a}>{LB.action[a]}</option>)}
               </Select>
               {LADDER_TIMED.includes(r.action) && (<>
@@ -577,7 +590,7 @@ function RouteRow({ k, label, count, sub, ctx }) {
           <ArrowRight size={11} className="text-[var(--faint)] shrink-0" />
           {here.node}
         </span>
-        <Select className="!w-auto !py-1 text-xs shrink-0" value={m} onChange={(e) => setMode(k, e.target.value)} aria-label={t('lg.route', 'Route')}>
+        <Select className="!w-auto max-w-full min-w-0 !py-1 text-xs" value={m} onChange={(e) => setMode(k, e.target.value)} aria-label={t('lg.route', 'Route')}>
           <option value="default">{sub ? t('lg.m.group2', 'Same as its group ({d})').replace('{d}', inherited.short) : t('lg.m.default2', 'The default ({d})').replace('{d}', inherited.short)}</option>
           <option value="off">{t('lg.m.off2', 'Nowhere')}</option>
           <option value="channel">{t('lg.m.channel', 'A text channel')}</option>
@@ -590,11 +603,21 @@ function RouteRow({ k, label, count, sub, ctx }) {
           </button>
         )}
       </div>
-      {(m === 'channel' || m === 'forum') && (
+      {m === 'channel' && (
+        // Several text channels (M15): every one of them gets every entry. The chips + picker
+        // are the dashboard's one multi-channel control (PickerList), capped where the bot is.
+        <div className="mt-2 sm:ps-[12.25rem] max-w-full sm:max-w-[34rem]">
+          <PickerList kind="channel" items={r?.ids || (r?.id ? [r.id] : [])} channels={channels} types={CHANNEL_TYPES.postable} max={MAX_ROUTE_CHANNELS}
+            placeholder={(r?.ids || []).length ? t('mA.lg.addchan', 'Also send to another channel') : undefined}
+            onChange={(ids) => setRoute(k, { ...r, kind: 'channel', ids, id: ids[0] || '' })} />
+          {(r?.ids || []).length >= MAX_ROUTE_CHANNELS && <p className="text-[10.5px] text-[var(--faint)] mt-1">{t('mA.lg.max', 'At most {n} channels per row.').replace('{n}', MAX_ROUTE_CHANNELS)}</p>}
+        </div>
+      )}
+      {m === 'forum' && (
         <div className="flex items-center gap-2 flex-wrap mt-2 sm:ps-[12.25rem]">
-          <span className="w-52"><ChannelPicker channels={channels} types={m === 'forum' ? CHANNEL_TYPES.forum : CHANNEL_TYPES.postable} value={r?.id} onChange={(id) => setRoute(k, { ...r, id })} /></span>
+          <span className="w-52 max-w-full"><ChannelPicker channels={channels} types={CHANNEL_TYPES.forum} value={r?.id} onChange={(id) => setRoute(k, { ...r, id, ids: id ? [id] : [] })} /></span>
           {m === 'forum' && (
-            <Input className="!py-1 text-xs w-44" value={(r?.tags || []).join(', ')} placeholder={t('lg.tags.ph2', 'Tag names, comma separated')} aria-label={t('lg.tags.ph2', 'Tag names, comma separated')}
+            <Input className="!py-1 text-xs w-44 max-w-full" value={(r?.tags || []).join(', ')} placeholder={t('lg.tags.ph2', 'Tag names, comma separated')} aria-label={t('lg.tags.ph2', 'Tag names, comma separated')}
               onChange={(e) => setRoute(k, { ...r, tags: e.target.value.split(',').map((x) => x.trim()).filter(Boolean).slice(0, 5) })} />
           )}
         </div>
@@ -628,7 +651,9 @@ export function LogsEditor({ value, onChange, channels, legacyChannelId = '', on
     if (m === 'default') return setRoute(k, null);
     if (m === 'off') return setRoute(k, { kind: 'off', id: '', tags: [] });
     const cur = routeOf(k);
-    setRoute(k, { kind: m, id: cur && cur.kind !== 'off' ? cur.id : '', tags: cur?.tags || [] });
+    const id = cur && cur.kind !== 'off' ? cur.id : '';
+    const ids = m === 'channel' && cur?.kind === 'channel' && cur.ids?.length ? cur.ids : (id ? [id] : []);
+    setRoute(k, { kind: m, id: m === 'channel' ? (ids[0] || '') : id, ids, tags: cur?.tags || [] });
   };
   const resolve = (k) => resolveLogRoute(v, k, { legacyChannelId });
 
@@ -640,7 +665,7 @@ export function LogsEditor({ value, onChange, channels, legacyChannelId = '', on
     const buckets = new Map();
     for (const k of LOG_CATEGORY_KEYS) {
       const r = resolveLogRoute(v, k, { legacyChannelId });
-      const id = r.kind === 'off' ? 'off' : `${r.kind}:${r.id}:${(r.tags || []).join(',')}`;
+      const id = r.kind === 'off' ? 'off' : `${r.kind}:${(r.ids?.length ? r.ids : [r.id]).join('+')}:${(r.tags || []).join(',')}`;
       if (!buckets.has(id)) buckets.set(id, { route: r, cats: [] });
       buckets.get(id).cats.push(k);
     }
@@ -667,8 +692,8 @@ export function LogsEditor({ value, onChange, channels, legacyChannelId = '', on
         <Eyebrow>{t('lg.map', 'What lands where, right now')}</Eyebrow>
         <div className={SP.tight}>
           {byDestination.map(({ route, cats }) => (
-            <div key={`${route.kind}:${route.id}:${route.from}`} className="flex items-baseline gap-2 flex-wrap text-[11.5px]">
-              <span className="inline-flex items-center gap-1 min-w-0 sm:w-48 shrink-0">{describe(route).node}</span>
+            <div key={`${route.kind}:${(route.ids || [route.id]).join("+")}:${(route.tags || []).join(",")}:${route.from}`} className="flex items-baseline gap-2 flex-wrap text-[11.5px]">
+              <span className="inline-flex items-center gap-1 min-w-0 max-w-full sm:w-48 shrink-0">{describe(route).node}</span>
               <span className="text-[var(--faint)] shrink-0 tabular-nums">{t('lg.mapn', '{n} of 23').replace('{n}', cats.length)}</span>
               <span className="text-[var(--muted)] min-w-0 flex-1">{[...new Set(cats.map((k) => LB.group[LOG_CATEGORIES[k]]))].join(' · ')}</span>
             </div>

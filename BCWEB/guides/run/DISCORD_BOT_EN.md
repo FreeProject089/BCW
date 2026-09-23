@@ -41,6 +41,14 @@ server owner's own Discord dashboard) and picked up within 30 seconds, without a
 API refuses to change the stored one at all (`PUT /admin/bot/token` answers 409
 `token_from_env`), and the dashboard field is replaced by a note saying so.
 
+**The API reads the token too, from its own environment.** Compose passes `DISCORD_TOKEN` to
+the `bot` service only. The API process uses it as well (the dashboard's *Icons on Discord*
+upload goes through Discord's REST API with it), so with the token only in `.env` the bot
+connects while the dashboard says the site has no bot token. Two fixes: add
+`DISCORD_TOKEN: ${DISCORD_TOKEN:-}` to the `api` service's `environment:` in
+`infra/compose/docker-compose.yml` and recreate it, or store the token in the dashboard's bot
+settings instead (below: switch the bot off to change it).
+
 **The bot must be disabled to change the stored token.** With `enabled` still true, the same
 route answers 409 `bot_enabled`, and the dashboard hides the field until you switch the bot
 off. Switch it off, change the token, switch it back on.

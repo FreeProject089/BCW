@@ -918,9 +918,28 @@ export function ColorInput({ value, onChange, className = '', title, swatchOnly 
     if (!open) return undefined;
     const onDoc = (e) => { if (!popRef.current?.contains(e.target) && !btnRef.current?.contains(e.target)) setOpen(false); };
     const onKey = (e) => { if (e.key === 'Escape') setOpen(false); };
+    // M16 (agent-admin-M): the popover is `fixed`, so a rect read once at open left it pinned
+    // to the screen while the page scrolled under it: it "followed the scroll", detached from
+    // its swatch. Re-read the swatch on every scroll (capture: any scrolling ancestor) and
+    // resize, and close once the swatch has left the viewport.
+    const follow = () => {
+      const r = btnRef.current?.getBoundingClientRect();
+      if (!r) return;
+      if (r.bottom < 0 || r.top > window.innerHeight) { setOpen(false); return; }
+      setRect(r);
+    };
     document.addEventListener('mousedown', onDoc); document.addEventListener('keydown', onKey);
-    return () => { document.removeEventListener('mousedown', onDoc); document.removeEventListener('keydown', onKey); };
+    window.addEventListener('scroll', follow, true); window.addEventListener('resize', follow);
+    return () => {
+      document.removeEventListener('mousedown', onDoc); document.removeEventListener('keydown', onKey);
+      window.removeEventListener('scroll', follow, true); window.removeEventListener('resize', follow);
+    };
   }, [open]);
+  // Below the swatch when it fits, above it otherwise, from the popover's MEASURED height
+  // (a guessed 268 left its last 18px under the bottom edge of a 768px screen).
+  const [popH, setPopH] = useState(300);
+  useEffect(() => { if (open && popRef.current && popRef.current.offsetHeight !== popH) setPopH(popRef.current.offsetHeight); }, [open, rect, popH]);
+  const popTop = rect ? (rect.bottom + 6 + popH <= window.innerHeight - 8 ? rect.bottom + 6 : Math.max(8, rect.top - 6 - popH)) : 0;
   const slider = (label, min, max, v, key, accent) => (
     <label className="block mb-2">
       <span className="block text-[10px] uppercase tracking-wide text-[var(--faint)] mb-0.5">{label}</span>
@@ -941,7 +960,7 @@ export function ColorInput({ value, onChange, className = '', title, swatchOnly 
       )}
       {open && rect && createPortal(
         <div ref={popRef} className="fixed z-[200] w-60 p-3 rounded-xl border border-[var(--line-strong)]"
-          style={{ background: 'var(--bg-solid)', boxShadow: '0 20px 60px -12px rgba(0,0,0,0.55)', top: Math.min(rect.bottom + 6, window.innerHeight - 268), left: Math.max(8, Math.min(rect.left, window.innerWidth - 248)) }}>
+          style={{ background: 'var(--bg-solid)', boxShadow: '0 20px 60px -12px rgba(0,0,0,0.55)', top: popTop, left: Math.max(8, Math.min(rect.left, window.innerWidth - 248)) }}>
           <div className="h-9 rounded-lg mb-3 border border-black/15" style={{ background: isHex6(hex) ? hex : safe }} />
           {slider(t('color.hue', 'Hue'), 0, 360, hsl.h, 'h', `hsl(${hsl.h} 90% 50%)`)}
           {slider(t('color.sat', 'Saturation'), 0, 100, hsl.s, 's', `hsl(${hsl.h} ${hsl.s}% 50%)`)}

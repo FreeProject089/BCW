@@ -1,0 +1,63 @@
+/* ════ M6 (agent-admin-M): the phone topbar (App.jsx <Nav>, below lg) ════════════════════════
+   The bar on a phone was the desktop bar with its middle removed: a 16px-radius card with a
+   bare avatar and a bare hamburger glued to its right edge, in a different shape from the two
+   pieces of navigation it opens and sits above (.msheet and .mbar, 18px radius, line-strong
+   edge, the same drop shadow, pills behind icons, accent on what is current).
+   Now it is the same object as those two:
+     · the bar takes their surface (radius, edge, shadow). It keeps .topbar, so the
+       Translucent surfaces setting still applies to it;
+     · the account and the menu sit in ONE capsule at the thumb end;
+     · the menu button is a pill like the sheet's tiles, and while the sheet is open it wears
+       the sheet's "current" colours (accent pill, accent ink), the bars turning into a cross.
+   Selectors carry two classes on purpose: this file is imported by App.jsx, BEFORE index.css
+   and its Tailwind utilities (rounded-2xl, border-[var(--line)], gap-1), which would win a tie.
+   Every control keeps the 44px target the < 1024px rules in index.css ask for; the bar is 56px.
+   Nothing here applies from lg up, where the desktop bar is unchanged.
+   ════════════════════════════════════════════════════════════════════════════════════════ */
+@media (max-width: 1023.98px) {
+  .tbar.topbar {
+    border-color: var(--line-strong);
+    border-radius: 18px;
+    padding-inline: 6px 4px;
+    gap: 2px; /* 375px holds the mark, three utilities and the capsule only this tight */
+    box-shadow: 0 12px 30px -12px rgba(0, 0, 0, .5) !important;
+  }
+  /* The utility icons (notifications, language, theme...): round pills, no hard squares. */
+  .tbar-utils .nav-link { border-radius: 999px; justify-content: center; padding-inline: 10px; }
+
+  .tbar .tbar-phone {
+    gap: 2px;
+    padding: 1px;
+    border-radius: 999px;
+    box-shadow: inset 0 0 0 1px var(--line); /* an edge that takes no width */
+    background: color-mix(in srgb, var(--text) 5%, transparent);
+  }
+  .tbar-av, .tbar-signin { display: grid; place-items: center; border-radius: 999px; }
+  .tbar-av { width: 44px; height: 44px; transition: box-shadow .2s ease; }
+  .tbar-av:hover, .tbar-av:focus-visible { box-shadow: 0 0 0 2px var(--line-strong); }
+  .tbar-signin .btn { min-height: 40px; }
+
+  .tbar-menu {
+    position: relative;
+    display: grid; place-items: center;
+    width: 44px; height: 44px;
+    border-radius: 999px;
+    color: var(--text);
+    -webkit-tap-highlight-color: transparent;
+    transition: color .22s ease, background-color .22s ease, transform .16s ease;
+  }
+  .tbar-menu:hover { background: color-mix(in srgb, var(--text) 7%, transparent); }
+  .tbar-menu:active { transform: scale(.93); }
+  .tbar-menu:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+  .tbar-menu.is-open { color: var(--accent-ink); background: color-mix(in srgb, var(--primary) 16%, transparent); }
+
+  /* Bars and cross on top of each other, one fading into the other. */
+  .tbar-menu-ic { position: relative; display: grid; width: 20px; height: 20px; }
+  .tbar-menu-ic > svg { grid-area: 1 / 1; transition: opacity .2s ease, transform .28s cubic-bezier(.22, 1, .36, 1); }
+  .tbar-menu-x { opacity: 0; transform: rotate(-90deg) scale(.6); }
+  .tbar-menu.is-open .tbar-menu-bars { opacity: 0; transform: rotate(90deg) scale(.6); }
+  .tbar-menu.is-open .tbar-menu-x { opacity: 1; transform: none; }
+}
+@media (max-width: 1023.98px) and (prefers-reduced-motion: reduce) {
+  .tbar-menu, .tbar-menu-ic > svg, .tbar-av { transition: none; }
+}

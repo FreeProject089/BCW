@@ -495,7 +495,7 @@ function GuildConfig({ guildId, onSaved }) {
                 <div className="flex flex-wrap items-center gap-2">
                   <label className="flex items-center gap-1.5 text-xs cursor-pointer"><input type="checkbox" checked={pnl.asEmbed} onChange={(e) => setP({ asEmbed: e.target.checked })} /> {t('ds.rp.embed', 'Embed')}</label>
                   {pnl.asEmbed && <ColorInput value={pnl.color} onChange={(v) => setP({ color: v })} title={t('ds.rp.color', 'Colour')} />}
-                  <Select className="!w-auto !py-1.5 text-xs" value={pnl.mode} onChange={(e) => setP({ mode: e.target.value })}>
+                  <Select className="!w-auto max-w-full min-w-0 !py-1.5 text-xs" value={pnl.mode} onChange={(e) => setP({ mode: e.target.value })}>
                     <option value="buttons">{t('ds.rp.buttons', 'Buttons')}</option>
                     <option value="dropdown">{t('ds.rp.dropdown', 'Dropdown')}</option>
                   </Select>

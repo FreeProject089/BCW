@@ -19,6 +19,7 @@ import { PointsHistoryTable } from '../ui/points-history.jsx';
 import { AppLogo } from '../ui/brand.jsx';
 import Markdown, { IconGlyph, ShowcaseIcon } from '../ui/md.jsx';
 import IconPicker from '../editor/icon-picker.jsx';
+import ProjectIconPickButton from './admin-project-icon.jsx';
 import ProjectCatalogsPanel from './admin-project-catalogs.jsx'; // G4 (agent-catalog-G)
 import ProjectConfigEditor from '../editor/project-config-editor.jsx';
 import { createRoot } from 'react-dom/client';
@@ -23012,6 +23013,10 @@ function ProjectAppIconCard({ pkey, name }) {
     if (!file) return;
     let url;
     try { url = await uploadImage(file); } catch { toast.error(t('common.failed', 'Failed.')); return; }
+    saveUrl(url);
+  };
+  // M17: an upload and an icon picked from the picker (ProjectIconPickButton) end here alike.
+  const saveUrl = (url) => {
     const next = [...saved.filter((r) => r.key !== key), { key, label: over?.label || name, url }];
     undoSave(async () => { await api.put('/admin/site/app-icons', { icons: next }); registerAppIcons([{ key, url, label: name }]); },
       t('ai.pc.saved', '{name} now uses the new icon.').replace('{name}', name));
@@ -23025,8 +23030,9 @@ function ProjectAppIconCard({ pkey, name }) {
         <div className="font-medium text-sm flex items-center gap-2 flex-wrap">{t('ai.pc.title', 'App icon')} <code className="text-[10px] text-[var(--faint)]">app:{key}</code>{over ? <Badge tone="amber">{t('ai.custom', 'custom')}</Badge> : <Badge tone="">{def ? t('ai.pc.default', 'default') : t('ai.pc.noneset', 'none set')}</Badge>}</div>
         <p className="text-xs text-[var(--muted)]">{t('ai.pc.d', 'The mark shown in the topbar, on the project page and in the icon picker. Same list as Site theme > App icons.')}</p>
       </div>
-      <div className="flex items-center gap-2 shrink-0">
+      <div className="flex items-center gap-2 flex-wrap">
         <input ref={fileRef} type="file" accept="image/png,image/svg+xml,image/webp" className="hidden" onChange={(e) => { upload(e.target.files?.[0]); e.target.value = ''; }} />
+        <ProjectIconPickButton onUrl={saveUrl} />
         <Button size="sm" variant="ghost" onClick={() => fileRef.current?.click()}><UploadIcon size={13} /> {t('ai.pc.replace', 'Replace')}</Button>
         <Button size="sm" variant="ghost" disabled={!over} onClick={() => restore(saved, key, name)}
           title={over ? t('ai.restore.h', 'Put the bundled icon back, saved straight away') : t('ai.pc.isdefault', 'Already the default icon')}>

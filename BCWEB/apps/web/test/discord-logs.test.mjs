@@ -18,13 +18,13 @@ const FORUM = '900', CHAN = '100', OTHER = '200', MODLOG = '300';
 describe('where a row says an event lands', () => {
   test('the fallback chain, one rung at a time', () => {
     const at = (logs, legacy = '') => resolveLogRoute(logs, 'members.ban', { legacyChannelId: legacy });
-    assert.deepEqual(at({}, MODLOG), { kind: 'channel', id: MODLOG, tags: [], from: 'modlog' });
+    assert.deepEqual(at({}, MODLOG), { kind: 'channel', id: MODLOG, ids: [MODLOG], tags: [], from: 'modlog' });
     assert.equal(at({ channelId: CHAN }, MODLOG).id, CHAN, 'the log channel beats the /config one');
     assert.equal(at({ channelId: CHAN, forumId: FORUM }, MODLOG).id, FORUM, 'the forum beats the channel');
     assert.equal(at({ forumId: FORUM, routes: { members: { kind: 'channel', id: OTHER } } }, MODLOG).id, OTHER, 'its group beats the default');
     assert.equal(at({ forumId: FORUM, routes: { members: { kind: 'channel', id: OTHER }, 'members.ban': { kind: 'channel', id: CHAN } } }, MODLOG).id, CHAN, 'its own route beats its group');
     assert.equal(at({ forumId: FORUM }, '').kind, 'forum');
-    assert.deepEqual(at({}, ''), { kind: 'off', id: '', tags: [], from: 'nothing' }, 'nothing configured is nowhere, not a crash');
+    assert.deepEqual(at({}, ''), { kind: 'off', id: '', ids: [], tags: [], from: 'nothing' }, 'nothing configured is nowhere, not a crash');
   });
 
   test('routed off stops at that rung, it does not fall through to the default', () => {
@@ -61,7 +61,21 @@ describe('where a row says an event lands', () => {
   test('normLogs drops keys that are not a category or a group', () => {
     const n = normLogs({ routes: { 'members.ban': CHAN, 'not.a.category': CHAN, members: 'off' } });
     assert.deepEqual(Object.keys(n.routes).sort(), ['members', 'members.ban']);
-    assert.deepEqual(n.routes['members.ban'], { kind: 'channel', id: CHAN, tags: [] }, 'a bare id is a text channel');
+    assert.deepEqual(n.routes['members.ban'], { kind: 'channel', id: CHAN, ids: [CHAN], tags: [] }, 'a bare id is a text channel');
+  });
+
+  test('a channel row may name several channels, and the old single id migrates', () => {
+    // M15: several destinations per log type. What was saved as one id reads as a list of one.
+    assert.deepEqual(normLogs({ routes: { voice: { kind: 'channel', id: CHAN } } }).routes.voice.ids, [CHAN]);
+    const n = normLogs({ routes: { voice: { kind: 'channel', ids: [CHAN, OTHER, CHAN] } } });
+    assert.deepEqual(n.routes.voice, { kind: 'channel', id: CHAN, ids: [CHAN, OTHER], tags: [] }, 'de-duplicated, first is `id`');
+    const r = resolveLogRoute(n, 'voice');
+    assert.deepEqual([r.kind, r.id, r.ids], ['channel', CHAN, [CHAN, OTHER]]);
+    // What is sent keeps `id` beside `ids`, so a bot that predates the list still logs somewhere.
+    assert.deepEqual(logsForSave(n).routes.voice, { kind: 'channel', id: CHAN, ids: [CHAN, OTHER] });
+    // An emptied list routes nowhere of its own and is not sent.
+    assert.equal(logsForSave({ routes: { voice: { kind: 'channel', ids: [] } } }).routes.voice, undefined);
+    assert.equal(normLogs({ routes: { voice: { kind: 'channel', ids: ['1', '2', '3', '4', '5', '6', '7'] } } }).routes.voice.ids.length, 5);
   });
 });
 
