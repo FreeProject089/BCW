@@ -22,6 +22,7 @@
 //
 // Retention: 90 days AND at most 20 000 rows, pruned on ~2% of writes.
 
+import { ciEquals } from './ci-equals.mjs';
 export const MAIL_LOG_KEEP_DAYS = 90;
 export const MAIL_LOG_KEEP_ROWS = 20000;
 export const MAIL_LOG_PRUNE_ODDS = 0.02;
@@ -98,7 +99,7 @@ export function recordMail(entry, { getDb, random = Math.random } = {}) {
     // Attach the account the (single) address belonged to, so erasing it removes these rows.
     let userId = null;
     if (!data.to.includes(',')) {
-      const u = await p.user.findFirst({ where: { email: { equals: data.to, mode: 'insensitive' } }, select: { id: true } }).catch(() => null);
+      const u = await p.user.findFirst({ where: { email: ciEquals(data.to) }, select: { id: true } }).catch(() => null);
       userId = u?.id || null;
     }
     await p.mailLog.create({ data: { ...data, userId } });

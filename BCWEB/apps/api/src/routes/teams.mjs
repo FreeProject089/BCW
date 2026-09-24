@@ -28,6 +28,7 @@ import { teamContactSettings, canAnswerTeam, TEAM_ROLES } from '../lib/team-cont
 import { hostingFor, saveHosting, serHosting, siteAttachmentDefault, attachmentPolicy, poolRoom } from '../lib/entity-hosting.mjs';
 import { deleteThreadFiles } from '../lib/thread-files.mjs';
 import crypto from 'node:crypto';
+import { ciEquals } from '../lib/ci-equals.mjs';
 
 const contact = {
   contactEmail: z.string().trim().email().max(254),
@@ -65,9 +66,9 @@ async function resolveUser(p, to) {
   const s = String(to || '').trim();
   if (!s) return null;
   if (looksLikeBcId(s)) { const id = await findUserIdByBcId(p, s).catch(() => null); if (id) return p.user.findUnique({ where: { id } }); }
-  if (s.includes('@')) return p.user.findFirst({ where: { email: { equals: s, mode: 'insensitive' } } });
+  if (s.includes('@')) return p.user.findFirst({ where: { email: ciEquals(s) } });
   return (await p.user.findUnique({ where: { id: s } }).catch(() => null))
-    || p.user.findFirst({ where: { displayName: { equals: s, mode: 'insensitive' } } });
+    || p.user.findFirst({ where: { displayName: ciEquals(s) } });
 }
 
 export default async function teamRoutes(app) {

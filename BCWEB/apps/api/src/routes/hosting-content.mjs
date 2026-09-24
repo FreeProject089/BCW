@@ -11,6 +11,8 @@ import { zipEntryName } from '../lib/zip-path.mjs';
 import { repoMeter } from '../lib/monitor.mjs';
 import { pruneAccessEvents, ACCESS_PRUNE_ODDS } from '../lib/access-traffic.mjs';
 import { flagIfProtected } from './rights.mjs';
+import { normaliseCreatorId } from '../lib/creator-proof.mjs';
+import { ciEquals } from '../lib/ci-equals.mjs';
 const SITE_URL = (process.env.SITE_URL || 'https://bettercommunity.ch').replace(/\/+$/, '');
 
 const sha256 = (s) => createHash('sha256').update(s).digest('hex');
@@ -60,7 +62,7 @@ function logAccess(p, repoId, req, path, kind, identity) {
 // sends on every repo request (fetch_repo_info + sync). No BMM-side secret/session is
 // involved — it's the same creator id already used for the free-tier/telemetry link,
 // looked up here against CreatorLink -> (optionally) DiscordLink.
-async function resolveIdentity(p, req) {
+export async function resolveIdentity(p, req) {
   const creatorId = req.headers['x-creator-id'] ? String(req.headers['x-creator-id']).slice(0, 120) : null;
   // BMM identifies itself with X-Creator-ID; a BROWSER has no such header — it has a session.
   // Resolve that too, so the very same whitelist/ban entries that gate a BMM download also
@@ -72,7 +74,12 @@ async function resolveIdentity(p, req) {
 
   let userId = sessionUid, discordId = null;
   if (creatorId) {
-    const link = await p.creatorLink.findUnique({ where: { creatorId }, include: { user: { select: { discordLinks: { select: { discordId: true }, take: 1 } } } } });
+    // Exact first (the common case, and the unique index); then the other spellings, because a
+    // creator id is hex and the client picks its case (F23-6). ciEquals, not a raw insensitive
+    // equals: that one is an ILIKE and `%` would name somebody's account.
+    const inc = { user: { select: { discordLinks: { select: { discordId: true }, take: 1 } } } };
+    const link = await p.creatorLink.findUnique({ where: { creatorId }, include: inc })
+      || await p.creatorLink.findFirst({ where: { creatorId: ciEquals(creatorId.trim()) }, include: inc });
     // A linked creator id names the account; fall back to the session when it isn't linked.
     if (link) { userId = link.userId; discordId = link.user.discordLinks[0]?.discordId || null; }
   }
@@ -104,20 +111,27 @@ function effKbps(repo) {
 // download?" to render the right button, which it can't do through a function whose only
 // output is a 403. sandboxGate() below is this plus the response, so the page and the
 // download can never disagree about who's allowed.
+// A creator id in a policy's *Keys list, compared in ONE spelling on both sides (F23-6): the
+// same rule as lib.mjs accessListMatches (catalogues) and siteban.mjs. An exact `includes`
+// here let a banned BMM through by flipping the case of its own id.
+const keyListed = (list, creatorId) => {
+  const cid = normaliseCreatorId(creatorId);
+  return !!cid && (list || []).some((k) => normaliseCreatorId(k) === cid);
+};
 export function sandboxVerdict(repo, req, policies, identity) {
   const s = repo.settings || {};
   const ip = clientIp(req);
   const key = req.query?.key;
   const { userId, discordId, creatorId } = identity;
   const bans = s.bans || { ips: [], keys: [], accounts: [] };
-  const banned = policies.some((pol) => (pol.bannedIps || []).includes(ip) || (creatorId && (pol.bannedKeys || []).includes(creatorId)) || matchAccountList(pol.bannedAccounts, userId, discordId))
+  const banned = policies.some((pol) => (pol.bannedIps || []).includes(ip) || keyListed(pol.bannedKeys, creatorId) || matchAccountList(pol.bannedAccounts, userId, discordId))
     || (bans.ips || []).includes(ip) || (key && (bans.keys || []).includes(key)) || matchAccountList(bans.accounts, userId, discordId);
   if (banned) return { ok: false, reason: 'banned' };
   const acc = s.access || {};
   const whitelistActive = policies.some((pol) => pol.whitelistOnly) || acc.whitelistEnabled;
   if (whitelistActive) {
     const ok = (acc.ips || []).includes(ip) || (key && (acc.keys || []).includes(key)) || matchAccountList(acc.accounts, userId, discordId)
-      || policies.some((pol) => (pol.whitelistIps || []).includes(ip) || (creatorId && (pol.whitelistKeys || []).includes(creatorId)) || matchAccountList(pol.whitelistAccounts, userId, discordId));
+      || policies.some((pol) => (pol.whitelistIps || []).includes(ip) || keyListed(pol.whitelistKeys, creatorId) || matchAccountList(pol.whitelistAccounts, userId, discordId));
     if (!ok) return { ok: false, reason: 'not_whitelisted', accountLinked: !!userId };
   }
   // Authorised PUBLIC keys, checked last.

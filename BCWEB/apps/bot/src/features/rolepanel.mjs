@@ -31,6 +31,20 @@ async function resolveChannel(client, id) {
   return client.channels.cache.get(id) || await client.channels.fetch(id).catch(() => null);
 }
 
+/**
+ * Does this panel belong where it is being used? (pentest round 2, Sept 24 2026)
+ *
+ * A server owner's panels are stamped with their `guildId` by the API, but the channel id is
+ * whatever they typed, and `client.channels.fetch` finds a channel in ANY server the bot is
+ * in. So a panel is posted only into a channel of its own server, and only answers clicks
+ * from its own server. Panels with no guildId are the platform admin's own and keep working
+ * wherever the admin put them.
+ */
+export function panelBelongs(panel, guildId) {
+  if (!panel?.guildId) return true;
+  return !!guildId && String(guildId) === String(panel.guildId);
+}
+
 /** Discord's own limits, applied here so a too-long panel degrades instead of throwing. */
 const MAX_BUTTONS = 25;   // 5 rows of 5
 const MAX_OPTIONS = 25;   // one select menu
@@ -104,6 +118,7 @@ export async function pollRolePanels(client) {
     for (const panel of panels.filter((x) => due.includes(x.id))) {
       const ch = await resolveChannel(client, panel.channelId);
       if (!ch?.send) { console.warn('[bot] role panel channel not found/inaccessible:', panel.channelId); continue; }
+      if (!panelBelongs(panel, ch.guildId)) { console.warn('[bot] role panel channel is not in the panel\'s server, skipped:', panel.id); continue; }
       const payload = renderRolePanel(panel);
       let messageId = null;
 
@@ -155,6 +170,7 @@ export async function handleRolePanelInteraction(i) {
   const { panels } = await api.rolePanels();
   const panel = panels.find((x) => x.id === panelId);
   if (!panel) { await say(i, 'That panel no longer exists.', 0xef4444); return true; }
+  if (!panelBelongs(panel, i.guildId)) { await say(i, 'That panel belongs to another server.', 0xef4444); return true; }
 
   const offered = new Set((panel.roles || []).map((r) => r.roleId));
   const nameOf = (id) => (panel.roles.find((r) => r.roleId === id)?.label) || id;

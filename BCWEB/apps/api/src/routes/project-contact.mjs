@@ -14,6 +14,7 @@ import { db, optionalAuth, requireRole, logAudit, canManageProjects, canManageSh
 import { listPublicProjects, resolveProjectRef } from '../lib/project-ref.mjs';
 import { settingsFor, topicsOf, inboxAccess, canConfigure, cleanCustomTopics, BASIC_TOPICS, MAX_CUSTOM_TOPICS } from '../lib/project-contact.mjs';
 import { findUserIdByBcId, looksLikeBcId } from '../lib/repofingerprint.mjs';
+import { ciEquals } from '../lib/ci-equals.mjs';
 
 const managerOf = (user, proj) => (proj.official ? canManageProjects(user) : canManageShowcase(user));
 
@@ -22,9 +23,9 @@ async function resolveUser(p, who) {
   const s = String(who || '').trim();
   if (!s) return null;
   if (looksLikeBcId(s)) { const id = await findUserIdByBcId(p, s).catch(() => null); if (id) return p.user.findUnique({ where: { id }, select: { id: true, displayName: true } }); }
-  if (s.includes('@')) return p.user.findFirst({ where: { email: { equals: s, mode: 'insensitive' } }, select: { id: true, displayName: true } });
+  if (s.includes('@')) return p.user.findFirst({ where: { email: ciEquals(s) }, select: { id: true, displayName: true } });
   return (await p.user.findUnique({ where: { id: s }, select: { id: true, displayName: true } }).catch(() => null))
-    || p.user.findFirst({ where: { displayName: { equals: s, mode: 'insensitive' } }, select: { id: true, displayName: true } });
+    || p.user.findFirst({ where: { displayName: ciEquals(s) }, select: { id: true, displayName: true } });
 }
 
 export default async function projectContactRoutes(app) {

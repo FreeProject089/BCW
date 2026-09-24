@@ -44,7 +44,7 @@ before(async () => {
 
 after(async () => {
   if (!RUN) return;
-  await p.catalogItem.deleteMany({ where: { slug: { startsWith: TAG } } });
+  await p.catalogItem.deleteMany({ where: { OR: [{ slug: { startsWith: TAG } }, { slug: { startsWith: `real-${TAG}` } }] } });
   await p.user.deleteMany({ where: { email: { startsWith: TAG } } });
   if (savedRecord) await p.adminSetting.upsert({ where: { key: rec.SEED_RECORD_KEY }, create: savedRecord, update: { value: savedRecord.value } });
   else await p.adminSetting.deleteMany({ where: { key: rec.SEED_RECORD_KEY } });
@@ -55,7 +55,7 @@ const item = (slug) => p.catalogItem.create({
   data: { slug, name: slug, kind: 'APP', status: 'PUBLISHED', projectId: project.id, ownerId: owner.id },
   select: { id: true, slug: true },
 });
-const clearDemo = (args = []) => run(process.execPath, [path.join(API, 'src/clear-demo.mjs'), ...args], { cwd: API, env: process.env });
+const clearDemo = (args = [], env = {}) => run(process.execPath, [path.join(API, 'src/clear-demo.mjs'), ...args], { cwd: API, env: { ...process.env, ...env } });
 
 describe('clear-demo deletes only what seed:demo recorded (db)', { skip }, () => {
   test('a real item whose slug starts with demo- survives; the recorded one goes', async () => {
@@ -113,5 +113,33 @@ describe('clear-demo deletes only what seed:demo recorded (db)', { skip }, () =>
     assert.doesNotMatch(code, /startsWith:\s*'demo-author-'/, 'deleting an account by the look of its address is the bug');
     // The one surviving `demo-` count is a read: it exists to SAY those rows are not deleted.
     assert.doesNotMatch(code, /deleteMany\(\{\s*where:\s*\{\s*slug/, 'a delete keyed on a slug prefix is the bug');
+  });
+
+  // Pentest round 2 (Sept 24), R8. The record is one AdminSetting row and, until that day, the
+  // generic settings door accepted its key from any ADMIN (seed-record-reserved.test.mjs pins
+  // the door). So the record is necessary, not sufficient: a row must also have the seeder's
+  // shape — a `demo-` slug, a demo-author-N@bettercommunity.local address — to be deleted.
+  test('a planted record naming a real item and a real account deletes neither', async () => {
+    const real = await item(`real-${TAG}planted-item`);   // no demo- slug: the seeder never makes one
+    const seeded = await item(`${TAG}planted-seeded`);     // the seeder's shape (control)
+    // `owner` is a real account that owns nothing but these rows — exactly what the
+    // "owns other content" refusal lets through.
+    await rec.writeSeedRecord(p, { itemIds: [real.id, seeded.id], userIds: [owner.id] });
+
+    const { stdout } = await clearDemo();
+    assert.equal(await p.catalogItem.count({ where: { id: real.id } }), 1, 'a real item named in a planted record was deleted');
+    assert.equal(await p.user.count({ where: { id: owner.id } }), 1, 'a real account named in a planted record was deleted');
+    assert.equal(await p.catalogItem.count({ where: { id: seeded.id } }), 0, 'the seeder-shaped row must still go (control)');
+    assert.match(stdout, /not shaped like seed:demo output/);
+    await p.adminSetting.deleteMany({ where: { key: rec.SEED_RECORD_KEY } });
+  });
+
+  test('refuses to run against NODE_ENV=production', async () => {
+    const seeded = await item(`${TAG}prod-item`);
+    await rec.writeSeedRecord(p, { itemIds: [seeded.id], userIds: [] });
+    const r = await clearDemo([], { NODE_ENV: 'production' }).then((x) => ({ code: 0, ...x }), (e) => e);
+    assert.notEqual(r.code, 0, 'the deleting script ran against production');
+    assert.equal(await p.catalogItem.count({ where: { id: seeded.id } }), 1);
+    await p.adminSetting.deleteMany({ where: { key: rec.SEED_RECORD_KEY } });
   });
 });

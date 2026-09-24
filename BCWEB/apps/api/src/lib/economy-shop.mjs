@@ -16,6 +16,7 @@
 import crypto from 'node:crypto';
 import { logAudit, notify } from './lib.mjs';
 import { emitWebhook } from './webhooks.mjs';
+import { ciEquals } from './ci-equals.mjs';
 
 // A shop reveal code that grants free hosting / storage / a discount is a bearer secret, so it
 // is drawn from a CSPRNG, not Math.random (whose state is recoverable from a few outputs — an
@@ -457,7 +458,7 @@ export async function resolveUser(p, q, { looksLikeBcId, findUserIdByBcId } = {}
   const sel = { id: true, displayName: true, closedAt: true };
   let u = await p.user.findUnique({ where: { id: s }, select: sel }).catch(() => null);
   if (!u && looksLikeBcId?.(s)) { const id = await findUserIdByBcId(p, s).catch(() => null); if (id) u = await p.user.findUnique({ where: { id }, select: sel }); }
-  if (!u && s.includes('@')) u = await p.user.findFirst({ where: { email: { equals: s, mode: 'insensitive' } }, select: sel });
-  if (!u) u = await p.user.findFirst({ where: { displayName: { equals: s, mode: 'insensitive' } }, select: sel });
+  if (!u && s.includes('@')) u = await p.user.findFirst({ where: { email: ciEquals(s) }, select: sel });
+  if (!u) u = await p.user.findFirst({ where: { displayName: ciEquals(s) }, select: sel });
   return u && !u.closedAt ? u : null;
 }

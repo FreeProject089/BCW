@@ -2937,3 +2937,162 @@ Mutations on 6to4, `::/96` and `< 2000::/3` each give red. `ssrf-ranges.test.mjs
   `npm run build` exit 0.
 - Nothing was committed. No fixtures were written to the database: all the new tests are pure or
   use injected resolvers.
+
+## Agent C: cards R8, round-1 owner cards, M11, M21, M12
+
+Scope: the demo-mode removal (R8), the five round-1 owner cards re-checked, member landing
+reviews (M11), Discord bot plans (M21), the charity card `preset` and the OS-mode layout (M12).
+Every fix below has a test that was run red on the unfixed code and green after; C-1, C-2 and
+R8-1 were also mutation-checked (the bug put back, the test seen red again).
+
+### C-1: a case-insensitive "equals" was a LIKE: `%` and `_` typed by a user were wildcards (FIXED)
+
+**CWE-943 / CWE-200.** CVSS 3.1 **5.4 medium**, `AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:L/A:N`.
+
+Prisma compiles `{ equals: v, mode: 'insensitive' }` on Postgres to `"col" ILIKE $1` and does not
+escape `v`. Measured on the dev DB with a tagged fixture: `'%'`, a prefix followed by `%`, and a
+`_` in place of a letter all matched; a value holding a backslash matched nothing. Fifteen call
+sites in nine files used that shape on typed input. The team invite (`POST /me/teams/:id/members`,
+any signed-in team owner) answers with the matched account's id and display name, so an address
+pattern revealed which members' e-mail addresses start a given way; the same resolver shape
+picked the recipient of a points gift (bot), a project contact, and "already linked?" in
+`/link/request`.
+
+*Fix.* `lib/ci-equals.mjs`: `escapeLike` (backslash-escapes the backslash, `%` and `_`, which
+ILIKE's default escape character turns back into literals) and `ciEquals(v)`, used at all 15
+sites (economy-shop, teams, project-contact, links, kofi, mail-log, showcase, seed-demo,
+goal-stats; goal-stats' raw-SQL "exact" branch escapes too, so its two formulations agree).
+*Why it holds:* the value reaching ILIKE no longer carries an unescaped wildcard, whatever the
+input, and the gate below refuses a new raw instance. *Test:* `apps/api/test/ci-equals.test.mjs`
+(the helper; a comment-stripped gate: no `equals … mode: 'insensitive'` literal left in `src`;
+the real `resolveUser` on the real DB: `%`, `%@%`, a prefix pattern and `_` resolve nobody, the
+exact address and name in any case still do). Red before (the gate listed 15 sites, `'%'`
+resolved an account), green after. Left alone by design: `contains`/`startsWith` searches, where
+a wildcard only widens a search.
+
+### R8-1: the seed record is a delete list, and any ADMIN could write it (FIXED)
+
+**CWE-284.** CVSS 3.1 **4.2 medium**, `AV:N/AC:H/PR:H/UI:R/S:U/C:N/I:H/A:N`.
+
+`npm run clear-demo` deletes every catalog item and account whose id is in
+`AdminSetting['seed.demoRows']`. `lib/demo-seed-record.mjs` said "PUT /admin/settings/:key refuses
+unknown keys"; it did not: `checkAdminSetting` accepts any key that is not a credential or
+SUPERADMIN-only, and the demo-mode removal took `isDemoKey` (the one reserved-namespace refusal)
+with it. An ADMIN (or a content-backup zip, whose restore reuses the same check) could name real
+items and accounts, and the next operator running `clear-demo` deleted them with the script's
+database rights; `clear-demo` also had no production refusal. Measured: a planted record deleted
+a real item AND a real account.
+
+*Fix.* `isReservedSettingKey` (`seed.*`, `demo.*`) is refused by `checkAdminSetting` for every
+role (403 `reserved_setting`), which covers the PUT and the backup restore; `clear-demo` refuses
+`NODE_ENV=production` like `seed:demo`, and deletes only rows that are in the record AND shaped
+like seed output (`demo-` slug, `demo-author-N@bettercommunity.local`). The false comment is
+corrected. *Tests:* `test/seed-record-reserved.test.mjs` (3, pure) and two more in
+`test/demo-seed-record.test.mjs` (the same file on purpose: `node --test` runs files in parallel
+and both touch the one record row).
+
+**R8, the rest: clean after 6 angles.** No route, flag, setting reader or client branch of demo
+mode is left (`lib/demo.mjs`, `routes/demo.mjs`, `admin-demo.jsx` are gone and
+`demo-fixtures.test` asserts it); `home-demo.jsx` is a static illustration with no fetch; the
+"Maintenance & demo data" tab holds the config export and the seed-script generator, both ADMIN
+and read-only on the database; the config import takes declared prefixes only (no `seed.` or
+`demo.`); `seed:demo` never overwrites a foreign slug (`skipDuplicates` plus exclusion from the
+record). Residual, by design: on a dev DB, seed:demo attributes demo items to up to five real users.
+
+### C-2 (was F23-6): a creator id banned in one spelling was served in another (FIXED)
+
+**CWE-178.** CVSS 3.1 **5.3 medium** (round 1), `AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N`.
+
+`routes/hosting-content.mjs` kept its own copy of the key rule (`includes`, exact) while the
+catalogue gate (`accessListMatches`) and the site ban compare one spelling since F8-2, and both
+`resolveIdentity` and `lib.mjs resolveClientIdentity` looked the CreatorLink up exactly. *Fix:*
+`keyListed` (normaliseCreatorId on both sides) for `bannedKeys` / `whitelistKeys`; the link
+lookup is exact first, then `ciEquals` (older mixed-case rows still resolve, `%` resolves
+nothing). *Test:* `test/hosting-creator-case.test.mjs` (the ban in both directions and with
+spaces, the whitelist, the lookup in upper case, `%` resolves no account): 3 red, then green.
+
+### M11-1: "Approve" published whatever the member's text was at that moment (FIXED)
+
+**CWE-367.** CVSS 3.1 **2.6 low**, `AV:N/AC:H/PR:L/UI:R/S:U/C:N/I:L/A:N`.
+
+The moderator's Approve sent only `{ status }` (and is deferred by the undo toast). A member who
+edited between the queue being read and the click had unread text published. Measured: the body
+swapped after `GET /admin/reviews`, then approved: the swapped body reached `GET /reviews`.
+*Fix:* approving a MEMBER review requires `seenUpdatedAt` equal to the row's `updatedAt`, else
+409 `changed_since_viewed`; the admin screen sends `rv.updatedAt`; staff-written reviews are
+unchanged. `test/member-reviews.test.mjs` now sends the version it read.
+
+### M11-2: a suspended or banned member stayed quoted on the landing (FIXED, hardening)
+
+`GET /reviews` now also requires the author's account to be `active` (staff reviews have no
+userId); the quote comes back with the account. Closing an account already deleted it.
+*Test (both M11):* `test/member-review-moderation.test.mjs`, 2 red before, 4/4 green after.
+
+**M11, held (clean after 7 angles):** mass assignment (zod strips `status`, `enabled`, `order`,
+`author`; pinned by the test); the admin PATCH is ADMIN-only; a private review cannot be enabled;
+editing an approved review sends it back to pending; XSS: body, role and author are React text in
+all three renderers (home marquee, `ReviewsCard` cards and quotes), no linkify, the avatar image
+is `httpUrl`; a closed or suspended account cannot write (403); one row per account, 24 h account
+age, 5 writes an hour. **The link filter is advisory only**, measured: `hxxps://`, `evil[.]com`,
+`evil . com`, an ideographic full stop, full-width letters, `.shop` / `.link` / `.co` and
+"dot com" all pass it. Nothing is clickable and a moderator reads every review, so it is not a
+finding; said because the code comment calls it a refusal.
+
+### M21: bot plans, two defence-in-depth gaps and one cross-server gap in the bot (FIXED)
+
+- **Guild count read at grant time only.** `entitlementsFor` entitled every id in
+  `botGuildIds`; both writers keep it within `plan.bot.guilds`, but an admin lowering the plan
+  afterwards left every subscriber on the old count. Only the first `guilds` ids count now.
+- **Served config filtered for BotGuild rows only.** An override for a guild without a row
+  (pruned, or before the bot's first heartbeat there) was served untouched. Every guild that has
+  an override is filtered now. *Test (both):* `test/bot-entitlements-pentest.test.mjs`, 2 red,
+  then green.
+- **A server owner's role panel could be posted into a channel of another server** (CWE-639,
+  CVSS 3.1 **4.3 medium**, `AV:N/AC:L/PR:L/UI:R/S:C/C:N/I:L/A:N`). The API stamps each owner panel
+  with its guildId but the channel id is typed by the owner, and the bot resolves channels across
+  every server it is in. *Fix (bot):* `panelBelongs(panel, guildId)` in
+  `apps/bot/src/features/rolepanel.mjs`: an owner panel is posted only into a channel of its own
+  server and answers only clicks from its own server (the admin's own panels, with no guildId,
+  are unchanged). *Test:* `apps/bot/test/rolepanel-guild.test.mjs`. **Owner card:** blog routes
+  and log routes resolve owner-typed channel ids the same global way (`features/blog.mjs`,
+  `features/logs.mjs`); what they post is the site's blog and the guild's own logs, so the impact
+  is noise, but the same guildId check belongs there.
+
+**M21, held:** checkout refuses non-bot, inactive or free plans and a guild the buyer does not
+manage; the grant is written only by the signed webhook (`constructEvent`), only for a paid
+session with a Stripe subscription id, idempotent on `stripeSubId` (existing tests replay it);
+`PUT /me/bot-plans/:id/guilds` is scoped to the caller's own subscription (404 otherwise), capped
+at `plan.bot.guilds`, each id checked against the servers the caller manages; the write gate
+(402) covers the owner dashboard and Discord's `/logs` path, and the read side filters
+`/bot/config` and `/bot/rolepanels`. Re-pointing a plan between one's own servers is allowed at
+any time; enforcement is instantaneous, so it never covers more than `guilds` servers at once.
+
+### M12: clean
+
+The charity card `preset` is normalised server-side against an allowlist
+(`normalizeCharityDesign`, `oneOf(..., CHARITY_PRESET_IDS)`) and looked up in a Set client-side.
+The OS-mode layout lives in localStorage only; restored windows resolve through the dashboard's
+own permission-filtered `tabs` (an unknown id draws nothing), and no server route reads it.
+
+### Round-1 owner cards, current state (re-checked Sept 24)
+
+| Card | State |
+|---|---|
+| Bot shared secret | **Unchanged, open.** One unscoped `x-bot-secret` (`botAuth`, `safeEqual`) on 60 `/bot/*` route declarations (59 in round 1); `GET /bot/token` still behind it alone. |
+| CSP `'unsafe-inline'` | **Unchanged, open.** `infra/caddy/Caddyfile:109`: `script-src 'self' 'unsafe-inline'` plus GTM, `connect-src 'self' https:`. |
+| Containers as root | **Unchanged, open.** No `USER` in the `apps/api`, `apps/bot`, `apps/provisioner` Dockerfiles; telemetry still on `distroless/cc-debian12`, not `:nonroot`. `apps/web` is nginx (workers drop). |
+| Anonymous conversation link (O5) | **Unchanged, owner decision.** `ContactThread.accessToken`, no expiry, no revoke. |
+| F23-6 | **Fixed this round** (C-2 above). |
+
+### Verification for this part
+
+- `apps/api`: `npm test` with `DATABASE_URL` + `DIRECT_DATABASE_URL`, no `REDIS_URL`: 2223 tests,
+  0 skipped; all pass except 3 in `test/pricing.test.mjs`, which another agent is changing in
+  this working tree (`src/routes/hosting.mjs` and that test are modified and uncommitted; the
+  committed test fails the same way against the modified `hosting.mjs`). Not this part's files.
+- `apps/bot`: `npm test` 212/212. `node --check` on every changed module.
+- `apps/web`: `npm run lint` 0, `npm run build` 0, `css:check` 0, `legal:check` 0.
+  `npm run --silent i18n:check` FAILS on 39 `os.*` keys without French, all from another agent's
+  OS-mode work in progress; this part added no user-facing string.
+- Fixtures tagged `pentestc-*` / `pentestC-*`, all removed (checked: 0 users, 0 items, 0 reviews,
+  no seed record left). Nothing committed.

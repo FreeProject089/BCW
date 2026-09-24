@@ -54,6 +54,9 @@ after(async () => {
 });
 
 const put = (cookie, payload) => app.inject({ method: 'PUT', url: '/me/review', headers: { cookie }, payload });
+// Approving a member's review names the version the moderator read (pentest round 2, M11:
+// PATCH refuses a stale or missing `seenUpdatedAt` with 409). Staff read it from the list.
+const seenAt = async (id) => (await p.review.findUnique({ where: { id } })).updatedAt.toISOString();
 const publicIds = async () => (await app.inject({ method: 'GET', url: '/reviews' })).json().reviews.map((r) => r.id);
 const BODY = 'I moved three hundred mods between two drives in a minute and nothing broke.';
 
@@ -108,7 +111,7 @@ describe('a member review waits for a moderator', { skip }, () => {
   });
 
   test('approving shows it; editing it afterwards takes it off again', async () => {
-    const a = await app.inject({ method: 'PATCH', url: `/admin/reviews/${id}`, headers: { cookie: cAdmin }, payload: { status: 'approved' } });
+    const a = await app.inject({ method: 'PATCH', url: `/admin/reviews/${id}`, headers: { cookie: cAdmin }, payload: { status: 'approved', seenUpdatedAt: await seenAt(id) } });
     assert.equal(a.statusCode, 200, a.body);
     assert.equal(a.json().review.enabled, true, 'approving did not show it');
     assert.ok((await publicIds()).includes(id));
@@ -119,7 +122,7 @@ describe('a member review waits for a moderator', { skip }, () => {
   });
 
   test('rejecting hides it', async () => {
-    await app.inject({ method: 'PATCH', url: `/admin/reviews/${id}`, headers: { cookie: cAdmin }, payload: { status: 'approved' } });
+    await app.inject({ method: 'PATCH', url: `/admin/reviews/${id}`, headers: { cookie: cAdmin }, payload: { status: 'approved', seenUpdatedAt: await seenAt(id) } });
     const r = await app.inject({ method: 'PATCH', url: `/admin/reviews/${id}`, headers: { cookie: cAdmin }, payload: { status: 'rejected' } });
     assert.equal(r.json().review.enabled, false);
     assert.ok(!(await publicIds()).includes(id));
@@ -144,7 +147,7 @@ describe('closing an account takes its review off the home page', { skip }, () =
     const r = await put(cCloser, { body: BODY });
     assert.equal(r.statusCode, 200, r.body);
     const id = r.json().review.id;
-    await app.inject({ method: 'PATCH', url: `/admin/reviews/${id}`, headers: { cookie: cAdmin }, payload: { status: 'approved' } });
+    await app.inject({ method: 'PATCH', url: `/admin/reviews/${id}`, headers: { cookie: cAdmin }, payload: { status: 'approved', seenUpdatedAt: await seenAt(id) } });
     assert.ok((await publicIds()).includes(id));
     const { anonymiseAccount } = await import('../src/routes/closure.mjs');
     await anonymiseAccount(p, await p.user.findUnique({ where: { id: closer.id } }));
@@ -159,7 +162,7 @@ describe('N10: private and anonymous reviews', { skip }, () => {
     assert.equal(r.statusCode, 200, r.body);
     assert.equal(r.json().review.visibility, 'private');
     const id = r.json().review.id;
-    const a = await app.inject({ method: 'PATCH', url: `/admin/reviews/${id}`, headers: { cookie: cAdmin }, payload: { status: 'approved' } });
+    const a = await app.inject({ method: 'PATCH', url: `/admin/reviews/${id}`, headers: { cookie: cAdmin }, payload: { status: 'approved', seenUpdatedAt: await seenAt(id) } });
     assert.equal(a.json().review.enabled, false, 'approving a private review showed it');
     await app.inject({ method: 'PATCH', url: `/admin/reviews/${id}`, headers: { cookie: cAdmin }, payload: { enabled: true } });
     assert.ok(!(await publicIds()).includes(id), 'the eye toggle published a private review');
@@ -168,7 +171,7 @@ describe('N10: private and anonymous reviews', { skip }, () => {
   test('an anonymous public review leaves with no name and a neutral avatar', async () => {
     const r = await put(cMember, { body: BODY, visibility: 'public', anonymous: true });
     const id = r.json().review.id;
-    await app.inject({ method: 'PATCH', url: `/admin/reviews/${id}`, headers: { cookie: cAdmin }, payload: { status: 'approved' } });
+    await app.inject({ method: 'PATCH', url: `/admin/reviews/${id}`, headers: { cookie: cAdmin }, payload: { status: 'approved', seenUpdatedAt: await seenAt(id) } });
     const row = (await app.inject({ method: 'GET', url: '/reviews' })).json().reviews.find((x) => x.id === id);
     assert.ok(row, 'the approved anonymous review is not on the landing');
     assert.equal(row.author, '');

@@ -5406,7 +5406,7 @@ function AdminReviews() {
   const toggleEnabled = (rv) => utog.act(rv.id, { enabled: !rv.enabled }, () => api.patch(`/admin/reviews/${rv.id}`, { enabled: !rv.enabled }), !rv.enabled ? t('arv.shown2', 'Review shown.') : t('arv.hidden2', 'Review hidden.'));
   // M11: approving shows the review on the landing, rejecting keeps it off (the API sets
   // `enabled` to match). Both go through the same undo window as the show/hide toggle.
-  const moderate = (rv, status) => utog.act(rv.id, { status, enabled: status === 'approved' && rv.visibility !== 'private' }, () => api.patch(`/admin/reviews/${rv.id}`, { status }),
+  const moderate = (rv, status) => utog.act(rv.id, { status, enabled: status === 'approved' && rv.visibility !== 'private' }, () => api.patch(`/admin/reviews/${rv.id}`, { status, seenUpdatedAt: rv.updatedAt }), // 409 if the member edited since this list was loaded
     status === 'approved' ? t('arv.approved', 'Review approved and shown.') : t('arv.rejected', 'Review rejected.'));
   const del = async (rv) => {
     if (!(await dialog.confirm({ title: t('arv.del', 'Delete review?'), message: rv.author, okLabel: t('common.delete', 'Delete'), danger: true }))) return;

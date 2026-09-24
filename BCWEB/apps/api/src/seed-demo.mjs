@@ -25,6 +25,7 @@ import { generateCatalogItems, makeRng } from './lib/demo-fixtures.mjs';
 // The ids this run creates are recorded here; `clear-demo` deletes nothing else. See the
 // header of that file for why a `demo-` slug is not a safe marker.
 import { readSeedRecord, writeSeedRecord, SEED_RECORD_KEY } from './lib/demo-seed-record.mjs';
+import { ciEquals } from './lib/ci-equals.mjs';
 
 const p = new PrismaClient();
 const N = Number(process.env.DEMO_N) || 400;
@@ -46,7 +47,7 @@ async function main() {
   if (owners.length < 3) {
     for (let i = owners.length; i < 3; i++) {
       const email = `demo-author-${i}@bettercommunity.local`;
-      const prior = await p.user.findFirst({ where: { email: { equals: email, mode: 'insensitive' }, id: { in: previous.userIds.length ? previous.userIds : ['-'] } }, select: { id: true } });
+      const prior = await p.user.findFirst({ where: { email: ciEquals(email), id: { in: previous.userIds.length ? previous.userIds : ['-'] } }, select: { id: true } });
       const u = prior || await p.user.create({ data: { email, displayName: `Demo Author ${i + 1}` } })
         .catch(async (e) => {
           // The address is taken by an account this seeder did not create: leave it alone and

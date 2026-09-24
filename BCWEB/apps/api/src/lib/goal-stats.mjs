@@ -14,6 +14,7 @@
 // every optional clause. Here it can be run against a real Postgres with known rows.
 //
 // Names of columns are interpolated; VALUES are always parameters.
+import { ciEquals, escapeLike } from './ci-equals.mjs';
 export const DIMENSION_KINDS = { referrer: 'ref', country: 'country', region: 'region', city: 'city', device: 'device', os: 'os', browser: 'browser' };
 
 /**
@@ -69,10 +70,10 @@ export async function measureGoal(p, g, from, to = null) {
     // country/device match exactly (short controlled vocab); the rest are contains.
     const exact = g.kind === 'country' || g.kind === 'device';
     const dimCond = val
-      ? { [field]: exact ? { equals: val, mode: 'insensitive' } : { contains: val, mode: 'insensitive' } }
+      ? { [field]: exact ? ciEquals(val) : { contains: val, mode: 'insensitive' } }
       : { [field]: { not: null } };
     const extra = [];
-    if (val) extra.push([`"${field}" ILIKE $n`, exact ? val : `%${val}%`]);
+    if (val) extra.push([`"${field}" ILIKE $n`, exact ? escapeLike(val) : `%${val}%`]); // exact = literal, as ciEquals above
     else extra.push([`"${field}" IS NOT NULL`]);
     if (g.path) extra.push([`path ILIKE $n`, `%${g.path}%`]);
     const { sql, params } = build('AnalyticsEvent', extra);

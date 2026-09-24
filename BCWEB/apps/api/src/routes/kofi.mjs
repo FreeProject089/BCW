@@ -4,6 +4,7 @@ import { db, requireRole, notify, safeEqual, requireCap } from '../lib/lib.mjs';
 import { invalidate, replyCachedJson } from '../lib/cache.mjs';
 import { grantAutoBadges } from './social.mjs';
 import { flagEnabled, disabledReply } from '../lib/flags.mjs';
+import { ciEquals } from '../lib/ci-equals.mjs';
 
 // Ko-fi's webhook POSTs a single `application/x-www-form-urlencoded` field
 // named `data`, itself a JSON string — see https://ko-fi.com/manage/webhooks.
@@ -46,8 +47,8 @@ export async function kofiGoalTotals(p, goal) {
   const since = goal?.since && !Number.isNaN(Date.parse(goal.since)) ? new Date(goal.since) : null;
   const window = since ? { createdAt: { gte: since } } : {};
   const [agg, byCur] = await Promise.all([
-    p.kofiDonation.aggregate({ where: { ...window, currency: { equals: currency, mode: 'insensitive' } }, _sum: { amount: true }, _count: { _all: true } }),
-    p.kofiDonation.groupBy({ by: ['currency'], where: { ...window, NOT: { currency: { equals: currency, mode: 'insensitive' } } }, _sum: { amount: true }, _count: { _all: true } }),
+    p.kofiDonation.aggregate({ where: { ...window, currency: ciEquals(currency) }, _sum: { amount: true }, _count: { _all: true } }),
+    p.kofiDonation.groupBy({ by: ['currency'], where: { ...window, NOT: { currency: ciEquals(currency) } }, _sum: { amount: true }, _count: { _all: true } }),
   ]);
   // groupBy is case-sensitive: fold "usd"/"USD" into one line.
   const other = new Map();
@@ -69,7 +70,7 @@ export async function kofiGoalTotals(p, goal) {
 // fallback (for a donation that happened before the webhook was configured).
 // Idempotent per account: only ever grants once (gated on kofiDonorAt).
 async function grantKofiDiscount(p, email) {
-  const user = await p.user.findFirst({ where: { email: { equals: email, mode: 'insensitive' } } });
+  const user = await p.user.findFirst({ where: { email: ciEquals(email) } });
   if (!user) return { error: 'no_matching_account' };
   grantAutoBadges(p, { event: 'kofi', user }).catch(() => {}); // any Ko-fi-donation badge (before the once-only discount gate)
   if (user.kofiDonorAt) return { error: 'already_granted' };

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { db, requireCap, requireEditor, optionalAuth, slugify, pageVisibilitySchema, pageAccountEntrySchema, canViewPage, applyScheduledUpdate, canManageShowcase, canEditShowcase, projectGrants , guardStudioFlag, hasCap, canUseStudio, studioRefusal, studioChecker, guardStudioContent, withoutStudioDrafts, draftReader } from '../lib/lib.mjs';
 import { configStudioProblems, studioDocError, configRevs, parsePageSave, replaceConfigPage } from '../lib/studio-doc.mjs';
+import { configLinkProblems, configLinkError } from '../lib/config-links.mjs';
 import { computeActivity, releaseMarkers } from '../lib/git-activity.mjs';
 
 /** applyScheduledUpdate, plus the version-history entry it does not know to write.
@@ -29,6 +30,7 @@ async function applyShowcaseSchedule(p, row) {
 import { invalidate, replyCachedJson } from '../lib/cache.mjs';
 import { safeFetch } from '../lib/net.mjs';
 import { gh, ghCache, ghStats, repoOf, versionedRawUrl } from './projects.mjs';
+import { ciEquals } from '../lib/ci-equals.mjs';
 
 // Cached fetch for progress.json / GitHub release-notes trees / community
 // contributors. Shares `ghCache` with projects.mjs (previously a SEPARATE Map
@@ -237,6 +239,9 @@ export default async function showcaseRoutes(app) {
   app.post('/admin/showcase', { preHandler: requireCap('manage_showcase') }, async (req, reply) => {
     const b = upsertSchema.safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input', details: b.error.flatten() });
+    // The config and the announcement button both end in an <a href> (lib/config-links.mjs).
+    const badLinks = configLinkProblems(b.data);
+    if (badLinks.length) return reply.code(400).send(configLinkError(badLinks));
     // A new page has no studio switch yet (it is off): only manage_studio draws on it (D2).
     b.data.config = guardStudioContent(b.data.config, null, hasCap(req.user, 'manage_studio'));
     const born = configStudioProblems(b.data.config, null);
@@ -256,6 +261,10 @@ export default async function showcaseRoutes(app) {
     if (!(await canEditShowcase(req.user, req.params.id))) return reply.code(403).send({ error: 'forbidden' });
     const b = upsertSchema.partial().safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    // The config and the announcement button both end in an <a href>: a grantee writes the
+    // first, so no link in either may run script (lib/config-links.mjs, pentest R10).
+    const badLinks = configLinkProblems(b.data);
+    if (badLinks.length) return reply.code(400).send(configLinkError(badLinks));
     const p = await db();
     const data = { ...b.data };
     // Strip reserved fields for a non-manager so a grantee can't pin/publish/change
@@ -297,7 +306,7 @@ export default async function showcaseRoutes(app) {
     const r = String(ref || '').slice(0, 80);
     return (await p.showcaseProject.findUnique({ where: { id: r } }).catch(() => null))
       || (await p.showcaseProject.findUnique({ where: { slug: r } }).catch(() => null))
-      || (await p.showcaseProject.findFirst({ where: { short: { equals: r, mode: 'insensitive' } } }).catch(() => null));
+      || (await p.showcaseProject.findFirst({ where: { short: ciEquals(r) } }).catch(() => null));
   }
   app.get('/admin/showcase/:id/studio', { preHandler: requireEditor() }, async (req, reply) => {
     const p = await db();
@@ -376,6 +385,8 @@ export default async function showcaseRoutes(app) {
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     if (b.data.at && !b.data.next) return reply.code(400).send({ error: 'next_required' });
+    const badLinks = configLinkProblems(b.data.next);
+    if (badLinks.length) return reply.code(400).send(configLinkError(badLinks));
     const p = await db();
     const row = await p.showcaseProject.update({
       where: { id: req.params.id },

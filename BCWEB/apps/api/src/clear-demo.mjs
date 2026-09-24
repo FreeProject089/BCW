@@ -19,10 +19,32 @@ import { readSeedRecord, SEED_RECORD_KEY } from './lib/demo-seed-record.mjs';
 const p = new PrismaClient();
 const dry = process.argv.includes('--dry-run');
 
+// Same refusal as seed:demo. There was none here, and this is the script that DELETES.
+if (process.env.NODE_ENV === 'production' && process.env.DEMO_ALLOW_PROD !== 'yes') {
+  console.error('[clear-demo] refusing to run against NODE_ENV=production (set DEMO_ALLOW_PROD=yes to override).');
+  process.exit(1);
+}
+
+// The record is necessary, not sufficient (pentest round 2, R8). It is one AdminSetting row,
+// and until Sept 24 the generic settings door accepted that key from any ADMIN — so a record
+// can name ids the seeder never minted. A row is deleted only when it is in the record AND
+// has the shape seed:demo gives its own rows: a `demo-` slug (lib/demo-fixtures.mjs) and a
+// `demo-author-N@bettercommunity.local` address. Neither test is enough alone (a real item
+// can be slugged `demo-…`, which is why the record exists); together a real row needs both
+// a planted record and a demo-shaped name to be reached.
+const SEED_EMAIL = /^demo-author-\d+@bettercommunity\.local$/i;
+
 async function main() {
   const record = await readSeedRecord(p);
-  const itemIds = record.itemIds;
-  const userIds = record.userIds;
+  const recordedItems = record.itemIds.length ? await p.catalogItem.findMany({ where: { id: { in: record.itemIds } }, select: { id: true, slug: true } }) : [];
+  const recordedUsers = record.userIds.length ? await p.user.findMany({ where: { id: { in: record.userIds } }, select: { id: true, email: true } }) : [];
+  const itemIds = recordedItems.filter((r) => r.slug.startsWith('demo-')).map((r) => r.id);
+  const userIds = recordedUsers.filter((u) => SEED_EMAIL.test(u.email || '')).map((u) => u.id);
+  const odd = recordedItems.length - itemIds.length + recordedUsers.length - userIds.length;
+  if (odd) console.log(`[clear-demo] ${odd} recorded row(s) are not shaped like seed:demo output — NOT deleted (a record names rows, it does not prove the seeder made them).`);
+  if (record.itemIds.length || record.userIds.length) {
+    if (!itemIds.length && !userIds.length) { console.log('[clear-demo] nothing in the record is deletable.'); return; }
+  }
 
   if (!itemIds.length && !userIds.length) {
     console.log(`[clear-demo] no seed record (AdminSetting['${SEED_RECORD_KEY}'] is absent or empty): nothing to delete.`);

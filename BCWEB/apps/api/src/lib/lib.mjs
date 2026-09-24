@@ -8,6 +8,7 @@ import { pubkeyFromOpenssh } from './keyauth.mjs';
 import { userBcId } from './repofingerprint.mjs';
 import { boundedSet } from './boundedmap.mjs';
 import { normaliseCreatorId } from './creator-proof.mjs';
+import { ciEquals } from './ci-equals.mjs';
 // NOTE: clientIp is deliberately NOT imported — this module already exports its own,
 // and the two differ (`req.ip` here vs `req.ip || '0.0.0.0'` there). That split predates
 // this feature; changing either return value would ripple through callers that test it
@@ -1369,10 +1370,12 @@ export async function resolveClientIdentity(p, req) {
   const creatorId = raw ? String(raw).slice(0, 120) : null;
   let userId = null, discordId = null, email = null;
   if (creatorId) {
-    const link = await p.creatorLink.findUnique({
-      where: { creatorId },
-      include: { user: { select: { email: true, discordLinks: { select: { discordId: true }, take: 1 } } } },
-    });
+    // Exact, then any spelling (F23-6: a creator id is hex and the client picks its case, so an
+    // upper-cased header must still name the account a ban or whitelist entry is about).
+    // ciEquals, never a raw insensitive equals: that one is an ILIKE and `%` names an account.
+    const include = { user: { select: { email: true, discordLinks: { select: { discordId: true }, take: 1 } } } };
+    const link = await p.creatorLink.findUnique({ where: { creatorId }, include })
+      || await p.creatorLink.findFirst({ where: { creatorId: ciEquals(creatorId.trim()) }, include });
     if (link) { userId = link.userId; email = link.user?.email || null; discordId = link.user?.discordLinks?.[0]?.discordId || null; }
   }
   return { ip, creatorId, userId, discordId, email, bcId: userId ? userBcId(userId) : null };

@@ -7,6 +7,7 @@ import { genKey, prefixOf } from './api-keys.mjs';
 import { grantAutoBadges } from './social.mjs';
 import { expectedProofAudience } from '../lib/creator-proof.mjs';
 import { acceptCreatorProof, creatorProofGate } from '../lib/creator-identity.mjs';
+import { ciEquals } from '../lib/ci-equals.mjs';
 
 // Human-friendly pairing code (no ambiguous chars): e.g. "K7P3-9QMX".
 function genCode() {
@@ -93,7 +94,7 @@ export default async function linkRoutes(app) {
     // is already somebody's. That handed out a pairing code for a LINKED id, and
     // `/me/creator-links` (also exact) then created a second CreatorLink for one identity,
     // against the rule this endpoint states two lines below.
-    const existing = await p.creatorLink.findFirst({ where: { creatorId: { equals: b.data.creatorId, mode: 'insensitive' } } });
+    const existing = await p.creatorLink.findFirst({ where: { creatorId: ciEquals(b.data.creatorId) } });
     if (existing) return { linked: true };
     // One active code per creator id at a time.
     await p.linkCode.deleteMany({ where: { creatorId: b.data.creatorId } });
@@ -246,7 +247,7 @@ export default async function linkRoutes(app) {
     if (!pending || pending.expiresAt < new Date()) return reply.code(400).send({ error: 'invalid_or_expired' });
     // One creator id ↔ one account. Case-insensitively: see /link/request. A code minted
     // before that check existed must not still land here and make two links out of one id.
-    if (await p.creatorLink.findFirst({ where: { creatorId: { equals: pending.creatorId, mode: 'insensitive' } } })) {
+    if (await p.creatorLink.findFirst({ where: { creatorId: ciEquals(pending.creatorId) } })) {
       await p.linkCode.delete({ where: { id: pending.id } }).catch(() => {});
       return reply.code(409).send({ error: 'already_linked' });
     }

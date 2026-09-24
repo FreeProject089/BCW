@@ -684,6 +684,8 @@ export const MAIL_CUSTOM_TEMPLATES_BODY = z.object({ templates: z.array(z.object
 // not a gate, it is a suggestion. The list is here, on the route, and short on purpose:
 // every entry has to earn the extra step.
 export const SUPERADMIN_ONLY_SETTINGS = new Set(['marketplace.feePercentBp', 'marketplace.feeByProject']);
+// Settings no web door writes, whatever the role (see checkAdminSetting).
+export const isReservedSettingKey = (key) => typeof key === 'string' && (key.startsWith('seed.') || key.startsWith('demo.'));
 
 // Per-page unfurl overrides. Validated because this one is a LIST an admin builds by
 // hand, and a bad row would only show up as a shared link that unfurls wrong — seen by
@@ -725,6 +727,11 @@ export async function checkAdminSetting(p, key, value, { role } = {}) {
   // (the bot token only while the bot is off, the signing key never from outside at all), and
   // this one would have let any ADMIN overwrite all four with no such rule.
   if (SECRET_SETTING_KEYS.has(key)) return refuse(409, { error: 'use_dedicated_route', key });
+  // Keys only a LOCAL SCRIPT writes (pentest round 2, R8). `seed.demoRows` is the list of ids
+  // `npm run clear-demo` deletes; accepting it here let an ADMIN (or a content-backup zip,
+  // which reuses this check) name real items and accounts for the next operator to delete.
+  // `demo.*` is the retired demo mode's namespace: nothing reads it, nothing may refill it.
+  if (isReservedSettingKey(key)) return refuse(403, { error: 'reserved_setting', key });
   if (SUPERADMIN_ONLY_SETTINGS.has(key) && role !== 'SUPERADMIN') {
     return refuse(403, { error: 'superadmin_required', key });
   }
@@ -743,7 +750,10 @@ export async function checkAdminSetting(p, key, value, { role } = {}) {
   // term invalid and refuse every sale — with no error anywhere but a customer's screen.
   if (/^hosting\.term(Min|Max|Step)Months$/.test(key)) {
     const n = Number(value);
-    if (!Number.isInteger(n) || n < 1 || n > 120) return refuse(400, { error: 'invalid_term_bound', min: 1, max: 120 });
+    // N-hosting (agent-hosting-N): 12, not 120 — no prepaid term longer than a year is sold
+    // (TERM_LIMIT_MONTHS in routes/hosting.mjs, and the Terms say why).
+    if (!Number.isInteger(n) || n < 1 || n > 12) return refuse(400, { error: 'invalid_term_bound', min: 1, max: 12 });
+    // fin N-hosting (agent-hosting-N)
     const other = key === 'hosting.termMinMonths' ? 'hosting.termMaxMonths' : key === 'hosting.termMaxMonths' ? 'hosting.termMinMonths' : null;
     if (other) {
       const row = await p.adminSetting.findUnique({ where: { key: other } }).catch(() => null);
@@ -1289,7 +1299,10 @@ export default async function miscRoutes(app) {
     const p = await db();
     const [rows, setting] = await Promise.all([
       // Only approved rows: a member's review waits for a moderator (M11), whatever `enabled` says.
-      p.review.findMany({ where: { enabled: true, status: 'approved', visibility: 'public' }, orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] }),
+      // And only while the member's account is active (pentest round 2, M11): a suspended or
+      // banned account is not quoted on the landing; it comes back if the account does.
+      // Staff-written reviews have no userId.
+      p.review.findMany({ where: { enabled: true, status: 'approved', visibility: 'public', OR: [{ userId: null }, { user: { status: 'active' } }] }, orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] }),
       p.adminSetting.findUnique({ where: { key: 'reviews.enabled' } }),
     ]);
     const enabled = setting?.value?.on !== false; // default ON
@@ -1316,6 +1329,9 @@ export default async function miscRoutes(app) {
     enabled: z.boolean().optional(), order: z.number().int().min(0).max(100000).optional(),
     // M11: moderating a member's review. Approving also shows it; rejecting also hides it.
     status: z.enum(['approved', 'pending', 'rejected']).optional(),
+    // The `updatedAt` of the version the moderator read. Required to APPROVE a member's
+    // review (see the PATCH); not stored.
+    seenUpdatedAt: z.string().max(40).optional(),
   });
   // ── M11: a member's own landing review ──────────────────────────────────────────────
   // One per account (Review.userId is unique), held as `pending` until a moderator approves
@@ -1404,7 +1420,15 @@ export default async function miscRoutes(app) {
     for (const k of ['author', 'role', 'body', 'bodyFr', 'rating', 'avatar', 'enabled', 'order', 'status']) if (b.data[k] !== undefined) data[k] = b.data[k];
     if (b.data.status === 'approved' && b.data.enabled === undefined) data.enabled = true;
     // N10: a private review is feedback for the team; no status or toggle can publish it.
-    const cur = await p.review.findUnique({ where: { id: req.params.id }, select: { visibility: true } });
+    const cur = await p.review.findUnique({ where: { id: req.params.id }, select: { visibility: true, userId: true, updatedAt: true } });
+    // Approve what was READ (pentest round 2, M11). "Approve" sends only a status, so without
+    // this it published whatever the member's text was at that moment, and a member can edit
+    // between the moderator reading the queue and the click (itself deferred by the undo
+    // toast). A member's review is approved only against the version the moderator saw.
+    if (cur?.userId && b.data.status === 'approved') {
+      const seen = Date.parse(b.data.seenUpdatedAt || '');
+      if (!Number.isFinite(seen) || seen !== cur.updatedAt.getTime()) return reply.code(409).send({ error: 'changed_since_viewed' });
+    }
     if (cur?.visibility === 'private') data.enabled = false;
     if (b.data.status === 'rejected') data.enabled = false;
     const review = await p.review.update({ where: { id: req.params.id }, data }).catch(() => null);

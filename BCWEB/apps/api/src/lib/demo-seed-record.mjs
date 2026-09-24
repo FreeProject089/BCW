@@ -10,8 +10,11 @@
 //
 // So the seeder now writes the ids it created into one AdminSetting row and clear-demo
 // deletes BY ID, intersected with that record. An id is a cuid the seeder itself minted; a
-// real user cannot make one appear in this row (no route writes this key — `PUT
-// /admin/settings/:key` refuses unknown keys, and nothing else touches it).
+// real user cannot make one appear in this row. That used to be claimed here as "PUT
+// /admin/settings/:key refuses unknown keys", and it was false: the generic door took any
+// key, so an ADMIN could write this delete list (pentest round 2, R8). It is now refused by
+// name (`isReservedSettingKey` in routes/misc.mjs, which the content-backup restore reuses),
+// and clear-demo additionally requires a row to LOOK like seed output before deleting it.
 //
 // The key deliberately does NOT start with `demo.`: that prefix belonged to the admin demo
 // MODE (retired Sept 23), whose stop deleted every `demo.*` setting, and a database that ran

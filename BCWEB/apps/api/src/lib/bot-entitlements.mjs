@@ -131,9 +131,12 @@ export function entitlementsFor(guildId, ctx = {}, now = new Date()) {
   const plans = [];
   for (const sub of ctx.subs || []) {
     if (!subCounts(sub, now)) continue;
-    if (!(sub.botGuildIds || []).map(String).includes(gid)) continue;
     const pb = normalizePlanBot(sub.plan?.bot);
     if (!pb) continue;
+    // Only as many servers as the plan covers NOW, in the order the subscriber chose them
+    // (pentest round 2): the list is checked when written, but a plan edited down afterwards
+    // must not leave every existing subscriber on the old count.
+    if (!(sub.botGuildIds || []).map(String).slice(0, pb.guilds).includes(gid)) continue;
     plans.push(sub.plan?.name || '');
     for (const f of pb.features) { features.add(f); planFeatures.add(f); }
     for (const [k, v] of Object.entries(pb.limits)) limits[k] = Math.max(limits[k] || 0, v);
@@ -250,7 +253,10 @@ const PER_GUILD = ['moderation', 'welcome', 'joinToCreate', 'gating', 'logs'];
 export function applyEntitlementsToConfig(cfg, guildIds, entOf) {
   if (!cfg || typeof cfg !== 'object') return cfg;
   const guilds = { ...(cfg.guilds || {}) };
-  for (const gid of guildIds) {
+  // The known guilds AND every guild that has an override (pentest round 2): an override for
+  // a guild with no BotGuild row (pruned, or before the bot's first heartbeat there) was
+  // served unfiltered.
+  for (const gid of new Set([...(guildIds || []).map(String), ...Object.keys(guilds)])) {
     const ent = entOf(gid);
     if (ent.unlimited) continue;
     const over = guilds[gid] || {};
