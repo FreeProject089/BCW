@@ -61,3 +61,26 @@
 @media (max-width: 1023.98px) and (prefers-reduced-motion: reduce) {
   .tbar-menu, .tbar-menu-ic > svg, .tbar-av { transition: none; }
 }
+
+/* ════ N12 (agent-topbar-N): the theme switch and the icon row ══════════════════════════════
+   The theme switch is a 44x24 track with a knob. Below lg, index.css holds every
+   `.topbar button` to 44x44 for touch, and that turned the TRACK into a 44px disc: in the dark
+   theme its fill is the accent, so the bar carried a big orange circle with the knob stuck at
+   its top-left. The switch keeps its drawn size; its touch target is an invisible 44px-tall
+   box around it (the tap-44 idea), which is what the finger actually needs.
+   Two classes on the selector for the same reason as above: this file loads before index.css. */
+@media (max-width: 1023.98px) {
+  .topbar button.theme-switch { min-height: 24px; min-width: 44px; margin-inline: 2px; }
+  .topbar button.theme-switch::after {
+    content: ''; position: absolute; left: 50%; top: 50%;
+    width: 48px; height: 44px; transform: translate(-50%, -50%);
+    border-radius: 12px;
+  }
+}
+/* The row did not fit: signed in at 375px the bar asked for 367px of a 357px box, and the
+   account capsule hung 9px past the bar's right edge. The utility pills lose 2px of padding a
+   side (the language pill, icon plus code, was 57px), which is what brings the row inside the
+   bar with every control still 44px tall and at least 44px wide. */
+@media (max-width: 1023.98px) {
+  .tbar .tbar-utils .nav-link { padding-inline: 8px; }
+}

@@ -9058,6 +9058,19 @@ const DICT = {
     'scn.ev.reset.h': 'Décochez l’événement pour retirer complètement sa scène.',
     'scn.tr.reset': 'Aucune transition (par défaut)',
     // fin M18 (agent-perf-M18)
+    // N-topbar (agent-topbar-N) : les menus groupés de la barre du haut (ui/topbar-menu.jsx).
+    'nav.menu.dashboards': 'Tableaux de bord',
+    'nav.menu.dash.d': 'Tes dépôts, catalogues et activité',
+    'nav.menu.admin.d': 'Gérer le site : contenu, membres, réglages',
+    'nav.menu.prof.d': 'Ton profil public et ton compte',
+    'nav.menu.proj.ours': 'Projets',
+    'nav.menu.proj.others': 'Autres projets',
+    'nav.menu.proj.all': 'Tous les autres projets',
+    'nav.menu.proj.all.d': 'Tout, y compris ce qui n’est pas listé ici',
+    'nav.util.groups.desc': 'Tableau de bord et Admin partagent un menu, Profil et Déconnexion forment le menu du compte, et Projets liste les projets du site puis les autres projets. Masque l’un des deux et l’autre redevient un simple bouton. Sur un téléphone, l’avatar ouvre les deux.',
+    'afoot.pv.title': 'Aperçu en direct du pied de page',
+    'afoot.pv.device': 'Appareil',
+    // fin N-topbar (agent-topbar-N)
     // N-hosting (agent-hosting-N) : page Hébergement (offres lisibles, termes 1/6/12 mois,
     // remise fidélité, titre surligné) et l'éditeur admin de la remise fidélité.
     'hosting.hero.h1': 'De la place pour tes',

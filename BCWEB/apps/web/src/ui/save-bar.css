@@ -1,3 +1,19 @@
 /* The save bar (ui/save-bar.jsx) reuses `.save-dock` from index.css for its frame. This file
    only adds what the shared bar needs on top: an in-flow variant for a bar inside a card. */
 .save-dock.save-dock-flow { position: static; box-shadow: none; }
+
+/* N11 (agent-topbar-N): the save bar above the phone's bottom bar.
+   Below md the bottom bar (.mbar, App.jsx MobileTabBar) is fixed at the bottom of the screen,
+   and the save bar is sticky at the bottom of the content, so both claimed the same strip: the
+   bar drew over « All changes saved » and its Save button. The save bar now docks ABOVE it,
+   by the bar's real geometry: its float gap, its height, the home indicator, and the raised
+   centre action (Search), which overhangs the bar's top edge by 18px (.mbar-raise: 46px
+   with a -21px margin inside a 3px padding), plus the same 10px breathing room.
+   Only when the bottom bar exists: an admin can switch it off, and then the save bar goes back
+   to the bottom edge. `:has` reads the page's document, so the admin's Live preview frames
+   (their own documents) cannot trigger it. The in-flow variant is not sticky, so not moved. */
+@media (max-width: 767.98px) {
+  body:has(.mbar) .save-dock:not(.save-dock-flow) {
+    bottom: calc(var(--mbar-gap, 10px) + var(--mbar-h, 56px) + 18px + 10px + env(safe-area-inset-bottom, 0px));
+  }
+}

@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useState, useRef, useMemo, useCallback, laz
 // The real landing page, for the home-page editor's preview. Lazy for the same reason the
 // page builder is: an admin who came here to approve a submission must not download the
 // front page's showcase, poll and review components to do it.
-const HomeLive = lazy(() => import('./home.jsx').then((m) => ({ default: m.Home })));
+// N-topbar (agent-topbar-N): that lazy import now lives in pages/admin-home-preview.jsx, which draws the preview.
 import { ChipList, AccountChipList, PubkeyList } from '../ui/access-lists.jsx';
 import { lucideFileName } from '../editor/icon-picker.jsx';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -34,6 +34,8 @@ import { defaultFooterConfig, DEFAULT_FOOTER_SOCIALS } from '../ui/footer-defaul
 // to catch.
 import { SOCIAL_ICONS, Nav, MobileTabBar, readMobileMenu } from '../App.jsx';
 import PreviewFrame from '../ui/preview-frame.jsx';
+import LiveFooterPreview from './admin-footer-preview.jsx'; // N-topbar (agent-topbar-N)
+import LiveHomePreview from './admin-home-preview.jsx'; // N-topbar (agent-topbar-N)
 import DomainPanel from '../ui/domain-panel.jsx';
 import { BotPlanFields, BotFreeTier, botPlanBody, botPlanSummary } from '../ui/bot-plan-editor.jsx'; // M-plans (agent-plans-M)
 import { SaveBar } from '../ui/save-bar.jsx'; // D1 (agent-admin-D): one save bar for every editor
@@ -47,7 +49,6 @@ import { GRADIENTS, gradientCss } from '../ui/theme-gradients.js';
 import { BrandMarksCard, GradientsCard } from '../editor/site-theme-cards.jsx';
 import { themeCss, applySiteTheme, inkOn, contrastRatio } from '../ui/theme.jsx';
 import { registerAppIcons } from '@bettercommunity/bmd/config';
-import { I18nDraft } from '../i18n.jsx';
 import { CharityCard, CHARITY_WIDTHS, CHARITY_DESIGN_DEFAULTS, charityCanvasSizes, CHARITY_PART_KEYS, CHARITY_BLOCK_KINDS, CHARITY_LABEL_KEYS, CHARITY_CSS_SCOPE } from './charity.jsx';
 import { CharityPresetPicker } from './admin-charity-presets.jsx'; // M12 (agent-charity-M12)
 // The charity design editor shows what its stylesheet filter took out, the way the studio's
@@ -13448,6 +13449,7 @@ function HomePageEditor() {
   const [busy, setBusy] = useState(false);
   const [variant, setVariant] = useState('v1');
   const [preview, setPreview] = useState(false);
+  const [pvDevice, setPvDevice] = useState('desktop'); // N-topbar: the preview's device width
   // The suite row: how it is drawn, and the rows an admin added by hand.
   const [suite, setSuite] = useState({ style: 'grid', extra: [] });
   // Admin-authored Markdown blocks the home page draws in addition to the built-in ones.
@@ -13673,16 +13675,22 @@ function HomePageEditor() {
           way they will once Save is pressed, because it is the same component doing it. */}
       {preview && (
         <Modal open onClose={() => setPreview(false)} title={t('hp.preview.t', 'Your home page, unsaved')} icon={Eye} width="max-w-[1200px]">
-          <p className="text-[11px] text-[var(--muted)] mb-2">
-            {t('hp.preview.s', 'The copy and the section switches are yours as they stand now. Posts, statistics, reviews and the showcase are live — a preview of wording should not invent the content around it.')}
-          </p>
-          <div className="rounded-xl border border-[var(--line)] overflow-auto max-h-[72vh] bg-[var(--bg-solid)]">
-            <Suspense fallback={<div className="p-10"><Loading /></div>}>
-              <I18nDraft over={form}>
-                <HomeLive draft={{ sections, variant }} />
-              </I18nDraft>
-            </Suspense>
+          {/* N-topbar (agent-topbar-N): the whole draft (what Save sends, suite and custom
+              sections included), in a frame of the chosen device's width. See
+              pages/admin-home-preview.jsx for what was missing before. */}
+          <div className="flex items-start gap-2 flex-wrap mb-2">
+            <p className="text-[11px] text-[var(--muted)] flex-1 min-w-[12rem]">
+              {t('hp.preview.s', 'The copy and the section switches are yours as they stand now. Posts, statistics, reviews and the showcase are live — a preview of wording should not invent the content around it.')}
+            </p>
+            <div className="inline-flex rounded-lg border border-[var(--line)] p-0.5 text-xs shrink-0" role="group" aria-label={t('afoot.pv.device', 'Device')}>
+              {[['desktop', t('afoot.on.desktop', 'Desktop')], ['mobile', t('afoot.on.mobile', 'Mobile')]].map(([k, label]) => (
+                <button key={k} type="button" onClick={() => setPvDevice(k)} aria-pressed={pvDevice === k}
+                  className={`px-2.5 py-1 rounded-md ${pvDevice === k ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)]'}`}>{label}</button>
+              ))}
+            </div>
           </div>
+          <LiveHomePreview text={form} device={pvDevice} draft={{ sections, variant, suite, customSections: cleanCustom() }} />
+          {/* fin N-topbar (agent-topbar-N) */}
         </Modal>
       )}
 
@@ -21059,6 +21067,9 @@ function AdminNav() {
           <Button size="sm" variant="ghost" onClick={resetUtil}><RotateCcw size={13} /> {t('nav.util.reset', 'Show all, original order')}</Button>
         </div>
         <p className="text-xs text-[var(--muted)] mb-3">{t('nav.util.desc', 'Show/hide and reorder the built-in buttons. Each still respects its own rule (e.g. Admin only shows for staff, Sign in only when logged out). Order changes stay within a group.')}</p>
+        {/* N-topbar (agent-topbar-N): the grouped menus (ui/topbar-menu.jsx), said where the buttons are configured. */}
+        <p className="text-xs text-[var(--muted)] mb-3">{t('nav.util.groups.desc', 'Dashboard and Admin share one menu, Profile and Sign out form the account menu, and Projects lists the site projects then the other projects. Hide one of a pair and the other is a plain button again. On a phone, the avatar opens both.')}</p>
+        {/* fin N-topbar (agent-topbar-N) */}
         <p className="text-xs text-[var(--muted)] mb-3">{t('nav.util.icons.desc', 'Each button can have its own icon for the light theme and the dark theme, and its own size. Leave one empty to keep the built-in icon. Switch the preview between Light and Dark to check both.')}</p>
         {/* The site mark at the far left. Not a button you can hide, so it has only the icon
             and size controls. Empty = the logo from Site theme. */}
@@ -22681,7 +22692,6 @@ function AdminFooter() {
     finally { setBusy(false); }
   };
 
-  const frOr = (v, base) => (lang === 'fr' && v && v.trim()) ? v : base;
   const setCol = (i, patch) => setF({ ...f, columns: f.columns.map((c, n) => (n === i ? { ...c, ...patch } : c)) });
   const setLink = (ci, li, patch) => setCol(ci, { links: f.columns[ci].links.map((l, n) => (n === li ? { ...l, ...patch } : l)) });
   const move = (arr, i, d) => { const a = [...arr]; const j = i + d; if (j < 0 || j >= a.length) return a; [a[i], a[j]] = [a[j], a[i]]; return a; };
@@ -22754,25 +22764,23 @@ function AdminFooter() {
         </Card>
       )}
       <p className="text-sm text-[var(--muted)] mb-4">{t('afoot.sub', 'Columns, links, and what appears on phone versus desktop. Turned off, or with no columns, the site keeps its built-in footer — so this can never leave the page without one. Start from the built-in one and edit it, or build your own from scratch.')}</p>
+      {/* N-topbar (agent-topbar-N): the Live preview is the real footer (pages/admin-footer-preview.jsx). */}
       <Card className="p-4 mb-4">
-        <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2.5">{t('afoot.preview', 'Preview')} — {device === 'mobile' ? t('afoot.on.mobile', 'Mobile') : t('afoot.on.desktop', 'Desktop')}</div>
-        {!f.enabled || !f.columns.some((c) => shows(c) && (c.links || []).some(shows))
-          ? <div className="text-sm text-[var(--muted)]">{t('afoot.fallback', 'The built-in footer is used.')}</div>
-          : <div className={`grid gap-6 ${device === 'mobile' ? 'grid-cols-1 max-w-[22rem]' : 'sm:grid-cols-3'}`}>
-              {f.columns.filter((c) => shows(c)).map((c, i) => {
-                const links = (c.links || []).filter(shows);
-                if (!links.length) return null;
-                return (
-                  <div key={i}>
-                    <div className="text-xs font-semibold text-[var(--faint)] uppercase tracking-wider mb-2">{frOr(c.titleFr, c.title) || '—'}</div>
-                    <div className="flex flex-col gap-1.5">
-                      {links.map((l, n) => <span key={n} className="text-sm text-[var(--muted)]">{frOr(l.labelFr, l.label) || '—'}</span>)}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>}
+        <div className="flex items-center gap-2 flex-wrap mb-2.5">
+          <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] me-auto">{t('afoot.pv.title', 'Live preview of the footer')}</div>
+          <div className="inline-flex rounded-lg border border-[var(--line)] p-0.5 text-xs" role="group" aria-label={t('afoot.pv.device', 'Device')}>
+            {[['desktop', t('afoot.on.desktop', 'Desktop')], ['mobile', t('afoot.on.mobile', 'Mobile')]].map(([k, label]) => (
+              <button key={k} type="button" onClick={() => setDevice(k)} aria-pressed={device === k}
+                className={`px-2.5 py-1 rounded-md ${device === k ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)]'}`}>{label}</button>
+            ))}
+          </div>
+        </div>
+        {(!f.enabled || !(f.columns || []).some((c) => (c.links || []).length)) && (
+          <p className="text-[11px] text-[var(--muted)] mb-2">{t('afoot.fallback', 'The built-in footer is used.')}</p>
+        )}
+        <LiveFooterPreview draft={f} device={device} />
       </Card>
+      {/* fin N-topbar (agent-topbar-N) */}
 
       {/* D5: wraps rather than scrolling sideways (the French labels are longer). */}
       <div className="flex flex-wrap gap-1.5 mb-4">

@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Routes, Route, Link, NavLink, Navigate, useLocation, useNavigate, useNavigationType } from 'react-router-dom';
-import { Code2, Boxes, Orbit, Music2, Newspaper, Server, Rocket, LayoutDashboard, Shield, LogOut, Download, Menu, X, Sparkles, Bell, Mail, Home as HomeIcon, ChevronDown, MoreHorizontal, LayoutGrid, ShieldCheck, ArrowUpRight, Info, AlertTriangle, CheckCircle2, Settings as SettingsIcon, BookOpen, Search, Languages, LogIn, Cloud, HelpCircle } from 'lucide-react';
+import { Code2, Boxes, Orbit, Music2, Newspaper, Server, Rocket, LayoutDashboard, Shield, LogOut, Download, Menu, X, Sparkles, Bell, Mail, Home as HomeIcon, ChevronDown, MoreHorizontal, LayoutGrid, ShieldCheck, ArrowUpRight, Info, AlertTriangle, CheckCircle2, Settings as SettingsIcon, BookOpen, Search, Languages, LogIn, Cloud, HelpCircle, UserRound } from 'lucide-react';
 import { useAuth } from './pages/auth.jsx';
 import { api } from './lib/api.js';
 import NavNotifications from './ui/notif-bell.jsx';
@@ -13,6 +13,7 @@ import { Button, useToast, Modal, useDialog } from './ui/ui.jsx';
 import { Badges, BadgeIcon } from './ui/Badges.jsx';
 import { ThemeToggle, useTheme } from './ui/theme.jsx';
 import { UtilGlyph, utilIconFor, utilSize } from './ui/topbar-glyph.jsx';
+import { TopMenu } from './ui/topbar-menu.jsx'; // N-topbar (agent-topbar-N): the grouped topbar menus
 
 import { useI18n, LangToggle, LangSelect } from './i18n.jsx';
 import CommandPalette from './ui/command-palette.jsx';
@@ -166,6 +167,9 @@ const DEFAULT_ITEMS = [
   { type: 'link', to: '/repos', k: 'nav.repos', icon: Server },
   { type: 'link', to: '/hosting', k: 'nav.hosting', icon: Cloud },
 ];
+// N-topbar (agent-topbar-N): the site's own projects, for the topbar's Projects menu. The
+// children of the default "Apps" group, so the two can never list different projects.
+const FIXED_PROJECTS = DEFAULT_ITEMS[0].children;
 
 // Icons an admin can pick for a configured nav item — a curated, safe whitelist
 // (only these render; an unknown name falls back to Boxes). Keys are the values
@@ -604,6 +608,7 @@ export function Nav({ preview = null } = {}) {
   // to the topbar (task: Project Announcement pages / visibility system).
   const [projVisible, setProjVisible] = useState(null); // { bmm: true, bsm: false, ... } | null (not loaded yet -> show all)
   const [pinnedShowcase, setPinnedShowcase] = useState([]);
+  const [showcaseAll, setShowcaseAll] = useState([]); // N-topbar: the Projects menu lists some when none is pinned
   const navCfgLive = useNavConfig(); // admin-configured nav (null -> use hardcoded NAV), shared with the bottom bar
   const navCfg = preview ? preview.cfg : navCfgLive;
   // Admin-configured desktop layout (align · density · labels · projectsMax), via the shared
@@ -617,7 +622,7 @@ export function Nav({ preview = null } = {}) {
   const layout = readLayout(navCfg?.layout);
   useEffect(() => {
     api.get('/projects').then((r) => setProjVisible(r.visible || null)).catch(() => {});
-    api.get('/showcase').then((r) => setPinnedShowcase((r.projects || []).filter((p) => p.pinTopbar))).catch(() => {});
+    api.get('/showcase').then((r) => { const all = r.projects || []; setShowcaseAll(all); setPinnedShowcase(all.filter((p) => p.pinTopbar)); }).catch(() => {});
   }, []);
   // Per-project visibility still applies to any nav link that points at a project page,
   // whether it comes from the hardcoded NAV or an admin's custom config.
@@ -740,7 +745,8 @@ export function Nav({ preview = null } = {}) {
       case 'notifications': return preview
         ? <span key="u-notif" className="nav-link !px-2 relative" title={t('nav.notifications')}>{ug('notifications', Bell)}</span>
         : <NavNotifications key="u-notif" onBadge={publishNavBadge} icon={hasIcon('notifications', theme) || uCfg.notifications?.size ? ug('notifications', Bell) : null} />;
-      case 'projects': return <NavLink key="u-proj" to="/projects" className={({ isActive }) => `hidden sm:inline-flex nav-link !px-2 ${isActive ? 'nav-link-active' : ''}`} title={t('nav.projects')} aria-label={t('nav.projects')}>{ug('projects', Orbit)}</NavLink>;
+      // N-topbar: a menu (the site's projects, then the other projects), not a bare link.
+      case 'projects': return <span key="u-proj" className="hidden sm:inline-flex">{projectsMenu}</span>;
       // Inert in the preview: it would switch the ADMIN's language, not the preview's.
       case 'lang': return <span key="u-lang" className={preview ? 'pointer-events-none contents' : 'contents'}><LangToggle type={uCfg.lang?.type || 'auto'} icon={hasIcon('lang', theme) || uCfg.lang?.size ? ug('lang', Languages) : null} /></span>;
       case 'theme': return <ThemeToggle key="u-theme" lightIcon={themeKnob('light')} darkIcon={themeKnob('dark')} />;
@@ -759,6 +765,88 @@ export function Nav({ preview = null } = {}) {
   // queue on Admin. The count is lib/reports-unseen.js (one shared poll of the Report flags).
   const unseen = useReportsUnseen(!!user && !preview);
   const unseenDot = (n, label) => n > 0 && <span className="absolute -top-1 -right-1 min-w-[15px] h-[15px] px-1 rounded-full bg-[var(--primary)] text-[var(--on-primary)] text-[9px] font-bold grid place-items-center" title={label} aria-label={label}>{n > 9 ? '9+' : n}</span>;
+  // N-topbar (agent-topbar-N): the grouped menus (ui/topbar-menu.jsx).
+  // Dashboard + Admin are one menu, Profile + Sign out are the account menu, and Projects lists
+  // the site's own projects then the other projects. Each member still passes the SAME two
+  // tests as a loose button (the admin's show/hide in nav.config.utility, and the shared
+  // auth/staff rule utilAllowed from lib/roles.js), and the menu takes the place of its first
+  // member in the configured order. A group left with one member is that member's plain
+  // button again: a menu of one is a detour.
+  const shownB = (k) => uVisible(k) && utilAllowed(k, user);
+  const dashKeys = clusterB.filter((k) => (k === 'dashboard' || k === 'admin') && shownB(k));
+  const acctKeys = clusterB.filter((k) => (k === 'profile' || k === 'logout') && shownB(k));
+  const unseenLabel = (k) => (k === 'admin'
+    ? t('nav.unseen.staff', '{n} report thread(s) waiting for staff').replace('{n}', String(unseen.staff))
+    : t('nav.unseen.mine', '{n} report thread(s) with a reply you have not seen').replace('{n}', String(unseen.mine)));
+  const dashItem = (k) => (k === 'admin'
+    ? { key: 'adm', to: unseen.staff > 0 ? '/admin?s=reports' : '/admin', icon: ug('admin', Shield), label: t('nav.admin'), desc: t('nav.menu.admin.d', 'Run the site: content, people, settings'), badge: unseen.staff, badgeTitle: unseenLabel('admin') }
+    : { key: 'dash', to: unseen.mine > 0 ? '/dashboard?s=reports' : '/dashboard', icon: ug('dashboard', LayoutDashboard), label: t('nav.dashboard'), desc: t('nav.menu.dash.d', 'Your repos, catalogues and activity'), badge: unseen.mine, badgeTitle: unseenLabel('dashboard') });
+  const acctItem = (k) => (k === 'logout'
+    ? { key: 'out', onSelect: logout, icon: ug('logout', LogOut), label: t('nav.signout'), tone: 'danger' }
+    : { key: 'prof', to: '/profile', icon: <UserRound size={16} />, label: t('nav.profile', 'Profile'), desc: t('nav.menu.prof.d', 'Your public profile and your account') });
+  const dashUnseen = (dashKeys.includes('dashboard') ? unseen.mine : 0) + (dashKeys.includes('admin') ? unseen.staff : 0);
+  const onDash = /^\/(dashboard|admin)(\/|$)/.test(loc.pathname);
+  const dashTitle = t('nav.menu.dashboards', 'Dashboards');
+  const dashMenu = dashKeys.length === 2 && (
+    <TopMenu key="u-dashmenu" dataKey="dashboards" label={dashTitle} chevron
+      triggerClass={`tmenu-pill ${onDash ? 'is-current' : ''}`}
+      trigger={<>{ug('dashboard', LayoutDashboard)}{dashUnseen > 0 && <span className="tmenu-dot" aria-hidden>{dashUnseen > 9 ? '9+' : dashUnseen}</span>}</>}
+      sections={[{ key: 'd', items: dashKeys.map(dashItem) }]} />
+  );
+  const acctHead = user && (
+    <div className="tmenu-head">
+      <Avatar user={user} size={36} />
+      <span className="tmenu-head-txt">
+        <span className="tmenu-head-name">{user.displayName}</span>
+        {user.email && <span className="tmenu-head-sub">{user.email}</span>}
+      </span>
+    </div>
+  );
+  const acctTitle = t('nav.menu.account', 'Your account');
+  const acctMenu = acctKeys.length === 2 && (
+    <TopMenu key="u-acctmenu" dataKey="account" label={acctTitle} title={user?.displayName} triggerClass="tmenu-avatar"
+      trigger={<Avatar user={user} size={utilSize('profile', uCfg.profile)} />} header={acctHead}
+      sections={[{ key: 'a', items: acctKeys.map(acctItem) }]} />
+  );
+  // Cluster B with the two groups folded in: the menu at its first member, nothing at the second.
+  const renderB = (k) => {
+    if (dashMenu && dashKeys.includes(k)) return k === dashKeys[0] ? dashMenu : null;
+    if (acctMenu && acctKeys.includes(k)) return k === acctKeys[0] ? acctMenu : null;
+    return renderUtil(k);
+  };
+  // The phone bar has no cluster B: its avatar opens ONE menu holding both groups, titled.
+  const phoneAccount = user && (dashKeys.length + acctKeys.length > 0) && (
+    <TopMenu dataKey="phone-account" label={acctTitle} title={user.displayName} triggerClass="tbar-av"
+      trigger={<><Avatar user={user} size={30} />{dashUnseen > 0 && <span className="tmenu-dot" aria-hidden>{dashUnseen > 9 ? '9+' : dashUnseen}</span>}</>}
+      header={acctHead}
+      sections={[
+        { key: 'd', title: dashTitle, items: dashKeys.map(dashItem) },
+        { key: 'a', title: acctKeys.length && dashKeys.length ? acctTitle : '', items: acctKeys.map(acctItem) },
+      ]} />
+  );
+  // Projects: the site's own (the /p/<key> pages, each still behind its visibility gate), then
+  // the other projects (the pinned ones, or the first few when none is pinned, capped like the
+  // pill dropdown), then the page that lists every other project.
+  const fixedProjects = FIXED_PROJECTS.filter((c) => gateTo(c.to));
+  const otherProjects = (pinnedShowcase.length ? pinnedShowcase : showcaseAll).slice(0, layout.projectsMax);
+  const onProjects = loc.pathname === '/projects' || /^\/(p|project)\//.test(loc.pathname);
+  const projectsMenu = (
+    <TopMenu dataKey="projects" label={t('nav.projects')} triggerClass={`nav-link !px-2 tmenu-icon ${onProjects ? 'is-current' : ''}`}
+      trigger={ug('projects', Orbit)}
+      sections={[
+        { key: 'ours', title: t('nav.menu.proj.ours', 'Projects'), items: fixedProjects.map((c, i) => ({ key: 'f' + i, to: c.to, icon: <NavIcon item={c} size={18} />, label: navLabel(c, t, lang) })) },
+        { key: 'others', title: t('nav.menu.proj.others', 'Other projects'), items: [
+          ...otherProjects.map((p) => ({
+            key: 'o-' + p.slug, to: `/project/${p.slug}`,
+            icon: <ShowcaseIcon icon={p.icon} size={18} fallback={<Sparkles size={18} />} />,
+            label: p.isAnnouncing ? (p.announceTitle || p.name) : p.name,
+          })),
+          { key: 'all', to: '/projects', end: true, icon: <LayoutGrid size={17} />, label: t('nav.menu.proj.all', 'All other projects'),
+            desc: t('nav.menu.proj.all.d', 'Everything, including what is not listed here') },
+        ] },
+      ]} />
+  );
+  // fin N-topbar (agent-topbar-N)
   return (
     <header ref={headerRef} className="sticky top-0 z-40 px-2 sm:px-3 pt-2 sm:pt-3">
       {/* The bar and the phone sheet share this box. It is `relative` and it carries the
@@ -808,7 +896,7 @@ export function Nav({ preview = null } = {}) {
         </div>
         {/* Right cluster B — lg+ account cluster, admin-configurable order/visibility. */}
         <div className="hidden lg:flex items-center gap-1 shrink-0 ps-1 ms-1 border-s border-[var(--line)]">
-          {clusterB.map(renderUtil)}
+          {clusterB.map(renderB)}
         </div>
         {/* below lg: profile/sign-in shortcut + menu (the hamburger sheet already
             has nav links + dashboard/admin/profile/logout, so nothing is lost).
@@ -821,7 +909,7 @@ export function Nav({ preview = null } = {}) {
         {/* M6: the phone end of the bar is one capsule (account + menu), styled in
             ui/phone-topbar.css; the icon turns from bars to a cross. */}
         <nav aria-label={t('nav.menu.aria', 'Site menu')} className="tbar-phone lg:hidden flex items-center gap-1 shrink-0">
-          {user ? <Link to="/profile" className="tbar-av" title={user.displayName} aria-label={t('nav.profile', 'Profile')} onClick={() => setOpen(false)}><Avatar user={user} size={30} /></Link>
+          {user ? (phoneAccount || <Link to="/profile" className="tbar-av" title={user.displayName} aria-label={t('nav.profile', 'Profile')} onClick={() => setOpen(false)}><Avatar user={user} size={30} /></Link>)
             : <Link to="/auth" className="tbar-signin"><Button variant="primary" size="sm" className="rounded-full">{t('nav.signin')}</Button></Link>}
           <button ref={toggleRef} type="button" className={`tbar-menu shrink-0 ${open ? 'is-open' : ''}`} onClick={() => setOpen((v) => !v)} aria-expanded={open}
             aria-label={open ? t('nav.menu.close', 'Close the menu') : t('nav.menu.aria', 'Site menu')}>
@@ -1195,7 +1283,7 @@ function FooterCol({ title, links }) {
 }
 // Compact newsletter signup for the footer — mobile-clean (input + button stack /
 // stay side-by-side with min-w-0). Shows a success toast on subscribe (#5).
-function FooterNewsletter({ cfg }) {
+function FooterNewsletter({ cfg, inert = false }) {
   const { t, lang } = useI18n();
   // An empty field means "keep following the dictionary", so a site that never edits the
   // copy still switches language properly. Only a value someone typed wins.
@@ -1205,7 +1293,7 @@ function FooterNewsletter({ cfg }) {
   const [busy, setBusy] = useState(false);
   const submit = async (e) => {
     e.preventDefault();
-    if (!email.trim() || busy) return;
+    if (inert || !email.trim() || busy) return; // N-topbar: the admin's preview never subscribes anybody
     setBusy(true);
     try {
       await api.post('/newsletter/subscribe', { email: email.trim(), locale: lang === 'fr' ? 'fr' : 'en' });
@@ -1274,16 +1362,26 @@ function FooterEgg() {
   );
 }
 
-function Footer() {
+// N-topbar (agent-topbar-N): `preview` = { cfg } renders the footer from an admin's DRAFT, for the
+// footer editor's Live preview (pages/admin.jsx). `cfg` is what GET /footer would return for it:
+// the config when "Use this footer" is on, null (the built-in footer) when it is off. Exported
+// for that preview only, like <Nav preview>: one component, so the preview cannot drift.
+export function Footer({ preview = null } = {}) {
   const { t, lang } = useI18n();
-  const cfg = useFooterConfig();
+  const liveCfg = useFooterConfig();
+  const cfg = preview ? preview.cfg : liveCfg;
+  const rootRef = useRef(null);
   // Which device is on screen. The `on` filter REMOVES links rather than hiding them, so it
   // has to be decided in JS: a CSS-hidden link is still in the DOM and still announced by a
   // screen reader, which is not what "hide this on mobile" means.
+  // Asked of the window the footer is laid out in: the page's, or the preview frame's (a 375px
+  // frame is a phone even when the admin's window is 1280px wide).
   const [isMobile, setIsMobile] = useState(() => typeof matchMedia !== 'undefined' && matchMedia('(max-width: 767px)').matches);
   useEffect(() => {
-    if (typeof matchMedia === 'undefined') return;
-    const mq = matchMedia('(max-width: 767px)');
+    const win = rootRef.current?.ownerDocument?.defaultView || (typeof window !== 'undefined' ? window : null);
+    if (!win || typeof win.matchMedia === 'undefined') return undefined;
+    const mq = win.matchMedia('(max-width: 767px)');
+    setIsMobile(mq.matches);
     const on = (e) => setIsMobile(e.matches);
     mq.addEventListener('change', on);
     return () => mq.removeEventListener('change', on);
@@ -1315,7 +1413,7 @@ function Footer() {
   return (
     // `plate plate-band`: the footer is a band of the page colour, so its small faint text
     // is read on the page and not on whatever frame of the 3D backdrop is behind it.
-    <footer className="plate plate-band mt-16 md:mt-24 relative clear-both">
+    <footer ref={rootRef} className="plate plate-band mt-16 md:mt-24 relative clear-both">
       {/* gradient accent line */}
       <div className="h-px bg-gradient-to-r from-transparent via-[var(--primary)] to-transparent" />
       {/* Phone (below md): one column in reading order, brand, socials, newsletter, status,
@@ -1338,7 +1436,7 @@ function Footer() {
               {socials.map((x, i) => <FooterSocial key={`${x.icon}-${i}`} item={x} />)}
             </div>
           )}
-          {news.on !== false && <FooterNewsletter cfg={news} />}
+          {news.on !== false && <FooterNewsletter cfg={news} inert={!!preview} />}
           {/* Under the newsletter, because they are the same kind of thing: the two facts
               about the site itself that belong at the bottom of every page rather than in
               the middle of one. */}
@@ -1370,8 +1468,9 @@ function Footer() {
           ? bottomText.replace(/\{year\}/g, year)
           : `© ${year} ${cfg?.brand?.name || 'BetterCommunity'}. ${t('foot.rights')}`)}</span>
         <div className="flex items-center justify-center gap-x-4 gap-y-1 flex-wrap">
-          {bottom.lang !== false && <LangSelect type={bottom.langType || 'dropdown'} />}
-          {bottom.egg !== false && <FooterEgg />}
+          {/* Inert in the preview: they would switch the ADMIN's language, or call the badge API. */}
+          {bottom.lang !== false && <span className={preview ? 'pointer-events-none contents' : 'contents'}><LangSelect type={bottom.langType || 'dropdown'} /></span>}
+          {bottom.egg !== false && <span className={preview ? 'pointer-events-none contents' : 'contents'}><FooterEgg /></span>}
         </div>
       </div></div>
     </footer>

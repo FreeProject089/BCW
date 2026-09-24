@@ -364,7 +364,7 @@ export function ThemeToggle({ lightIcon = null, darkIcon = null } = {}) {
   const dark = theme === 'dark';
   return (
     <button onClick={toggle} title={dark ? t('th.tolight', "Switch to light") : t('th.todark', "Switch to dark")} aria-label={t('th.toggle', "Toggle theme")} role="switch" aria-checked={dark}
-      className="relative inline-block h-6 w-11 rounded-full transition-colors shrink-0 align-middle border"
+      className="theme-switch relative inline-block h-6 w-11 rounded-full transition-colors shrink-0 align-middle border"
       style={{ background: dark ? 'var(--primary)' : 'color-mix(in srgb, var(--text) 12%, transparent)', borderColor: 'var(--line-strong)' }}>
       <span className="absolute top-1/2 grid place-items-center w-[18px] h-[18px] rounded-full transition-transform duration-200 ease-out"
         style={{ left: 2, marginTop: -9, transform: dark ? 'translateX(20px)' : 'translateX(0)', background: '#ffffff', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }}>
