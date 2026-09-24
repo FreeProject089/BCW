@@ -162,6 +162,17 @@ export const SHORTCUTS = [
   { id: 'os.launcher', group: 'os', combo: 'alt+o', handler: true, label: (t) => t('sc.os.launcher', 'Open the start menu and search') },
   { id: 'os.next', group: 'os', combo: 'alt+j', handler: true, label: (t) => t('sc.os.next', 'Next window') },
   { id: 'os.prev', group: 'os', combo: 'alt+k', handler: true, label: (t) => t('sc.os.prev', 'Previous window') },
+  // N-os (agent-os-N): arranging windows. Alt+SHIFT+arrows (Alt+arrows alone are Back/Forward).
+  { id: 'os.snapLeft', group: 'os', combo: 'alt+shift+arrowleft', handler: true, label: (t) => t('sc.os.snapLeft', 'Snap the window to the left half') },
+  { id: 'os.snapRight', group: 'os', combo: 'alt+shift+arrowright', handler: true, label: (t) => t('sc.os.snapRight', 'Snap the window to the right half') },
+  { id: 'os.max', group: 'os', combo: 'alt+shift+arrowup', handler: true, label: (t) => t('sc.os.max', 'Maximise the window') },
+  { id: 'os.restore', group: 'os', combo: 'alt+shift+arrowdown', handler: true, label: (t) => t('sc.os.restore', 'Restore the window, or minimise it') },
+  { id: 'os.layouts', group: 'os', combo: 'alt+z', handler: true, label: (t) => t('sc.os.layouts', 'Snap layouts of the window') },
+  { id: 'os.close', group: 'os', combo: 'alt+w', handler: true, label: (t) => t('sc.os.close', 'Close the window') },
+  { id: 'os.tile', group: 'os', combo: 'alt+shift+t', handler: true, label: (t) => t('sc.os.tile', 'Tile the windows') },
+  { id: 'os.desktop', group: 'os', combo: 'alt+shift+d', handler: true, label: (t) => t('sc.os.desktop', 'Show the desktop') },
+  { id: 'os.fullscreen', group: 'os', combo: 'alt+shift+f', handler: true, label: (t) => t('sc.os.fullscreen', 'Fullscreen on or off') },
+  // fin N-os (agent-os-N)
   // The studio's own keys (editor/canvas-studio.jsx). Listed, never run from here.
   { id: 'studio.keys', group: 'page', combo: '?', fixed: true, route: /^\/studio\//, label: (t) => t('sc.studio.keys', 'Studio: every key') },
   { id: 'studio.pan', group: 'page', combo: 'space', fixed: true, route: /^\/studio\//, label: (t) => t('sc.studio.pan', 'Studio: hold to pan') },

@@ -26,15 +26,23 @@ export const WALLPAPERS = ['scene', 'gradient', 'plain'];
 const uidOf = (user) => (user?.id ? String(user.id) : 'anon');
 export const layoutKey = (scope, uid) => `${LAYOUT_PREFIX}${scope}:${uid || 'anon'}`;
 
-/** { admin: bool, dashboard: bool, wallpaper } for this account, on this browser. */
+/** { admin: bool, dashboard: bool, wallpaper, and the look (N-os): icons, bar, labels,
+ *  seconds, anim } for this account, on this browser. */
 export function readOsPrefs(uid) {
-  const out = { admin: false, dashboard: false, wallpaper: 'scene' };
+  const out = { admin: false, dashboard: false, wallpaper: 'scene', icons: 'md', bar: 'bottom', labels: true, seconds: false, anim: true };
   try {
     const v = JSON.parse(localStorage.getItem(`${PREF_PREFIX}${uid || 'anon'}`) || '{}');
     if (v && typeof v === 'object') {
       out.admin = v.admin === true;
       out.dashboard = v.dashboard === true;
       if (WALLPAPERS.includes(v.wallpaper)) out.wallpaper = v.wallpaper;
+      // N-os (agent-os-N): the look of the desktop, set from Personalise.
+      if (['sm', 'md', 'lg'].includes(v.icons)) out.icons = v.icons;
+      if (v.bar === 'top') out.bar = 'top';
+      out.labels = v.labels !== false;
+      out.seconds = v.seconds === true;
+      out.anim = v.anim !== false;
+      // fin N-os (agent-os-N)
     }
   } catch { /* private window or storage refused: classic, this session */ }
   return out;
@@ -90,7 +98,7 @@ export function useOsMode(scope) {
   const { uid, prefs, set } = useOsPrefs();
   const wide = useOsWide();
   const on = !!scope && prefs[scope] === true;
-  return { uid, on, wide, active: on && wide, wallpaper: prefs.wallpaper, set: (v) => scope && set({ [scope]: !!v }), setWallpaper: (w) => set({ wallpaper: w }) };
+  return { uid, on, wide, active: on && wide, wallpaper: prefs.wallpaper, prefs, setPrefs: set, set: (v) => scope && set({ [scope]: !!v }), setWallpaper: (w) => set({ wallpaper: w }) };
 }
 
 /** The header switch. Hidden below 768px, where the mode cannot be on. */

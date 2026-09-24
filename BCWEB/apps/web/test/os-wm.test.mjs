@@ -4,6 +4,8 @@ import assert from 'node:assert/strict';
 import {
   reduce, initialState, mountedIds, serialize, sanitise, clampRect, snapZoneAt, rectForZone,
   topId, resizeRect, MIN_W, MIN_H, TITLE_H, MAX_MOUNTED,
+  // N-os (agent-os-N)
+  assistZones, availableLayouts, largestFreeRect, tileFracs, rectForFrac, parseTarget, targetKey, SNAP_LAYOUTS, MAX_RECENT,
 } from '../src/ui/os/wm.js';
 
 const VP = { w: 1280, h: 700 };
@@ -227,3 +229,131 @@ test('resizeRect keeps the opposite edge, the minimum size and the desktop edges
   assert.equal(up.y + up.h, 500);
   assert.equal(resizeRect(start, 'e', 5000, 0, VP).w, VP.w - 100);
 });
+
+// ── N-os (agent-os-N): quarters, snap layouts, snap assist, fill, tile, pins ──────────
+
+test('corners snap to quarters, edges to halves, the top edge maximises', () => {
+  assert.equal(snapZoneAt(2, 40, VP), 'tl');
+  assert.equal(snapZoneAt(60, 3, VP), 'tl');
+  assert.equal(snapZoneAt(1279, 40, VP), 'tr');
+  assert.equal(snapZoneAt(2, 690, VP), 'bl');
+  assert.equal(snapZoneAt(1200, 699, VP), 'br');
+  assert.equal(snapZoneAt(640, 699, VP), null, 'the bottom edge away from a corner is not a zone');
+  assert.deepEqual(rectForZone('br', { w: 1001, h: 501 }), { x: 500, y: 250, w: 501, h: 251 });
+});
+
+test('snap to a quarter and to a layout zone, then restore the free geometry', () => {
+  let s = run([{ type: 'open', id: 'a' }, { type: 'rect', id: 'a', rect: { x: 100, y: 80, w: 700, h: 500 } }, { type: 'snap', id: 'a', zone: 'tr' }]);
+  assert.deepEqual([win(s, 'a').x, win(s, 'a').y, win(s, 'a').w, win(s, 'a').h], [640, 0, 640, 350]);
+  s = reduce(s, { type: 'snap', id: 'a', zone: { x: 2 / 3, y: 0, w: 1 / 3, h: 1 } });
+  assert.deepEqual([win(s, 'a').x, win(s, 'a').w, win(s, 'a').h], [853, 427, 700]);
+  s = reduce(s, { type: 'unsnap', id: 'a' });
+  assert.deepEqual([win(s, 'a').x, win(s, 'a').y, win(s, 'a').w, win(s, 'a').h], [100, 80, 700, 500], 'the geometry from before the FIRST snap');
+  assert.equal(reduce(s, { type: 'snap', id: 'a', zone: { x: 0.8, y: 0, w: 0.5, h: 1 } }), s, 'a zone past the edge is refused');
+  const m = reduce(s, { type: 'snap', id: 'a', zone: { x: 0, y: 0, w: 1, h: 1 } });
+  assert.equal(win(m, 'a').mode, 'max', 'a full-desktop zone is a maximise');
+});
+
+test('a layout zone follows the desktop when it is resized', () => {
+  let s = run([{ type: 'open', id: 'a' }, { type: 'snap', id: 'a', zone: { x: 0, y: 0, w: 2 / 3, h: 1 } }]);
+  s = reduce(s, { type: 'viewport', w: 1920, h: 1080 });
+  assert.deepEqual([win(s, 'a').w, win(s, 'a').h], [1280, 1080]);
+});
+
+test('snap layouts: adjacent zones touch, and small desktops get fewer layouts', () => {
+  for (const l of SNAP_LAYOUTS) {
+    const rects = l.zones.map((z) => rectForFrac(z, { w: 1001, h: 701 }));
+    const area = rects.reduce((a, r) => a + r.w * r.h, 0);
+    assert.equal(area, 1001 * 701, `${l.id} covers the desktop exactly once`);
+  }
+  const big = availableLayouts({ w: 1920, h: 1000 }).map((l) => l.id);
+  const small = availableLayouts({ w: 800, h: 600 }).map((l) => l.id);
+  assert.ok(big.includes('wide-center') && big.includes('thirds'));
+  assert.ok(!small.includes('thirds') && small.includes('halves'));
+});
+
+test('snap assist offers the rest of the layout the window went into', () => {
+  assert.deepEqual(assistZones('left'), [{ x: 0.5, y: 0, w: 0.5, h: 1 }]);
+  assert.equal(assistZones('tl').length, 3);
+  assert.equal(assistZones({ x: 0.5, y: 0, w: 0.5, h: 0.5 }).length, 2, 'main-stack zone: the two others');
+  assert.deepEqual(assistZones('max'), []);
+  assert.deepEqual(assistZones({ x: 0.1, y: 0.1, w: 0.3, h: 0.3 }), []);
+});
+
+test('target keys round-trip and reject garbage', () => {
+  for (const t of ['left', 'br', { x: 0.25, y: 0, w: 0.5, h: 1 }]) assert.deepEqual(parseTarget(targetKey(t)), t);
+  assert.equal(parseTarget('1,0,0.5,1'), null);
+  assert.equal(parseTarget('nope'), null);
+  assert.equal(parseTarget(null), null);
+});
+
+test('fill takes the largest free area, and does nothing when none is left', () => {
+  let s = run([{ type: 'open', id: 'a' }, { type: 'snap', id: 'a', zone: 'left' }, { type: 'open', id: 'b' }, { type: 'fill', id: 'b' }]);
+  assert.deepEqual([win(s, 'b').x, win(s, 'b').y, win(s, 'b').w, win(s, 'b').h], [640, 0, 640, 700]);
+  assert.ok(win(s, 'b').snap, 'stored as a zone, so it follows the desktop');
+  s = reduce(s, { type: 'open', id: 'c' });
+  const t = reduce(s, { type: 'toggleMax', id: 'a' });
+  assert.equal(reduce(t, { type: 'fill', id: 'c' }), t, 'a maximised window leaves nothing free');
+  assert.deepEqual(largestFreeRect([], VP), { x: 0, y: 0, w: 1280, h: 700 });
+  assert.equal(largestFreeRect([{ x: 0, y: 0, w: 1280, h: 500 }], VP), null, '200px left is under the minimum height');
+});
+
+test('tile lays the visible windows out as a grid; one alone maximises', () => {
+  assert.equal(tileFracs(0).length, 0);
+  assert.equal(tileFracs(3).length, 3);
+  const s = run([{ type: 'open', id: 'a' }, { type: 'open', id: 'b' }, { type: 'open', id: 'c' }, { type: 'open', id: 'd' }, { type: 'minimize', id: 'd' }, { type: 'tile' }]);
+  assert.deepEqual([win(s, 'a').x, win(s, 'a').y, win(s, 'a').w, win(s, 'a').h], [0, 0, 640, 350]);
+  assert.deepEqual([win(s, 'c').x, win(s, 'c').y, win(s, 'c').w], [0, 350, 1280], 'the last row stretches');
+  assert.equal(win(s, 'd').mode, 'min', 'minimised windows stay minimised');
+  const one = run([{ type: 'open', id: 'a' }, { type: 'tile' }]);
+  assert.equal(win(one, 'a').mode, 'max');
+  assert.equal(reduce(initialState(VP), { type: 'tile' }).wins.length, 0);
+});
+
+test('closeMany and minimizeOthers', () => {
+  let s = run([{ type: 'open', id: 'a' }, { type: 'open', id: 'b' }, { type: 'open', id: 'c' }]);
+  const m = reduce(s, { type: 'minimizeOthers', id: 'a' });
+  assert.deepEqual(m.wins.map((w) => w.mode), ['normal', 'min', 'min']);
+  assert.equal(m.active, 'a');
+  s = reduce(s, { type: 'closeMany', ids: ['c', 'b', 'zz'] });
+  assert.deepEqual(s.wins.map((w) => w.id), ['a']);
+  assert.equal(s.active, 'a');
+  assert.equal(reduce(s, { type: 'closeMany', ids: ['zz'] }), s);
+});
+
+test('pins, start pins, hidden desktop icons and recents round-trip through storage', () => {
+  let s = run([{ type: 'pin', id: 'users' }, { type: 'pin', id: 'repos' }, { type: 'pin', id: 'users', where: 'start' },
+    { type: 'desk', id: 'logs', show: false }, { type: 'open', id: 'a' }, { type: 'open', id: 'b' }, { type: 'open', id: 'a' }]);
+  assert.deepEqual(s.pins, ['users', 'repos']);
+  assert.deepEqual(s.start, ['users']);
+  assert.deepEqual(s.hidden, ['logs']);
+  assert.deepEqual(s.recent, ['a', 'b']);
+  s = reduce(s, { type: 'movePin', id: 'repos', dir: -1 });
+  assert.deepEqual(s.pins, ['repos', 'users']);
+  assert.equal(reduce(s, { type: 'movePin', id: 'repos', dir: -1 }), s, 'already first');
+  assert.equal(reduce(s, { type: 'pin', id: 'users', on: true }), s, 'pinning a pinned id is a no-op');
+  assert.equal(reduce(s, { type: 'pin', id: '<x>' }), s, 'not an id');
+  const t = reduce(initialState(VP), { type: 'hydrate', saved: JSON.parse(JSON.stringify(serialize(s))) });
+  assert.deepEqual([t.pins, t.start, t.hidden, t.recent], [s.pins, s.start, s.hidden, s.recent]);
+  assert.deepEqual(reduce(t, { type: 'desk', id: 'logs', show: true }).hidden, []);
+  assert.deepEqual(reduce(t, { type: 'reset' }).pins, []);
+});
+
+test('recent screens are capped and hostile stored lists are dropped', () => {
+  let s = initialState(VP);
+  for (const id of ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']) s = reduce(s, { type: 'open', id });
+  assert.equal(s.recent.length, MAX_RECENT);
+  assert.equal(s.recent[0], 'h');
+  const t = reduce(initialState(VP), { type: 'hydrate', saved: { wins: [], pins: ['ok', 'ok', '<b>', 5, 'x'.repeat(99)], hidden: 'nope' } });
+  assert.deepEqual(t.pins, ['ok']);
+  assert.deepEqual(t.hidden, []);
+});
+
+test('a snapped zone survives the storage round-trip', () => {
+  const s = run([{ type: 'open', id: 'a' }, { type: 'rect', id: 'a', rect: { x: 30, y: 30, w: 500, h: 400 } }, { type: 'snap', id: 'a', zone: { x: 0.25, y: 0, w: 0.5, h: 1 } }]);
+  const t = reduce(initialState(VP), { type: 'hydrate', saved: JSON.parse(JSON.stringify(serialize(s))) });
+  assert.deepEqual([win(t, 'a').x, win(t, 'a').w], [320, 640]);
+  const u = reduce(t, { type: 'unsnap', id: 'a' });
+  assert.deepEqual([win(u, 'a').x, win(u, 'a').w], [30, 500]);
+});
+// fin N-os (agent-os-N)

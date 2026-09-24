@@ -1,9 +1,14 @@
-// The start menu of the OS mode (M1), which is also its global search.
+// The start menu of the OS mode (M1, reworked by N-os), which is also its global search.
 //
 // WHAT IT LISTS
 // Exactly the tabs SideDash was handed, grouped under the same headings. Nothing here decides
 // who may see a screen: the dashboard built that list with its own permission rules, and a
-// launcher that re-derived them would be the topbar-preview drift all over again.
+// launcher that re-derived them would be the topbar-preview drift all over again. The pinned
+// and recent rows are ids from the saved layout, drawn only when that tab is in the list today.
+//
+// One click opens (a screen is a button, not a file to select first). Right-click, the Menu
+// key or Shift+F10 on a tile opens its menu: pin to start, pin to the taskbar, show or hide
+// on the desktop. The arrow keys move between tiles.
 //
 // SEARCH
 // Screens are ranked by the command palette's own matcher (ui/palette-search.js: synonyms,
@@ -14,27 +19,47 @@
 // dashboard (`?s=…`) the shell turns that into a window too.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Search, RotateCcw, Monitor, XCircle, ChevronRight, Image as ImageIcon } from 'lucide-react';
+import { Search, RotateCcw, XCircle, ChevronRight, Palette, Maximize, Minimize, PanelLeft, Pin, Clock3 } from 'lucide-react';
 import { useI18n } from '../../i18n.jsx';
 import { Badge } from '../ui.jsx';
 import { buildIndex, searchIndex } from '../palette-search.js';
+import { isMenuKey, menuPoint, spatialFocus } from './os-menu.jsx';
 
 export const badgeOf = (tb) => (tb.badge || 0) + (tb.sub || []).reduce((a, lf) => a + (lf === tb || lf.id === tb.id ? 0 : (lf.badge || 0)), 0);
 
-export default function OsLauncher({ title, icon: Icon, sections, leaves, searchKeywords, remoteSearch, initialQuery = '', onOpenLeaf, onOpenHref, onClose, onExit, onReset, onCloseAll, wallpaper, onWallpaper, openIds }) {
+function AppTile({ tb, open, onOpen, onMenu, compact = false }) {
+  const { t } = useI18n();
+  const b = badgeOf(tb);
+  return (
+    <button type="button" className={compact ? 'os-lx-pin' : 'os-lx-app'} data-app={tb.id} onClick={() => onOpen(tb)}
+      onContextMenu={(e) => { e.preventDefault(); onMenu(tb, menuPoint(e)); }}
+      onKeyDown={(e) => { if (isMenuKey(e)) { e.preventDefault(); onMenu(tb, menuPoint(e)); } }}>
+      <span className="os-lx-app-ic"><tb.icon size={compact ? 18 : 16} aria-hidden />{compact && b ? <span className="os-icon-badge">{b}</span> : null}</span>
+      <span className={compact ? 'os-lx-pin-l' : 'min-w-0 truncate'} title={tb.label}>{tb.label}</span>
+      {open && <span className="os-lx-dot" title={t('os.search.isopen', 'Already open: it will come to the front')} />}
+      {!compact && b ? <Badge tone={tb.badgeKind === 'count' ? '' : 'primary'} className="ms-auto shrink-0" title={tb.badgeTitle || undefined}>{b}</Badge> : null}
+    </button>
+  );
+}
+
+export default function OsLauncher({ title, icon: Icon, sections, leaves, searchKeywords, remoteSearch, initialQuery = '', onOpenLeaf, onOpenHref, onClose, onExit, onReset, onCloseAll, openIds, pinned, recent, onAppMenu, onPersonalize, full, onFull }) {
   const { t } = useI18n();
   const [q, setQ] = useState(initialQuery);
   const [sel, setSel] = useState(0);
   const [remote, setRemote] = useState(null);
   const inputRef = useRef(null);
   const listRef = useRef(null);
-  const rootRef = useRef(null);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
 
   useEffect(() => { inputRef.current?.focus(); }, []);
   useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); closeRef.current(true); } };
+    // Escape inside a tile's menu closes that menu only (the menu listens on the same node, so
+    // the order of registration would otherwise close both).
+    const onKey = (e) => {
+      if (e.key !== 'Escape' || document.activeElement?.closest?.('.os-menu')) return;
+      e.stopPropagation(); closeRef.current(true);
+    };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
   }, []);
@@ -68,6 +93,12 @@ export default function OsLauncher({ title, icon: Icon, sections, leaves, search
   useEffect(() => { setSel(0); }, [query]);
 
   const onInputKey = (e) => {
+    if (e.key === 'ArrowDown' && !query) {
+      // No query: the arrow walks into the tiles.
+      const first = listRef.current?.querySelector('.os-lx-pin, .os-lx-app');
+      if (first) { e.preventDefault(); first.focus(); }
+      return;
+    }
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       if (!rows.length) return;
       e.preventDefault();
@@ -78,20 +109,23 @@ export default function OsLauncher({ title, icon: Icon, sections, leaves, search
     }
   };
   useEffect(() => { listRef.current?.querySelector('[data-sel="1"]')?.scrollIntoView?.({ block: 'nearest' }); }, [sel]);
+  const onBodyKey = (e) => {
+    if (query) return;
+    if (e.key === 'ArrowUp') {
+      const all = [...(listRef.current?.querySelectorAll('.os-lx-pin, .os-lx-app') || [])];
+      if (all[0] === document.activeElement) { e.preventDefault(); inputRef.current?.focus(); return; }
+    }
+    spatialFocus(e, listRef.current, '.os-lx-pin, .os-lx-app');
+  };
 
   let n = -1;
   const rowProps = () => { n += 1; const on = n === sel; const i = n; return { 'data-sel': on ? '1' : undefined, className: `os-lx-row${on ? ' is-sel' : ''}`, onMouseEnter: () => setSel(i) }; };
-
-  const WALL = [
-    ['scene', t('os.wall.scene', '3D scene')],
-    ['gradient', t('os.wall.gradient', 'Gradient')],
-    ['plain', t('os.wall.plain', 'Plain')],
-  ];
+  const openTab = (tb) => onOpenLeaf((tb.sub?.length ? tb.sub[0] : tb).id);
 
   return (
     <>
       <div className="os-scrim" aria-hidden onPointerDown={() => onClose(false)} />
-      <div ref={rootRef} className="os-launcher" role="dialog" aria-modal="false" aria-label={t('os.start.label', 'Start menu and search')}>
+      <div className="os-launcher" role="dialog" aria-modal="false" aria-label={t('os.start.label', 'Start menu and search')}>
         <div className="os-lx-head">
           {Icon && <span className="os-lx-logo"><Icon size={16} aria-hidden /></span>}
           <span className="font-semibold text-sm truncate" title={title}>{title}</span>
@@ -102,7 +136,7 @@ export default function OsLauncher({ title, icon: Icon, sections, leaves, search
             placeholder={remoteSearch ? t('os.search.ph.remote', 'Search a screen, an account, a repo…') : t('os.search.ph', 'Search a screen…')}
             aria-label={t('os.search', 'Search')} role="combobox" aria-expanded={!!query} aria-controls="os-lx-results" aria-autocomplete="list" />
         </div>
-        <div ref={listRef} id="os-lx-results" className="os-lx-body scroll-thin">
+        <div ref={listRef} id="os-lx-results" className="os-lx-body scroll-thin" onKeyDown={onBodyKey}>
           {query ? (
             <>
               <div className="os-lx-h">{t('os.search.screens', 'Screens')}</div>
@@ -133,37 +167,41 @@ export default function OsLauncher({ title, icon: Icon, sections, leaves, search
                   ))
               )}
             </>
-          ) : sections.map((sec, i) => (
-            <div key={sec.heading || `s-${i}`}>
-              {sec.heading && <div className="os-lx-h">{sec.heading}</div>}
-              <div className="os-lx-grid">
-                {sec.items.map((tb) => {
-                  const b = badgeOf(tb);
-                  return (
-                    <button key={tb.id} type="button" className="os-lx-app" onClick={() => onOpenLeaf((tb.sub?.length ? tb.sub[0] : tb).id)}>
-                      <span className="os-lx-app-ic"><tb.icon size={16} aria-hidden /></span>
-                      <span className="min-w-0 truncate" title={tb.label}>{tb.label}</span>
-                      {openIds.has(tb.id) && <span className="os-lx-dot" title={t('os.search.isopen', 'Already open: it will come to the front')} />}
-                      {b ? <Badge tone={tb.badgeKind === 'count' ? '' : 'primary'} className="ms-auto shrink-0" title={tb.badgeTitle || undefined}>{b}</Badge> : null}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
+          ) : (
+            <>
+              <div className="os-lx-h os-lx-h-row"><Pin size={11} aria-hidden /> {t('os.start.pinned', 'Pinned')}</div>
+              {pinned.length ? (
+                <div className="os-lx-pins" role="group" aria-label={t('os.start.pinned', 'Pinned')}>
+                  {pinned.map((tb) => <AppTile key={tb.id} tb={tb} compact open={openIds.has(tb.id)} onOpen={openTab} onMenu={onAppMenu} />)}
+                </div>
+              ) : <div className="os-lx-empty">{t('os.start.pinned.none', 'Right-click a screen below, then "Pin to start", to keep it here.')}</div>}
+              {recent.length > 0 && (
+                <>
+                  <div className="os-lx-h os-lx-h-row"><Clock3 size={11} aria-hidden /> {t('os.start.recent', 'Recent')}</div>
+                  <div className="os-lx-grid" role="group" aria-label={t('os.start.recent', 'Recent')}>
+                    {recent.map((tb) => <AppTile key={tb.id} tb={tb} open={openIds.has(tb.id)} onOpen={openTab} onMenu={onAppMenu} />)}
+                  </div>
+                </>
+              )}
+              {sections.map((sec, i) => (
+                <div key={sec.heading || `s-${i}`}>
+                  <div className="os-lx-h">{sec.heading || t('os.start.all', 'All screens')}</div>
+                  <div className="os-lx-grid" role="group" aria-label={sec.heading || t('os.start.all', 'All screens')}>
+                    {sec.items.map((tb) => <AppTile key={tb.id} tb={tb} open={openIds.has(tb.id)} onOpen={openTab} onMenu={onAppMenu} />)}
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
         </div>
         <div className="os-lx-foot">
-          <div className="os-lx-wall" role="radiogroup" aria-label={t('os.wall', 'Wallpaper')}>
-            <ImageIcon size={14} aria-hidden className="text-[var(--faint)] shrink-0" />
-            {WALL.map(([k, label]) => (
-              <button key={k} type="button" role="radio" aria-checked={wallpaper === k} className={`os-lx-chip${wallpaper === k ? ' is-on' : ''}`} onClick={() => onWallpaper(k)}>{label}</button>
-            ))}
-          </div>
           <div className="os-lx-actions">
+            <button type="button" className="os-lx-act" onClick={onPersonalize}><Palette size={14} aria-hidden /> {t('os.pz.t', 'Personalise')}</button>
+            <button type="button" className="os-lx-act" onClick={onFull}>{full ? <Minimize size={14} aria-hidden /> : <Maximize size={14} aria-hidden />} {full ? t('os.full.exit', 'Exit fullscreen') : t('os.full.enter', 'Fullscreen')}</button>
             <button type="button" className="os-lx-act" onClick={onCloseAll}><XCircle size={14} aria-hidden /> {t('os.closeall', 'Close all windows')}</button>
             <button type="button" className="os-lx-act" onClick={onReset}><RotateCcw size={14} aria-hidden /> {t('os.reset', 'Reset layout')}</button>
-            <button type="button" className="os-lx-act" onClick={onExit}><Monitor size={14} aria-hidden /> {t('os.classic', 'Classic mode')}</button>
           </div>
+          <button type="button" className="os-lx-act os-lx-exit" onClick={onExit}><PanelLeft size={14} aria-hidden /> {t('os.classic', 'Classic mode')}</button>
         </div>
       </div>
     </>

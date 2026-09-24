@@ -1,20 +1,28 @@
-// One window of the OS mode (M1): title bar, the three buttons, a window menu for the
-// keyboard, eight resize handles, and the REAL section component as its body.
+// One window of the OS mode (M1, reworked by N-os): a Windows-style title bar (the icon that
+// opens the system menu on the left, the title, then minimise / maximise / close flush in the
+// top-right corner, close turning red), eight resize handles, and the REAL section component
+// as its body.
+//
+// The maximise button is also the door to the snap layouts: hover it, press ArrowDown on it,
+// or right-click it (the shell draws the grid, os-snap.jsx). Right-clicking the title bar, or
+// Shift+F10 / the Menu key on the icon, opens the system menu (os-menu.jsx).
 //
 // Moving and resizing write the element's style directly while the pointer is down and
 // dispatch ONE action at the end (wm.js 'rect' / 'snap'). Dispatching on every pointermove
 // would re-render every open section sixty times a second for a drag.
 
 import { memo, Suspense, useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { Minus, Square, Copy, X, PanelLeft, PanelRight, Maximize2, Minimize2, CircleAlert } from 'lucide-react';
+import { Minus, Square, Copy, X, PanelLeft, PanelRight, Maximize2, Minimize2, CircleAlert, LayoutGrid, Scan, EyeOff, Pin, PinOff, PanelLeftOpen } from 'lucide-react';
 import { useI18n } from '../../i18n.jsx';
 import { Badge, Spinner } from '../ui.jsx';
 import { ErrorBoundary } from '../ErrorBoundary.jsx';
 import { defaultSize, resizeRect, snapZoneAt, TITLE_H } from './wm.js';
+import OsMenu, { isMenuKey, menuPoint } from './os-menu.jsx';
 
 const HANDLES = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'];
 const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
+/** How long the pointer rests on maximise before the snap layouts open (Windows 11: ~0.4 s). */
+const FLY_DELAY = 450;
 
 // The section itself. Memoised on (render, leaf): moving or focusing another window re-renders
 // the shell, and that must not re-render forty mounted admin screens.
@@ -22,62 +30,18 @@ const WindowBody = memo(function WindowBody({ render, leaf }) {
   return render(leaf);
 });
 
-function WindowMenu({ anchor, win, onClose, dispatch, onCloseWin }) {
-  const { t } = useI18n();
-  const ref = useRef(null);
-  // The latest onClose, read from a ref: the caller passes an inline arrow, and with it in the
-  // effect's deps every render of the window would re-run this and pull focus back to the
-  // first item.
-  const closeRef = useRef(onClose);
-  closeRef.current = onClose;
-  useEffect(() => {
-    const onClose = (v) => closeRef.current(v);
-    ref.current?.querySelector('button')?.focus();
-    const onKey = (e) => {
-      if (e.key === 'Escape') { e.stopPropagation(); onClose(true); return; }
-      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
-      e.preventDefault();
-      const items = [...(ref.current?.querySelectorAll('button:not([disabled])') || [])];
-      const i = items.indexOf(document.activeElement);
-      items[(i + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length]?.focus();
-    };
-    const onDown = (e) => { if (!ref.current?.contains(e.target)) onClose(false); };
-    window.addEventListener('keydown', onKey, true);
-    window.addEventListener('pointerdown', onDown, true);
-    return () => { window.removeEventListener('keydown', onKey, true); window.removeEventListener('pointerdown', onDown, true); };
-  }, []);
-  const r = anchor.getBoundingClientRect();
-  const act = (fn) => () => { fn(); onClose(true); };
-  const items = [
-    { k: 'left', icon: PanelLeft, label: t('os.win.snapleft', 'Snap to the left half'), run: () => dispatch({ type: 'snap', id: win.id, zone: 'left' }) },
-    { k: 'right', icon: PanelRight, label: t('os.win.snapright', 'Snap to the right half'), run: () => dispatch({ type: 'snap', id: win.id, zone: 'right' }) },
-    win.mode === 'max' || win.snap
-      ? { k: 'restore', icon: Minimize2, label: t('os.win.restore', 'Restore'), run: () => dispatch({ type: 'unsnap', id: win.id }) }
-      : { k: 'max', icon: Maximize2, label: t('os.win.max', 'Maximise'), run: () => dispatch({ type: 'toggleMax', id: win.id }) },
-    { k: 'min', icon: Minus, label: t('os.win.min', 'Minimise'), run: () => dispatch({ type: 'minimize', id: win.id }) },
-    { k: 'close', icon: X, label: t('os.win.close', 'Close'), run: () => onCloseWin(win.id) },
-  ];
-  return createPortal(
-    <div ref={ref} role="menu" className="os-menu" style={{ left: r.left, top: r.bottom + 4 }}>
-      {items.map((it) => (
-        <button key={it.k} type="button" role="menuitem" className="os-menu-item" onClick={act(it.run)}>
-          <it.icon size={14} aria-hidden /> <span>{it.label}</span>
-        </button>
-      ))}
-    </div>,
-    document.body,
-  );
-}
-
-export default function OsWindow({ win, tab, leaf, active, mounted, vp, deskRef, dispatch, render, onLeaf, onClose, onSnapPreview, registerEl }) {
+export default function OsWindow({ win, tab, leaf, active, mounted, vp, deskRef, dispatch, render, onLeaf, onClose, onSnapPreview, registerEl, act, pinned }) {
   const { t } = useI18n();
   const rootRef = useRef(null);
-  const [menu, setMenu] = useState(false);
-  const menuBtn = useRef(null);
+  const maxBtn = useRef(null);
+  const flyTimer = useRef(null);
+  const [menu, setMenu] = useState(null); // null | { x, y }
   const maxed = win.mode === 'max';
   const minimised = win.mode === 'min';
+  const freed = maxed || !!win.snap;
 
   useEffect(() => { registerEl(win.id, rootRef.current); return () => registerEl(win.id, null); }, [win.id, registerEl]);
+  useEffect(() => () => clearTimeout(flyTimer.current), []);
 
   // Put the element back on the state's geometry. Called at the end of every gesture BEFORE
   // dispatching: React compares new props with old props, not with the DOM, so a drag that
@@ -96,14 +60,14 @@ export default function OsWindow({ win, tab, leaf, active, mounted, vp, deskRef,
     const d = desk.getBoundingClientRect();
     const sx = e.clientX; const sy = e.clientY;
     let base = { x: win.x, y: win.y, w: win.w, h: win.h };
-    let detached = !(maxed || win.snap);
+    let detached = !freed;
     let moved = false; let zone = null; let last = base;
     const target = e.currentTarget;
     try { target.setPointerCapture(e.pointerId); } catch { /* old browser: window listeners still work */ }
     const move = (ev) => {
       const dx = ev.clientX - sx; const dy = ev.clientY - sy;
       if (!moved && Math.abs(dx) + Math.abs(dy) < 4) return;
-      if (!moved) { moved = true; el.classList.add('is-gesture'); }
+      if (!moved) { moved = true; el.classList.add('is-gesture'); act.closeFly(); }
       if (!detached) {
         // Dragging a maximised or snapped window: it takes back its free size under the
         // pointer, holding the title bar at the same relative spot.
@@ -127,7 +91,7 @@ export default function OsWindow({ win, tab, leaf, active, mounted, vp, deskRef,
       onSnapPreview(null);
       delete el.dataset.detached;
       resetStyle();
-      if (zone) dispatch({ type: 'snap', id: win.id, zone });
+      if (zone) act.snap(win.id, zone);
       else dispatch({ type: 'rect', id: win.id, rect: last });
     };
     window.addEventListener('pointermove', move);
@@ -166,6 +130,31 @@ export default function OsWindow({ win, tab, leaf, active, mounted, vp, deskRef,
   const titleId = `os-win-t-${win.id}`;
   const label = leaf && leaf.label !== tab.label ? `${tab.label} · ${leaf.label}` : tab.label;
 
+  // Like Windows: the button restores a maximised window and maximises any other one, snapped
+  // included (a snapped window comes back to its free size from the menu, Alt+Shift+Down, or by
+  // dragging it off its zone).
+  const maxLabel = maxed ? t('os.win.restore', 'Restore') : t('os.win.max', 'Maximise');
+  const toggleMax = () => { act.closeFly(); dispatch({ type: maxed ? 'unsnap' : 'toggleMax', id: win.id }); };
+  const openFly = (viaKeyboard) => { clearTimeout(flyTimer.current); if (maxBtn.current) act.openFly(win.id, maxBtn.current, viaKeyboard); };
+
+  const menuItems = [
+    freed
+      ? { k: 'restore', icon: Minimize2, label: t('os.win.restore', 'Restore'), hint: 'Alt+Shift+↓', run: () => dispatch({ type: 'unsnap', id: win.id }) }
+      : { k: 'max', icon: Maximize2, label: t('os.win.max', 'Maximise'), hint: 'Alt+Shift+↑', run: () => dispatch({ type: 'toggleMax', id: win.id }) },
+    { k: 'min', icon: Minus, label: t('os.win.min', 'Minimise'), run: () => dispatch({ type: 'minimize', id: win.id }) },
+    { sep: true },
+    { k: 'left', icon: PanelLeft, label: t('os.win.snapleft', 'Snap to the left half'), hint: 'Alt+Shift+←', run: () => act.snap(win.id, 'left') },
+    { k: 'right', icon: PanelRight, label: t('os.win.snapright', 'Snap to the right half'), hint: 'Alt+Shift+→', run: () => act.snap(win.id, 'right') },
+    { k: 'layouts', icon: LayoutGrid, label: t('os.snap.layouts.m', 'Snap layouts…'), hint: 'Alt+Z', run: () => openFly(true) },
+    { k: 'fill', icon: Scan, label: t('os.win.fill', 'Fill the free space'), run: () => act.fill(win.id) },
+    { sep: true },
+    { k: 'others', icon: EyeOff, label: t('os.win.others', 'Minimise the other windows'), run: () => dispatch({ type: 'minimizeOthers', id: win.id }) },
+    { k: 'pin', icon: pinned ? PinOff : Pin, label: pinned ? t('os.pin.bar.off', 'Unpin from the taskbar') : t('os.pin.bar.on', 'Pin to the taskbar'), run: () => dispatch({ type: 'pin', id: win.id }) },
+    { k: 'classic', icon: PanelLeftOpen, label: t('os.win.classic', 'Open in the classic mode'), run: () => act.classic(leaf?.id || win.leaf) },
+    { sep: true },
+    { k: 'close', icon: X, label: t('os.win.close', 'Close'), hint: 'Alt+W', danger: true, run: () => onClose(win.id) },
+  ];
+
   // A minimised window that fell out of the mounted set is not rendered at all: its section
   // component is unmounted, which is the whole point of the cap.
   if (minimised && !mounted) return null;
@@ -175,23 +164,31 @@ export default function OsWindow({ win, tab, leaf, active, mounted, vp, deskRef,
       aria-labelledby={titleId} hidden={minimised} tabIndex={-1} data-win={win.id}
       style={{ left: win.x, top: win.y, width: win.w, height: win.h, zIndex: win.z }}
       onPointerDownCapture={() => { if (!active) dispatch({ type: 'focus', id: win.id }); }}>
-      <header className="os-win-bar" onPointerDown={onTitleDown} onDoubleClick={(e) => { if (!e.target.closest('button')) dispatch({ type: 'toggleMax', id: win.id }); }}>
-        <button ref={menuBtn} type="button" className="os-win-icon" aria-haspopup="menu" aria-expanded={menu}
-          onClick={() => setMenu((m) => !m)} title={t('os.win.menu', 'Window menu')} aria-label={t('os.win.menu', 'Window menu')}>
+      <header className="os-win-bar" onPointerDown={onTitleDown}
+        onDoubleClick={(e) => { if (!e.target.closest('button')) toggleMax(); }}
+        onContextMenu={(e) => { if (e.target.closest('.os-win-ctl')) return; e.preventDefault(); setMenu(menuPoint(e)); }}>
+        <button type="button" className="os-win-icon" aria-haspopup="menu" aria-expanded={!!menu}
+          onClick={(e) => setMenu(menu ? null : menuPoint({ currentTarget: e.currentTarget, type: 'keydown' }))}
+          onKeyDown={(e) => { if (isMenuKey(e)) { e.preventDefault(); setMenu(menuPoint({ currentTarget: e.currentTarget, type: 'keydown' })); } }}
+          title={t('os.win.menu', 'Window menu')} aria-label={t('os.win.menu', 'Window menu')}>
           {Icon && <Icon size={15} aria-hidden />}
         </button>
         <h2 id={titleId} className="os-win-title" title={label}>{label}</h2>
-        <div className="os-win-btns">
+        <div className="os-win-ctl">
           <button type="button" className="os-win-btn" onClick={() => dispatch({ type: 'minimize', id: win.id })}
             title={t('os.win.min.tip', 'Minimise. Past six open windows, the oldest minimised ones are unloaded to save memory and lose what was not saved.')}
-            aria-label={t('os.win.min', 'Minimise')}><Minus size={14} aria-hidden /></button>
-          <button type="button" className="os-win-btn" onClick={() => dispatch({ type: maxed || win.snap ? 'unsnap' : 'toggleMax', id: win.id })}
-            title={maxed || win.snap ? t('os.win.restore', 'Restore') : t('os.win.max', 'Maximise')}
-            aria-label={maxed || win.snap ? t('os.win.restore', 'Restore') : t('os.win.max', 'Maximise')}>
-            {maxed || win.snap ? <Copy size={13} aria-hidden /> : <Square size={12} aria-hidden />}
+            aria-label={t('os.win.min', 'Minimise')}><Minus size={16} aria-hidden /></button>
+          <button ref={maxBtn} type="button" className="os-win-btn" onClick={toggleMax} aria-haspopup="dialog"
+            onPointerEnter={(e) => { if (e.pointerType === 'mouse') { clearTimeout(flyTimer.current); flyTimer.current = setTimeout(() => openFly(false), FLY_DELAY); } }}
+            onPointerLeave={() => { clearTimeout(flyTimer.current); act.leaveFly(); }}
+            onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); openFly(false); }}
+            onKeyDown={(e) => { if (e.key === 'ArrowDown' || isMenuKey(e)) { e.preventDefault(); openFly(true); } }}
+            title={`${maxLabel}. ${t('os.snap.hover', 'Rest the pointer here, or press the down arrow, for the snap layouts.')}`}
+            aria-label={maxLabel}>
+            {maxed ? <Copy size={14} aria-hidden /> : <Square size={13} aria-hidden />}
           </button>
           <button type="button" className="os-win-btn os-win-close" onClick={() => onClose(win.id)}
-            title={t('os.win.close', 'Close')} aria-label={t('os.win.close', 'Close')}><X size={15} aria-hidden /></button>
+            title={`${t('os.win.close', 'Close')} (Alt+W)`} aria-label={t('os.win.close', 'Close')}><X size={17} aria-hidden /></button>
         </div>
       </header>
       {subs && (
@@ -225,10 +222,7 @@ export default function OsWindow({ win, tab, leaf, active, mounted, vp, deskRef,
         </ErrorBoundary>
       </div>
       {!maxed && HANDLES.map((h) => <div key={h} className={`os-rz os-rz-${h}`} onPointerDown={onHandleDown(h)} aria-hidden />)}
-      {menu && menuBtn.current && (
-        <WindowMenu anchor={menuBtn.current} win={win} dispatch={dispatch} onCloseWin={onClose}
-          onClose={(refocus) => { setMenu(false); if (refocus) menuBtn.current?.focus(); }} />
-      )}
+      {menu && <OsMenu at={menu} items={menuItems} label={t('os.win.menu', 'Window menu')} onClose={() => setMenu(null)} />}
     </section>
   );
 }

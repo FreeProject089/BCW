@@ -1,17 +1,27 @@
-/* ════ OS mode of the dashboards (M1): the shell, windows, taskbar, start menu ═══════════
+/* ════ OS mode of the dashboards (M1, completed by N-os): shell, windows, taskbar, start menu,
+   tray, menus, snap layouts ═════════════════════════════════════════════════════════════
    Loaded with the lazy os-shell chunk only. Every colour is a site token, so a custom site
    theme and both modes reach it; popups are var(--bg-solid) (opaque, whatever Translucent
    surfaces says); windows and the taskbar join the frosted family under [data-surface-glass].
-   "Windows XP made today": title bars, three buttons, a taskbar with a start button, a light
-   depth. Not glass everywhere, not big rounded cards. */
+   "Windows XP made today": title bars with the three buttons flush in the corner, a taskbar
+   with a start button and a tray, a light depth. Not glass everywhere, not big rounded cards.
+
+   Layers inside the shell: desktop icons 0, windows 1..n, snap preview / assist 9998+,
+   taskbar 20, start menu scrim 40 + menu 41, Personalise 42/43. Outside it (portalled to
+   <body>): context menus, the snap grid and the tray popovers at 48, above the shell (30, or
+   main's raised context at 45 in fullscreen) and under the site's dialogs (50) and toasts (60). */
 
 /* The page behind the shell does not scroll: the shell IS the page under the topbar. */
 html[data-os-shell], html[data-os-shell] body { overflow: hidden; }
 /* The "3D scene" wallpaper paints nothing, so the page's own footer (a sibling of <main>)
    would show through the desktop. It is not reachable while the shell is up anyway. */
 html[data-os-shell] #main-content ~ footer { visibility: hidden; }
+/* Toasts clear the taskbar instead of sitting on the clock. */
+html[data-os-shell] .toast-host { bottom: calc(var(--os-taskbar-h, 48px) + 14px); }
 
 .os-shell {
+  --os-bar: var(--os-taskbar-h, 48px);
+  --os-icon-w: 96px; --os-icon-h: 100px; --os-icon-tile: 46px;
   position: fixed;
   top: var(--header-h, 68px);
   left: 0; right: 0; bottom: 0;
@@ -21,8 +31,19 @@ html[data-os-shell] #main-content ~ footer { visibility: hidden; }
   color: var(--text);
   font-size: 14px;
 }
+/* Fullscreen (and its immersive fallback): the shell covers the site's topbar. The shell lives
+   in <main id="main-content">, which is its own stacking context (relative z-10), so no z-index
+   on the shell can beat the topbar (z-40): main's context is raised instead, still under the
+   site's dialogs (50) and toasts (60). */
+html[data-os-full] #main-content { z-index: 45; }
+html[data-os-full] .os-shell { top: 0; }
+.os-shell[data-bar="top"] { flex-direction: column-reverse; }
+.os-shell[data-icons="sm"] { --os-icon-w: 80px; --os-icon-h: 82px; --os-icon-tile: 36px; }
+.os-shell[data-icons="lg"] { --os-icon-w: 116px; --os-icon-h: 124px; --os-icon-tile: 58px; }
+
 .os-shell :is(button, [role="tab"]):focus-visible,
-.os-menu button:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+.os-menu button:focus-visible,
+.os-snapfly button:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
 
 /* ── Desktop and wallpapers ───────────────────────────────────────────────── */
 .os-desktop {
@@ -41,6 +62,8 @@ html[data-os-shell] #main-content ~ footer { visibility: hidden; }
     var(--bg);
 }
 .os-shell[data-wallpaper="plain"] .os-desktop { background: var(--bg); }
+/* In fullscreen the scene wallpaper would show the page's own background only. */
+html[data-os-full] .os-shell[data-wallpaper="scene"] .os-desktop { background: transparent; }
 
 .os-icons {
   position: absolute;
@@ -48,33 +71,41 @@ html[data-os-shell] #main-content ~ footer { visibility: hidden; }
   margin: 0; padding: 0; list-style: none;
   display: grid;
   grid-auto-flow: column;
-  grid-template-rows: repeat(auto-fill, 112px);
-  grid-auto-columns: 100px;
+  grid-template-rows: repeat(auto-fill, calc(var(--os-icon-h) + 8px));
+  grid-auto-columns: var(--os-icon-w);
   gap: 4px;
   align-content: start;
   z-index: 0;
 }
 .os-icon {
-  width: 100px;
-  min-height: 104px;
+  position: relative;
+  width: var(--os-icon-w);
+  min-height: var(--os-icon-h);
   display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
   gap: 6px;
   padding: 6px 4px;
   border-radius: 10px;
   border: 1px solid transparent;
   text-align: center;
-  cursor: default;
+  cursor: pointer;
 }
-.os-icon:hover { background: color-mix(in srgb, var(--primary) 10%, transparent); border-color: color-mix(in srgb, var(--primary) 28%, transparent); }
+.os-icon:hover, .os-icon:focus-visible { background: color-mix(in srgb, var(--primary) 12%, transparent); border-color: color-mix(in srgb, var(--primary) 32%, transparent); }
+.os-icon:active .os-icon-tile { transform: scale(.96); }
 .os-icon-tile {
   position: relative;
   display: grid; place-items: center;
-  width: 46px; height: 46px;
+  width: var(--os-icon-tile); height: var(--os-icon-tile);
   border-radius: 12px;
   background: var(--bg-solid);
   border: 1px solid var(--line-strong);
   box-shadow: var(--shadow-sm);
   color: var(--accent-ink);
+}
+.os-shell[data-icons="lg"] .os-icon-tile svg { width: 28px; height: 28px; }
+.os-shell[data-icons="sm"] .os-icon-tile svg { width: 18px; height: 18px; }
+.os-icon.is-open .os-icon-tile::after {
+  content: ''; position: absolute; bottom: -5px; left: 50%; width: 14px; height: 3px; margin-left: -7px;
+  border-radius: 2px; background: var(--primary);
 }
 .os-icon-badge {
   position: absolute; top: -6px; right: -8px;
@@ -84,7 +115,7 @@ html[data-os-shell] #main-content ~ footer { visibility: hidden; }
   font-size: 10.5px; font-weight: 700; line-height: 18px;
 }
 .os-icon-label {
-  max-width: 96px;
+  max-width: calc(var(--os-icon-w) - 4px);
   padding: 1px 6px;
   border-radius: 6px;
   background: var(--bg-solid);
@@ -92,11 +123,12 @@ html[data-os-shell] #main-content ~ footer { visibility: hidden; }
   font-size: 12px; line-height: 1.25;
   overflow-wrap: anywhere;
 }
+.os-shell[data-icons="sm"] .os-icon-label { font-size: 11px; }
 
 .os-hint {
   position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%);
   display: flex; align-items: center; gap: 8px;
-  max-width: min(560px, calc(100% - 32px));
+  max-width: min(620px, calc(100% - 32px));
   padding: 8px 14px;
   border-radius: 999px;
   background: var(--bg-solid);
@@ -105,6 +137,7 @@ html[data-os-shell] #main-content ~ footer { visibility: hidden; }
   color: var(--muted);
   font-size: 13px;
   z-index: 0;
+  pointer-events: none;
 }
 
 .os-snap-preview {
@@ -124,7 +157,7 @@ html[data-os-shell] #main-content ~ footer { visibility: hidden; }
   min-width: 0;
   background: var(--bg-solid);
   border: 1px solid var(--line-strong);
-  border-radius: 10px;
+  border-radius: 9px;
   box-shadow: var(--shadow-lg);
   overflow: hidden;
   outline: none;
@@ -132,18 +165,22 @@ html[data-os-shell] #main-content ~ footer { visibility: hidden; }
 .os-win[hidden] { display: none !important; }
 .os-win.is-active { border-color: color-mix(in srgb, var(--primary) 55%, var(--line-strong)); }
 .os-win.is-max:not([data-detached]) { border-radius: 0; border-width: 0; box-shadow: none; }
+.os-win.is-snapped:not([data-detached]) { border-radius: 4px; }
 .os-win.is-gesture { user-select: none; }
 .os-win.is-gesture .os-win-body { pointer-events: none; }
 @media (prefers-reduced-motion: no-preference) {
-  .os-win { animation: osWinIn .14s ease-out; }
-  .os-snap-preview { transition: left .12s ease, top .12s ease, width .12s ease, height .12s ease; }
+  .os-shell[data-anim] .os-win { animation: osWinIn .14s ease-out; }
+  /* Maximise, restore, snap, tile: the frame travels to its new place. Never during a drag. */
+  .os-shell[data-anim] .os-win:not(.is-gesture) { transition: left .16s ease, top .16s ease, width .16s ease, height .16s ease, border-radius .16s ease; }
+  .os-shell[data-anim] .os-snap-preview { transition: left .12s ease, top .12s ease, width .12s ease, height .12s ease; }
 }
 @keyframes osWinIn { from { opacity: 0; transform: translateY(6px) scale(.985); } to { opacity: 1; transform: none; } }
 
+/* The title bar: icon (system menu) · title · minimise / maximise / close flush in the corner. */
 .os-win-bar {
-  flex: 0 0 34px;
-  display: flex; align-items: center; gap: 6px;
-  padding: 0 4px 0 6px;
+  flex: 0 0 36px;
+  display: flex; align-items: stretch; gap: 4px;
+  padding: 0 0 0 6px;
   background: var(--surface-2);
   border-bottom: 1px solid var(--line);
   cursor: default;
@@ -156,13 +193,16 @@ html[data-os-shell] #main-content ~ footer { visibility: hidden; }
     color-mix(in srgb, var(--primary) 9%, var(--bg-solid)));
 }
 .os-win-icon {
+  align-self: center;
   display: grid; place-items: center;
-  width: 26px; height: 26px;
+  width: 28px; height: 28px;
   border-radius: 6px;
   color: var(--accent-ink);
+  flex-shrink: 0;
 }
-.os-win-icon:hover { background: var(--surface-3); }
+.os-win-icon:hover, .os-win-icon[aria-expanded="true"] { background: var(--surface-3); }
 .os-win-title {
+  align-self: center;
   flex: 1; min-width: 0;
   margin: 0;
   font-size: 13px; font-weight: 600;
@@ -170,15 +210,17 @@ html[data-os-shell] #main-content ~ footer { visibility: hidden; }
   color: var(--text);
 }
 .os-win:not(.is-active) .os-win-title { color: var(--muted); }
-.os-win-btns { display: flex; align-items: center; gap: 2px; }
+.os-win-ctl { display: flex; align-items: stretch; flex-shrink: 0; margin-inline-start: auto; }
 .os-win-btn {
   display: grid; place-items: center;
-  width: 32px; height: 26px;
-  border-radius: 6px;
+  width: 46px;
   color: var(--muted);
+  border-radius: 0;
 }
-.os-win-btn:hover { background: var(--surface-3); color: var(--text); }
-.os-win-close:hover { background: var(--error); color: var(--on-error); }
+.os-win-btn:hover { background: color-mix(in srgb, var(--text) 9%, transparent); color: var(--text); }
+.os-win-btn:active { background: color-mix(in srgb, var(--text) 15%, transparent); }
+.os-win-close:hover, .os-win-close:focus-visible { background: var(--error); color: var(--on-error); }
+.os-win-ctl .os-win-btn:focus-visible { outline-offset: -2px; }
 
 .os-win-subs {
   flex: 0 0 auto;
@@ -218,48 +260,126 @@ html[data-os-shell] #main-content ~ footer { visibility: hidden; }
 
 /* Resize handles, outside the content, on the edges and corners. */
 .os-rz { position: absolute; z-index: 2; touch-action: none; }
-.os-rz-n { top: 0; left: 10px; right: 10px; height: 5px; cursor: ns-resize; }
+.os-rz-n { top: 0; left: 10px; right: 10px; height: 4px; cursor: ns-resize; }
 .os-rz-s { bottom: 0; left: 10px; right: 10px; height: 6px; cursor: ns-resize; }
-.os-rz-e { right: 0; top: 10px; bottom: 10px; width: 6px; cursor: ew-resize; }
+.os-rz-e { right: 0; top: 36px; bottom: 10px; width: 6px; cursor: ew-resize; }
 .os-rz-w { left: 0; top: 10px; bottom: 10px; width: 6px; cursor: ew-resize; }
-.os-rz-ne { top: 0; right: 0; width: 12px; height: 12px; cursor: nesw-resize; }
+.os-rz-ne { top: 0; right: 0; width: 8px; height: 4px; cursor: nesw-resize; }
 .os-rz-nw { top: 0; left: 0; width: 12px; height: 12px; cursor: nwse-resize; }
 .os-rz-se { bottom: 0; right: 0; width: 14px; height: 14px; cursor: nwse-resize; }
 .os-rz-sw { bottom: 0; left: 0; width: 12px; height: 12px; cursor: nesw-resize; }
 
-/* The window menu (portalled to <body>): a popup, so opaque. */
+/* ── Menus (portalled to <body>): popups, so opaque ───────────────────────── */
 .os-menu {
   position: fixed;
-  z-index: 45;
-  min-width: 220px;
+  z-index: 48;
+  min-width: 232px;
+  max-width: min(340px, calc(100vw - 12px));
+  max-height: calc(100vh - 12px);
+  overflow-y: auto;
   padding: 4px;
   background: var(--bg-solid);
   border: 1px solid var(--line-strong);
   border-radius: 10px;
   box-shadow: var(--shadow-lg);
+  color: var(--text);
+  font-size: 13px;
 }
 .os-menu-item {
   display: flex; align-items: center; gap: 8px;
   width: 100%;
-  padding: 7px 10px;
+  padding: 6px 8px;
   border-radius: 6px;
-  font-size: 13px;
   text-align: start;
   color: var(--text);
 }
-.os-menu-item:hover, .os-menu-item:focus-visible { background: var(--surface-2); }
+.os-menu-item:hover:not(:disabled), .os-menu-item:focus-visible { background: var(--surface-2); }
+.os-menu-item:disabled { color: var(--faint); cursor: default; }
+.os-menu-item.is-danger:not(:disabled) { color: var(--error); }
+.os-menu-ic { display: grid; place-items: center; width: 18px; flex-shrink: 0; color: var(--accent-ink); }
+.os-menu-item:disabled .os-menu-ic { color: var(--faint); }
+.os-menu-item.is-danger .os-menu-ic { color: inherit; }
+.os-menu-label { flex: 1; min-width: 0; }
+.os-menu-hint { font: inherit; font-size: 11px; color: var(--faint); padding-inline-start: 12px; white-space: nowrap; }
+.os-menu-sep { height: 1px; margin: 4px 6px; background: var(--line); }
+
+/* ── Snap layouts (portalled) and snap assist ─────────────────────────────── */
+.os-snapfly {
+  position: fixed;
+  z-index: 48;
+  width: 300px;
+  padding: 10px;
+  background: var(--bg-solid);
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+}
+.os-snapfly-t { font-size: 12px; font-weight: 600; color: var(--muted); margin: 0 2px 8px; }
+.os-snapfly-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.os-snapfly-lay {
+  position: relative;
+  height: 54px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+}
+.os-snapfly-zone {
+  position: absolute;
+  border: 2px solid var(--surface-2);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--text) 16%, var(--bg-solid));
+  transition: background .1s;
+}
+.os-snapfly-zone:hover, .os-snapfly-zone:focus-visible { background: var(--primary); }
+
+.os-assist {
+  position: absolute;
+  z-index: 9998;
+  padding: 10px;
+  display: grid; place-items: center;
+  border-radius: 10px;
+  border: 2px dashed color-mix(in srgb, var(--primary) 60%, transparent);
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
+}
+.os-assist-panel {
+  width: min(420px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  padding: 12px;
+  background: var(--bg-solid);
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+}
+.os-assist-h { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+.os-assist-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+.os-assist-item {
+  display: flex; align-items: center; gap: 8px; min-width: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  text-align: start; font-size: 13px;
+}
+.os-assist-item:hover, .os-assist-item:focus-visible { border-color: color-mix(in srgb, var(--primary) 50%, transparent); background: color-mix(in srgb, var(--primary) 10%, var(--bg-solid)); }
+.os-assist-ic { color: var(--accent-ink); flex-shrink: 0; display: grid; }
+.os-assist-l { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.os-assist-skip { margin-top: 10px; font-size: 12.5px; color: var(--muted); }
+.os-assist-skip:hover { color: var(--text); text-decoration: underline; }
 
 /* ── Taskbar ──────────────────────────────────────────────────────────────── */
 .os-taskbar {
   position: relative;
   z-index: 20;
-  flex: 0 0 var(--os-taskbar-h, 48px);
+  flex: 0 0 var(--os-bar);
   display: flex; align-items: center; gap: 6px;
   padding: 0 0 0 8px;
+  min-width: 0;
   background: var(--bg-solid);
   border-top: 1px solid var(--line-strong);
   box-shadow: 0 -6px 20px -14px rgba(0, 0, 0, 0.35);
 }
+.os-shell[data-bar="top"] .os-taskbar { border-top: 0; border-bottom: 1px solid var(--line-strong); box-shadow: 0 6px 20px -14px rgba(0, 0, 0, 0.35); }
 .os-start {
   display: inline-flex; align-items: center; gap: 8px;
   height: 36px;
@@ -277,7 +397,7 @@ html[data-os-shell] #main-content ~ footer { visibility: hidden; }
 .os-start:hover, .os-start.is-on { background: color-mix(in srgb, var(--primary) 26%, var(--bg-solid)); }
 .os-searchbtn {
   display: inline-flex; align-items: center; gap: 8px;
-  width: 200px; min-width: 44px; height: 34px;
+  width: 180px; min-width: 38px; height: 34px;
   padding: 0 10px;
   border-radius: 8px;
   border: 1px solid var(--control-border);
@@ -287,13 +407,32 @@ html[data-os-shell] #main-content ~ footer { visibility: hidden; }
   flex-shrink: 1;
 }
 .os-searchbtn:hover { color: var(--text); }
+
+/* Pinned screens (quick launch). */
+.os-ql {
+  display: flex; align-items: center; gap: 2px;
+  margin: 0; padding: 0 6px 0 4px; list-style: none;
+  border-inline-end: 1px solid var(--line);
+  flex-shrink: 0;
+}
+.os-ql-btn {
+  position: relative;
+  display: grid; place-items: center;
+  width: 38px; height: 36px;
+  border-radius: 8px;
+  color: var(--accent-ink);
+}
+.os-ql-btn:hover { background: var(--surface-2); }
+.os-ql-btn.is-open::after { content: ''; position: absolute; bottom: 3px; left: 50%; width: 6px; height: 3px; margin-left: -3px; border-radius: 2px; background: var(--primary); }
+
 .os-tasks {
   flex: 1; min-width: 0;
   display: flex; align-items: center; gap: 4px;
   margin: 0; padding: 0; list-style: none;
   overflow-x: auto; scrollbar-width: thin;
 }
-.os-tasks > li { flex: 0 1 190px; min-width: 52px; }
+.os-tasks > li { flex: 0 1 190px; min-width: 44px; }
+.os-taskbar.is-compact .os-tasks > li { flex: 0 0 44px; }
 .os-task {
   display: flex; align-items: center; gap: 8px;
   width: 100%; height: 36px;
@@ -305,6 +444,9 @@ html[data-os-shell] #main-content ~ footer { visibility: hidden; }
   font-size: 13px;
   position: relative;
 }
+.os-taskbar.is-compact .os-task { justify-content: center; padding: 0; }
+.os-taskbar.is-compact .os-task-l { display: none; }
+.os-task-l { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .os-task svg { color: var(--accent-ink); }
 .os-task:hover { border-color: var(--line-strong); background: var(--surface-3); }
 .os-task.is-on {
@@ -318,38 +460,100 @@ html[data-os-shell] #main-content ~ footer { visibility: hidden; }
 .os-task.is-min { color: var(--muted); }
 .os-task.is-dormant { border-style: dashed; }
 .os-task-zz { margin-inline-start: auto; color: var(--faint); font-weight: 700; }
-.os-tray { display: flex; align-items: center; gap: 8px; height: 100%; flex-shrink: 0; }
+
+/* ── Tray ─────────────────────────────────────────────────────────────────── */
+.os-tray { position: relative; display: flex; align-items: center; gap: 2px; height: 100%; flex-shrink: 0; padding-inline-start: 4px; }
+.os-tray-sep { width: 1px; height: 24px; background: var(--line); margin: 0 4px; }
 .os-traybtn {
-  display: inline-flex; align-items: center; gap: 6px;
-  height: 32px; padding: 0 10px;
+  position: relative;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 34px; min-width: 34px; padding: 0 8px;
   border-radius: 8px;
-  border: 1px solid var(--control-border);
-  background: var(--surface-2);
   font-size: 12.5px;
   color: var(--text);
 }
-.os-traybtn:hover { background: var(--surface-3); }
-.os-clock { font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 40px; text-align: center; }
+.os-traybtn:hover, .os-traybtn.is-on { background: var(--surface-2); }
+.os-trayic { padding: 0; width: 34px; }
+.os-traylang { font-weight: 600; font-size: 11.5px; gap: 4px; }
+.os-traylang svg { color: var(--muted); }
+.os-tray-badge {
+  position: absolute; top: 3px; right: 2px;
+  min-width: 15px; height: 15px; padding: 0 4px;
+  border-radius: 999px;
+  background: var(--primary); color: var(--on-primary);
+  font-size: 9px; font-weight: 700; line-height: 15px; text-align: center;
+}
+.os-clock {
+  display: flex; flex-direction: column; align-items: flex-end; justify-content: center;
+  height: 40px; padding: 0 8px; margin-inline-start: 2px;
+  border-radius: 8px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+.os-clock:hover, .os-clock.is-on { background: var(--surface-2); }
+.os-clock-t { font-size: 12.5px; color: var(--text); }
+.os-clock-d { font-size: 11px; color: var(--muted); }
 .os-showdesk {
-  width: 12px; height: 100%;
+  width: 10px; height: 100%;
+  margin-inline-start: 4px;
   border-inline-start: 1px solid var(--line-strong);
 }
 .os-showdesk:hover { background: color-mix(in srgb, var(--primary) 16%, transparent); }
+@media (max-width: 1399px) { .os-tray-label { display: none; } }
 @media (max-width: 1100px) {
-  .os-tray-label { display: none; }
-  .os-searchbtn { width: 44px; justify-content: center; }
+  .os-searchbtn { width: 38px; justify-content: center; padding: 0; }
   .os-searchbtn > span { display: none; }
+  .os-clock-d { display: none; }
 }
+@media (max-width: 900px) { .os-start-label { display: none; } }
+
+/* Tray popovers (portalled to <body>, os-tray.jsx Pop): fixed to the viewport, above the
+   taskbar, or below it when the taskbar is on top. The shell is fixed at the viewport's edges,
+   its top at the header's height (0 in fullscreen), so these offsets are the shell's. Above
+   the shell (30, or 45 in fullscreen), like the menus. */
+html[data-os-shell] { --os-top: var(--header-h, 68px); --os-bar-h: 48px; }
+html[data-os-full] { --os-top: 0px; }
+.os-pop {
+  position: fixed;
+  z-index: 48;
+  right: 8px;
+  bottom: calc(var(--os-bar-h) + 8px);
+  display: flex; flex-direction: column;
+  max-height: calc(100vh - var(--os-top) - var(--os-bar-h) - 16px);
+  background: var(--bg-solid);
+  color: var(--text);
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+.os-pop.os-pop-top { bottom: auto; top: calc(var(--os-top) + var(--os-bar-h) + 8px); }
+.os-pop-notif { width: min(23rem, calc(100vw - 16px)); height: min(34rem, calc(100vh - var(--os-top) - var(--os-bar-h) - 16px)); }
+.os-pop-cal { width: 300px; padding: 12px; gap: 10px; }
+.os-cal-now { padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+.os-cal-time { font-size: 26px; font-weight: 300; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.os-cal-full { font-size: 12.5px; color: var(--accent-ink); margin-top: 2px; }
+.os-cal-head { display: flex; align-items: center; gap: 4px; }
+.os-cal-month { flex: 1; font-size: 13px; font-weight: 600; text-transform: capitalize; }
+.os-cal-nav { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; }
+.os-cal-nav:hover { background: var(--surface-2); }
+.os-cal-grid { width: 100%; border-collapse: collapse; font-size: 12.5px; text-align: center; font-variant-numeric: tabular-nums; }
+.os-cal-grid th { font-weight: 500; color: var(--faint); padding: 4px 0; text-transform: uppercase; font-size: 11px; }
+.os-cal-grid td { padding: 0; height: 32px; }
+.os-cal-grid td.is-today { background: var(--primary); color: var(--on-primary); border-radius: 999px; font-weight: 700; }
+.os-cal-today { align-self: flex-start; font-size: 12.5px; color: var(--accent-ink); }
+.os-cal-today:hover { text-decoration: underline; }
 
 /* ── Start menu and search ────────────────────────────────────────────────── */
 .os-scrim { position: absolute; inset: 0; z-index: 40; }
+.os-scrim-dim { z-index: 42; background: rgba(4, 5, 8, 0.38); }
 .os-launcher {
   position: absolute;
   z-index: 41;
   left: 8px;
-  bottom: calc(var(--os-taskbar-h, 48px) + 8px);
-  width: min(680px, calc(100% - 16px));
-  max-height: calc(100% - var(--os-taskbar-h, 48px) - 16px);
+  bottom: calc(var(--os-bar) + 8px);
+  width: min(700px, calc(100% - 16px));
+  max-height: calc(100% - var(--os-bar) - 16px);
   display: flex; flex-direction: column;
   background: var(--bg-solid);
   border: 1px solid var(--line-strong);
@@ -357,8 +561,10 @@ html[data-os-shell] #main-content ~ footer { visibility: hidden; }
   box-shadow: var(--shadow-lg);
   overflow: hidden;
 }
+.os-shell[data-bar="top"] .os-launcher { bottom: auto; top: calc(var(--os-bar) + 8px); }
 @media (prefers-reduced-motion: no-preference) {
-  .os-launcher { animation: osLxIn .14s ease-out; }
+  .os-shell[data-anim] .os-launcher, .os-pop { animation: osLxIn .14s ease-out; }
+  .os-shell[data-anim] .os-pz { animation: osWinIn .14s ease-out; }
 }
 @keyframes osLxIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 .os-lx-head { display: flex; align-items: center; gap: 8px; padding: 12px 14px 8px; min-width: 0; }
@@ -383,7 +589,21 @@ html[data-os-shell] #main-content ~ footer { visibility: hidden; }
 @media (pointer: coarse) { .os-lx-search input { font-size: 16px; } }
 .os-lx-body { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 12px 10px; }
 .os-lx-h { padding: 10px 6px 4px; font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--faint); }
+.os-lx-h-row { display: flex; align-items: center; gap: 5px; }
 .os-lx-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px; }
+.os-lx-pins { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 4px; }
+.os-lx-pin {
+  position: relative;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 10px 4px 8px;
+  border-radius: 10px;
+  font-size: 12px; text-align: center;
+  color: var(--text);
+}
+.os-lx-pin:hover, .os-lx-pin:focus-visible { background: var(--surface-2); }
+.os-lx-pin .os-lx-app-ic { position: relative; width: 36px; height: 36px; border-radius: 10px; }
+.os-lx-pin .os-lx-dot { position: absolute; top: 8px; right: 12px; }
+.os-lx-pin-l { max-width: 100%; overflow-wrap: anywhere; line-height: 1.25; }
 .os-lx-app, .os-lx-row {
   display: flex; align-items: center; gap: 10px;
   width: 100%; min-width: 0;
@@ -393,7 +613,7 @@ html[data-os-shell] #main-content ~ footer { visibility: hidden; }
   font-size: 13px;
   color: var(--text);
 }
-.os-lx-app:hover, .os-lx-row:hover, .os-lx-row.is-sel { background: var(--surface-2); }
+.os-lx-app:hover, .os-lx-app:focus-visible, .os-lx-row:hover, .os-lx-row.is-sel { background: var(--surface-2); }
 .os-lx-row.is-sel { box-shadow: inset 2px 0 0 var(--primary); }
 .os-lx-app-ic {
   display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0;
@@ -409,9 +629,8 @@ html[data-os-shell] #main-content ~ footer { visibility: hidden; }
   border-top: 1px solid var(--line);
   background: var(--surface-2);
 }
-.os-lx-wall { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 .os-lx-chip {
-  padding: 3px 10px; border-radius: 999px;
+  padding: 4px 11px; border-radius: 999px;
   border: 1px solid var(--line-strong);
   background: var(--bg-solid);
   font-size: 12px; color: var(--muted);
@@ -426,10 +645,45 @@ html[data-os-shell] #main-content ~ footer { visibility: hidden; }
   background: var(--bg-solid);
   font-size: 12.5px; color: var(--text);
 }
-.os-lx-act:hover { border-color: var(--line-strong); background: var(--surface-3); }
+.os-lx-act:hover:not(:disabled) { border-color: var(--line-strong); background: var(--surface-3); }
+.os-lx-act:disabled { color: var(--faint); cursor: default; }
+.os-lx-exit { border-color: color-mix(in srgb, var(--primary) 40%, transparent); }
+
+/* ── Personalise (a dialog inside the shell) ──────────────────────────────── */
+.os-pz {
+  position: absolute;
+  z-index: 43;
+  left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(560px, calc(100% - 24px));
+  max-height: calc(100% - 24px);
+  display: flex; flex-direction: column;
+  background: var(--bg-solid);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+.os-pz-head { flex: 0 0 36px; display: flex; align-items: stretch; padding-inline-start: 14px; border-bottom: 1px solid var(--line); background: var(--surface-2); }
+.os-pz-h { flex: 1; align-self: center; margin: 0; font-size: 13px; font-weight: 600; }
+.os-pz-body { overflow-y: auto; padding: 6px 14px 14px; }
+.os-pz-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.os-pz-row:last-child { border-bottom: 0; }
+.os-pz-ic { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--line); color: var(--accent-ink); flex-shrink: 0; }
+.os-pz-title { flex: 1; min-width: 150px; font-size: 13px; font-weight: 500; }
+.os-pz-ctl { display: flex; justify-content: flex-end; }
+.os-pz-choice { display: flex; flex-wrap: wrap; gap: 4px; }
+.os-pz-note { margin: -4px 0 4px 40px; font-size: 12px; color: var(--muted); }
+.os-pz-switch {
+  position: relative; width: 40px; height: 24px; border-radius: 999px;
+  background: var(--surface-3); border: 1px solid var(--line-strong);
+}
+.os-pz-switch > span { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 999px; background: #fff; box-shadow: var(--shadow-sm); transition: transform .12s; }
+.os-pz-switch.is-on { background: var(--primary); border-color: var(--primary); }
+.os-pz-switch.is-on > span { transform: translateX(16px); }
 
 /* ── Translucent surfaces: the windows' frames and the taskbar frost like the cards. The
-   start menu and the window menu are popups, so they stay opaque. ── */
+   start menu, the menus, the tray popovers and Personalise are popups, so they stay opaque. ── */
 [data-surface-glass] .os-win {
   background: color-mix(in srgb, var(--bg-solid) calc(var(--glass-alpha, 0.85) * 100%), transparent);
   backdrop-filter: blur(18px) saturate(1.3);
@@ -443,6 +697,7 @@ html[data-os-shell] #main-content ~ footer { visibility: hidden; }
 
 /* Forced colours: keep the frames visible. */
 @media (forced-colors: active) {
-  .os-win, .os-taskbar, .os-launcher, .os-menu { border: 1px solid CanvasText; }
+  .os-win, .os-taskbar, .os-launcher, .os-menu, .os-pop, .os-snapfly, .os-pz { border: 1px solid CanvasText; }
   .os-task.is-on { outline: 2px solid Highlight; }
+  .os-snapfly-zone { border: 1px solid CanvasText; }
 }
