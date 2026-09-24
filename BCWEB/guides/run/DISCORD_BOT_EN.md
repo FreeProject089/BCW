@@ -26,9 +26,11 @@ server owner's own Discord dashboard) and picked up within 30 seconds, without a
    reports the reason to the dashboard rather than looping in silence. The other intents it
    asks for (guilds, voice states, messages, message reactions, moderation, expressions,
    webhooks) are not privileged.
-3. Copy the token, then either:
-   - paste it in Admin → Discord bot → Overview → **Bot token**, or
-   - set `DISCORD_TOKEN` in `infra/compose/.env`.
+3. Copy the token and set `DISCORD_TOKEN` in `infra/compose/.env`. The bot reads it from its
+   own environment and nowhere else (since September 2026 there is no `GET /bot/token`: the
+   site no longer hands the token to whoever holds the bot's shared secret). The dashboard's
+   **Bot token** field stores a copy the *site* uses for its own Discord calls (the
+   application-emoji upload); it does not start the bot.
 4. Invite the bot to the server. The site builds the invite link itself, on the **user**
    Dashboard → **Discord servers** (not the admin screen): the bot reports its own
    application id on every heartbeat, so nobody has to paste a client id. The link asks for
@@ -62,13 +64,14 @@ not theirs to set.
 plain JSON. It is **not encrypted at rest**: anyone with database access can read it. Treat
 a database dump as you would the token itself. No API route ever returns it to the browser
 (the admin config route answers with `hasToken` and `tokenFromEnv` booleans only).
-`GET /bot/token` returns `null` while the bot is disabled, which is how "disabled" is
-enforced even if the container keeps running.
+The bot never reads it: "disabled" is enforced by the bot itself, which reads `enabled` from
+`GET /bot/config` on every tick and disconnects.
 
 **No restart is ever needed.** `index.mjs` is a connection manager, not a plain boot. A
-supervisor tick every 20 seconds connects when a token appears, reconnects when the token
-changes or when an admin presses **Reconnect**, and disconnects when the bot is switched
-off. With no token the process idles and keeps polling; it does not exit.
+supervisor tick every 20 seconds connects when the bot is switched on, reconnects when an
+admin presses **Reconnect**, and disconnects when the bot is switched off. With no
+`DISCORD_TOKEN` in its environment the process idles; it does not exit. Changing the token
+means changing `.env` and recreating the container.
 
 **Failed logins back off** instead of hammering Discord: 10 minutes on an invalid token
 (it waits for the token to change), 1 minute when the privileged intents are disabled (so
@@ -78,9 +81,9 @@ enabling them in the portal reconnects promptly), 30 seconds otherwise.
 
 | Var | Purpose |
 |---|---|
-| `DISCORD_TOKEN` | Bot token. Empty: the bot idles until a token is set in the dashboard. Set: it wins and locks the dashboard field. |
+| `DISCORD_TOKEN` | Bot token, read from this container's environment only. Empty: the bot idles. |
 | `BCWEB_API_URL` | Internal API base. Default `http://api:3000`. |
-| `BOT_SHARED_SECRET` | The credential on every `/bot/*` call. The API accepts `BOT_SHARED_SECRET`, else `LINK_LOOKUP_SECRET`, else the literal `dev-bot-secret`, and the production boot guard refuses to start without one of the first two. Compared in constant time. |
+| `BOT_SHARED_SECRET` | The credential on every `/bot/*` call. The API accepts `BOT_SHARED_SECRET` only (the `LINK_LOOKUP_SECRET` fallback was removed in September 2026: the telemetry service holds that one), else the literal `dev-bot-secret` in development; the production boot guard refuses to start without it. Compared in constant time. |
 | `SITE_URL` | The public site URL the bot puts in its links and buttons. |
 
 Note that `DISCORD_CLIENT_ID` / `DISCORD_CLIENT_SECRET` are the **OAuth login** identity, a

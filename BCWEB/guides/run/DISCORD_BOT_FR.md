@@ -27,9 +27,11 @@ Discord du propriétaire du serveur) et est repris en moins de 30 secondes, sans
    remonte la raison au dashboard au lieu de boucler en silence. Les autres intents qu'il
    demande (serveurs, états vocaux, messages, réactions, modération, expressions, webhooks)
    ne sont pas privilégiés.
-3. Copie le token, puis au choix :
-   - colle-le dans Admin → Bot Discord → Vue d'ensemble → **Token du bot**, ou
-   - règle `DISCORD_TOKEN` dans `infra/compose/.env`.
+3. Copie le token et règle `DISCORD_TOKEN` dans `infra/compose/.env`. Le bot le lit dans son
+   propre environnement et nulle part ailleurs (depuis septembre 2026 il n'y a plus de
+   `GET /bot/token` : le site ne remet plus le token à qui détient le secret partagé du bot).
+   Le champ **Token du bot** du dashboard garde une copie que le *site* utilise pour ses
+   propres appels à Discord (l'envoi des emojis d'application) ; il ne démarre pas le bot.
 4. Invite le bot sur le serveur. Le site construit le lien d'invitation lui-même, sur le
    tableau de bord **utilisateur** → **Serveurs Discord** (pas l'écran admin) : le bot
    rapporte son propre id d'application à chaque battement de cœur, donc personne n'a de
@@ -64,14 +66,14 @@ lui.
 `bot.token`, en JSON clair. Il n'est **pas chiffré au repos** : toute personne qui a accès à
 la base peut le lire. Traite un dump de base comme le token lui-même. Aucune route d'API ne
 le renvoie au navigateur (la route de config admin répond avec les seuls booléens `hasToken`
-et `tokenFromEnv`). `GET /bot/token` renvoie `null` tant que le bot est désactivé, et c'est
-ainsi que « désactivé » est appliqué même si le conteneur tourne toujours.
+et `tokenFromEnv`). Le bot ne le lit jamais : « désactivé » est appliqué par le bot lui-même, qui lit `enabled`
+dans `GET /bot/config` à chaque tick et se déconnecte.
 
 **Aucun redémarrage n'est jamais nécessaire.** `index.mjs` est un gestionnaire de connexion,
-pas un simple démarrage. Un tick de supervision toutes les 20 secondes connecte quand un
-token apparaît, reconnecte quand le token change ou quand un admin appuie sur
-**Reconnecter**, et déconnecte quand le bot est éteint. Sans token le processus reste au
-repos et continue d'interroger l'API ; il ne s'arrête pas.
+pas un simple démarrage. Un tick de supervision toutes les 20 secondes connecte quand le bot
+est allumé, reconnecte quand un admin appuie sur **Reconnecter**, et déconnecte quand le bot
+est éteint. Sans `DISCORD_TOKEN` dans son environnement le processus reste au repos ; il ne
+s'arrête pas. Changer de token, c'est changer `.env` et recréer le conteneur.
 
 **Une connexion ratée temporise** au lieu de marteler Discord : 10 minutes sur un token
 invalide (il attend que le token change), 1 minute quand les intents privilégiés sont
@@ -81,9 +83,9 @@ désactivés (pour que les activer dans le portail reconnecte vite), 30 secondes
 
 | Variable | Rôle |
 |---|---|
-| `DISCORD_TOKEN` | Token du bot. Vide : le bot reste au repos jusqu'à ce qu'un token soit posé au dashboard. Posé : il gagne et verrouille le champ du dashboard. |
+| `DISCORD_TOKEN` | Token du bot, lu dans l'environnement de ce conteneur uniquement. Vide : le bot reste au repos. |
 | `BCWEB_API_URL` | Base de l'API interne. Défaut `http://api:3000`. |
-| `BOT_SHARED_SECRET` | L'identifiant présenté à chaque appel `/bot/*`. L'API accepte `BOT_SHARED_SECRET`, sinon `LINK_LOOKUP_SECRET`, sinon la valeur littérale `dev-bot-secret`, et le garde-fou de démarrage refuse de lancer la prod sans l'une des deux premières. Comparé en temps constant. |
+| `BOT_SHARED_SECRET` | L'identifiant présenté à chaque appel `/bot/*`. L'API accepte `BOT_SHARED_SECRET` seul (le repli sur `LINK_LOOKUP_SECRET` a été retiré en septembre 2026 : c'est le secret que détient le service télémétrie), sinon la valeur littérale `dev-bot-secret` en développement ; le garde-fou de démarrage refuse de lancer la prod sans lui. Comparé en temps constant. |
 | `SITE_URL` | L'URL publique du site que le bot met dans ses liens et ses boutons. |
 
 Attention : `DISCORD_CLIENT_ID` / `DISCORD_CLIENT_SECRET` sont l'identité de la **connexion

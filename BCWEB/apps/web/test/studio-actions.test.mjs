@@ -284,3 +284,104 @@ describe('rendering rules that are data', () => {
     assert.match(inner, /position:\s*relative/);
   });
 });
+
+// ── A vote asks first (owner decision after phase 5) ─────────────────────────────────────
+// `poll.vote` votes with the clicker's session under a label the AUTHOR wrote. The executor
+// (ui/canvas-actions.jsx) goes through runSubmit with a dialog as `ask`; these drive runSubmit
+// and sendSubmit with a recording fetch, so "sent" means a request really left.
+describe('poll.vote: nothing is sent before the visitor confirms', async () => {
+  const { runSubmit, sendSubmit, loadVoteSummary, submitNeedsConfirm } = await import('../src/lib/studio-submit.js');
+  const vote = { type: 'submit', endpoint: 'poll.vote', fields: { pollId: 'poll1', optionIds: ['o2'] } };
+  const recorder = () => {
+    const calls = [];
+    const fetch = async (url, init = {}) => {
+      calls.push({ url, method: init.method || 'GET', body: init.body || null });
+      if (/\/vote$/.test(url)) return { ok: true, json: async () => ({ ok: true }) };
+      return { ok: true, json: async () => ({ id: 'poll1', question: 'Which map next?', open: true, options: [{ id: 'o1', label: 'Desert' }, { id: 'o2', label: 'Forest' }] }) };
+    };
+    return { calls, fetch, posts: () => calls.filter((c) => c.method === 'POST') };
+  };
+  const send = (rec) => (step, visitor, ctx) => sendSubmit(step, visitor, { ...ctx, fetch: rec.fetch });
+
+  test('the registry marks poll.vote, and only it, as needing a confirmation', () => {
+    assert.deepEqual(SUBMIT_KEYS.filter(submitNeedsConfirm), ['poll.vote']);
+    assert.equal(SUBMIT_REGISTRY['poll.vote'].confirm.read, '/api/polls/{pollId}');
+    assert.ok(!/\/admin|\/me\//.test(SUBMIT_REGISTRY['poll.vote'].confirm.read));
+  });
+
+  test('Cancel sends nothing; the request leaves only once the visitor said yes', async () => {
+    const rec = recorder();
+    let asked = 0;
+    const no = await runSubmit(vote, { ask: async () => { asked++; assert.equal(rec.posts().length, 0, 'a vote left while the dialog was still open'); return false; }, send: send(rec) });
+    assert.equal(asked, 1, 'the visitor was not asked');
+    assert.deepEqual(no, { ok: false, error: 'cancelled' });
+    assert.equal(rec.calls.length, 0, `cancelled, yet ${rec.calls.length} request(s) left`);
+
+    let resolveAsk;
+    const pending = runSubmit(vote, { ask: () => new Promise((r) => { resolveAsk = r; }), send: send(rec) });
+    await new Promise((r) => setTimeout(r, 10));
+    assert.equal(rec.posts().length, 0, 'the vote was sent before the visitor answered');
+    resolveAsk(true);
+    const yes = await pending;
+    assert.equal(yes.ok, true);
+    assert.equal(rec.posts().length, 1);
+    assert.equal(rec.posts()[0].url, '/api/polls/poll1/vote');
+    assert.deepEqual(JSON.parse(rec.posts()[0].body), { optionIds: ['o2'] });
+  });
+
+  test('closing the dialog (anything but a plain yes) is a no', async () => {
+    for (const answer of [undefined, null, 'yes', 1, {}]) {
+      const rec = recorder();
+      const r = await runSubmit(vote, { ask: async () => answer, send: send(rec) });
+      assert.equal(r.error, 'cancelled', String(answer));
+      assert.equal(rec.calls.length, 0, `answer ${JSON.stringify(answer)} sent a request`);
+    }
+    const rec = recorder();
+    assert.equal((await runSubmit(vote, { send: send(rec) })).error, 'cancelled', 'no way to ask = no vote');
+    assert.equal(rec.calls.length, 0);
+  });
+
+  test('sendSubmit on its own refuses an unconfirmed vote (the second lock)', async () => {
+    const rec = recorder();
+    assert.deepEqual(await sendSubmit(vote, {}, { fetch: rec.fetch }), { ok: false, error: 'confirm_required' });
+    assert.deepEqual(await sendSubmit(vote, {}, { fetch: rec.fetch, confirmed: 'true' }), { ok: false, error: 'confirm_required' });
+    assert.equal(rec.calls.length, 0);
+    assert.equal((await sendSubmit(vote, {}, { fetch: rec.fetch, confirmed: true })).ok, true);
+    assert.equal(rec.posts().length, 1);
+  });
+
+  test('an entry without `confirm` is not asked about', async () => {
+    const rec = recorder();
+    let asked = 0;
+    // newsletter.subscribe has visitor fields (its own form); called here without them it is
+    // refused by the registry, but never through a confirmation.
+    const r = await runSubmit({ type: 'submit', endpoint: 'newsletter.subscribe' }, { ask: async () => { asked++; return true; }, send: send(rec) });
+    assert.equal(asked, 0);
+    assert.equal(r.ok, false);
+  });
+
+  test('the dialog shows the question and the chosen option as the SERVER names them', async () => {
+    const rec = recorder();
+    const s = await loadVoteSummary(vote, { fetch: rec.fetch });
+    assert.equal(s.ok, true);
+    assert.equal(s.question, 'Which map next?');
+    assert.deepEqual(s.options, [{ id: 'o2', label: 'Forest', known: true }]);
+    assert.deepEqual(rec.calls.map((c) => `${c.method} ${c.url}`), ['GET /api/polls/poll1']);
+    // An option the poll does not have, or a closed poll, cannot be confirmed.
+    const odd = await loadVoteSummary({ ...vote, fields: { pollId: 'poll1', optionIds: ['o9'] } }, { fetch: rec.fetch });
+    assert.equal(odd.ok, false);
+    assert.equal(odd.options[0].known, false);
+    const closed = await loadVoteSummary(vote, { fetch: async () => ({ ok: true, json: async () => ({ question: 'Q', open: false, options: [{ id: 'o2', label: 'F' }] }) }) });
+    assert.equal(closed.ok, false);
+    // A hostile poll id never becomes a URL.
+    const bad = await loadVoteSummary({ ...vote, fields: { pollId: '../admin', optionIds: ['o2'] } }, { fetch: rec.fetch });
+    assert.equal(bad.error, 'bad_step');
+  });
+
+  test('the executor goes through runSubmit with a dialog, and passes `confirmed` nowhere else', () => {
+    const src = readFileSync(new URL('../src/ui/canvas-actions.jsx', import.meta.url), 'utf8');
+    assert.match(src, /runSubmit\(plan\.last,\s*\{\s*ask\b/, 'the executor no longer asks through runSubmit');
+    assert.ok(!/confirmed\s*:\s*true/.test(src), 'the executor marks a submit as confirmed by itself');
+    assert.match(src, /function VoteConfirmDialog\b/);
+  });
+});

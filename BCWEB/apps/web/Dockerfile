@@ -3,8 +3,11 @@
 # packages/bmd in place, so that folder has to sit two levels above the app, as in the repo.
 FROM node:22-alpine AS build
 WORKDIR /repo/apps/web
-COPY apps/web/package.json ./
-RUN npm install
+# `npm ci` against the committed lockfile, like the api and the bot: `npm install` with only
+# package.json in the image re-resolved every `^` range at build time, so the bundle every
+# visitor runs was built from whatever npm answered that day (CWE-1357).
+COPY apps/web/package.json apps/web/package-lock.json ./
+RUN npm ci --no-audit --no-fund
 COPY packages/bmd /repo/packages/bmd
 # The editor package sits beside the kit and is aliased the same way (vite.config.js).
 COPY packages/bmd-editor /repo/packages/bmd-editor

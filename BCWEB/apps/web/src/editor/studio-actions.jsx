@@ -69,8 +69,9 @@ function freshStep(type) {
  * @param {object} props.sel      the selected (normalised) block
  * @param {object[]} props.blocks the page's blocks, for scroll and reveal targets
  * @param {(steps: object[]) => void} props.onChange   writes the block's `action`
+ * @param {object[]} [props.pages] the target's pages `{ id, title }` (phase 6), for a `page` step
  */
-export default function ActionFields({ t, sel, blocks, onChange }) {
+export default function ActionFields({ t, sel, blocks, onChange, pages = null }) {
   const links = useStudioLinks();
   const steps = Array.isArray(sel.action) ? sel.action : [];
   const set = (i, patch) => onChange(steps.map((s, j) => (j === i ? { ...s, ...patch } : s)));
@@ -130,7 +131,19 @@ export default function ActionFields({ t, sel, blocks, onChange }) {
                 {msg('to')}
               </>)}
               {s.type === 'page' && (<>
-                <Field label={t('cst.act.f.canvas', 'Studio page id')} hint={t('cst.act.f.canvas.h', 'The id of another studio page of this project; it opens as its tab.')}><Input value={s.canvasId || ''} onChange={(e) => set(i, { canvasId: e.target.value })} /></Field>
+                {/* Phase 6: the page is PICKED from the target's pages, by id, so a rename or a
+                    reorder never breaks the link. An id no page has any more stays listed, flagged. */}
+                {Array.isArray(pages) && pages.length > 0 ? (
+                  <Field label={t('cst.act.f.page', 'Studio page')} hint={t('cst.act.f.canvas.h', 'The id of another studio page of this project; it opens as its tab.')}>
+                    <Select value={s.canvasId || ''} onChange={(e) => set(i, { canvasId: e.target.value })} data-page-pick>
+                      <option value="">{t('cst.act.f.pickpage', 'Choose a page')}</option>
+                      {pages.map((pg) => <option key={pg.id} value={pg.id}>{pg.title || t('pce.canvases.untitled', 'Untitled page')} ({pg.id})</option>)}
+                      {s.canvasId && !pages.some((pg) => pg.id === s.canvasId) && <option value={s.canvasId}>{t('cst.act.f.pagegone', 'A page that no longer exists')} ({s.canvasId})</option>}
+                    </Select>
+                  </Field>
+                ) : (
+                  <Field label={t('cst.act.f.canvas', 'Studio page id')} hint={t('cst.act.f.canvas.h', 'The id of another studio page of this project; it opens as its tab.')}><Input value={s.canvasId || ''} onChange={(e) => set(i, { canvasId: e.target.value })} /></Field>
+                )}
                 {msg('canvasId')}
               </>)}
               {s.type === 'external' && (<>

@@ -126,16 +126,17 @@ Services, arêtes `depends_on`, ordre de démarrage, et **ce qui est publié sur
 Ce n'est pas une liste de fautes — le proxy d'entrée *doit* publier 80 et 443. C'est la liste
 de ce qui est joignable depuis l'extérieur de la machine, une liste que quelqu'un devrait
 pouvoir réciter et ne le peut généralement pas. Elle est épinglée sous le nom `publishedPorts`
-plus bas et compte six entrées, pour onze services :
+plus bas et compte trois entrées, pour douze services (onze, plus le ponctuel `volume-perms`) :
 
 | Service | Publié | Remarque |
 | --- | --- | --- |
 | `caddy` | `80`, `443`, `5176` | L'entrée. 80 et 443 sont sa raison d'être. |
-| `api` | `3000-3009` | Une **plage**, pas un port. |
-| `minio` | `9000`, `9001` | Le stockage objet et sa console. |
-
-`db` publie `5432` mais uniquement sur `127.0.0.1`, d'où son absence de cette liste : la carte
-lit l'adresse d'écoute, et la boucle locale n'est pas le réseau.
+`db` (`5432`), `api` (`3000-3009`, une **plage**) et `minio` (`9000`, `9001`, le stockage objet
+et sa console) sont publiés uniquement sur `127.0.0.1`, d'où leur absence de cette liste : la
+carte lit l'adresse d'écoute, et la boucle locale n'est pas le réseau. L'API et MinIO étaient
+publiés sur toutes les interfaces ; les ports publiés par Docker contournent `ufw` sur une
+installation standard, donc ils étaient joignables de l'extérieur quoi que dise le pare-feu
+(SECURITY_SUMMARY §9 n° 2). Les navigateurs atteignent le stockage par Caddy sur `S3_DOMAIN`.
 
 !!! warning "L'API publie une plage, donc son port hôte bouge"
     `3000-3009:3000` permet à Compose de multiplier l'API, et cela signifie que le port hôte
@@ -144,9 +145,9 @@ lit l'adresse d'écoute, et la boucle locale n'est pas le réseau.
     pare-feu écrite une fois) a raison jusqu'au prochain redémarrage. Lisez la carte, ou
     `docker compose port api 3000`, plutôt que le premier port de la plage.
 
-Les trois dernières lignes ci-dessus sont publiées par commodité, et `run/DEPLOY_FR.md` §12
-précise que le pare-feu doit tout fermer sauf 22/80/443 juste après le premier déploiement,
-d'où l'intérêt de mettre le même fait sur un écran qu'on regarde plus d'une fois.
+`5176` est l'adresse locale du site ; `run/DEPLOY_FR.md` §12 précise que le pare-feu doit tout
+fermer sauf 22/80/443 juste après le premier déploiement, d'où l'intérêt de mettre le même fait
+sur un écran qu'on regarde plus d'une fois.
 
 !!! note "Cette carte répond désormais dans le conteneur"
     Elle renvoyait un 404 sur toute instance déployée, parce que rien ne copie `infra/` dans
@@ -260,9 +261,9 @@ compose ci-dessus est la première. Voici la seconde — les workflows GitHub Ac
 chacun publie (lu depuis les ACTIONS utilisées, jamais depuis son nom), et quels secrets un
 clone neuf exigerait.
 
-Ce qu'elle rapporte, c'est **un workflow, cinq jobs, aucun secret** :
-`BCW/.github/workflows/ci.yml`, qui exécute `web-build`, `api-check`, `native`, `caddyfile` et
-`secret-scan` sur `push` et sur `pull_request`. Les trois chiffres sont épinglés plus bas. Rien
+Ce qu'elle rapporte, c'est **un workflow, sept jobs, aucun secret** :
+`BCW/.github/workflows/ci.yml`, qui exécute `web-build`, `api-check`, `native`, `caddyfile`,
+`secret-scan`, `npm-audit` et `cargo-audit` sur `push` et sur `pull_request`. Les trois chiffres sont épinglés plus bas. Rien
 dans la CI ne demande de secret : un contributeur sur un fork peut donc vérifier son travail,
 un fait d'une ligne qui ne vit sinon que dans la tête de celui qui l'a monté.
 
@@ -301,9 +302,9 @@ les semaines et sont écrits plus haut comme des instantanés datés, volontaire
 | `liveSecretFallbacks` | Lectures `process.env` de nom secret avec repli codé en dur et sans garde de démarrage | **0** |
 | `dataLossMigrations` | Migrations contenant `DROP TABLE`, `DROP COLUMN` ou `DELETE FROM` | **3** |
 | `indexDrift` | Index créés par une migration et absents de `schema.prisma` | **0** |
-| `publishedPorts` | Entrées de port joignables depuis l'extérieur de la machine | **6** |
+| `publishedPorts` | Entrées de port joignables depuis l'extérieur de la machine | **3** |
 | `workflows` | Fichiers de workflow GitHub Actions que la carte peut atteindre | **1** |
-| `workflowJobs` | Jobs dans ces workflows | **5** |
+| `workflowJobs` | Jobs dans ces workflows | **7** |
 | `workflowSecrets` | Secrets distincts exigés par ces workflows | **0** |
 
 ## Ce qu'elles ne sont pas

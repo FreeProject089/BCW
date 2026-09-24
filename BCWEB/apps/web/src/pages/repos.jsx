@@ -1,3 +1,4 @@
+import { safeHref } from '../lib/safe-href.js';
 import { useEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Gauge,
@@ -247,9 +248,9 @@ export function ReposPage() {
                       <a href={`bmm://repo/connect?url=${encodeURIComponent(repoJsonUrl(r))}`}><Button size="sm" variant="primary"><GitBranch size={13} /> {t('repos.openbmm', 'Open in BMM')}</Button></a>
                       <Link to={`/r/${r.id}`}><Button size="sm"><ArrowRight size={13} /> {t('repos.details', 'Details')}</Button></Link>
                       {repoJsonUrl(r) && <Button size="sm" onClick={() => copyJson(r)}><Copy size={13} /> {t('repos.copyjson', 'Copy repo.json')}</Button>}
-                      {r.links?.discord && <a href={r.links.discord} target="_blank" rel="noreferrer"><Button size="sm">Discord</Button></a>}
-                      {r.links?.website && <a href={r.links.website} target="_blank" rel="noreferrer"><Button size="sm">{t('repos.website', 'Website')}</Button></a>}
-                      {r.links?.changelog && <a href={r.links.changelog} target="_blank" rel="noreferrer"><Button size="sm">{t('repos.changelog', 'Changelog')}</Button></a>}
+                      {r.links?.discord && <a href={safeHref(r.links.discord)} target="_blank" rel="noreferrer"><Button size="sm">Discord</Button></a>}
+                      {r.links?.website && <a href={safeHref(r.links.website)} target="_blank" rel="noreferrer"><Button size="sm">{t('repos.website', 'Website')}</Button></a>}
+                      {r.links?.changelog && <a href={safeHref(r.links.changelog)} target="_blank" rel="noreferrer"><Button size="sm">{t('repos.changelog', 'Changelog')}</Button></a>}
                       <ReportButton targetType="repo" targetId={r.id} targetLabel={r.name} />
                     </div>
                   </Card>
@@ -1657,7 +1658,7 @@ export function Billing() {
                   <div className="flex justify-end">
                     {inv.hasPdf
                       ? <Button size="sm" disabled={dlBusy === inv.id} onClick={() => downloadInvoicePdf(inv)}>{dlBusy === inv.id ? <Spinner /> : <><Download size={13} /> {t('bill.download', 'Download PDF')}</>}</Button>
-                      : inv.hosted ? <a href={inv.hosted} target="_blank" rel="noreferrer"><Button size="sm"><ExternalLink size={13} /> {t('bill.view', 'View')}</Button></a> : null}
+                      : inv.hosted ? <a href={safeHref(inv.hosted)} target="_blank" rel="noreferrer"><Button size="sm"><ExternalLink size={13} /> {t('bill.view', 'View')}</Button></a> : null}
                   </div>
                 </div>
               )}
@@ -1701,7 +1702,7 @@ function InvoiceModal({ id, onClose }) {
       footer={<>
         <Button variant="ghost" onClick={onClose}>{t('bill.close', 'Close')}</Button>
         {stripeUrl
-          ? <a href={stripeUrl} target="_blank" rel="noreferrer"><Button variant="primary"><Download size={15} /> {t('bill.stripeInvoice', 'Official invoice (Stripe)')}</Button></a>
+          ? <a href={safeHref(stripeUrl)} target="_blank" rel="noreferrer"><Button variant="primary"><Download size={15} /> {t('bill.stripeInvoice', 'Official invoice (Stripe)')}</Button></a>
           : <Button variant="primary" onClick={() => window.print()}><Printer size={15} /> {t('bill.print', 'Print / Save PDF')}</Button>}
       </>}>
       {loading || !inv ? <div className="text-[var(--muted)] text-sm">{t('common.loading', 'Loading…')}</div> : (
@@ -1923,7 +1924,7 @@ export function HostFilesModal({ repo, admin, onClose, onChanged }) {
               <FileJson size={13} className="text-[var(--accent-ink)] shrink-0" />
               <code className="text-[11px] text-[var(--muted)] break-all flex-1 min-w-0">{publicUrl}</code>
               <button onClick={copyUrl} className="text-[var(--faint)] hover:text-[var(--accent-ink)] shrink-0" title={t('repos.copylink', 'Copy link')}><Copy size={13} /></button>
-              <a href={publicUrl} target="_blank" rel="noreferrer" className="text-[var(--faint)] hover:text-[var(--accent-ink)] shrink-0" title={t('repos.feed.open', 'Open')}><ExternalLink size={13} /></a>
+              <a href={safeHref(publicUrl)} target="_blank" rel="noreferrer" className="text-[var(--faint)] hover:text-[var(--accent-ink)] shrink-0" title={t('repos.feed.open', 'Open')}><ExternalLink size={13} /></a>
             </div>
           )}
           {!d.published && !hasRepoJson && <div className="mt-2 text-[11px] text-warning flex items-center gap-1.5"><AlertTriangle size={12} /> {t('repos.needjsonhint', 'Upload a valid repo.json below, then Go online.')}</div>}

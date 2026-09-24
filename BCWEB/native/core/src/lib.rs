@@ -9,6 +9,34 @@ use std::io::{Read, Write};
 /// One zip entry: (name, uncompressed size, bytes). `bytes` is empty when `with_bytes` is false.
 pub type ZipItem = (String, u64, Vec<u8>);
 
+/// The most one entry may inflate to, whatever it declares.
+///
+/// Same number as the API's `ZIP_INFLATE_BUDGET` (apps/api/src/lib/native.mjs), which checks
+/// the DECLARED total before anything is inflated. That check trusts the central directory,
+/// and the central directory is written by whoever made the zip: an entry can declare 10 bytes
+/// and inflate to gigabytes. So the reader below never reads past what the entry declared.
+pub const MAX_ENTRY_BYTES: u64 = 1024 * 1024 * 1024;
+
+/// Inflate one entry, bounded by its declared size (CWE-409).
+///
+/// `take(size + 1)` stops the inflater one byte past the declaration, so an entry that lies
+/// about its size costs at most `size + 1` bytes of memory and is refused, instead of being
+/// inflated in full. The capacity is capped too: `with_capacity` of a declared 4 GiB would
+/// abort the process before a single byte was read.
+fn read_entry<R: Read>(f: &mut R, size: u64) -> Result<Vec<u8>, String> {
+    if size > MAX_ENTRY_BYTES {
+        return Err("entry_too_large".to_string());
+    }
+    let mut b = Vec::with_capacity(size.min(64 * 1024 * 1024) as usize);
+    f.take(size + 1)
+        .read_to_end(&mut b)
+        .map_err(|e| format!("read_error: {e}"))?;
+    if b.len() as u64 > size {
+        return Err("entry_size_mismatch".to_string());
+    }
+    Ok(b)
+}
+
 /// Read a zip's non-directory entries. With `with_bytes`, each entry's bytes are inflated.
 pub fn read_zip(data: &[u8], with_bytes: bool) -> Result<Vec<ZipItem>, String> {
     let mut archive =
@@ -21,9 +49,7 @@ pub fn read_zip(data: &[u8], with_bytes: bool) -> Result<Vec<ZipItem>, String> {
         }
         let size = f.size();
         let bytes = if with_bytes {
-            let mut b = Vec::with_capacity(size as usize);
-            f.read_to_end(&mut b).map_err(|e| format!("read_error: {e}"))?;
-            b
+            read_entry(&mut f, size)?
         } else {
             Vec::new()
         };
@@ -44,9 +70,8 @@ pub fn read_one(data: &[u8], name: &str) -> Result<Option<Vec<u8>>, String> {
     if f.is_dir() {
         return Ok(None);
     }
-    let mut b = Vec::with_capacity(f.size() as usize);
-    f.read_to_end(&mut b).map_err(|e| format!("read_error: {e}"))?;
-    Ok(Some(b))
+    let size = f.size();
+    Ok(Some(read_entry(&mut f, size)?))
 }
 
 /// Build a deflate zip from (name, bytes) pairs.
@@ -148,6 +173,53 @@ mod tests {
         assert_eq!(files[0].2, b"hi"); // a.txt bytes
         assert_eq!(read_one(&z, "d/b.bin").unwrap(), Some(vec![1, 2, 3]));
         assert_eq!(read_one(&z, "nope").unwrap(), None);
+    }
+
+    /// A stored entry whose header says 2 bytes while its data is 64: the reader must stop at
+    /// the declaration and refuse, never hand back the 64. The sizes are patched in the local
+    /// header and the central directory, which is what a hand-made bomb does.
+    #[test]
+    fn entry_larger_than_declared_is_refused() {
+        let mut cursor = std::io::Cursor::new(Vec::new());
+        {
+            let mut zw = zip::ZipWriter::new(&mut cursor);
+            let opts = zip::write::SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Stored);
+            zw.start_file("big.bin", opts).unwrap();
+            zw.write_all(&[7u8; 64]).unwrap();
+            zw.finish().unwrap();
+        }
+        let mut z = cursor.into_inner();
+        // Local file header: uncompressed size at offset 22. Central directory entry
+        // (signature 50 4b 01 02): uncompressed size at offset 24.
+        z[22..26].copy_from_slice(&2u32.to_le_bytes());
+        let cd = z
+            .windows(4)
+            .position(|w| w == [0x50, 0x4b, 0x01, 0x02])
+            .unwrap();
+        z[cd + 24..cd + 28].copy_from_slice(&2u32.to_le_bytes());
+        match read_one(&z, "big.bin") {
+            Ok(Some(b)) => assert!(b.len() <= 2, "read {} bytes past the declared 2", b.len()),
+            Ok(None) => panic!("entry vanished"),
+            Err(_) => {}
+        }
+        if let Ok(items) = read_zip(&z, true) {
+            assert!(items.iter().all(|(_, _, b)| b.len() <= 2));
+        }
+    }
+
+    #[test]
+    fn read_entry_stops_at_the_declared_size() {
+        let data = [1u8; 100];
+        assert_eq!(read_entry(&mut &data[..], 100).unwrap().len(), 100);
+        assert_eq!(
+            read_entry(&mut &data[..], 10).unwrap_err(),
+            "entry_size_mismatch"
+        );
+        assert_eq!(
+            read_entry(&mut &data[..], MAX_ENTRY_BYTES + 1).unwrap_err(),
+            "entry_too_large"
+        );
     }
 
     #[test]

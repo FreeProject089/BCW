@@ -2,7 +2,13 @@ import { z } from 'zod';
 import { ipOf } from '../lib/client-ip.mjs';
 import { sectionsStudioProblems, studioDocError, sectionRevs, parsePageSave, replaceSectionCanvas, studioValidateOpts } from '../lib/studio-doc.mjs';
 import { db, requireRole, requireCap, hasCap, optionalAuth, slugify, logAudit, notify, notifyAll, clearAccountLockCache, clearUserCache, CAPABILITIES, NOTIF_CATEGORIES, currentUser, httpUrl, canUseStudio, guardStudioSections, sectionsWithoutDrafts } from '../lib/lib.mjs';
-import { SECRET_SETTING_KEYS } from '../lib/secret-guard.mjs';
+import { SECRET_SETTING_KEYS, stripSecrets } from '../lib/secret-guard.mjs';
+
+// Settings whose value is PUBLISHED in every page's HTML (the search engines' site-verification
+// meta tags). Public by design — and a verification token is exactly the random 40-odd
+// characters stripSecrets' high-entropy rule removes, so without this the SEO screen would
+// read it back empty and its next save would erase it.
+const PUBLIC_SETTING_KEYS = new Set(['seo.googleVerify', 'seo.bingVerify']);
 import { suspendOwned, restoreOwned, cancelSubscriptions, anonymiseAccount } from './closure.mjs';
 import { addStaffNote, notifyAccountAction, notesFor, NOTE_KINDS } from '../lib/staff-notes.mjs';
 import { shredUser } from '../lib/shred.mjs';
@@ -729,6 +735,9 @@ export async function checkAdminSetting(p, key, value, { role } = {}) {
   // which reuses this check) name real items and accounts for the next operator to delete.
   // `demo.*` is the retired demo mode's namespace: nothing reads it, nothing may refill it.
   if (isReservedSettingKey(key)) return refuse(403, { error: 'reserved_setting', key });
+  // The studio's preset libraries (phase 6) hold documents that land on public pages: they are
+  // written only through /admin/studio/library, where every preset goes through validateDoc.
+  if (key.startsWith('studio.library:')) return refuse(409, { error: 'use_dedicated_route', key });
   if (SUPERADMIN_ONLY_SETTINGS.has(key) && role !== 'SUPERADMIN') {
     return refuse(403, { error: 'superadmin_required', key });
   }
@@ -4157,10 +4166,17 @@ export default async function miscRoutes(app) {
   // the attestation private key) are left out. Nothing on the web reads them from here — each
   // has its own route that says whether one is SET, never what it is — and this response is
   // readable by every ADMIN, which is a wider audience than any of those routes allows.
+  //
+  // And every OTHER value goes through stripSecrets (SECURITY_SUMMARY §9, O2): the name list
+  // above only knows whole rows, so a secret NESTED in a value — the codegraph webhook
+  // `secret` inside `codegraph.settings.<project>`, which its own route never reads back — or
+  // pasted into a free-text setting reached every ADMIN whole. Fields named like a credential
+  // and values shaped like one are dropped; a credential quoted inside prose is redacted.
   app.get('/admin/settings', { preHandler: requireRole('ADMIN') }, async () => {
     const p = await db();
     const rows = await p.adminSetting.findMany();
-    return { settings: Object.fromEntries(rows.filter((r) => !SECRET_SETTING_KEYS.has(r.key)).map((r) => [r.key, r.value])) };
+    return { settings: Object.fromEntries(rows.filter((r) => !SECRET_SETTING_KEYS.has(r.key))
+      .map((r) => [r.key, PUBLIC_SETTING_KEYS.has(r.key) ? r.value : stripSecrets(r.value, r.key).value])) };
   });
 
   app.put('/admin/settings/:key', { preHandler: requireRole('ADMIN') }, async (req, reply) => {

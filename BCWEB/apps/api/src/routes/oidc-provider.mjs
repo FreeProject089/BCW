@@ -591,11 +591,18 @@ export default async function oidcProviderRoutes(app) {
       <h1>Sign out of <span class="brand">BetterCommunity</span>?</h1>
       <p>${client ? `${esc(client.name)} asked to end your session.` : 'This will end your session on this site.'}</p>
       ${want && !allowed ? '<p>The return address it supplied is not registered, so you will be returned here instead.</p>' : ''}
-      <form method="POST" action="${issuer()}/oauth2/logout">
-        <input type="hidden" name="redirect" value="${esc(target)}">
-        <div class="row"><button class="approve" type="submit">Sign out</button>
-        <button class="deny" type="button" onclick="history.back()">Cancel</button></div>
-      </form>`));
+      <div class="row">
+        <form method="POST" action="${issuer()}/oauth2/logout" style="flex:1;display:flex">
+          <input type="hidden" name="redirect" value="${esc(target)}">
+          <button class="approve" type="submit">Sign out</button>
+        </form>
+        <!-- A plain GET to the site, not onclick="history.back()": the site CSP has no
+             'unsafe-inline' in script-src (SECURITY_SUMMARY §9 #5), so an inline handler
+             is a button that does nothing. -->
+        <form method="GET" action="${issuer()}/" style="flex:1;display:flex">
+          <button class="deny" type="submit">Cancel</button>
+        </form>
+      </div>`));
   });
 
   app.post('/oauth2/logout', { preHandler: optionalAuth() }, async (req, reply) => {

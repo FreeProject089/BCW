@@ -25,10 +25,11 @@
 // immediate `deferUpdate` followed by the card's redraw, a command answers with its card.
 // Nothing is deferred without being finished, so no button ever shows a dangling "thinking".
 //
-// RANDOMNESS is drawn here, on the bot; the API is the ledger. The pot-winner
-// functions are the pure ones the API's own tests pin — duplicated here as the same lines
-// rather than imported, because the bot is a separate package with no path to the API's
-// source. Keep them in step with apps/api/src/lib/casino-rules.mjs.
+// RANDOMNESS is drawn on the API, not here (SECURITY_SUMMARY §9 #4). The bot collects the
+// seats and their picks, plays the suspense on the card, then asks the API to settle: the API
+// draws the round (casino-rules.mjs drawLive, on crypto.randomInt) and answers with the
+// outcome, which the result card describes. The bot used to draw and send each seat's
+// multiplier, which the API paid as-is — so its shared secret could mint points.
 import { ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, StringSelectMenuBuilder } from 'discord.js';
 import * as ui from '../ui.mjs';
 import { api } from '../api.mjs';
@@ -66,13 +67,6 @@ function edgePct(casino = {}, game) {
   const per = casino.edgeByGame && casino.edgeByGame[game];
   const v = per !== '' && per != null && Number.isFinite(Number(per)) ? Number(per) : Number(casino.houseEdgePct);
   return Math.min(100, Math.max(0, Number.isFinite(v) ? v : 0));
-}
-function potWinner(stakes, u) {
-  const total = stakes.reduce((a, b) => a + b, 0);
-  if (!total) return -1;
-  let r = Math.min(0.999999, Math.max(0, u)) * total;
-  for (let i = 0; i < stakes.length; i++) { if (r < stakes[i]) return i; r -= stakes[i]; }
-  return stakes.length - 1;
 }
 
 // ── config, names, picks ─────────────────────────────────────────────────────────────
@@ -279,14 +273,31 @@ function gifPath(L, { won, detail, amount, outcome, winners }) {
 }
 
 /**
- * Settle every seat with the API and post ONE result: the GIF (title, outcome and winners
- * drawn in) with a short line under it — never "you win" to a whole table.
+ * The round, drawn and settled by the API in one call. `plays` carry each seat's bet and
+ * PICK — never a multiplier. Returns the API's answer (with `outcome`) or null on failure.
  */
-async function finish(L, plays, { outcome, gifOutcome, detail, amount, links = [] }) {
+async function settleRound(L, plays) {
+  const r = await api.economySettle(L.game, plays, isPot(L));
+  return r?.ok && r.outcome ? r : null;
+}
+
+/** What a failed settlement shows: nobody's balance moved. */
+async function failRound(L) {
+  reg.setState(L, 'done');
+  await redraw(L, { title: title(L), color: ui.BAD, body: L.t('live.failed'), footer: L.t('live.footer', { c: L.code }), buttons: [ui.btn(`cl:new:${L.game}`, L.t('live.again'), ButtonStyle.Primary, { emoji: 'again' }), learnButton(L.t, 'live')] });
+}
+
+/** The drawn win weight of each seat (0 = lost), from the API's results. */
+const hits = (r) => new Map((r?.results || []).map((x) => [x.discordId, Number(x.multiplier) || 0]));
+
+/**
+ * Post ONE result for a settled round: the GIF (title, outcome and winners drawn in) with a
+ * short line under it — never "you win" to a whole table.
+ */
+async function finish(L, r, plays, { outcome, gifOutcome, detail, amount, links = [] }) {
   reg.setState(L, 'done');
   const t = L.t;
   const pot = isPot(L);
-  const r = await api.economySettle(L.game, plays, pot);
   const results = r?.ok ? r.results : plays.map((p) => ({ discordId: p.discordId, ok: false }));
   const nameFor = (id) => L.players.get(id)?.name || id;
   const skipped = results.filter((x) => !x.ok).map((x) => t('live.res.skip', { u: nameFor(x.discordId) }));
@@ -295,7 +306,7 @@ async function finish(L, plays, { outcome, gifOutcome, detail, amount, links = [
   else if (pot) {
     // The table rule's three outcomes: one winner takes the whole sum, several share it by
     // stake, nobody → every stake comes back.
-    const winners = results.filter((x) => x.ok && !x.refund && plays.find((p) => p.discordId === x.discordId)?.multiplier > 0);
+    const winners = results.filter((x) => x.ok && !x.refund && Number(x.multiplier) > 0);
     const paid = (x) => n(x.payout);
     if (r.refund || !winners.length) { line = t('live.out.none'); gifLine = t('live.gif.none'); }
     else if (winners.length === 1) { const w = winners[0]; line = t('live.out.one', { u: nameFor(w.discordId), n: paid(w), cur: L.cur }); gifLine = t('live.gif.one', { u: nameFor(w.discordId), n: paid(w), cur: L.curPlain }); }
@@ -329,14 +340,18 @@ async function runRace(L) {
   const t = L.t;
   const { casino } = await liveConfig();
   const laps = Math.min(12, Math.max(1, Math.floor(Number(casino.race?.laps)) || 3));
-  // The winner is drawn uniformly HERE; the GIF's simulation is told and ends on it.
-  const winner = Math.min(5, Math.floor(rnd() * 6));
   await redraw(L, runningCard(L, [t('live.race.go'), t('live.race.laps', { n: laps }), '', playersBlock(t, L)]));
   await sleep(1500);
-  const plays = [...L.players.entries()].map(([id, p]) => ({ discordId: id, bet: p.bet, multiplier: Number(p.pick) === winner ? 6 : 0, note: `car${Number(p.pick) + 1}` }));
+  // The winner is drawn by the API once every pick is in; the GIF's simulation is told and
+  // ends on it.
+  const plays = [...L.players.entries()].map(([id, p]) => ({ discordId: id, bet: p.bet, pick: Number(p.pick), note: `car${Number(p.pick) + 1}` }));
+  const r = await settleRound(L, plays);
+  if (!r) return failRound(L);
+  const winner = Number(r.outcome.winner);
+  const won = hits(r);
   const host = L.players.get(L.hostId);
   const car = `${ui.icx(CARS[winner])}${t(`live.race.car.${winner}`)}`;
-  await finish(L, plays, { outcome: `${t('live.race.won', { c: car })}\n-# ${t('live.race.sim')}`, gifOutcome: t('live.gif.race', { c: `${TAGS[winner]} · ${t(`live.race.car.${winner}`)}` }), detail: `${winner}|${L.players.size === 1 && host ? host.pick ?? '' : ''}`, amount: n(plays.reduce((a, p) => a + (p.multiplier ? p.bet * 5 : -p.bet), 0)), links: [ui.btn(PADDOCK_URL, 'Paddock-Manager', ButtonStyle.Link, { emoji: 'race' })] });
+  await finish(L, r, plays, { outcome: `${t('live.race.won', { c: car })}\n-# ${t('live.race.sim')}`, gifOutcome: t('live.gif.race', { c: `${TAGS[winner]} · ${t(`live.race.car.${winner}`)}` }), detail: `${winner}|${L.players.size === 1 && host ? host.pick ?? '' : ''}`, amount: n(plays.reduce((a, p) => a + (won.get(p.discordId) ? p.bet * 5 : -p.bet), 0)), links: [ui.btn(PADDOCK_URL, 'Paddock-Manager', ButtonStyle.Link, { emoji: 'race' })] });
 }
 
 async function runPot(L) {
@@ -344,41 +359,39 @@ async function runPot(L) {
   const ids = [...L.players.keys()];
   const stakes = ids.map((id) => L.players.get(id).bet);
   const total = stakes.reduce((a, b) => a + b, 0);
-  const winnerIdx = potWinner(stakes, rnd());
   const names = ids.map((id) => L.players.get(id).name);
   const list = ids.map((id, i) => `• **${names[i]}** — ${n(stakes[i])} ${L.cur} (${Math.round((stakes[i] / total) * 100)} %)`).join('\n');
   await redraw(L, runningCard(L, [t('live.pot.total', { n: n(total), cur: L.cur }), t('live.pot.drawing'), '', list]));
   await sleep(1500);
-  // Weight 1: the settlement's table rule hands the winner every other stake plus their own.
-  const plays = ids.map((id, i) => ({ discordId: id, bet: stakes[i], multiplier: i === winnerIdx ? 1 : 0, note: i === winnerIdx ? 'pot' : '' }));
+  // The API draws the winner in proportion to stake, among the seats that can still pay, and
+  // its table rule hands them every other stake plus their own.
+  const plays = ids.map((id, i) => ({ discordId: id, bet: stakes[i] }));
+  const r = await settleRound(L, plays);
+  if (!r) return failRound(L);
+  const winnerIdx = Math.max(0, ids.indexOf(r.outcome.winner));
   const labels = names.map((s) => s.replace(/[^\w]/g, '').slice(0, 6) || 'P').slice(0, 8).join(',');
-  await finish(L, plays, { outcome: t('live.pot.won', { u: names[winnerIdx], n: n(total), cur: L.cur }), gifOutcome: t('live.gif.pot', { u: names[winnerIdx] }), detail: `${winnerIdx}|${stakes.slice(0, 8).join(',')}|${labels}`, amount: n(total) });
+  await finish(L, r, plays, { outcome: t('live.pot.won', { u: names[winnerIdx], n: n(total), cur: L.cur }), gifOutcome: t('live.gif.pot', { u: names[winnerIdx] }), detail: `${winnerIdx}|${stakes.slice(0, 8).join(',')}|${labels}`, amount: n(total) });
 }
 
-/** The classic games on one shared roll. */
+/** The classic games on one shared roll — drawn by the API once every pick is in. */
 async function runMulti(L) {
   const t = L.t;
-  let outcome, line, detail;
-  if (L.game === 'coinflip') { const heads = rnd() < 0.5; outcome = heads ? 'heads' : 'tails'; line = heads ? t('live.multi.heads') : t('live.multi.tails'); detail = heads ? 'H' : 'T'; }
-  else if (L.game === 'dice') { const roll = 1 + Math.floor(rnd() * 6); outcome = roll; line = t('live.multi.dice', { n: roll }); detail = String(roll); }
-  else if (L.game === 'roulette') {
-    const pocket = Math.floor(rnd() * 37); const reds = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36]);
-    outcome = pocket === 0 ? 'green' : reds.has(pocket) ? 'red' : 'black'; line = t('live.multi.roulette', { n: pocket, c: t(`live.pick.${outcome}`) }); detail = String(pocket);
-  } else {
-    const SLICES = [[2, 45], [3, 24], [5, 16], [10, 9], [20, 4], [50, 2]]; let roll = rnd() * 100, landed = 2;
-    for (const [m, w] of SLICES) { if (roll < w) { landed = m; break; } roll -= w; }
-    outcome = landed; line = t('live.multi.wheel', { m: landed }); detail = `${landed}|${landed}`;
-  }
-  const mult = (p) => {
-    if (L.game === 'coinflip') return p.pick === outcome ? 2 : 0;
-    if (L.game === 'dice') return outcome >= 4 ? 2 : 0;
-    if (L.game === 'roulette') return p.pick === outcome ? (outcome === 'green' ? 14 : 2) : 0;
-    return Number(p.pick) === outcome ? outcome : 0;
-  };
   await redraw(L, runningCard(L, [t('live.multi.rolling'), '', playersBlock(t, L)]));
   await sleep(1500);
-  const plays = [...L.players.entries()].map(([id, p]) => ({ discordId: id, bet: p.bet, multiplier: mult(p), note: String(p.pick ?? '') }));
-  await finish(L, plays, { outcome: line, gifOutcome: plain(line), detail, amount: n(plays.reduce((a, p) => a + (p.multiplier ? p.bet * (p.multiplier - 1) : -p.bet), 0)) });
+  // What each seat sends: its pick in the shape the API checks (a wheel multiplier is a
+  // number, a side or a colour a word), and none at all for dice — everybody plays the roll.
+  const pickOf = (p) => (L.game === 'dice' ? undefined : L.game === 'wheel' ? Number(p.pick) : p.pick);
+  const plays = [...L.players.entries()].map(([id, p]) => ({ discordId: id, bet: p.bet, pick: pickOf(p), note: String(p.pick ?? '') }));
+  const r = await settleRound(L, plays);
+  if (!r) return failRound(L);
+  const o = r.outcome;
+  let line, detail;
+  if (L.game === 'coinflip') { const heads = o.side === 'heads'; line = heads ? t('live.multi.heads') : t('live.multi.tails'); detail = heads ? 'H' : 'T'; }
+  else if (L.game === 'dice') { line = t('live.multi.dice', { n: o.roll }); detail = String(o.roll); }
+  else if (L.game === 'roulette') { line = t('live.multi.roulette', { n: o.pocket, c: t(`live.pick.${o.colour}`) }); detail = String(o.pocket); }
+  else { line = t('live.multi.wheel', { m: o.landed }); detail = `${o.landed}|${o.landed}`; }
+  const won = hits(r);
+  await finish(L, r, plays, { outcome: line, gifOutcome: plain(line), detail, amount: n(plays.reduce((a, p) => { const m = won.get(p.discordId) || 0; return a + (m ? p.bet * (m - 1) : -p.bet); }, 0)) });
 }
 
 // ── the buttons and the modals ───────────────────────────────────────────────────────

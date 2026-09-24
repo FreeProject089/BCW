@@ -126,7 +126,8 @@ dashboard, admin moderation + settings).
 ### Security hardening (in place)
 - **HTTP security headers** at the edge (Caddy): `Content-Security-Policy` (locked to
   self + the app's real needs — data/blob images, MinIO uploads, GitHub fetches,
-  youtube-nocookie embeds, rrweb blob frames), `X-Frame-Options: SAMEORIGIN`,
+  youtube-nocookie embeds, rrweb blob frames; no `'unsafe-inline'` in `script-src`, held by
+  `apps/web/scripts/check-csp.mjs`), `X-Frame-Options: SAMEORIGIN`,
   `X-Content-Type-Options: nosniff`, `Referrer-Policy`, `Permissions-Policy`, and the
   `Server` header stripped. Validate any Caddyfile edit with
   `docker compose exec caddy caddy validate --config /etc/caddy/Caddyfile`.

@@ -12,6 +12,7 @@
 // who wants to know what it does reads it — the panel's job is to say WHERE to read.
 //
 // The word "simulation" is avoided for the same reason.
+import { safeHref } from '../lib/safe-href.js';
 import { useEffect, useRef, useState } from 'react';
 import { ArrowDown, ChevronRight, FileCode2, Play, Pause, SkipBack, SkipForward, Search, X, ExternalLink } from 'lucide-react';
 import { highlightCode } from './code-highlight.jsx'; // M18: moved out of pages.jsx with Prism
@@ -91,7 +92,7 @@ function Step({ s, n, last, current, repoUrl, t }) {
                 {/* The whole file, at this line. An excerpt answers "what does this call look
                     like"; the next question is always "and what is around it". */}
                 {githubLink(repoUrl, s.file, s.line) && (
-                    <a href={githubLink(repoUrl, s.file, s.line)} target="_blank" rel="noreferrer"
+                    <a href={safeHref(githubLink(repoUrl, s.file, s.line))} target="_blank" rel="noreferrer"
                         className="ms-[18px] mt-1 inline-flex items-center gap-1 text-[11px] text-[var(--accent-ink)] hover:underline">
                         <ExternalLink size={11} /> {t('cf.open', 'Open {f} on GitHub').replace('{f}', short(s.file))}
                     </a>

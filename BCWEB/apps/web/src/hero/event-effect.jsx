@@ -1,3 +1,4 @@
+import { safeHref } from '../lib/safe-href.js';
 import { useEffect, useRef, useState } from 'react';
 import { X, Sparkles, PartyPopper, Flag, Gift, Star, Rocket, CalendarDays, Bell, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -111,7 +112,7 @@ export default function EventEffect() {
           <div className="relative rounded-2xl border border-[var(--line-strong)] shadow-2xl overflow-hidden" style={{ background: 'var(--bg-solid)' }}>
             {link
               ? (external
-                ? <a href={link} target="_blank" rel="noopener noreferrer" className={rowCls}>{inner}</a>
+                ? <a href={safeHref(link)} target="_blank" rel="noopener noreferrer" className={rowCls}>{inner}</a>
                 : <Link to={link} onClick={() => setDismissed(true)} className={rowCls}>{inner}</Link>)
               : <div className={rowCls}>{inner}</div>}
             <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); setDismissed(true); }} aria-label={t('promo.badge.dismiss', 'Dismiss')} className="absolute right-1.5 top-1.5 rounded p-1 text-[var(--faint)] hover:text-[var(--text)] hover:bg-[var(--surface-2)]"><X size={15} /></button>

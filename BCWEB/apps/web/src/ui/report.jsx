@@ -1,3 +1,4 @@
+import { safeHref } from '../lib/safe-href.js';
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { Flag, Send, ImagePlus, X, Loader2, Shield, MessageSquare, Lock, Info } from 'lucide-react';
@@ -87,7 +88,7 @@ export function ReportThread({ messages }) {
             </div>
             {m.body && <div className="text-sm whitespace-pre-wrap break-words">{m.body}</div>}
             {m.images?.length > 0 && <div className="flex flex-wrap gap-2 mt-2">
-              {m.images.map((u) => <a key={u} href={u} target="_blank" rel="noreferrer"><img src={u} alt="" className="w-24 h-24 object-cover rounded-lg border border-[var(--line)]" /></a>)}
+              {m.images.map((u) => <a key={u} href={safeHref(u)} target="_blank" rel="noreferrer"><img src={u} alt="" className="w-24 h-24 object-cover rounded-lg border border-[var(--line)]" /></a>)}
             </div>}
           </div>
         </div>

@@ -23,8 +23,8 @@ export const api = {
   // restartAt travels beside the config, not inside it (see the route). It is folded in
   // here so the 20s supervisor tick sees it without a second request.
   getConfig: () => call('GET', '/bot/config').then((r) => ({ ...r.config, restartAt: r.restartAt || null })),
-  // The Discord token, managed from the admin dashboard (null when unset/disabled).
-  getToken: () => call('GET', '/bot/token').then((r) => r.token).catch(() => null),
+  // No getToken: the site no longer hands out the Discord token (SECURITY_SUMMARY §9 #4).
+  // The bot reads DISCORD_TOKEN from its own environment (index.mjs resolveToken).
   heartbeat: (data) => call('POST', '/bot/heartbeat', data).catch(() => {}),
   // Report a failed connection (surfaced in the admin dashboard so the cause is visible).
   reportError: (error) => call('POST', '/bot/heartbeat', { online: false, error }).catch(() => {}),
@@ -113,8 +113,17 @@ export const api = {
   economySeason: () => call('GET', '/bot/economy/season').catch(() => null),
   economyUser: (discordId) => call('GET', `/bot/economy/user/${encodeURIComponent(discordId)}`).catch(() => ({ linked: false })),
   economyBuy: (discordId, itemId) => call('POST', '/bot/economy/buy', { discordId, itemId }).catch(() => ({ ok: false, error: 'network' })),
-  economyCasino: (discordId, bet, multiplier, game) => call('POST', '/bot/economy/casino', { discordId, bet, multiplier, game }).catch(() => ({ ok: false, error: 'network' })),
-  // A whole live table at once — one round, every seat's own bet and multiplier.
+  // The API DRAWS the round (SECURITY_SUMMARY §9 #4): the bot sends what the player chose —
+  // `opts` is { betOn, num, target, risk } — and gets back the multiplier and the outcome.
+  // It never sends a multiplier; the API refuses a body that carries one.
+  economyCasino: (discordId, bet, game, opts = {}) => call('POST', '/bot/economy/casino', {
+    discordId, bet, game,
+    ...(game === 'roulette' ? { betOn: opts.betOn || 'red', ...(opts.betOn === 'number' ? { num: opts.num } : {}) } : {}),
+    ...(game === 'wheel' ? { target: opts.target } : {}),
+    ...(game === 'plinko' ? { risk: opts.risk } : {}),
+  }).catch((e) => ({ ok: false, error: e?.body?.error || 'network' })),
+  // A whole live table at once — one round, every seat's own bet and PICK; the API draws the
+  // round and answers with `outcome` beside the results.
   economySettle: (game, plays, pot = false) => call('POST', '/bot/economy/casino/settle', { game, plays, pot }).catch(() => ({ ok: false, error: 'network' })),
   economyReveal: (discordId, purchaseId) => call('POST', '/bot/economy/reveal', { discordId, purchaseId }).catch(() => ({ ok: false, error: 'network' })),
   economyGift: (body) => call('POST', '/bot/economy/gift', body).catch(() => ({ ok: false, error: 'network' })),

@@ -189,10 +189,12 @@ export function issueElevatedToken(reply, userId) {
 }
 /** The shared secret the Discord bot presents on /bot/* routes.
  *
- *  BOT_SHARED_SECRET first, LINK_LOOKUP_SECRET as the documented alternative; the literal
- *  fallback is why the boot guard refuses to start in production without one of them.
+ *  BOT_SHARED_SECRET and nothing else. It used to fall back to LINK_LOOKUP_SECRET, the
+ *  secret the telemetry service's link lookup also holds, so a second service could speak
+ *  as the bot (SECURITY_SUMMARY §9 #4). The dev literal is why the boot guard refuses to
+ *  start in production without BOT_SHARED_SECRET (lib/boot-guard.mjs).
  */
-export const BOT_SECRET = () => process.env.BOT_SHARED_SECRET || process.env.LINK_LOOKUP_SECRET || 'dev-bot-secret';
+export const BOT_SECRET = () => process.env.BOT_SHARED_SECRET || 'dev-bot-secret';
 
 /** Authenticate a bot request. Returns false and answers 401 when it fails.
  *
@@ -1628,6 +1630,12 @@ export function guardStudioFlag(incoming, current, mayToggle) {
 export function guardStudioContent(incoming, current, mayStudio) {
   const next = { ...(incoming && typeof incoming === 'object' ? incoming : {}) };
   const cur = current && typeof current === 'object' ? current : {};
+  // `studioIndexIds` (phase 6) is the studio's own bookkeeping: the page order an old
+  // index-addressed link was made for, frozen by the studio's page routes. No form edits it,
+  // so whatever a config save carries, the stored one stays (a form loaded before it was
+  // frozen would otherwise erase it).
+  if (cur.studioIndexIds === undefined) delete next.studioIndexIds;
+  else next.studioIndexIds = cur.studioIndexIds;
   if (mayStudio && Array.isArray(next.canvases)) return next;
   if (cur.canvases === undefined) delete next.canvases;
   else next.canvases = cur.canvases;
@@ -1657,7 +1665,7 @@ export function guardStudioSections(incoming, current, mayStudio) {
 export function withoutStudioDrafts(config) {
   if (!config || typeof config !== 'object' || !Array.isArray(config.canvases)) return config;
   const shown = config.studioEnabled === true
-    ? config.canvases.filter((cv) => cv && typeof cv === 'object' && cv.id && String(cv.title || '').trim() && Array.isArray(cv.blocks) && cv.blocks.length)
+    ? config.canvases.filter((cv) => cv && typeof cv === 'object' && cv.id && cv.hidden !== true && String(cv.title || '').trim() && Array.isArray(cv.blocks) && cv.blocks.length)
     : [];
   return { ...config, canvases: shown };
 }

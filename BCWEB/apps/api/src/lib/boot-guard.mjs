@@ -9,11 +9,12 @@
 // A failed boot is loud and fixed in a minute. A silent one is found by whoever reads the
 // repository first.
 //
-// Checked PER PURPOSE, not per variable name. Bot auth reads
-// `BOT_SHARED_SECRET || LINK_LOOKUP_SECRET || 'dev-bot-secret'`, so demanding one specific
+// Checked PER PURPOSE, not per variable name. The link lookup reads
+// `BC_LINK_SECRET || LINK_LOOKUP_SECRET || 'dev-link-secret'`, so demanding one specific
 // name would reject a deployment that correctly set the other. The rule is the one the code
 // actually implements: at least one name in the chain must be set, and to something other
-// than the fallback that chain would otherwise use.
+// than the fallback that chain would otherwise use. Bot auth is a chain of ONE since
+// SECURITY_SUMMARY §9 #4: `BOT_SHARED_SECRET || 'dev-bot-secret'`.
 
 /**
  * One thing a secret protects, and the chain of variables that can supply it.
@@ -30,8 +31,11 @@ export const PRODUCTION_SECRETS = [
     consequence: 'anyone could forge a session token, including ADMIN',
   },
   {
+    // BOT_SHARED_SECRET only: the LINK_LOOKUP_SECRET fallback is gone (SECURITY_SUMMARY §9
+    // #4), so a deploy that set only the link secret no longer authenticates the bot at all
+    // and must be told so at boot rather than discovering a silent bot.
     purpose: 'Discord bot authentication',
-    vars: ['BOT_SHARED_SECRET', 'LINK_LOOKUP_SECRET'],
+    vars: ['BOT_SHARED_SECRET'],
     insecure: ['dev-bot-secret'],
     consequence: 'the /bot/* endpoints would accept anyone',
   },

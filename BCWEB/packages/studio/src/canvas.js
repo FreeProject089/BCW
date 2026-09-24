@@ -466,6 +466,8 @@ export function normalizeDoc(raw) {
     v: DOC_VERSION,
     id: safeId(c.id == null || c.id === '' ? 'canvas' : String(c.id), 'canvas'),
     title: String(c.title || '').slice(0, LIMITS.title),
+    // Kept in the studio, out of the public page's tabs (phase 6). Only written when true.
+    ...(c.hidden === true ? { hidden: true } : {}),
     frames: { desktop, phone },
     // Derived, for readers written before frames. Never stored (serializeDoc).
     height: desktop.h,
@@ -573,6 +575,7 @@ export function serializeDoc(canvas, extra = {}) {
     v: DOC_VERSION,
     id: n.id,
     title: e.title !== undefined ? String(e.title || '') : n.title,
+    ...((e.hidden !== undefined ? e.hidden === true : n.hidden === true) ? { hidden: true } : {}),
     frames: {
       desktop: frame(desk, DESIGN_WIDTH),
       phone: { ...frame(phone, PHONE_WIDTH), mode: phone.mode === 'board' ? 'board' : 'stack' },

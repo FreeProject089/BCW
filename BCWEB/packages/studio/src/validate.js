@@ -32,10 +32,11 @@ import { actionProblems, normalizeLinkPolicy, DEFAULT_LINK_POLICY } from './acti
 export const MAX_DOC_BYTES = LIMITS.bytes;
 
 /** The fields a document may have at the top, by version. */
-const DOC_KEYS_V1 = ['id', 'title', 'height', 'phoneHeight', 'phoneBoard', 'bg', 'grid', 'css', 'blocks'];
+// `hidden` (phase 6): a page kept in the studio and out of the public page's tabs.
+const DOC_KEYS_V1 = ['id', 'title', 'hidden', 'height', 'phoneHeight', 'phoneBoard', 'bg', 'grid', 'css', 'blocks'];
 // `background` is the closed value (background.js, phase 4). `bg` stays readable on a v2 page
 // saved before phase 4 (the API tolerates what is already stored); the studio never writes it.
-const DOC_KEYS_V2 = ['v', 'id', 'title', 'frames', 'background', 'bg', 'grid', 'css', 'blocks'];
+const DOC_KEYS_V2 = ['v', 'id', 'title', 'hidden', 'frames', 'background', 'bg', 'grid', 'css', 'blocks'];
 /** The fields a block may have. */
 export const BLOCK_KEYS = ['id', 'kind', 'x', 'y', 'w', 'h', 'z', 'props', 'opacity', 'themes', 'phone', 'anim',
   'name', 'locked', 'hidden', 'rotate', 'shadow', 'hover', 'link', 'component', 'action'];
@@ -114,6 +115,7 @@ export function validateDoc(doc, prefix = '', opts = {}) {
 
   if (c.id != null && c.id !== '' && !(typeof c.id === 'string' && ID_SHAPE.test(c.id))) add('id', 'bad_id', c.id);
   text(c.title, LIMITS.title, 'title', add);
+  if (c.hidden != null && typeof c.hidden !== 'boolean') add('hidden', 'bad_type', c.hidden);
   if (c.bg != null && typeof c.bg !== 'string') add('bg', 'bad_type', c.bg);
   else if (!cssValueOk(c.bg)) add('bg', 'unsafe_css', c.bg);
   // Closed: every field named, every value one of the kinds' own (background.js).

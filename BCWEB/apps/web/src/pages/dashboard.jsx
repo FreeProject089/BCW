@@ -1,3 +1,4 @@
+import { safeHref } from '../lib/safe-href.js';
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import {
@@ -637,10 +638,10 @@ function PaymentResultModal({ result, onClose, onDelivered }) {
                   {reveal && <pre className="text-xs font-mono whitespace-pre-wrap break-all rounded-md bg-[var(--bg-solid)] border border-[var(--line)] px-2.5 py-2">{secret}</pre>}
                 </>)
                 : d.role ? <div className="text-xs text-[var(--muted)]">{t('mkme.role', 'Delivered as a Discord role.')}</div>
-                : d.url ? <a href={d.url} target="_blank" rel="noopener noreferrer" className="text-xs text-[var(--accent-ink)] hover:underline">{t('dash.pay.openlink', 'Open the link you bought')}</a>
+                : d.url ? <a href={safeHref(d.url)} target="_blank" rel="noopener noreferrer" className="text-xs text-[var(--accent-ink)] hover:underline">{t('dash.pay.openlink', 'Open the link you bought')}</a>
                 : d.fileKey ? <div className="text-xs text-[var(--muted)]">{t('dash.pay.file', 'Your file is ready, download it from “What you bought”, below.')}</div>
                 : <div className="text-xs text-[var(--faint)]">{t('mkme.nothing', 'Nothing to reveal for this one.')}</div>}
-              {purchase.redeemUrl && <a href={purchase.redeemUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-[var(--accent-ink)] hover:underline block">{t('dash.pay.redeem', 'Where to use it')}</a>}
+              {purchase.redeemUrl && <a href={safeHref(purchase.redeemUrl)} target="_blank" rel="noopener noreferrer" className="text-xs text-[var(--accent-ink)] hover:underline block">{t('dash.pay.redeem', 'Where to use it')}</a>}
               {purchase.redeemNote && <div className="text-[11px] text-[var(--faint)]">{purchase.redeemNote}</div>}
             </div>
           );

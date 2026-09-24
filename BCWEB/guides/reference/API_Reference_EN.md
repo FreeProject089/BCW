@@ -265,7 +265,7 @@ grants nothing: the dashboard polls the status route above until it reads `deliv
 | GET | `/me/economy/purchases` | user | The inventory, newest first, with any code handed over. |
 | GET | `/admin/economy/purchases` | admin | Every purchase (pending first) — what a person still has to hand out. |
 | POST | `/admin/economy/purchases/:id/deliver` | admin | Mark a role / custom reward as handed out. |
-| GET | `/bot/config` · `/bot/token` · `/bot/account/:discordId` | bot | Bot config/token/account lookup. |
+| GET | `/bot/config` · `/bot/account/:discordId` | bot | Bot config/account lookup. (No `/bot/token` since Sept 2026: the bot reads `DISCORD_TOKEN` from its own env.) |
 | POST | `/bot/heartbeat` · `/bot/activity` · `/bot/link/issue` | bot | Bot heartbeat, activity, link-code issue. |
 | POST | `/bot/blog/sync` · `/bot/blog/announced` | bot | Blog-announce queue: the bot asks for the posts due in its channels, then marks what it posted. |
 | GET/POST | `/bot/kofi/unannounced` · `/kofi/announced` | bot | Ko-fi tip announce queue. |
@@ -623,7 +623,9 @@ A conversation with the owner and team behind a repo, a catalogue, a profile or 
 | GET | `/me/threads?box=inbox\|sent` | user | Inbox = addressed to me or my teams; sent = opened by me; `unread`. |
 | GET | `/me/threads/:id` | participant | The thread and its messages (marks my side read); 404 for anyone else. |
 | POST | `/me/threads/:id/messages` · `/close` · `/reopen` · `/flag` | participant | Reply (the other side is notified / e-mailed); close; reopen; report to staff. |
-| GET / POST | `/threads/t/:token` · `/threads/t/:token/messages` | the token | The anonymous sender's side. |
+| GET / POST | `/threads/t/:token` · `/threads/t/:token/messages` | the token | The anonymous sender's side. The link expires 12 months after the conversation's last activity: every `/threads/t/:token…` route then answers 410 `link_expired` and nothing else. |
+| POST | `/threads/t/:token/renew` | an expired token | Mails a NEW link to the address the conversation carries (never one from the request) and kills the old token; 409 `not_expired` / `use_account`, 403 `blocked`. 3 per hour. |
+| POST | `/me/threads/:id/revoke-link` | answering side or staff | Replaces the access link at once; an anonymous sender is mailed the new one (`mailed`). |
 | GET | `/admin/threads?status=&q=` · `/admin/threads/:id` | `manage_reports` | The queue (`flagged` first) and one thread with hidden messages, sender e-mail and IP. |
 | POST | `/admin/threads/:id/close` · `/block` · `/messages/:mid/hide` · `/unhide` | `manage_reports` | Moderation; block adds the sender to the blocklist and blocks every thread they opened. |
 | GET | `/legal` | public | Adds `optional: ['dpa']` — documents that ship in the bundle and are OFF until a published `LegalPage` row exists. Their sections are withheld too, `/me/legal-pending` stops asking for their acceptance, and the client hides the bundled copy it holds. Switch one on by publishing its page (`PUT /admin/legal/pages/:id { published }`, or `POST /admin/legal/pages` when there is no row yet). |

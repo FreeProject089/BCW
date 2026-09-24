@@ -243,3 +243,42 @@ describe('settleTable — every game in multi mode, and single-seat unchanged', 
     assert.equal(t.seats[0].payout, 250); assert.equal(t.seats[1].payout, 0);
   });
 });
+
+// The draw moved from the bot to the API (SECURITY_SUMMARY §9 #4). Each game is enumerated
+// over every value its `rand(n)` can return, so its odds are exact rather than sampled.
+import { drawSolo, drawLive, validLivePick, WHEEL_SLICES } from '../src/lib/casino-rules.mjs';
+describe('the draw (API-side since §9 #4)', () => {
+  const fixed = (v) => () => v;
+  test('roulette: 18 red pockets of 37 pay a red bet 2×; the zero pays green 14×', () => {
+    let redWins = 0;
+    for (let v = 0; v < 37; v++) if (drawSolo('roulette', { betOn: 'red' }, fixed(v)).multiplier === 2) redWins++;
+    assert.equal(redWins, 18);
+    assert.equal(drawSolo('roulette', { betOn: 'green' }, fixed(0)).multiplier, 14);
+    assert.equal(drawSolo('roulette', { betOn: 'number', num: 7 }, fixed(7)).multiplier, 35);
+  });
+  test('wheel: each slice lands exactly its weight out of 100', () => {
+    const hits = {};
+    for (let v = 0; v < 100; v++) { const { outcome } = drawSolo('wheel', { target: 2 }, fixed(v)); hits[outcome.landed] = (hits[outcome.landed] || 0) + 1; }
+    for (const [m, w] of WHEEL_SLICES) assert.equal(hits[m], w, `${m}×`);
+  });
+  test('dice wins on 4–6, coin on heads, and the multiplier is the one reported', () => {
+    assert.deepEqual(drawSolo('dice', {}, fixed(3)), { multiplier: 2, outcome: { roll: 4 } });
+    assert.deepEqual(drawSolo('dice', {}, fixed(2)), { multiplier: 0, outcome: { roll: 3 } });
+    assert.deepEqual(drawSolo('coinflip', {}, fixed(1)), { multiplier: 2, outcome: { heads: true } });
+  });
+  test('a live round pays only the right picks, and a pot is drawn among the seats', () => {
+    const seats = [{ discordId: 'a', bet: 10, pick: 2 }, { discordId: 'b', bet: 10, pick: 4 }];
+    assert.deepEqual(drawLive('race', seats, fixed(4)).multipliers, [0, 6]);
+    const pot = drawLive('pot', [{ discordId: 'a', bet: 10 }, { discordId: 'b', bet: 30 }], (n) => Math.floor(n * 0.5));
+    assert.equal(pot.outcome.winner, 'b');
+    assert.deepEqual(pot.multipliers, [0, 1]);
+  });
+  test('a pick the game does not offer is refused', () => {
+    assert.equal(validLivePick('race', 3), true);
+    assert.equal(validLivePick('race', 6), false);
+    assert.equal(validLivePick('coinflip', 'edge'), false);
+    assert.equal(validLivePick('dice', 'anything'), false);
+    assert.equal(validLivePick('pot', undefined), true);
+    assert.equal(validLivePick('slots', 'x'), false);
+  });
+});

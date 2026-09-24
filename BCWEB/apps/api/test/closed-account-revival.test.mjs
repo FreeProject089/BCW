@@ -62,6 +62,12 @@ describe('a closed account cannot be reopened with a leftover token', { skip }, 
     const closed = await p.user.findUnique({ where: { id: user.id }, select: { email: true, passwordHash: true, closedAt: true } });
     assert.ok(closed.closedAt, 'the fixture did not actually close');
     assert.equal(closed.passwordHash, null);
+    // Since SECURITY_SUMMARY §9 (F23-2 residual) anonymiseAccount deletes the outstanding
+    // reset rows itself. The ROUTE's refusal below is still the rule for a token that lands
+    // after the sweep read the table (issued in the same instant), so the row is put back to
+    // stand for that one — the burn is what is being tested.
+    assert.equal(await p.passwordReset.count({ where: { userId: user.id } }), 0, 'anonymiseAccount left a reset row behind');
+    await p.passwordReset.create({ data: { userId: user.id, tokenHash: sha256(token), expiresAt: new Date(Date.now() + 3600e3) } });
 
     const r = await app.inject({ method: 'POST', url: '/auth/reset/confirm', payload: { token, password: 'Another-Horse-42!' } });
     assert.equal(r.statusCode, 400, r.body);

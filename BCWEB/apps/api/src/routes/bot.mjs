@@ -10,7 +10,7 @@ import { issueWarn } from '../lib/warns.mjs';
 import { memberCapacity, capacityStatus, logModeration, memberPolicy, inactiveWhere, evictForRoom } from '../lib/discord-storage.mjs';
 import { buyShopItem, listPurchases, visibleShopItems, SHOP_KINDS, soldCount, itemTag, revealPurchase, giftPurchase, giftPoints, listLedger, movePoints, ledger, resolveUser, deliverGiveawayPrize } from '../lib/economy-shop.mjs';
 import { looksLikeBcId, findUserIdByBcId } from '../lib/repofingerprint.mjs';
-import { betLimits, edgePctFor, payoutFor, edgeApplied, settleTable, CASINO_GAMES } from '../lib/casino-rules.mjs';
+import { betLimits, edgePctFor, payoutFor, edgeApplied, settleTable, CASINO_GAMES, SOLO_GAMES, WHEEL_TARGETS, drawSolo, drawLive, validLivePick } from '../lib/casino-rules.mjs';
 import { ICONS as BOT_ICONS, ICON_STYLE_DEFAULTS, renderEmoji, renderEmojiPack, iconVersion, appIconTokens } from '../lib/bot-emoji.mjs';
 import { SETTING_KEY as APP_EMOJI_KEY } from '../lib/app-emoji-map.mjs';
 import { emitWebhook } from '../lib/webhooks.mjs';
@@ -18,6 +18,7 @@ import { grantAutoBadges } from './social.mjs';
 import { kofiGoalTotals } from './kofi.mjs';
 import { economyLevelFor, economyXpForLevel, economyPointsEarned, economyView, mergeShadowEconomy } from '../lib/economy-curve.mjs';
 import { normEconomyReward, rewardOf, rewardLabel, claimDraw, awardEconomyReward } from '../lib/giveaway-reward.mjs';
+import { errorReply } from '../lib/error-reply.mjs';
 
 // B4: a guild's member-storage config, created lazily on first sight with the safe default
 // (mode `none` — store nothing). Every member write goes through this so a guild the admin
@@ -37,6 +38,8 @@ async function botGuild(p, guildId, name) {
 
 
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no ambiguous chars
+// The casino's draw (routes below): crypto-grade, never Math.random.
+const casinoRand = (n) => randomInt(n);
 const genCode = () => Array.from({ length: 8 }, () => ALPHABET[randomInt(ALPHABET.length)]).join('').replace(/(.{4})(.{4})/, '$1-$2');
 
 // Default bot configuration. Admins edit a subset from the dashboard; the bot reads
@@ -557,8 +560,9 @@ export default async function botRoutes(app) {
   });
 
   // Set / clear the Discord bot token from the dashboard. Only allowed while the bot is
-  // DISABLED (so a running bot's token isn't swapped under it) and when no env token is
-  // set (env always wins). The idle bot polls GET /bot/token and connects once set.
+  // DISABLED and when no env token is set (env always wins). Since §9 #4 the bot process no
+  // longer fetches this value (it reads DISCORD_TOKEN from its own environment): the stored
+  // token serves the site's own Discord calls, the application-emoji upload.
   // requireRole('ADMIN'), NOT a capability. This sets the bot's credential: whoever can
   // write it can point the bot at a Discord application they control. The same rule as the
   // server terminal and /admin/users/:id/permissions — a credential is not delegable, and
@@ -924,7 +928,7 @@ export default async function botRoutes(app) {
       const inv = session.invoice && typeof session.invoice === 'object' ? session.invoice : null;
       if (!inv?.invoice_pdf) return reply.code(404).send({ error: 'no_pdf' });
       return { pdfUrl: inv.invoice_pdf, number: inv.number || null };
-    } catch (e) { return reply.code(502).send({ error: 'stripe_error', detail: String(e.message) }); }
+    } catch (e) { return errorReply(req, reply, 502, 'stripe_error', e); }
   });
 
   // ── Bot direct messages + gift codes ──
@@ -1349,14 +1353,12 @@ export default async function botRoutes(app) {
     return { ok: true };
   });
 
-  // The bot fetches its token here (shared-secret protected — never public). Returns
-  // null when disabled or unset, so the bot disconnects/idles accordingly.
-  app.get('/bot/token', async (req, reply) => {
-    if (!botAuth(req, reply)) return;
-    const p = await db();
-    const cfg = await getBotConfig(p);
-    return { token: cfg.enabled === false ? null : await storedToken(p) };
-  });
+  // There is NO `GET /bot/token` any more. The bot used to fetch its Discord token here, so
+  // the one shared secret that authorises every /bot/* route also handed out the credential
+  // that controls the bot in every guild (SECURITY_SUMMARY §9 #4). The bot reads
+  // DISCORD_TOKEN from its own environment; a token saved from the dashboard is used by the
+  // site's own Discord calls (the emoji upload) and nothing else.
+  // test/bot-secret.test.mjs pins that the route stays gone.
   // The bot posts periodic heartbeats; the dashboard shows uptime / guild counts.
   // The bot's handler errors, as ErrorEvent rows (source 'bot'): what the admin Errors page
   // lists, what the monitor's error alerts count, what the digest surfaces. The context
@@ -2468,13 +2470,34 @@ export default async function botRoutes(app) {
     return { ok: true };
   });
 
-  // A member gambles points in the casino. The bot posts the bet + outcome multiplier it rolled;
-  // the API validates the bet against the configured limits, applies the house edge to the
-  // payout, and settles the balance. The RNG lives on the bot (per game) — the API is the ledger.
+  // A member gambles points in the casino. The bot posts the bet and what the player CHOSE;
+  // the API draws the outcome (lib/casino-rules.mjs drawSolo, on crypto.randomInt), validates
+  // the bet against the configured limits, applies the house edge and settles the balance.
+  //
+  // The draw used to be the bot's, which sent a `multiplier` the API paid as-is (0–10 000×):
+  // whoever held the bot secret could mint points with it (SECURITY_SUMMARY §9 #4). `.strict()`
+  // refuses a body that still carries one, so a bot that was not updated fails loudly rather
+  // than having its number silently ignored.
   app.post('/bot/economy/casino', async (req, reply) => {
     if (!botAuth(req, reply)) return;
-    const b = z.object({ discordId: z.string().min(1).max(32), bet: z.number().int().min(1).max(100_000_000), multiplier: z.number().min(0).max(10000), game: z.string().max(20).optional() }).safeParse(req.body);
+    const b = z.object({
+      discordId: z.string().min(1).max(32),
+      bet: z.number().int().min(1).max(100_000_000),
+      game: z.enum(SOLO_GAMES),
+      betOn: z.enum(['red', 'black', 'green', 'number']).optional(),
+      num: z.number().int().min(0).max(36).nullable().optional(),
+      target: z.number().int().refine((v) => WHEEL_TARGETS.includes(v)).optional(),
+      risk: z.enum(['low', 'medium', 'high']).optional(),
+    }).strict().safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const { game } = b.data;
+    const opts = {
+      betOn: b.data.betOn || 'red',
+      num: b.data.num ?? null,
+      target: b.data.target ?? 2,
+      risk: b.data.risk || 'medium',
+    };
+    if (game === 'roulette' && opts.betOn === 'number' && opts.num == null) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
     const eco = (await getBotConfig(p)).economy || {};
     if (!eco.casino?.enabled) return { ok: false, error: 'casino_off' };
@@ -2487,25 +2510,26 @@ export default async function botRoutes(app) {
     if (!link) return { ok: false, error: 'not_linked' };
     const cur = await p.userEconomy.findUnique({ where: { userId: link.userId } });
     if ((cur?.points || 0) < b.data.bet) return { ok: false, error: 'insufficient', points: cur?.points || 0 };
+    // Drawn only once the bet is known to be playable: a refused bet rolls nothing.
+    const { multiplier, outcome } = drawSolo(game, opts, casinoRand);
     // The house edge is a tax on the PROFIT of a winning play, never on the stake: a 1× bucket
     // gives the bet back to the point, a 0.3× bucket returns exactly 30 % of it, a 2× flip pays
-    // bet + (bet · edge). Per game now, falling back to the global percentage. A crash
-    // multiplier already carries its edge inside the curve it was drawn from, so it is paid
-    // as-is rather than taxed twice.
-    const game = b.data.game || null;
+    // bet + (bet · edge). Per game, falling back to the global percentage.
     const edgePct = edgeApplied(game) ? 0 : edgePctFor(eco.casino, game);
-    const payout = payoutFor(b.data.bet, b.data.multiplier, edgePct);
+    const payout = payoutFor(b.data.bet, multiplier, edgePct);
     const delta = payout - b.data.bet;
-    const newPts = await movePoints(p, link.userId, delta, { kind: 'casino', ref: game, meta: { game, bet: b.data.bet, multiplier: b.data.multiplier, payout } }, { clamp: true });
-    return { ok: true, delta, payout, points: newPts, min, max: maxOut };
+    const newPts = await movePoints(p, link.userId, delta, { kind: 'casino', ref: game, meta: { game, bet: b.data.bet, multiplier, payout } }, { clamp: true });
+    return { ok: true, delta, payout, points: newPts, min, max: maxOut, multiplier, outcome };
   });
 
   // A whole TABLE settles at once: one round, many players, each on their own bet and their
-  // own multiplier — a shared coin flip, a crash round where each cashed out at a different
-  // moment, a race, the pot. The bot ran the round in front of everybody; this is the ledger
-  // catching up. Validated as a batch so a bad payload settles nobody, then applied one by
-  // one: a player who can no longer cover their stake by the time the round ends is REPORTED
-  // rather than failing the table, because the round cannot be un-played for the others.
+  // own pick — a shared coin flip, a race, the pot. The bot collected the seats and the picks;
+  // the API draws the round (drawLive) once every pick is committed, and settles it. Validated
+  // as a batch so a bad payload settles nobody, then applied one by one: a player who can no
+  // longer cover their stake is REPORTED and left out of the draw and of the pot.
+  //
+  // Seats carry a `pick`, never a `multiplier` — `.strict()` refuses one (see the single-play
+  // route above for why).
   app.post('/bot/economy/casino/settle', async (req, reply) => {
     if (!botAuth(req, reply)) return;
     const b = z.object({
@@ -2513,16 +2537,24 @@ export default async function botRoutes(app) {
       plays: z.array(z.object({
         discordId: z.string().min(1).max(32),
         bet: z.number().int().min(1).max(100_000_000),
-        multiplier: z.number().min(0).max(10000),
-        // Free-form, bounded: what they picked, when they cashed out — for the ledger line.
+        // What the player chose: a car index, heads/tails, a colour, a wheel multiplier, a
+        // crash cash-out target. Checked per game by validLivePick below.
+        pick: z.union([z.string().max(12), z.number()]).nullable().optional(),
+        // Free-form, bounded: what they picked, for the ledger line.
         note: z.string().max(60).optional(),
-      })).min(1).max(50),
+      }).strict()).min(1).max(50),
       // A POT: the seats are settled between themselves under the ZERO-LOSS rule — the
       // winners pocket the whole sum staked, split by stake, and the house takes nothing;
       // with no winner every stake comes back. Off, every seat is settled against the house.
       pot: z.boolean().optional().default(false),
-    }).safeParse(req.body);
+    }).strict().safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const { game } = b.data;
+    // Single-player-only games have no live draw.
+    if (game === 'slots' || game === 'plinko') return reply.code(400).send({ error: 'invalid_input' });
+    for (const pl of b.data.plays) {
+      if (!validLivePick(game, pl.pick)) return reply.code(400).send({ error: 'invalid_pick', discordId: pl.discordId });
+    }
     const p = await db();
     const eco = (await getBotConfig(p)).economy || {};
     if (!eco.casino?.enabled) return { ok: false, error: 'casino_off' };
@@ -2535,10 +2567,10 @@ export default async function botRoutes(app) {
       seen.add(pl.discordId);
       if (pl.bet < min || pl.bet > max) return { ok: false, error: 'bad_bet', min, max: maxOut, discordId: pl.discordId };
     }
-    const edgePct = edgeApplied(b.data.game) ? 0 : edgePctFor(eco.casino, b.data.game);
-    // Who can still pay is decided BEFORE the pot is split: a seat whose balance no longer
-    // covers its stake is reported and left out, so the winners are paid from stakes that
-    // exist rather than from one the loser never had.
+    const edgePct = edgeApplied(game) ? 0 : edgePctFor(eco.casino, game);
+    // Who can still pay is decided BEFORE the draw: a seat whose balance no longer covers its
+    // stake is reported and left out, so the pot is drawn among — and the winners are paid
+    // from — stakes that exist.
     const cover = new Map();
     for (const pl of b.data.plays) {
       const link = await p.discordLink.findUnique({ where: { discordId: pl.discordId }, select: { userId: true } });
@@ -2547,15 +2579,24 @@ export default async function botRoutes(app) {
       if ((cur?.points || 0) < pl.bet) { cover.set(pl.discordId, { error: 'insufficient', points: cur?.points || 0 }); continue; }
       cover.set(pl.discordId, { userId: link.userId });
     }
-    const table = settleTable(b.data.plays, { pot: b.data.pot, edgePct: b.data.pot ? 0 : edgePct, covered: (pl) => !!cover.get(pl.discordId)?.userId });
+    const covered = (pl) => !!cover.get(pl.discordId)?.userId;
+    const seated = b.data.plays.filter(covered);
+    // Crash draws its curve with the edge inside it (crashPoint); the others draw plain.
+    const draw = seated.length
+      ? drawLive(game, seated, casinoRand, { edgePct: game === 'crash' ? edgePctFor(eco.casino, game) : 0 })
+      : { outcome: null, multipliers: [] };
+    const won = new Map(seated.map((pl, i) => [pl.discordId, draw.multipliers[i]]));
+    const plays = b.data.plays.map((pl) => ({ discordId: pl.discordId, bet: pl.bet, multiplier: won.get(pl.discordId) || 0, note: pl.note }));
+    const table = settleTable(plays, { pot: b.data.pot, edgePct: b.data.pot ? 0 : edgePct, covered });
     const results = [];
     for (const pl of table.seats) {
       const c = cover.get(pl.discordId);
       if (pl.skipped) { results.push({ discordId: pl.discordId, ok: false, error: c?.error || 'insufficient', points: c?.points }); continue; }
-      const points = await movePoints(p, c.userId, pl.delta, { kind: 'casino', ref: b.data.game, meta: { game: b.data.game, bet: pl.bet, multiplier: pl.multiplier, payout: pl.payout, live: true, pot: b.data.pot || undefined, share: pl.share ?? undefined, refund: pl.refund || undefined, note: pl.note || null } }, { clamp: true });
-      results.push({ discordId: pl.discordId, ok: true, delta: pl.delta, payout: pl.payout, points, share: pl.share ?? undefined, refund: pl.refund || false });
+      const points = await movePoints(p, c.userId, pl.delta, { kind: 'casino', ref: game, meta: { game, bet: pl.bet, multiplier: pl.multiplier, payout: pl.payout, live: true, pot: b.data.pot || undefined, share: pl.share ?? undefined, refund: pl.refund || undefined, note: pl.note || null } }, { clamp: true });
+      // `multiplier` is the DRAWN win weight (0 = lost), which the bot's result lines read.
+      results.push({ discordId: pl.discordId, ok: true, delta: pl.delta, payout: pl.payout, points, multiplier: won.get(pl.discordId) || 0, share: pl.share ?? undefined, refund: pl.refund || false });
     }
-    return { ok: true, results, edgePct: b.data.pot ? 0 : edgePct, pot: table.pot, refund: table.refund, winners: table.winners };
+    return { ok: true, outcome: draw.outcome, results, edgePct: b.data.pot ? 0 : edgePct, pot: table.pot, refund: table.refund, winners: table.winners };
   });
 
   // ── Website side: redeem / list / unlink Discord links ──

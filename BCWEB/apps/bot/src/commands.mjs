@@ -617,53 +617,37 @@ async function cmdLeaderboard(i, isUpdate = false, scope = 'server', from = '') 
 }
 
 // ── Casino ───────────────────────────────────────────────────────────────────
-// The bot rolls each game and hands the API the multiplier; the API prices the house edge and
-// settles the balance. Different games = different odds/payouts, but the ledger is one place.
-function rollGame({ game, betOn, num, target, risk }) {
-  let mult = 0, detail = '', card = ''; // card = the ?d= detail the result image draws
+// The API draws each game and settles the balance (SECURITY_SUMMARY §9 #4); the bot sends what
+// the player chose and DESCRIBES what came back. It used to roll here and hand the API a
+// multiplier, which the API paid as-is — so the bot's shared secret could mint points.
+//
+// `outcome` is what the API drew (apps/api/src/lib/casino-rules.mjs drawSolo):
+//   roulette { pocket, colour } · wheel { landed } · plinko { path, rights } · dice { roll }
+//   slots { reels } · coinflip { heads }
+function describeRoll({ game, betOn, num, target, risk }, multiplier, outcome) {
+  const o = outcome || {};
+  let detail = '', card = ''; // card = the ?d= detail the result image draws
   if (game === 'roulette') {
-    // European wheel: 0 is green, 1–36 alternate red/black. Bets: a colour (2×), green (14×),
-    // or an exact number (35×). The zero beating both colours is the game's own edge, before
-    // the house edge the API prices on top.
-    const pocket = Math.floor(Math.random() * 37);
-    const reds = new Set([1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36]);
-    const colour = pocket === 0 ? 'green' : reds.has(pocket) ? 'red' : 'black';
-    if (betOn === 'number') { mult = pocket === num ? 35 : 0; detail = `${ui.icx('roulette')}You bet on **${num}** — the ball landed on **${pocket} ${colour}**.`; }
-    else if (betOn === 'green') { mult = pocket === 0 ? 14 : 0; detail = `${ui.icx('roulette')}You bet on **green** — the ball landed on **${pocket} ${colour}**.`; }
-    else { mult = colour === betOn ? 2 : 0; detail = `${ui.icx('roulette')}You bet on **${betOn}** — the ball landed on **${pocket} ${colour}**.`; }
-    card = String(pocket);
+    const where = `**${o.pocket} ${o.colour}**`;
+    const on = betOn === 'number' ? `**${num}**` : `**${betOn}**`;
+    detail = `${ui.icx('roulette')}You bet on ${on} — the ball landed on ${where}.`;
+    card = String(o.pocket);
   } else if (game === 'wheel') {
-    const SLICES = [[2, 45], [3, 24], [5, 16], [10, 9], [20, 4], [50, 2]];
-    let roll = Math.random() * 100, landed = 2;
-    for (const [m, w] of SLICES) { if (roll < w) { landed = m; break; } roll -= w; }
-    mult = landed === target ? target : 0;
-    detail = `${ui.icx('wheel')}You went for **${target}×** — the wheel stopped on **${landed}×**.`;
-    card = `${landed}|${target}`;
+    detail = `${ui.icx('wheel')}You went for **${target}×** — the wheel stopped on **${o.landed}×**.`;
+    card = `${o.landed}|${target}`;
   } else if (game === 'plinko') {
-    const TABLES = { low: [5, 3, 1.5, 1.2, 1, 0.5, 1, 1.2, 1.5, 3, 5], medium: [13, 4, 2, 1.2, 0.6, 0.3, 0.6, 1.2, 2, 4, 13], high: [50, 10, 3, 1, 0.3, 0.2, 0.3, 1, 3, 10, 50] };
-    let path = '', rights = 0;
-    for (let k = 0; k < 10; k++) { const rgt = Math.random() < 0.5; path += rgt ? 'R' : 'L'; if (rgt) rights++; }
-    mult = TABLES[risk][rights];
-    detail = `${ui.icx('plinko')}Risk **${risk}** — the ball landed in the **${mult}×** bucket.`;
-    card = `${risk}|${path}|${rights}`;
+    detail = `${ui.icx('plinko')}Risk **${risk}** — the ball landed in the **${multiplier}×** bucket.`;
+    card = `${risk}|${o.path}|${o.rights}`;
   } else if (game === 'dice') {
-    const roll = 1 + Math.floor(Math.random() * 6);
-    mult = roll >= 4 ? 2 : 0;
-    detail = `${ui.icx('dice')}You rolled a **${roll}** (win on 4-6).`; card = String(roll);
+    detail = `${ui.icx('dice')}You rolled a **${o.roll}** (win on 4-6).`; card = String(o.roll);
   } else if (game === 'slots') {
-    const S = ['cherry', 'lemon', 'bell', 'star', 'diamond'];
-    const reels = [0, 1, 2].map(() => S[Math.floor(Math.random() * S.length)]);
-    mult = reels[0] === reels[1] && reels[1] === reels[2] ? 8
-      : reels[0] === reels[1] || reels[1] === reels[2] || reels[0] === reels[2] ? 1.5
-      : 0;
+    const reels = Array.isArray(o.reels) ? o.reels : [];
     detail = reels.map((r) => ui.ic(r) || `\`${r}\``).join(' ');
     card = reels.join(' ');
   } else {
-    const heads = Math.random() < 0.5;
-    mult = heads ? 2 : 0;
-    detail = heads ? `${ui.icx('heads')}Heads!` : `${ui.icx('tails')}Tails.`; card = heads ? 'H' : 'T';
+    detail = o.heads ? `${ui.icx('heads')}Heads!` : `${ui.icx('tails')}Tails.`; card = o.heads ? 'H' : 'T';
   }
-  return { mult, detail, card };
+  return { detail, card };
 }
 
 const GAME_NAME = { coinflip: 'Coin flip', dice: 'Dice', slots: 'Slots', roulette: 'Roulette', wheel: 'Wheel', plinko: 'Plinko', race: 'Race', pot: 'Pot' };
@@ -693,8 +677,7 @@ async function playCasino(i, opts) {
   const { bet, game } = opts;
   const { t } = await tr(i);
   const gameName = t(`game.${game}`);
-  const { mult, detail, card } = rollGame(opts);
-  const r = await api.economyCasino(i.user.id, bet, mult, game);
+  const r = await api.economyCasino(i.user.id, bet, game, opts);
   if (!r.ok) {
     if (r.error === 'not_linked') return notLinked(i);
     const msg = r.error === 'casino_off' ? 'The casino is off.'
@@ -706,6 +689,7 @@ async function playCasino(i, opts) {
   // The GIF takes a moment to render; a deferred reply keeps Discord from timing the
   // interaction out, and the play is public — the table is the fun part.
   await i.deferReply();
+  const { detail, card } = describeRoll(opts, r.multiplier, r.outcome);
   // Three outcomes, not two: a win (delta > 0), a push (a 1× bucket — the bet comes back to the
   // point, nothing won, nothing lost) and a loss — which may be PARTIAL (a 0.3× bucket returns
   // 30 % of the bet), so the loss line shows what actually left the balance, not the whole bet.

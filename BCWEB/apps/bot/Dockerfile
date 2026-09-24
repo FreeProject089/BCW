@@ -15,4 +15,8 @@ RUN apk upgrade --no-cache && apk add --no-cache fontconfig ttf-dejavu
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund
 COPY src ./src
+# Not root at runtime (SECURITY_SUMMARY §9 #10, F10-12). The bot writes nothing to disk (its
+# state lives in the API), so no directory needs handing over: node_modules and src stay
+# root-owned and read-only to the process.
+USER node
 CMD ["node", "src/index.mjs"]

@@ -117,17 +117,18 @@ Services, `depends_on` edges, start order, and **what is published to the networ
 
 Not a fault list — the edge proxy is *supposed* to publish 80 and 443. It is the list of
 things reachable from outside the machine, which is a list somebody should be able to recite
-and usually cannot. It is pinned as `publishedPorts` below and it is six entries, over eleven
-services:
+and usually cannot. It is pinned as `publishedPorts` below and it is three entries, over twelve
+services (eleven, plus the `volume-perms` one-shot):
 
 | Service | Published | Note |
 | --- | --- | --- |
 | `caddy` | `80`, `443`, `5176` | The edge. 80 and 443 are the point of it. |
-| `api` | `3000-3009` | A **range**, not one port. |
-| `minio` | `9000`, `9001` | Object storage and its console. |
-
-`db` publishes `5432` bound to `127.0.0.1` only, which is why it is not on this list: the map
-reads the bind address, and loopback is not the network.
+`db` (`5432`), `api` (`3000-3009`, a **range**) and `minio` (`9000`, `9001`, object storage and
+its console) are published bound to `127.0.0.1` only, which is why they are not on this list: the
+map reads the bind address, and loopback is not the network. The API and MinIO used to be on
+every interface; Docker-published ports bypass `ufw` on a standard install, so they were
+reachable from outside whatever the firewall said (SECURITY_SUMMARY §9 #2). Browsers reach
+storage through Caddy on `S3_DOMAIN`.
 
 !!! warning "The API publishes a range, so its host port moves"
     `3000-3009:3000` lets Compose scale the API, and it means the host port the API answers on
@@ -136,9 +137,9 @@ reads the bind address, and loopback is not the network.
     restart. Read the map, or `docker compose port api 3000`, rather than the first port in the
     range.
 
-The last three rows above are published for convenience, and `run/DEPLOY_EN.md` §12 says the
-firewall must close everything but 22/80/443 right after the first deploy, which is the point
-of putting the same fact on a screen somebody looks at more than once.
+`5176` is the local site address; `run/DEPLOY_EN.md` §12 says the firewall must close
+everything but 22/80/443 right after the first deploy, which is the point of putting the same
+fact on a screen somebody looks at more than once.
 
 !!! note "This answers inside the container now"
     It used to 404 on every deployed instance, because nothing copies `infra/` into the API
@@ -245,8 +246,9 @@ above is the first. This is the second — the GitHub Actions workflows, what ea
 publishes (read from the ACTIONS it uses, never from its name), and which secrets a fresh
 clone would need.
 
-What it reports is **one workflow, five jobs, no secrets at all**: `BCW/.github/workflows/ci.yml`,
-running `web-build`, `api-check`, `native`, `caddyfile` and `secret-scan` on push and on
+What it reports is **one workflow, seven jobs, no secrets at all**: `BCW/.github/workflows/ci.yml`,
+running `web-build`, `api-check`, `native`, `caddyfile`, `secret-scan`, `npm-audit` and
+`cargo-audit` on push and on
 pull_request. All three figures are pinned below. Nothing in CI needs a secret, so a
 contributor on a fork can check their work, which is a one-line fact that otherwise lives only
 in whoever set it up.
@@ -285,9 +287,9 @@ be switched off within a month.
 | `liveSecretFallbacks` | Secret-ish `process.env` reads with a hardcoded fallback and no boot guard | **0** |
 | `dataLossMigrations` | Migrations containing `DROP TABLE`, `DROP COLUMN` or `DELETE FROM` | **3** |
 | `indexDrift` | Indexes created by a migration and absent from `schema.prisma` | **0** |
-| `publishedPorts` | Port entries reachable from outside the machine | **6** |
+| `publishedPorts` | Port entries reachable from outside the machine | **3** |
 | `workflows` | GitHub Actions workflow files the map can reach | **1** |
-| `workflowJobs` | Jobs across those workflows | **5** |
+| `workflowJobs` | Jobs across those workflows | **7** |
 | `workflowSecrets` | Distinct secrets those workflows need | **0** |
 
 ## What these are not

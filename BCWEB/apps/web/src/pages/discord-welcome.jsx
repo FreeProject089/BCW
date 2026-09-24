@@ -18,6 +18,7 @@
 //   · the author is drawn as "a bot", because the guild payload does not carry the bot's own
 //     name or avatar.
 // Those four are written into the fold under the preview, not hidden in this comment.
+import { safeHref } from '../lib/safe-href.js';
 import { useState } from 'react';
 import { AlertTriangle, Check as CheckIcon, CreditCard, Image as ImageIcon, LogIn, LogOut } from 'lucide-react';
 import { useI18n } from '../i18n.jsx';
@@ -84,7 +85,7 @@ function BannerArt({ title, name, guildName, memberCount, bg, bgImage, id }) {
       </defs>
       <rect width={W} height={H} fill={theme.base} />
       {backdrop && <>
-        <image href={backdrop} x="0" y="0" width={W} height={H} preserveAspectRatio="xMidYMid slice" />
+        <image href={safeHref(backdrop)} x="0" y="0" width={W} height={H} preserveAspectRatio="xMidYMid slice" />
         <rect width={W} height={H} fill={`url(#veil-${id})`} />
       </>}
       <rect width={W} height={H} fill={`url(#glow-${id})`} />

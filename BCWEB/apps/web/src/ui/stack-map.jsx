@@ -1,3 +1,4 @@
+import { safeHref } from '../lib/safe-href.js';
 import { useMemo, useState, useEffect, useRef } from 'react';
 import { stackLayers, STACK_KINDS } from '../lib/stack-layout.js';
 
@@ -340,7 +341,7 @@ function Panel({ node, edges, byId, kind, onPick, onClose, t, count, display = (
           empty={t('stack.f.feedsNone', 'Nothing else in this diagram.')} />
 
         {node.docs && (
-          <a href={node.docs} target="_blank" rel="noreferrer"
+          <a href={safeHref(node.docs)} target="_blank" rel="noreferrer"
             className="inline-block text-[13px] text-[var(--accent-ink)] hover:underline break-all">
             {t('stack.f.docs', 'Documentation')} ↗
           </a>

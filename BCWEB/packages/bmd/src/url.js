@@ -36,8 +36,8 @@ const STRIP = /[\x00-\x1f\x7f\s]/g;
  *
  * @param {string} raw            what the author wrote
  * @param {object} [opt]
- * @param {'link'|'media'|'download'} [opt.kind]  what it is for
- * @param {object} [opt.policy]   { allowHosts, allowProtocols, rewrite } — see config.js
+ * @param {'link'|'media'|'download'|'api'} [opt.kind]  what it is for
+ * @param {object} [opt.policy]   { allowHosts, allowApiHosts, origin, allowProtocols, rewrite } — see config.js
  * @returns {{ ok: boolean, href: string, external: boolean, reason?: string }}
  */
 export function safeUrl(raw, opt = {}) {
@@ -88,15 +88,26 @@ export function safeUrl(raw, opt = {}) {
   let host = '';
   try { host = new URL(url).hostname.toLowerCase(); } catch { return { ok: false, href: '', external: true, reason: 'unparseable' }; }
 
-  // An allowlist, when the host set one. `example.com` covers `www.example.com` and any other
-  // subdomain — a list that made you write every subdomain would be a list nobody keeps.
-  const list = kind === 'download' ? (policy.allowDownloadHosts || policy.allowHosts) : policy.allowHosts;
-  if (Array.isArray(list) && list.length) {
-    const ok = list.some((h) => {
-      const want = String(h).toLowerCase().replace(/^\./, '');
-      return host === want || host.endsWith(`.${want}`);
-    });
-    if (!ok) return { ok: false, href: '', external: true, reason: 'host' };
+  const hostIn = (list) => list.some((h) => {
+    const want = String(h).toLowerCase().replace(/^\./, '');
+    return host === want || host.endsWith(`.${want}`);
+  });
+
+  // What a live block may FETCH (`kind: 'api'`), when the host set `allowApiHosts`. Stricter
+  // than a link on purpose: a link is followed by a reader who chose to click it, a fetch runs
+  // in every reader's browser as soon as the page is shown. So an array here, even an EMPTY
+  // one, means "the page's own origin plus these hosts, nothing else" — unlike `allowHosts`,
+  // where empty means any host. `null` (the default) keeps the link rule, as before 3.0.1.
+  if (kind === 'api' && Array.isArray(policy.allowApiHosts)) {
+    const origin = policy.origin || (typeof location !== 'undefined' ? location.origin : '');
+    let same = false;
+    try { same = !!origin && new URL(url).origin === origin; } catch { /* unparseable was refused above */ }
+    if (!same && !hostIn(policy.allowApiHosts)) return { ok: false, href: '', external: true, reason: 'host' };
+  } else {
+    // An allowlist, when the host set one. `example.com` covers `www.example.com` and any other
+    // subdomain — a list that made you write every subdomain would be a list nobody keeps.
+    const list = kind === 'download' ? (policy.allowDownloadHosts || policy.allowHosts) : policy.allowHosts;
+    if (Array.isArray(list) && list.length && !hostIn(list)) return { ok: false, href: '', external: true, reason: 'host' };
   }
 
   const href = typeof policy.rewrite === 'function' ? String(policy.rewrite(url, { kind, host }) || url) : url;

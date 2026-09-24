@@ -1,3 +1,4 @@
+import { safeHref } from '../lib/safe-href.js';
 import { useCallback, useEffect, useState } from 'react';
 import { MessageSquare, Server, Shield, Database, Users, Check, ScrollText, Sparkles, Mic, Plus, Trash2, Ban, Clock, UserMinus, Newspaper, ShieldAlert } from 'lucide-react';
 import { AutomodEditor, LogsEditor, WarnLadderEditor, normAutomod, normLadder, normLogs, logsForSave, ladderForSave } from './discord-automod.jsx';
@@ -619,7 +620,7 @@ export function MyDiscordServers() {
   // The bot's OAuth2 invite URL, built from its application id. A curated permission set (manage
   // roles/channels, kick/ban/timeout, move members, send/embed/history/view) — not Administrator.
   const inviteUrl = state.appId ? `https://discord.com/oauth2/authorize?client_id=${state.appId}&permissions=1099796925462&scope=bot%20applications.commands` : null;
-  const InviteBtn = inviteUrl ? <a href={inviteUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-medium text-white bg-[#5865F2] hover:opacity-90 transition"><DiscordIcon size={16} className="text-white" /> {t('ds.invite', 'Invite the bot')}</a> : null;
+  const InviteBtn = inviteUrl ? <a href={safeHref(inviteUrl)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-medium text-white bg-[#5865F2] hover:opacity-90 transition"><DiscordIcon size={16} className="text-white" /> {t('ds.invite', 'Invite the bot')}</a> : null;
   if (!state.linked) {
     return (
       <div className="max-w-md mx-auto text-center py-8">
@@ -646,7 +647,7 @@ export function MyDiscordServers() {
     <div>
       <div className="flex items-center gap-2 mb-4 flex-wrap">
         <MessageSquare size={16} className="text-[var(--accent-ink)]" /><h2 className="font-semibold">{t('ds.title', 'My Discord servers')}</h2>
-        {inviteUrl && <a href={inviteUrl} target="_blank" rel="noreferrer" className="ms-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-white bg-[#5865F2] hover:opacity-90 transition"><DiscordIcon size={15} className="text-white" /> {t('ds.invite', 'Invite the bot')}</a>}
+        {inviteUrl && <a href={safeHref(inviteUrl)} target="_blank" rel="noreferrer" className="ms-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-white bg-[#5865F2] hover:opacity-90 transition"><DiscordIcon size={15} className="text-white" /> {t('ds.invite', 'Invite the bot')}</a>}
       </div>
       <div className="grid md:grid-cols-[minmax(0,240px)_1fr] gap-4">
         {/* Server picker — a column on desktop, a scrolling row on mobile. */}

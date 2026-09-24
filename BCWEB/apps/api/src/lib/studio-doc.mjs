@@ -182,3 +182,105 @@ export function studioDocError(problems) {
   const first = problems[0] || {};
   return { error: 'invalid_studio_doc', path: first.path || '', reason: first.reason || '', problems: problems.slice(0, 20) };
 }
+
+// ── Several pages (PLAN-STUDIO-2026 phase 6) ──────────────────────────────────────────
+// The studio creates, deletes and reorders the pages of a project/showcase config itself,
+// each through its own route, each on the config as stored NOW (the route holds a lock over
+// the read-modify-write: withStudioLock below).
+//
+// LEGACY LINKS. Before phase 6 a studio URL named its page by INDEX (/studio/project/bmm/0).
+// The first time the page list changes shape from the studio (a page added somewhere else
+// than at the end, removed, reordered), the order it had until then is kept once, in
+// `studioIndexIds`: an old bookmark then still opens the page it was made for, whatever
+// happens to the order afterwards. Every link the studio makes now names the page by its id.
+
+/** At most this many studio pages per project/showcase page (tabs, and the config's size). */
+export const MAX_STUDIO_PAGES = 30;
+
+const pageList = (cur) => (Array.isArray(cur?.canvases) ? cur.canvases : []);
+const pageIds = (list) => list.map((c) => (c && typeof c.id === 'string' ? c.id : null));
+
+/** The config with the pre-phase-6 order frozen, when it is not already. */
+function withIndexIds(cur) {
+  if (Array.isArray(cur.studioIndexIds)) return cur;
+  return { ...cur, studioIndexIds: pageIds(pageList(cur)).filter(Boolean) };
+}
+
+/**
+ * Add ONE page, from a preset or a copy. `after`: the id of the page it goes after ('' or
+ * absent = at the end). Refused: an id already used (409 page_exists), too many pages (400
+ * too_many_pages), an unknown `after` (404 page_gone: it was deleted meanwhile), and anything
+ * validateDoc refuses. Returns `{ status, body }` or `{ config, rev }`.
+ */
+export async function insertConfigPage(current, canvas, after = '', opts = {}) {
+  const cur = current && typeof current === 'object' ? current : {};
+  const list = pageList(cur);
+  const doc = canvas && typeof canvas === 'object' && !Array.isArray(canvas) ? canvas : null;
+  if (!doc || typeof doc.id !== 'string' || !ID_SHAPE.test(doc.id)) return { status: 400, body: { error: 'invalid_input', path: 'canvas.id' } };
+  if (list.some((c) => c && c.id === doc.id)) return { status: 409, body: { error: 'page_exists' } };
+  if (list.length >= MAX_STUDIO_PAGES) return { status: 400, body: { error: 'too_many_pages', max: MAX_STUDIO_PAGES } };
+  let at = list.length;
+  if (after) {
+    const i = list.findIndex((c) => c && c.id === after);
+    if (i < 0) return { status: 404, body: { error: 'page_gone' } };
+    at = i + 1;
+  }
+  const base = at < list.length ? withIndexIds(cur) : cur;
+  const next = { ...base, canvases: [...list.slice(0, at), doc, ...list.slice(at)] };
+  const problems = configStudioProblems(next, cur, opts);
+  if (problems.length) return { status: 400, body: studioDocError(problems) };
+  return { config: next, rev: await pageRev(doc) };
+}
+
+/** Remove ONE page, from the revision the author saw (409 when it changed since, 404 when gone). */
+export async function removeConfigPage(current, pageId, base) {
+  const cur = current && typeof current === 'object' ? current : {};
+  const list = pageList(cur);
+  const at = list.findIndex((c) => c && c.id === pageId);
+  if (at < 0) return { status: 404, body: { error: 'page_gone' } };
+  const now = await pageRev(list[at]);
+  if (typeof base !== 'string' || now !== base) return { status: 409, body: { error: 'conflict', rev: now, current: list[at] } };
+  const next = { ...withIndexIds(cur), canvases: list.filter((_, i) => i !== at) };
+  return { config: next };
+}
+
+/**
+ * Put the pages in a new order. `order` must name every stored page exactly once: a list made
+ * from a stale view (a page added or removed meanwhile) is a 409 with the stored order.
+ */
+export function reorderConfigPages(current, order) {
+  const cur = current && typeof current === 'object' ? current : {};
+  const list = pageList(cur);
+  const ids = pageIds(list);
+  const want = Array.isArray(order) ? order : null;
+  if (!want || want.length > MAX_STUDIO_PAGES * 2 || !want.every((x) => typeof x === 'string' && ID_SHAPE.test(x))) return { status: 400, body: { error: 'invalid_input', path: 'order' } };
+  const same = want.length === ids.length && new Set(want).size === want.length && want.every((x) => ids.includes(x));
+  if (!same || ids.some((x) => x == null)) return { status: 409, body: { error: 'order_stale', order: ids } };
+  const byId = new Map(list.map((c) => [c.id, c]));
+  const next = { ...withIndexIds(cur), canvases: want.map((x) => byId.get(x)) };
+  return { config: next, order: want };
+}
+
+/**
+ * Run a studio read-modify-write under a transaction-scoped Postgres advisory lock named after
+ * the target, so two saves of two DIFFERENT pages (two tabs) cannot interleave their reads and
+ * writes and erase each other: the second waits for the first to commit, then reads what it
+ * wrote. `fn(tx)` does the read and the write with `tx`. A client without `$transaction` (a
+ * test double) runs `fn` on the client itself.
+ */
+export async function withStudioLock(p, lockKey, fn) {
+  if (typeof p?.$transaction !== 'function') return fn(p);
+  return p.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`studio:${lockKey}`}))`;
+    return fn(tx);
+  }, { timeout: 15_000 });
+}
+
+/** The body of a page creation: `{ canvas, after? }`. */
+export function parsePageCreate(body) {
+  const b = body && typeof body === 'object' ? body : {};
+  const canvas = b.canvas && typeof b.canvas === 'object' && !Array.isArray(b.canvas) ? b.canvas : null;
+  if (!canvas) return { ok: false, error: 'invalid_input' };
+  const after = typeof b.after === 'string' ? b.after.slice(0, 64) : '';
+  return { ok: true, canvas, after };
+}

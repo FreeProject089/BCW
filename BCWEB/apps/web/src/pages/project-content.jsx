@@ -6,6 +6,7 @@
 // editor opens it, so a visitor never downloads the markdown editor to read a changelog.
 // Every body goes through ui/md.jsx, the one renderer (and sanitiser) the blog and the site
 // docs use. Nothing here writes HTML.
+import { safeHref } from '../lib/safe-href.js';
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
@@ -225,7 +226,7 @@ export function ProjectVersions({ base, onOpenSnapshot }) {
                         {e.assets.map((a) => (
                           <div key={`${a.label}:${a.url}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-[var(--line)] px-3 py-2">
                             <Download size={14} className="text-[var(--accent-ink)] shrink-0" />
-                            <a href={a.url} rel="noreferrer" download className="text-sm font-medium hover:underline min-w-0 flex-1 truncate" title={a.label}>{a.label}</a>
+                            <a href={safeHref(a.url)} rel="noreferrer" download className="text-sm font-medium hover:underline min-w-0 flex-1 truncate" title={a.label}>{a.label}</a>
                             {a.platform && <span className="text-[11px] text-[var(--muted)]">{a.platform}</span>}
                             {Number.isFinite(a.size) && a.size > 0 && <span className="text-[11px] text-[var(--muted)] tabular-nums">{formatBytes(a.size)}</span>}
                             <Checksum value={a.checksum} />
@@ -248,8 +249,8 @@ export function ProjectVersions({ base, onOpenSnapshot }) {
                     <div className="flex flex-wrap items-center gap-2 mt-3">
                       {e.links?.blog && (e.links.blog.startsWith('/')
                         ? <Link to={e.links.blog}><Button size="sm" variant="ghost"><Newspaper size={13} /> {t('pcv.blog', 'Announcement')}</Button></Link>
-                        : <a href={e.links.blog} target="_blank" rel="noopener noreferrer"><Button size="sm" variant="ghost"><Newspaper size={13} /> {t('pcv.blog', 'Announcement')}</Button></a>)}
-                      {e.links?.github && <a href={e.links.github} target="_blank" rel="noopener noreferrer"><Button size="sm" variant="ghost"><Github size={13} /> {t('pcv.github', 'GitHub release')}</Button></a>}
+                        : <a href={safeHref(e.links.blog)} target="_blank" rel="noopener noreferrer"><Button size="sm" variant="ghost"><Newspaper size={13} /> {t('pcv.blog', 'Announcement')}</Button></a>)}
+                      {e.links?.github && <a href={safeHref(e.links.github)} target="_blank" rel="noopener noreferrer"><Button size="sm" variant="ghost"><Github size={13} /> {t('pcv.github', 'GitHub release')}</Button></a>}
                       {e.snapshot && onOpenSnapshot && <Button size="sm" variant="ghost" onClick={() => onOpenSnapshot(e.version)}><Eye size={13} /> {t('pcv.snapshot', 'The page at this version')}</Button>}
                       {canEdit && (
                         <span className="ms-auto flex gap-1">
@@ -421,7 +422,7 @@ export function ProjectPages({ base, kind, children }) {
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--faint)] mb-5">
                     <span>{t('docs.updated', 'Updated')} {fmtDate(cur.updatedAt, lang)}</span>
                     {!cur.published && <Badge tone="amber"><EyeOff size={11} /> {t('pcv.draft', 'Draft')}</Badge>}
-                    {cur.source?.url && <a href={cur.source.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 hover:text-[var(--accent-ink)]"><Github size={11} /> {t('pcd.source', 'Source in the repository')}</a>}
+                    {cur.source?.url && <a href={safeHref(cur.source.url)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 hover:text-[var(--accent-ink)]"><Github size={11} /> {t('pcd.source', 'Source in the repository')}</a>}
                     {canEdit && (
                       <span className="ms-auto flex gap-1">
                         <Button size="sm" variant="ghost" onClick={() => setEditing({ page: cur })}><Pencil size={13} /> {t('docs.edit', 'Edit')}</Button>

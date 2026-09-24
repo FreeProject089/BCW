@@ -19,6 +19,7 @@ import { db, requireEditor, optionalAuth, canViewPage, canEditProject, canEditSh
 import { isProjectKey } from '../lib/project-keys.mjs';
 import { safeFetch } from '../lib/net.mjs';
 import { gh, repoOf } from './projects.mjs';
+import { errorReply } from '../lib/error-reply.mjs';
 import {
   KINDS, LIMITS, VERSION_RE, slugifyDoc, compactContent, contentSize,
   docWriteSchema, releaseWriteSchema, cleanRelease, toDate, releasesFromGithub,
@@ -228,7 +229,7 @@ export default async function projectContentRoutes(app) {
     if (![src.owner, src.repo].every((s) => /^[A-Za-z0-9_.-]{1,100}$/.test(s))) return reply.code(400).send({ error: 'no_github' });
     let list;
     try { list = await gh(`https://api.github.com/repos/${src.owner}/${src.repo}/releases?per_page=100`); }
-    catch (e) { return reply.code(502).send({ error: 'github_unreachable', detail: String(e.message).slice(0, 80) }); }
+    catch (e) { return errorReply(req, reply, 502, 'github_unreachable', e); }
     const found = releasesFromGithub(list);
     const have = new Set((await p.projectRelease.findMany({ where: { target: t.target }, select: { version: true } })).map((r) => r.version));
     const room = Math.max(0, LIMITS.releases - have.size);
@@ -418,7 +419,7 @@ export default async function projectContentRoutes(app) {
       }
       return { drafts, total: files.length, truncated: files.length > picked.length };
     } catch (e) {
-      return reply.code(502).send({ error: 'github_unreachable', detail: String(e.message).slice(0, 80) });
+      return errorReply(req, reply, 502, 'github_unreachable', e);
     }
   };
   app.post('/projects/:key/pages/:kind/import', { preHandler: requireEditor(), config: IMPORT_LIMIT }, (req, reply) => importPages(req, reply, 'project'));

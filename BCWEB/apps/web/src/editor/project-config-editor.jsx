@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { studioPath, handoffKey } from '../lib/studio-page.js';
+import { Link } from 'react-router-dom';
+import { studioPath } from '../lib/studio-page.js';
 import {
   ChevronDown, Plus, Trash2, GripVertical, Star, Link2, Download, Image as ImageIcon,
   Film, Play, ListTodo, ScrollText, Users, ShieldCheck, Upload, Eye, ExternalLink, Github, Network, Boxes, Copy, CalendarDays, Sparkles, LayoutTemplate,
@@ -12,7 +12,6 @@ import { useAuth } from '../pages/auth.jsx';
 import { canUseStudio } from '../lib/roles.js';
 import { api, uploadMedia } from '../lib/api.js';
 import { MarkdownEditor } from './markdown-editor.jsx';
-import { CANVAS_PRESETS, presetBlocks } from '../lib/canvas.js';
 import IconPicker from './icon-picker.jsx';
 import { IconGlyph } from '../ui/md.jsx';
 import RrwebPreview from '../hero/RrwebPreview.jsx';
@@ -456,31 +455,20 @@ function CommitImport({ slug }) {
 
 export default function ProjectConfigEditor({ value, onChange, slug, isShowcase }) {
   const [tabAt, setTabAt] = useState(null);
-  const navigate = useNavigate();
   /**
-   * Open a canvas in the studio PAGE (/studio/:kind/:id/:index, pages/studio.jsx).
-   *
-   * The ONLY studio (decision D1 of PLAN-STUDIO-2026): the modal that used to open here when
-   * the form did not know its page was a second surface with other commands, and the one the
-   * tests did not reach. With no `slug` the button says why it cannot open instead.
-   *
-   * The config this form holds may not be saved yet, so it is handed over through
-   * sessionStorage: a page added here opens in the studio before the form is saved. The
-   * studio saves THAT page only, by id; the rest of this form is saved by its own Save.
+   * The studio pages are made, named, ordered, hidden and deleted IN the studio
+   * (/studio/:kind/:id/:page, pages/studio.jsx; PLAN-STUDIO-2026 phase 6), which saves each
+   * change on its own route. This form only lists them and links there, by page id: it no
+   * longer writes `canvases` at all (admin.jsx leaves them out of its save), so a form opened
+   * before a page was added in the studio cannot erase it by being saved.
    */
-  const openStudio = (i) => {
-    if (!slug) return;
-    const kind = isShowcase ? 'showcase' : 'project';
-    try { sessionStorage.setItem(handoffKey(kind, slug), JSON.stringify({ config: c, name: slug, at: Date.now() })); }
-    catch { /* no storage: the page fetches the saved config instead */ }
-    navigate(studioPath(kind, slug, i));
-  };
+  const studioKind = isShowcase ? 'showcase' : 'project';
   // Who is allowed to turn the studio on. The SERVER is the authority (guardStudioFlag keeps
   // a grantee's flag out of the stored config whatever they send); this only decides whether
   // to draw a switch that would not work for them.
   const { user: me } = useAuth();
   const mayToggleStudio = !!me && ['ADMIN', 'SUPERADMIN'].includes(me.role);
-  const toast = useToast(); const { t, lang } = useI18n();
+  const toast = useToast(); const { t } = useI18n();
   const c = value || {};
   // Who may DRAW these pages: the studio right on this page, or manage_studio (and, with the
   // switch off, manage_studio only: D2). The mirror of the server's canUseStudio; a person
@@ -1129,8 +1117,6 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
           does not offer it until something is on it. */}
       {(() => {
         const list = Array.isArray(c.canvases) ? c.canvases : [];
-        const put = (next) => set({ canvases: next });
-        const patch = (i, p2) => put(list.map((x, n) => (n === i ? { ...x, ...p2 } : x)));
         return (
           <Section icon={LayoutTemplate} title={t('pce.canvases', 'Studio pages')} badge={list.length}
             desc="Place blocks where you want them. Wide screens see the layout as you built it; narrow ones scale it down, and phones stack the blocks in reading order — use the phone button to see that before you publish.">
@@ -1163,33 +1149,30 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
                   <span className="text-[11px] text-[var(--faint)] tabular-nums whitespace-nowrap">{t('pce.canvases.n', '{n} block(s)').replace('{n}', (cv.blocks || []).length)}</span>
                 </div>
               ))}
-              {mayStudio && list.map((cv, i) => (
-                <div key={cv.id || i} className="rounded-xl border border-[var(--line)] p-3 flex items-center gap-2 flex-wrap">
-                  <Input className="flex-1 min-w-[140px]" value={cv.title || ''} onChange={(e) => patch(i, { title: e.target.value })} placeholder={t('pce.canvases.title', 'Tab title')} />
-                  <span className="text-[11px] text-[var(--faint)] tabular-nums whitespace-nowrap">
-                    {t('pce.canvases.n', '{n} block(s)').replace('{n}', (cv.blocks || []).length)}
-                  </span>
-                  <Button size="sm" variant="ghost" disabled={!slug} onClick={() => openStudio(i)}
-                    title={slug ? undefined : t('pce.canvases.noslug', 'Save this page first: the studio opens on a saved page.')}>
-                    <LayoutTemplate size={13} /> {t('pce.canvases.edit', 'Open the studio')}
-                  </Button>
-                  <Button size="sm" variant="ghost" className="!text-error" onClick={() => put(list.filter((_, n) => n !== i))} title={t('common.remove', 'Remove')}>×</Button>
-                </div>
-              ))}
-              {mayStudio && list.length > 0 && (
-                <p className="text-[11px] text-[var(--faint)]">{t('pce.canvases.saveapart', 'The studio saves its own page. Save this form too if you changed anything else here.')}</p>
-              )}
-              {/* Start from something. A blank canvas is the worst thing to hand somebody who
-                  has never used one — every preset is ordinary blocks the moment it lands. */}
               {mayStudio && (
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-[11px] text-[var(--faint)]">{t('pce.canvases.start', 'Start from:')}</span>
-                  {CANVAS_PRESETS.map((pr) => (
-                    <Button key={pr.id} size="sm" variant="ghost"
-                      onClick={() => put([...list, { id: `c${Date.now().toString(36)}`, title: '', blocks: presetBlocks(pr.id) }])}>
-                      + {lang === 'fr' ? pr.nameFr : pr.name}
-                    </Button>
+                <div className="space-y-2" data-pce-studio-pages>
+                  {list.map((cv, i) => (
+                    <div key={cv.id || i} className="rounded-xl border border-[var(--line)] p-3 flex items-center gap-2 flex-wrap">
+                      <span className="flex-1 min-w-[140px] truncate text-sm">{cv.title || t('pce.canvases.untitled', 'Untitled page')}</span>
+                      {cv.hidden === true && <span className="text-[11px] text-[var(--muted)] whitespace-nowrap">{t('pce.canvases.hidden', 'Hidden from visitors')}</span>}
+                      <span className="text-[11px] text-[var(--faint)] tabular-nums whitespace-nowrap">
+                        {t('pce.canvases.n', '{n} block(s)').replace('{n}', (cv.blocks || []).length)}
+                      </span>
+                      {slug && cv.id ? (
+                        <Link to={studioPath(studioKind, slug, cv.id)} className="btn btn-sm btn-ghost" data-pce-open={cv.id}>
+                          <LayoutTemplate size={13} /> {t('pce.canvases.edit', 'Open the studio')}
+                        </Link>
+                      ) : null}
+                    </div>
                   ))}
+                  {slug ? (
+                    <Link to={studioPath(studioKind, slug)} className="btn btn-sm" data-pce-manage>
+                      <LayoutTemplate size={13} /> {list.length ? t('pce.canvases.manage', 'Add, rename, order or delete pages in the studio') : t('pce.canvases.first', 'Create the first page in the studio')}
+                    </Link>
+                  ) : (
+                    <p className="text-[11px] text-[var(--faint)]">{t('pce.canvases.noslug', 'Save this page first: the studio opens on a saved page.')}</p>
+                  )}
+                  <p className="text-[11px] text-[var(--faint)]">{t('pce.canvases.instudio', 'Pages are made and saved in the studio, each on its own. Saving this form does not change them.')}</p>
                 </div>
               )}
             </div>

@@ -5,8 +5,11 @@
 ### Added
 - **Isometric icons**: `iso:<name>` (or `isometric:`), 83 full-colour SVGs shipped in `assets/iso/` from three MIT sets (Isoflow isopack, MI2, Jolloficons; MI2's glyphs are Material Design Icons, Apache-2.0), with every notice in `assets/iso/LICENSES.txt`. Drawn as an `<img>`; `cdn.iso` in the config says where from (jsDelivr's copy of this package by default, `null` switches the family off). `ISO_NAMES` and `isoRef()` exported from `./icons`; `./iso/icons.json` is the picker manifest.
 
+- **`policy.allowApiHosts`** (and `policy.origin`): a strict allowlist for what live blocks FETCH (`kind: 'api'`). An array, even empty, means the page's own origin plus the listed hosts; `[]` is same origin only. `null` (the default) keeps the `allowHosts` rule.
+
 ### Unchanged
 - Every existing icon name resolves as before: `iso:` was not a valid name in any family.
+- With `allowApiHosts` left `null`, the URL policy behaves exactly as in 3.0.0.
 
 ## 3.0.0 — 2026-09-07
 

@@ -106,7 +106,7 @@ function Animated({ anim, id, style, className, children, shown = true }) {
  * never show. The wrapper's clipping moves down here for the same reason: a shadow and a
  * lift paint outside the box, so the wrapper lets them and the shell clips the content.
  */
-function BlockShell({ b, children }) {
+export function BlockShell({ b, children }) {
   const p = b.props || {};
   const ex = useCanvasActions();
   // What pressing the block does (phase 5). A button block carries its own element (see
@@ -239,7 +239,7 @@ export function ShapeSvg({ p: raw }) {
 }
 
 /** The author's page stylesheet, confined to this canvas. */
-function ScopedCss({ canvas }) {
+export function ScopedCss({ canvas }) {
   if (!canvas.css) return null;
   const { css } = scopeCss(canvas.css, `[data-cv="${String(canvas.id).replace(/[^\w-]/g, '')}"]`);
   return css ? <style>{css}</style> : null;

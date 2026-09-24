@@ -116,3 +116,8 @@ a fetch by default, subject to the URL policy.
 policy as a link, with `kind: 'api'`. `policy.allowHosts` therefore decides which servers a
 document may talk to; an empty list means any https host, which is the right default for a site
 whose authors are staff and the wrong one for a site whose authors are the public.
+
+`policy.allowApiHosts` is the stricter rule for those fetches alone. Set it to an array and a live
+block may only fetch from the page's own origin and the listed hosts (and their subdomains): an
+EMPTY array means same origin only. BetterCommunity sets it to `[]` at boot and then to the list
+an admin keeps in Admin > Settings. `null`, the default, leaves the decision to `allowHosts`.

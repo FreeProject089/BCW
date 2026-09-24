@@ -9,6 +9,8 @@
 //   GET  /me/threads?box=inbox|sent                 mine — inbox = addressed to me or my teams; sent = opened by me
 //   GET  /me/threads/:id  · POST …/messages · …/close · …/reopen · …/flag
 //   GET  /threads/t/:token · POST /threads/t/:token/messages      the anonymous sender's side
+//   POST /threads/t/:token/renew                                   an EXPIRED link: mail a new one
+//   POST /me/threads/:id/revoke-link                               the answering side replaces it
 //   GET  /admin/threads?status=&q=  · GET /admin/threads/:id       manage_reports
 //   POST /admin/threads/:id/close | /block | /messages/:mid/hide | /messages/:mid/unhide
 //   GET/PUT /admin/threads/config                                    limits + blocked senders
@@ -173,6 +175,28 @@ async function overMessageRate(p, cfg, { authorId = null, senderEmail = '' }) {
 const site = () => (process.env.SITE_URL || 'https://bettercommunity.ch').replace(/\/+$/, '');
 const token = () => crypto.randomBytes(24).toString('base64url');
 
+/**
+ * The access link expires (SECURITY_SUMMARY §9 #11, O5).
+ *
+ * `/messages/t/<accessToken>` is the whole of an anonymous sender's access, and it used to be
+ * good for ever: a mail forwarded, or read over a shoulder, years later still opened the
+ * conversation and could answer in the sender's name. Now it stops working 12 months after
+ * the conversation's last activity. Measured on `lastActivityAt`, which every message moves,
+ * so a conversation still being had never loses its link.
+ *
+ * An expired link answers 410 `link_expired` and nothing else — not the subject, not who it
+ * was with. From that page the sender can ask for a new link, which is MAILED to the address
+ * the conversation carries (POST /threads/t/:token/renew), so holding the old link is never
+ * enough to get a working one. The answering side can also replace the link at any time
+ * (POST /me/threads/:id/revoke-link); the sender gets the new one by mail.
+ */
+export const LINK_TTL_MS = 365 * 864e5;
+export const linkExpired = (t, now = Date.now()) => !t?.lastActivityAt || now - new Date(t.lastActivityAt).getTime() > LINK_TTL_MS;
+
+// For the tests: capture the link mails instead of sending them (like setCopyMailer).
+let linkMailer = null;
+export function setLinkMailer(fn) { linkMailer = fn || null; }
+
 /** What a target IS, and who answers for it. Null when it does not exist or cannot be contacted. */
 async function resolveTarget(p, kind, id) {
   if (kind === 'repo') {
@@ -247,14 +271,16 @@ async function tellManagers(p, thread, text, href) {
   for (const id of ids) if (id !== thread.senderId) notify(p, id, 'thread', text, { href }).catch(() => {});
 }
 
-async function mailAnonSender(thread, subject, intro) {
-  if (!thread.senderEmail || !emailEnabled()) return;
+async function mailAnonSender(thread, subject, intro, mailId = undefined) {
+  if (!thread.senderEmail || (!linkMailer && !emailEnabled())) return false;
   const link = `${site()}/messages/t/${thread.accessToken}`;
-  await sendMail({
+  await (linkMailer || sendMail)({
+    mailId,
     to: thread.senderEmail, subject,
     html: mailShell(subject, `<p>${escapeHtml(intro)}</p><p><a href="${link}">${escapeHtml(link)}</a></p><p style="color:#888;font-size:12px">Anyone with this link can read and answer the conversation — keep it to yourself.</p>`, { label: 'Open the conversation', href: link }),
     text: `${intro}\n\n${link}`,
   }).catch(() => {});
+  return true;
 }
 
 /**
@@ -502,7 +528,14 @@ export default async function threadRoutes(app) {
     // by the member one, with no audit line either. Measured before fixing: 403 on
     // /admin/threads/<id>, 200 on /me/threads/<id>, and 200 application/zip on its /copy.
     // Participants are untouched: this only ever runs for somebody who is in neither side.
-    if (!owner && !sender) { if (!(await ensure2fa(req.user.uid, reply))) return null; }
+    if (!owner && !sender) {
+      if (!(await ensure2fa(req.user.uid, reply))) return null;
+      // …and it leaves a trace (SECURITY_SUMMARY §9, F2 residual). A staff member opening a
+      // private conversation they are in neither side of is reading somebody else's mail;
+      // that is sometimes the job, and it is always something they can be asked about.
+      // Every staff access through this door is one audit line: the read, the copy, a file.
+      await logAudit(p, req.user.uid, 'thread.staff_read', `thread=${t.id} via=${req.method} ${String(req.routeOptions?.url || '').slice(0, 60)}`).catch(() => {});
+    }
     return { t, side: owner ? 'owner' : sender ? 'sender' : 'staff' };
   };
 
@@ -597,6 +630,36 @@ export default async function threadRoutes(app) {
   // takes both back to open, so nothing here is one-way.
   app.post('/me/threads/:id/archive', STATE_RL, setState('archive', { status: 'archived' }));
 
+  /**
+   * The thread behind an access link, or an answer already sent: 404 for no such link, 410
+   * `link_expired` for one past LINK_TTL_MS. Every `/threads/t/:token…` route goes through
+   * here, so the expiry is one rule and not six (test/thread-link-expiry.test.mjs walks them).
+   */
+  const byToken = async (p, reply, tok, query = {}) => {
+    const t = await p.contactThread.findUnique({ where: { accessToken: String(tok || '') }, ...query });
+    if (!t) { reply.code(404).send({ error: 'not_found' }); return null; }
+    if (linkExpired(t)) { reply.code(410).send({ error: 'link_expired' }); return null; }
+    return t;
+  };
+
+  // The answering side replaces the link: a forwarded mail, a sender who says somebody else
+  // has read it. The old link stops at once; an anonymous sender is mailed the new one (the
+  // conversation would be lost to them otherwise). Staff may do it too, as moderation.
+  app.post('/me/threads/:id/revoke-link', STATE_RL, async (req, reply) => {
+    const p = await db();
+    const got = await participant(p, req, reply, req.params.id); if (!got) return;
+    if (got.side === 'sender') return reply.code(403).send({ error: 'forbidden' });
+    const next = token();
+    await p.contactThread.update({ where: { id: got.t.id }, data: { accessToken: next } });
+    let mailed = false;
+    if (!got.t.senderId && got.t.senderEmail && got.t.status !== 'blocked') {
+      mailed = await mailAnonSender({ ...got.t, accessToken: next }, `A new link to your conversation: ${got.t.subject}`,
+        `The link to your conversation “${got.t.subject}” with ${got.t.targetLabel} was replaced. The old link no longer works; this one does:`, 'thread.link');
+    }
+    if (got.side === 'staff') await logAudit(p, req.user.uid, 'thread.revoke_link', `thread=${got.t.id}`).catch(() => {});
+    return { ok: true, mailed };
+  });
+
   // ── files, read back by a participant ──────────────────────────────────────────────────
   //
   // Always as a download (Content-Disposition: attachment, nosniff): a file somebody sent is
@@ -618,8 +681,7 @@ export default async function threadRoutes(app) {
   });
   app.get('/threads/t/:token/files/:fid', { config: { rateLimit: { max: 60, timeWindow: '10 minutes' } } }, async (req, reply) => {
     const p = await db();
-    const t = await p.contactThread.findUnique({ where: { accessToken: req.params.token }, select: { id: true } });
-    if (!t) return reply.code(404).send({ error: 'not_found' });
+    const t = await byToken(p, reply, req.params.token, { select: { id: true, lastActivityAt: true } }); if (!t) return;
     return sendFile(p, reply, t.id, req.params.fid);
   });
 
@@ -648,14 +710,12 @@ export default async function threadRoutes(app) {
   });
   app.get('/threads/t/:token/copy', { config: { rateLimit: { max: 20, timeWindow: '10 minutes' } } }, async (req, reply) => {
     const p = await db();
-    const t = await p.contactThread.findUnique({ where: { accessToken: req.params.token }, select: { id: true, senderName: true } });
-    if (!t) return reply.code(404).send({ error: 'not_found' });
+    const t = await byToken(p, reply, req.params.token, { select: { id: true, senderName: true, lastActivityAt: true } }); if (!t) return;
     return sendZip(reply, await copyOf(p, t.id, 'sender', t.senderName || ''));
   });
   app.post('/threads/t/:token/copy/mail', { config: { rateLimit: { max: 5, timeWindow: '1 hour' } } }, async (req, reply) => {
     const p = await db();
-    const t = await p.contactThread.findUnique({ where: { accessToken: req.params.token }, select: { id: true, status: true, senderEmail: true, senderName: true } });
-    if (!t) return reply.code(404).send({ error: 'not_found' });
+    const t = await byToken(p, reply, req.params.token, { select: { id: true, status: true, senderEmail: true, senderName: true, lastActivityAt: true } }); if (!t) return;
     // A sender staff BLOCKED keeps the link — the conversation stays readable, which is the
     // rule everywhere here — but does not keep a button that makes the server send them mail.
     // Blocking is what stops a sender costing us something; this route was the one place it
@@ -725,8 +785,7 @@ export default async function threadRoutes(app) {
   app.get('/threads/t/:token', { config: { rateLimit: { max: 60, timeWindow: '10 minutes' } } }, async (req, reply) => {
     const p = await db();
     await autoArchive(p, await config(p));
-    const t = await p.contactThread.findUnique({ where: { accessToken: req.params.token }, include: INCLUDE_FULL });
-    if (!t) return reply.code(404).send({ error: 'not_found' });
+    const t = await byToken(p, reply, req.params.token, { include: INCLUDE_FULL }); if (!t) return;
     if (t.senderUnread) await p.contactThread.update({ where: { id: t.id }, data: { senderUnread: false } });
     const gate = t.kind === 'user' ? await directMessaging(p, await config(p), t.ownerUserId) : { reply: true, why: '' };
     await markRead(p, 'thread', t.id, 'sender');
@@ -741,8 +800,7 @@ export default async function threadRoutes(app) {
     const cfg = await config(p);
     const b = z.object({ body: z.string().trim().min(1).max(cfg.maxBody), files: fileSchema }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
-    const t = await p.contactThread.findUnique({ where: { accessToken: req.params.token } });
-    if (!t) return reply.code(404).send({ error: 'not_found' });
+    const t = await byToken(p, reply, req.params.token); if (!t) return;
     if (t.status !== 'open') return reply.code(409).send({ error: t.status });
     if (t.senderEmail && cfg.blockedEmails.includes(t.senderEmail)) return reply.code(403).send({ error: 'blocked' });
     if (t.kind === 'user') {
@@ -756,6 +814,27 @@ export default async function threadRoutes(app) {
     const stored = await commitFiles(p, t, m.id, prepared);
     await tellManagers(p, t, `Reply on “${t.targetLabel}”: ${t.subject}`, `/dashboard?s=reports&thread=${t.id}`);
     return { message: { ...serMsg({ ...m, files: stored.rows.map(serFile) }), receipt: 'sent' } };
+  });
+
+  // An EXPIRED link asks for a new one. The new link goes to the address the conversation
+  // already carries — this route takes no address — so whoever holds an old forwarded link
+  // gets nothing out of it but a mail to the real sender. The old token is replaced (a
+  // renewal that kept it would bring the forwarded link back to life), and the renewal is
+  // the sender's activity, so the new link has its full twelve months.
+  app.post('/threads/t/:token/renew', { config: { rateLimit: { max: 3, timeWindow: '1 hour' } } }, async (req, reply) => {
+    const p = await db();
+    const t = await p.contactThread.findUnique({ where: { accessToken: String(req.params.token || '') }, select: { id: true, status: true, senderId: true, senderEmail: true, subject: true, targetLabel: true, lastActivityAt: true } });
+    if (!t) return reply.code(404).send({ error: 'not_found' });
+    if (!linkExpired(t)) return reply.code(409).send({ error: 'not_expired' });
+    // Same rule as the copy mail: a blocked sender keeps nothing that makes the server mail them.
+    if (t.status === 'blocked') return reply.code(403).send({ error: 'blocked' });
+    // A signed-in sender's conversation lives in their dashboard; no address to mail here.
+    if (t.senderId || !t.senderEmail) return reply.code(409).send({ error: 'use_account' });
+    const next = token();
+    await p.contactThread.update({ where: { id: t.id }, data: { accessToken: next, lastActivityAt: new Date() } });
+    const sent = await mailAnonSender({ ...t, accessToken: next }, `A new link to your conversation: ${t.subject}`,
+      `You asked for a new link to your conversation “${t.subject}” with ${t.targetLabel}. The old link no longer works; this one does:`, 'thread.link');
+    return { ok: true, sent };
   });
 
   // ── staff: moderation only ─────────────────────────────────────────────────────────────
@@ -777,6 +856,11 @@ export default async function threadRoutes(app) {
     const p = await db();
     const t = await p.contactThread.findUnique({ where: { id: req.params.id }, include: INCLUDE_FULL });
     if (!t) return reply.code(404).send({ error: 'not_found' });
+    // Reading a conversation from the moderation screen is the same act as through
+    // /me/threads (participant() above) and writes the same line — unless the reader is in it.
+    if (t.senderId !== req.user.uid && t.ownerUserId !== req.user.uid) {
+      await logAudit(p, req.user.uid, 'thread.staff_read', `thread=${t.id} via=GET /admin/threads/:id`).catch(() => {});
+    }
     return { thread: { ...serThread(t, { withMessages: true, staff: true }), ip: t.ip, messages: t.messages.map((m) => ({ ...serMsg(m), body: m.body })) } };
   });
 

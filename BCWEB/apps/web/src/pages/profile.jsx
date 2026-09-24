@@ -1,3 +1,4 @@
+import { safeHref } from '../lib/safe-href.js';
 import { useEffect, useState, useRef } from 'react';
 import BoringAvatar from 'boring-avatars';
 import QRCode from 'qrcode';
@@ -1623,7 +1624,7 @@ function SocialConnections() {
               <BrandMark icon={Ico} colour={colour} />
               <div className="flex-1 min-w-0">
                 <div className="font-medium text-sm">{label}</div>
-                {c ? <a href={c.url} target="_blank" rel="noreferrer" className="text-[11px] text-[var(--faint)] hover:text-[var(--accent-ink)] truncate block" title={c.handle}>{c.handle}</a>
+                {c ? <a href={safeHref(c.url)} target="_blank" rel="noreferrer" className="text-[11px] text-[var(--faint)] hover:text-[var(--accent-ink)] truncate block" title={c.handle}>{c.handle}</a>
                   : <div className="text-[11px] text-[var(--faint)]">{t('sc.notlinked', 'Not linked')}</div>}
                 {c && !providers[k] && <div className="text-[11px] text-[var(--faint)]">{t('sc.gone', 'No longer offered on this server. You can still disconnect it.')}</div>}
               </div>

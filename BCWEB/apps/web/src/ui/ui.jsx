@@ -1,5 +1,6 @@
 // Reusable UI kit — keep page code declarative. No browser prompt()/confirm()/alert():
 // use the Dialog + Toast providers below. Icons come from lucide-react.
+import { safeHref } from '../lib/safe-href.js';
 import { createContext, useContext, useEffect, useState, useCallback, useRef, useId, forwardRef } from 'react';
 import { createPortal } from 'react-dom';
 // Only for EmptyState's `action.to`. react-router is already in the entry chunk (App.jsx
@@ -137,7 +138,7 @@ export function ActionBar({ actions, extra = [], className = '', size = 'sm' }) 
         // handed to `onClick` for SPA routing (a bare <a> would full-reload). Kept as an
         // <a> rather than react-router's <Link> so this kit stays router-agnostic.
         return a.href && !a.disabled ? (
-          <a key={a.key} href={a.href} target={a.target} rel={a.target === '_blank' ? 'noreferrer' : undefined} className="shrink-0 inline-flex"
+          <a key={a.key} href={safeHref(a.href)} target={a.target} rel={a.target === '_blank' ? 'noreferrer' : undefined} className="shrink-0 inline-flex"
             onClick={(e) => { if (a.target || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return; e.preventDefault(); a.onClick?.(); }}>
             {btn}
           </a>
@@ -169,7 +170,7 @@ export function ActionBar({ actions, extra = [], className = '', size = 'sm' }) 
                   // A navigating action stays a link once it folds in here too — otherwise
                   // the affordance would vanish at exactly the narrow widths that fold it.
                   return a.href && !a.disabled ? (
-                    <a key={a.key} role="menuitem" href={a.href} target={a.target} rel={a.target === '_blank' ? 'noreferrer' : undefined} className={`${cls} hover:bg-[var(--surface-2)]`}
+                    <a key={a.key} role="menuitem" href={safeHref(a.href)} target={a.target} rel={a.target === '_blank' ? 'noreferrer' : undefined} className={`${cls} hover:bg-[var(--surface-2)]`}
                       onClick={(e) => { if (a.target) { setOpen(false); return; } if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return; e.preventDefault(); setOpen(false); a.onClick?.(); }}>
                       {body}
                     </a>

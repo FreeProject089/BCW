@@ -16,7 +16,7 @@
  *  Codes, not sentences: this is an API, and a client renders in its own language. Sending
  *  "Runs external programs" made the French moderation screen print English under a French
  *  heading, because there was nothing else it could do with it. */
-export const RISK_KEYS = ['command', 'script', 'deeplink', 'stopProcess', 'delete', 'resources'];
+export const RISK_KEYS = ['command', 'script', 'deeplink', 'stopProcess', 'delete', 'resources', 'tasks'];
 
 /** Actions that reach outside BMM whatever the permissions say. A Set of action types
  *  rather than a map to prose — the type IS the stable identifier, and the words belong to
@@ -164,14 +164,17 @@ export function inspectBmmpa(doc) {
       trigger: describeTrigger(tk?.trigger),
       perms: [], reaching: [], scripts: [], targets: [], stepCount: 0, steps: [],
     };
-    const perms = tk?.perms && typeof tk.perms === 'object' ? tk.perms : null;
-    if (perms) {
-      for (const k of RISK_KEYS) if (perms[k]) s.perms.push(k);
-    } else if (tk?.allowCustomCommands) {
-      // The legacy single flag. Reporting "no permissions" for a file exported before
-      // permissions were split would be a lie of omission on the oldest files around.
-      s.perms.push('command', 'deeplink');
-    }
+    // EXACTLY BMM's askedPermissions() (frontend/src/features/settings/bmmpa-inspect.ts):
+    //   · a permission is granted only by `=== true`. BMM's runner checks `=== true`, so a
+    //     report that listed `"command": "yes"` as granted described a task that cannot do
+    //     it — and one that skipped it would hide nothing, but the two must agree;
+    //   · the legacy `allowCustomCommands` flag counts WHETHER OR NOT a `perms` object is
+    //     present. BMM honours it either way, so a file carrying `perms: {}` beside
+    //     `allowCustomCommands: true` was reported as asking for nothing while it could run
+    //     programs. Reporting "no permissions" there is the lie of omission that matters.
+    const perms = tk?.perms && typeof tk.perms === 'object' ? tk.perms : {};
+    for (const k of RISK_KEYS) if (perms[k] === true) s.perms.push(k);
+    if (tk?.allowCustomCommands === true) for (const k of ['command', 'deeplink']) if (!s.perms.includes(k)) s.perms.push(k);
     s.steps = walkSteps(tk?.steps, s);
     s.stepCount = countSteps(s.steps);
     return s;

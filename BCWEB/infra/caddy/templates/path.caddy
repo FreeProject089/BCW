@@ -9,7 +9,9 @@
 #   - its JavaScript runs with the same origin as BetterCommunity, so it can call /api with
 #     the visitor's session. A flaw in that app is a flaw in BetterCommunity.
 #   - it inherits the site's headers, the Content-Security-Policy included: an app that loads
-#     scripts from another host will be refused by the browser.
+#     scripts from another host, runs an inline <script> or an onclick= attribute (script-src
+#     has no 'unsafe-inline'), or fetches a host not in connect-src will be refused by the
+#     browser.
 #   - the app must be built for a base path (every link and asset under __PATH__/). An app
 #     that links to `/style.css` fetches BetterCommunity's `/style.css` instead.
 # A sub-domain (templates/service.caddy or host.caddy) has none of these problems.

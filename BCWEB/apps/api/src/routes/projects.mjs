@@ -10,8 +10,9 @@ import { buildEndpointGraph, endpointPathsToFetch } from '../lib/endpoint-graph.
 import { functionEdges, buildFlow, drawableFunctions } from '../lib/code-flow.mjs';
 import { snapshotKey, settingsKey, secretFor, rebuildSnapshot } from './code-webhook.mjs';
 import { projectKeys, isProjectKey, forgetProjectKeys, BUILTIN_PROJECT_KEYS, KEY_SHAPE } from '../lib/project-keys.mjs';
-import { configStudioProblems, studioDocError, configRevs, parsePageSave, replaceConfigPage, studioValidateOpts } from '../lib/studio-doc.mjs';
+import { configStudioProblems, studioDocError, configRevs, parsePageSave, replaceConfigPage, studioValidateOpts, insertConfigPage, removeConfigPage, reorderConfigPages, withStudioLock, parsePageCreate } from '../lib/studio-doc.mjs';
 import { configLinkProblems, configLinkError } from '../lib/config-links.mjs';
+import { errorReply } from '../lib/error-reply.mjs';
 
 // Per-project, admin-editable config (downloads, links, contributors, progress,
 // legal, release-notes source) stored as an AdminSetting row `project.<key>`.
@@ -706,7 +707,7 @@ export default async function projectRoutes(app) {
         tree = await gh(`https://api.github.com/repos/${owner}/${repo}/git/trees/${meta.default_branch}?recursive=1`);
       } catch (e) {
         // 404 covers "private" as well as "typo", and saying which would be a guess.
-        return reply.code(502).send({ error: 'github_unreachable', detail: String(e.message || e).slice(0, 120) });
+        return errorReply(req, reply, 502, 'github_unreachable', e);
       }
       const paths = (tree.tree || []).filter((e) => e.type === 'blob').map((e) => e.path);
       allPaths = paths;
@@ -793,7 +794,7 @@ export default async function projectRoutes(app) {
         const meta = ref ? { default_branch: ref } : await gh(`https://api.github.com/repos/${owner}/${repo}`);
         tree = await gh(`https://api.github.com/repos/${owner}/${repo}/git/trees/${meta.default_branch}?recursive=1`);
       } catch (e) {
-        return reply.code(502).send({ error: 'github_unreachable', detail: String(e.message || e).slice(0, 120) });
+        return errorReply(req, reply, 502, 'github_unreachable', e);
       }
       const paths = (tree.tree || []).filter((e) => e.type === 'blob').map((e) => e.path);
       // The union: the import graph reads JS/TS, the endpoint pairing also reads Rust,
@@ -1016,20 +1017,57 @@ export default async function projectRoutes(app) {
   // what is stored NOW, not what the studio read when it opened: a text fix saved in the
   // config editor meanwhile survives, and a page that moved under the author is a 409 with
   // the stored page, never a silent overwrite.
-  app.put('/admin/projects/:key/studio/pages/:pageId', { preHandler: requireEditor(), bodyLimit: 600 * 1024 }, async (req, reply) => {
+  //
+  // Phase 6: every studio write (this save, and the page list's create / delete / reorder
+  // below) reads and writes the config under ONE lock per project (withStudioLock), so two tabs
+  // saving two different pages at the same instant cannot read the same config and erase each
+  // other's page: the second waits, then reads what the first wrote.
+  async function studioWrite(req, reply, op) {
     if (!(await isProjectKey(req.params.key))) return reply.code(404).send({ error: 'unknown_project' });
     const p = await db();
     const k = settingKey(req.params.key);
-    const cur = await p.adminSetting.findUnique({ where: { key: k } }).catch(() => null);
-    if (!(await canUseStudio(req.user, 'project', req.params.key, cur?.value))) return reply.code(403).send({ error: await studioRefusal(req.user, 'project', req.params.key) });
-    const b = parsePageSave(req.body);
-    if (!b.ok) return reply.code(400).send({ error: b.error });
-    const r = await replaceConfigPage(cur?.value, String(req.params.pageId), b.canvas, b.base, await studioValidateOpts(p));
-    if (r.status) return reply.code(r.status).send(r.body);
-    await p.adminSetting.upsert({ where: { key: k }, create: { key: k, value: r.config }, update: { value: r.config } });
-    await snapshotVersion(p, req.params.key, r.config);
-    await snapshotConfigRevision(p, req.params.key, r.config, req.user?.uid);
-    return { ok: true, rev: r.rev };
+    const opts = await studioValidateOpts(p);
+    const out = await withStudioLock(p, k, async (tx) => {
+      const cur = await tx.adminSetting.findUnique({ where: { key: k } });
+      if (!(await canUseStudio(req.user, 'project', req.params.key, cur?.value))) return { status: 403, body: { error: await studioRefusal(req.user, 'project', req.params.key) } };
+      const r = await op(cur?.value, opts);
+      if (r.status) return r;
+      await tx.adminSetting.upsert({ where: { key: k }, create: { key: k, value: r.config }, update: { value: r.config } });
+      return r;
+    });
+    if (out.status) return reply.code(out.status).send(out.body);
+    await snapshotVersion(p, req.params.key, out.config);
+    await snapshotConfigRevision(p, req.params.key, out.config, req.user?.uid);
+    return out;
+  }
+
+  app.put('/admin/projects/:key/studio/pages/:pageId', { preHandler: requireEditor(), bodyLimit: 600 * 1024 }, async (req, reply) => {
+    const out = await studioWrite(req, reply, async (cur, opts) => {
+      const b = parsePageSave(req.body);
+      if (!b.ok) return { status: 400, body: { error: b.error } };
+      return replaceConfigPage(cur, String(req.params.pageId), b.canvas, b.base, opts);
+    });
+    return out === reply ? reply : { ok: true, rev: out.rev };
+  });
+
+  // The page list (phase 6): add a page (from a preset or a copy), remove one, reorder them.
+  app.post('/admin/projects/:key/studio/pages', { preHandler: requireEditor(), bodyLimit: 600 * 1024 }, async (req, reply) => {
+    const out = await studioWrite(req, reply, async (cur, opts) => {
+      const b = parsePageCreate(req.body);
+      if (!b.ok) return { status: 400, body: { error: b.error } };
+      return insertConfigPage(cur, b.canvas, b.after, opts);
+    });
+    if (out === reply) return reply;
+    reply.code(201);
+    return { ok: true, id: req.body.canvas.id, rev: out.rev, order: out.config.canvases.map((c) => c?.id) };
+  });
+  app.delete('/admin/projects/:key/studio/pages/:pageId', { preHandler: requireEditor() }, async (req, reply) => {
+    const out = await studioWrite(req, reply, async (cur) => removeConfigPage(cur, String(req.params.pageId), typeof req.query?.base === 'string' ? req.query.base : null));
+    return out === reply ? reply : { ok: true, order: out.config.canvases.map((c) => c?.id) };
+  });
+  app.put('/admin/projects/:key/studio/order', { preHandler: requireEditor() }, async (req, reply) => {
+    const out = await studioWrite(req, reply, async (cur) => reorderConfigPages(cur, req.body?.order));
+    return out === reply ? reply : { ok: true, order: out.order };
   });
 
   // One snapshot per SAVE, capped.
@@ -1126,7 +1164,7 @@ export default async function projectRoutes(app) {
     if (src) {
       if (!/^https?:\/\//.test(src)) return reply.code(400).send({ error: 'bad_source' });
       try { return { progress: await gh(await versionedRawUrl(src)), source: src }; }
-      catch (e) { return reply.code(502).send({ error: 'progress_unreachable', detail: String(e.message) }); }
+      catch (e) { return errorReply(req, reply, 502, 'progress_unreachable', e); }
     }
     if (cfg?.progressData) return { progress: cfg.progressData };
     if (Array.isArray(cfg?.progress) && cfg.progress.length) return { progress: { legacy: cfg.progress } };
@@ -1163,7 +1201,7 @@ export default async function projectRoutes(app) {
         .sort((a, b) => b.path.localeCompare(a.path)); // newest-ish first
       return { source: { owner: rn.owner, repo: rn.repo, branch, path: base }, files };
     } catch (e) {
-      return reply.code(502).send({ error: 'github_unreachable', detail: String(e.message) });
+      return errorReply(req, reply, 502, 'github_unreachable', e);
     }
   });
 
@@ -1230,7 +1268,7 @@ export default async function projectRoutes(app) {
         markers: releaseMarkers(releases, { includeMessages }),
       };
     } catch (e) {
-      return reply.code(502).send({ error: 'github_unreachable', detail: String(e.message) });
+      return errorReply(req, reply, 502, 'github_unreachable', e);
     }
   });
 
@@ -1252,7 +1290,7 @@ export default async function projectRoutes(app) {
     if (!url) return { data: null };
     if (!/^https?:\/\//.test(url)) return reply.code(400).send({ error: 'bad_source' });
     try { return { data: await gh(await versionedRawUrl(url)) }; }
-    catch (e) { return reply.code(502).send({ error: 'community_unreachable', detail: String(e.message) }); }
+    catch (e) { return errorReply(req, reply, 502, 'community_unreachable', e); }
   });
 
   // Real download counter. The download button pings /click; the headline counter (kind
@@ -1329,6 +1367,6 @@ export default async function projectRoutes(app) {
         }))
         .sort((a, b) => (a.date < b.date ? 1 : -1)); // newest first
       return { events };
-    } catch (e) { return reply.code(502).send({ error: 'github_unreachable', detail: String(e.message) }); }
+    } catch (e) { return errorReply(req, reply, 502, 'github_unreachable', e); }
   });
 }

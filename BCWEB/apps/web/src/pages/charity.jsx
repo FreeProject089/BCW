@@ -9,6 +9,7 @@
 //
 // The pot is read from GET /charity/current, which returns { enabled:false } when charity is
 // off — so every piece here renders nothing at all until an admin turns it on.
+import { safeHref } from '../lib/safe-href.js';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Heart, Vote, Info, Check, CalendarDays, Coins, FileCheck, Receipt, ShieldCheck, HandCoins, Landmark, ExternalLink } from 'lucide-react';
@@ -226,7 +227,7 @@ function PaidNotice({ pot, t }) {
     <div data-el="paid" className="chy-paid mt-3 rounded-lg bg-[var(--surface-2)] px-3 py-2 text-sm text-[var(--text)] flex items-center justify-center gap-2 flex-wrap">
       <Check size={15} className="text-[var(--accent-ink)] shrink-0" />
       <span>{t('ch.sent', 'This month’s donation has been sent.')}</span>
-      {pot.proofUrl && <a href={pot.proofUrl} target="_blank" rel="noreferrer" className="underline text-[var(--accent-ink)]">{t('ch.proof', 'View proof')}</a>}
+      {pot.proofUrl && <a href={safeHref(pot.proofUrl)} target="_blank" rel="noreferrer" className="underline text-[var(--accent-ink)]">{t('ch.proof', 'View proof')}</a>}
     </div>
   );
 }
@@ -694,7 +695,7 @@ export default function CharityPage() {
                   <div className="mt-4 rounded-lg bg-[var(--surface-2)] px-3 py-2.5 text-sm flex items-center gap-2 flex-wrap">
                     <Check size={15} className="text-success shrink-0" />
                     <span>{t('ch.sent', 'This month’s donation has been sent.')}</span>
-                    {data.proofUrl && <a href={data.proofUrl} target="_blank" rel="noreferrer" className="underline text-[var(--accent-ink)] inline-flex items-center gap-1">{t('ch.proof', 'View proof')} <ExternalLink size={12} /></a>}
+                    {data.proofUrl && <a href={safeHref(data.proofUrl)} target="_blank" rel="noreferrer" className="underline text-[var(--accent-ink)] inline-flex items-center gap-1">{t('ch.proof', 'View proof')} <ExternalLink size={12} /></a>}
                   </div>
                 )}
               </div>
@@ -774,7 +775,7 @@ export default function CharityPage() {
                   </div>
                   <div className="flex items-center gap-2 flex-wrap justify-end">
                     <StatusBadge status={m.status} t={t} />
-                    {m.proofUrl && <a href={m.proofUrl} target="_blank" rel="noreferrer" className="text-[12.5px] underline text-[var(--accent-ink)] inline-flex items-center gap-1 min-h-[24px] max-lg:min-h-[44px]">{t('ch.proof', 'View proof')} <ExternalLink size={12} /></a>}
+                    {m.proofUrl && <a href={safeHref(m.proofUrl)} target="_blank" rel="noreferrer" className="text-[12.5px] underline text-[var(--accent-ink)] inline-flex items-center gap-1 min-h-[24px] max-lg:min-h-[44px]">{t('ch.proof', 'View proof')} <ExternalLink size={12} /></a>}
                   </div>
                 </li>
               ))}

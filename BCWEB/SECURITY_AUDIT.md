@@ -1916,7 +1916,7 @@ swept, and a live one is left alone".
 
 ## Open — documented, not changed
 
-### O1 — `GET /c/:slug` hands a private catalogue's share key to a whitelisted viewer (OWNER)
+### O1 — `GET /c/:slug` hands a private catalogue's share key to a whitelisted viewer (FIXED Sept 24, see "§9 decisions applied" at the end)
 
 **CWE-200, low.** `ser(c)` in `routes/catalogs.mjs:293` is a proper allowlist but it *names*
 `shareKey`, and it feeds the public routes `GET /c` and `GET /c/:slug`. `catalogGate` admits a
@@ -1930,7 +1930,7 @@ shared serialiser and add it only where the owner reads their own catalogue. It 
 one allowlist, but `ser` also feeds `/me/catalogs` and the copy-share-link UI, and
 `apps/web/src/**` is another agent's this run, so it was not changed blind.
 
-### O2 — `GET /admin/settings` returns nested secrets (OWNER)
+### O2 — `GET /admin/settings` returns nested secrets (FIXED Sept 24, see "§9 decisions applied")
 
 `routes/misc.mjs:4001` filters by an exact-name denylist (`SECRET_SETTING_KEYS` in
 `lib/secret-guard.mjs`: `bot.token`, `kofi.token`, `backup.signingKey`,
@@ -1944,7 +1944,7 @@ pasted into a free-text setting. Fix: run the existing `stripSecrets` / `secretS
 values, not just over the names. Not applied — `misc.mjs` is four thousand lines of shared
 surface and three other agents are in this tree.
 
-### O3 — Raw exception text in response bodies (OWNER)
+### O3 — Raw exception text in response bodies (FIXED Sept 24, see "§9 decisions applied")
 
 Sixteen routes send `String(e.message)` to the client. The public ones —
 `/projects/:key/{progress,releases,activity,community}` (`projects.mjs:1007, 1044, 1111, 1133`)
@@ -1956,7 +1956,7 @@ site branches on the code and returns a fixed token. Two near-misses send `e.cod
 would echo `"error":"P2002"` if a Prisma error escaped the same `try`:
 `hosting-content.mjs:363, 420` and `repo-dashboard.mjs:155, 218`.
 
-### O4 — `fileSer` spreads a `RepoFile` row, storage key included (OWNER)
+### O4 — `fileSer` spreads a `RepoFile` row, storage key included (FIXED Sept 24, see "§9 decisions applied")
 
 `hosting-content.mjs:30` and `repo-dashboard.mjs:18` both do `{ ...f, size: Number(f.size) }`,
 which ships the raw object-storage `key`. It reaches `GET /repos/:id/dashboard`, whose guard
@@ -1964,7 +1964,7 @@ admits the owner, a whitelisted collaborator **or anyone holding the dashboard p
 class as F3, different model; not fixed because the dashboard is a shared surface and the fix
 wants a real allowlist rather than a second denylist.
 
-### O5 — The anonymous conversation link never expires (OWNER DECISION)
+### O5 — The anonymous conversation link never expires (DECIDED and FIXED Sept 24, see "§9 decisions applied")
 
 24 random bytes (192 bits — the entropy is fine) and no expiry at all. It survives
 auto-archiving, closing and a staff block, and there is no rotate or revoke. That is deliberate
@@ -3078,10 +3078,10 @@ own permission-filtered `tabs` (an unknown id draws nothing), and no server rout
 
 | Card | State |
 |---|---|
-| Bot shared secret | **Unchanged, open.** One unscoped `x-bot-secret` (`botAuth`, `safeEqual`) on 60 `/bot/*` route declarations (59 in round 1); `GET /bot/token` still behind it alone. |
+| Bot shared secret | **Decided and fixed Sept 24** ("§9 decisions applied"): `BOT_SHARED_SECRET` only, `GET /bot/token` removed, casino drawn by the API. Was: one unscoped `x-bot-secret` on 60 `/bot/*` route declarations; `GET /bot/token` behind it alone. |
 | CSP `'unsafe-inline'` | **Unchanged, open.** `infra/caddy/Caddyfile:109`: `script-src 'self' 'unsafe-inline'` plus GTM, `connect-src 'self' https:`. |
 | Containers as root | **Unchanged, open.** No `USER` in the `apps/api`, `apps/bot`, `apps/provisioner` Dockerfiles; telemetry still on `distroless/cc-debian12`, not `:nonroot`. `apps/web` is nginx (workers drop). |
-| Anonymous conversation link (O5) | **Unchanged, owner decision.** `ContactThread.accessToken`, no expiry, no revoke. |
+| Anonymous conversation link (O5) | **Decided and fixed Sept 24**: expires 12 months after the last activity, renewable by mail, revocable by the answering side. |
 | F23-6 | **Fixed this round** (C-2 above). |
 
 ### Verification for this part
@@ -3588,7 +3588,7 @@ the stub React's `useContext` now takes an override): `javascript:`, `data:`, `/
 reach the player as `''`; a site path and an https file still play; every `fetch(` in the player
 carries `credentials: 'omit'`. 2 red before, green after.
 
-### W4: `/auth?next=` left the site through an API route that redirects (FIXED web side; API card below)
+### W4: `/auth?next=` left the site through an API route that redirects (FIXED web side; API card FIXED in `cb56bdf3`)
 
 **CWE-601.** CVSS 3.1 **5.4 medium**, `AV:N/AC:L/PR:L/UI:R/S:C/C:L/I:L/A:N` (`PR:L`: the
 attacker needs an account to set its avatar).
@@ -3611,7 +3611,7 @@ routes back into `/api`, `//host`, `/\host`, `/\t/host` are refused; and `signin
 hand-rolled `startsWith` rule left. Red on the committed `signin.jsx`, green after; checking the
 allow-list against the raw string instead of the resolved path turns 2 cases red.
 
-**API card (not changed here, another agent's files):** `/api/avatar/:id` is an open redirect on
+**API card — FIXED in `cb56bdf3`** (`lib/avatar-url.mjs` `safeAvatarImage`: refused at write, ignored at read; entry kept for the record). Was: `/api/avatar/:id` is an open redirect on
 its own (`https://<site>/api/avatar/<id>` → anywhere), and `routes/oauth.mjs` `safeNext` accepts
 `/api/avatar/<id>` as a `next` (it lands on `${SITE_URL}${back}`). Validate `avatar.image` at
 write (`httpUrl()` or a site media path; the avatar hosts are listed in `lib/media-hash.mjs`
@@ -3681,7 +3681,7 @@ Paint itself cannot be observed in node; the browser measurement above is the ev
 
 ## Open (owner decision or another agent's files)
 
-- **API: `avatar.image`** (W4 above), the root of the redirect.
+- ~~**API: `avatar.image`** (W4 above), the root of the redirect.~~ FIXED in `cb56bdf3` (`lib/avatar-url.mjs`); this list was stale.
 - **The render side trusts the write side for ~70 `href={value}` sinks.** The API refuses
   `javascript:` at write (`httpUrl`, `configLinkProblems`, `check-url-schemas.mjs`), React 18 only
   warns, and the edge CSP still allows `'unsafe-inline'` (F10-9), which is also what turned W1 and
@@ -3708,3 +3708,38 @@ Paint itself cannot be observed in node; the browser measurement above is the ev
 i18n:check` exit 0, `npm run css:check` 0, `npm run legal:check` 0, `npm run build` 0,
 `npm run budget` OK: entry 147 KB gzip (budget 190), first load 239 KB (budget 300), unchanged by
 this pass. The vite server on :5206 was stopped. Nothing committed.
+
+---
+
+## §9 decisions applied (Sept 24 2026, agent-sec-api)
+
+The owner delegated every open decision (`guides/SECURITY_SUMMARY_EN.md` §9). These are the ones
+in BCWEB API/bot/web code, the legal pages and the restore runbook. Each fix has a test that was
+run **red with the flaw put back by text replacement**, then green once restored (the harness put
+each flaw back, ran the test, restored the fix, ran it again).
+
+| Card | Fix | Test (red on the flaw) |
+|---|---|---|
+| §9 #4 bot shared secret | `lib.mjs` `BOT_SECRET` = `BOT_SHARED_SECRET` only (no `LINK_LOOKUP_SECRET` fallback); `boot-guard.mjs` requires it in production; `GET /bot/token` removed, the bot reads `DISCORD_TOKEN` from its own env (`apps/bot/src/index.mjs`, `api.mjs`); the casino is drawn by the API (`casino-rules.mjs` `drawSolo` / `drawLive` on `crypto.randomInt`), both casino routes `.strict()` so a body carrying `multiplier` is refused; zero-loss table rule unchanged (`settleTable`) | `apps/api/test/bot-secret.test.mjs`, `boot-guard.test.mjs`, `casino-rules.test.mjs` (draw block), `apps/bot/test/casino-draw.test.mjs` |
+| §9 #11 / O5 conversation link | `threads.mjs`: every `/threads/t/:token…` route answers 410 `link_expired` 12 months after `lastActivityAt` (no schema change: the column exists); `POST /threads/t/:token/renew` mails a new link to the thread's own address and kills the old token; `POST /me/threads/:id/revoke-link` for the answering side (sender mailed the new link); web `threads.jsx` expired page + "Replace the link" | `apps/api/test/thread-link-expiry.test.mjs` |
+| F2 residual — staff read not audited | `participant()` and `GET /admin/threads/:id` write `thread.staff_read` through `logAudit` (the hash chain) when staff read a conversation they are not in | same file, last describe |
+| CSRF (no token on cookie routes) | `lib/csrf.mjs`, ONE `onRequest` hook installed in `server.mjs` after the cookie plugin: a state-changing request carrying `bcw_session` / `bcw_elevated` / `tele_session` is refused 403 `csrf_refused` on `Sec-Fetch-Site: cross-site`, or with no such header and an `Origin` that is not the site; Bearer / `X-API-Key` / `X-Bot-Secret` and CORS-allowlisted origins exempt; webhooks and OAuth callbacks unaffected | `apps/api/test/csrf.test.mjs` (Stripe, Ko-fi, code webhooks, OAuth callbacks, OIDC token included) |
+| F23-2 residual + erasure bytes | `anonymiseAccount` deletes `PasswordReset` and `EmailVerification` rows, the avatar object (only an upload `MediaHash` records as theirs and no other account uses) and the person's feedback attachments | `apps/api/test/erasure-leftovers.test.mjs` |
+| O1 | `catalogs.mjs`: `ser()` no longer names `shareKey`; `serOwner()` on `/me/catalogs`, `/me/catalogs/:id` and the create answer | `apps/api/test/catalog-sharekey.test.mjs` |
+| O2 | `GET /admin/settings` runs `stripSecrets` over every value; the two search-engine verification tokens (public, and high-entropy) are named and kept | `apps/api/test/admin-settings-secrets.test.mjs` |
+| O3 | `lib/error-reply.mjs` `errorReply()`: fixed token, detail to the server log, `detail` in the body for a SUPERADMIN only; 26 sites in 10 route files + `code-webhook.mjs`; `server-control.mjs` (the elevated server console) keeps its detail | `apps/api/test/error-reply.test.mjs` (helper + a scan of `src/routes`) |
+| O4 | `fileSer` in `repo-dashboard.mjs` and `hosting-content.mjs`: explicit field list, no `key` | `apps/api/test/repo-file-ser.test.mjs` |
+| Staff on every repo dashboard | `repo-dashboard.mjs` `resolve()`: a MOD reads (and may download the zip); every write answers 403 `admin_only`; ADMIN/SUPERADMIN keep write; payload `readOnly` + a banner on the web | `apps/api/test/repo-dashboard-staff.test.mjs` |
+| `@page` survives `scopeCss` | `packages/studio/src/css-scope.js`: `page` out of `KEEP_AT`, reported as refused | `apps/api/test/css-page.test.mjs` |
+| `.bmmpa` inspector drift | `lib/bmmpa.mjs` grants on `=== true` only and counts `allowCustomCommands` beside a `perms` object (BMM's `askedPermissions()`); `bmm-inspector.jsx` labels `resources` and `tasks` (EN + FR) | `apps/api/test/bmmpa-perms.test.mjs` |
+| §9 #17 shutdown notice | `legal.jsx`: "at least 60 days in advance, by e-mail and in your account" in the Terms and the Payments page, EN and FR | `apps/api/test/legal-promises.test.mjs` |
+| §9 #13 restore replay | `guides/run/BACKUP_EN.md` / `_FR.md`: `web` stopped from the DB restore until `docker compose exec api node src/replay-erasures.mjs --write` has run; new step 4 | same file |
+| §7 privacy claims | CSP sentence worded for `script-src` without `'unsafe-inline'` (another agent's change); the daily backup is a job scheduled on the server; the anonymous link's expiry is stated | same file |
+| CI secret scan | `apps/api/test/emoji-sync.test.mjs` builds its fake Discord token at run time; its entry in `.github/secret-scan-allow.json` is gone | `node .github/scripts/secret-scan.mjs` (1 finding with the literal back, 0 now) |
+
+**Not done here, and why.** `infra/compose/docker-compose.yml` still gives the api and the bot
+`BOT_SHARED_SECRET: ${BOT_SHARED_SECRET:-${LINK_LOOKUP_SECRET:-…}}`: the API code no longer
+accepts the link secret, but compose hands it over under the bot's name when `BOT_SHARED_SECRET`
+is unset, so the two services can still share a value. The compose file is another agent's (and
+carries the owner's uncommitted edit): drop the `LINK_LOOKUP_SECRET` fallback on both lines.
+

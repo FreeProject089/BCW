@@ -1,3 +1,4 @@
+import { safeHref } from '../lib/safe-href.js';
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Activity, Github, MessageSquare, Globe, Fingerprint, FolderGit2, Boxes, Download, Star, Share2, Calendar, Lock, Search, UserX, Youtube, Twitch, Gamepad2, ShieldOff, Sparkles, Mic, TrendingUp, X } from 'lucide-react';
@@ -101,7 +102,7 @@ export default function PublicProfile() {
           {conns.map((x) => {
             const chip = 'grid place-items-center w-9 h-9 rounded-xl border border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--line-strong)] hover:bg-[var(--surface-2)] transition';
             return x.url
-              ? <a key={x.key} href={x.url} target="_blank" rel="noreferrer" className={chip} title={`${x.label}: ${x.handle}`}><IconGlyph name={x.icon} size={17} /></a>
+              ? <a key={x.key} href={safeHref(x.url)} target="_blank" rel="noreferrer" className={chip} title={`${x.label}: ${x.handle}`}><IconGlyph name={x.icon} size={17} /></a>
               : <button key={x.key} onClick={() => copyHandle(x)} className={chip} title={`${x.label}: ${x.handle} — ${t('pp.clickcopy', 'click to copy')}`}><IconGlyph name={x.icon} size={17} /></button>;
           })}
         </div>}

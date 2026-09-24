@@ -5,6 +5,7 @@ import { provisionHostingPool, recomputePoolBytes } from './hosting.mjs';
 import { redeemPromoAtomic } from './promo.mjs';
 import { fulfilProduct, feeForProduct, splitFee, sellerMirror, releasePoolKeys } from './marketplace.mjs';
 import { syncPendingFromEvent } from '../lib/pending-checkout.mjs';
+import { errorReply } from '../lib/error-reply.mjs';
 import { nextTenureStart, graceHoursFor, syncLoyaltyCoupon, loyaltyFromSettings } from '../lib/loyalty.mjs'; // N-hosting (agent-hosting-N)
 
 // Encapsulated plugin: a raw-body JSON parser scoped here only, so Stripe's
@@ -918,7 +919,7 @@ export default async function stripeWebhook(app) {
 
     let event;
     try { event = stripe.webhooks.constructEvent(req.body, req.headers['stripe-signature'], secret); }
-    catch (e) { return reply.code(400).send({ error: 'bad_signature', detail: String(e.message) }); }
+    catch (e) { return errorReply(req, reply, 400, 'bad_signature', e); }
 
     const p = await db();
     const result = await dispatchStripeEvent({ p, stripe, event, log: req.log });

@@ -101,18 +101,24 @@ the restore runbook, not in somebody's memory.
 Run from `infra/compose/` (where `docker compose` sees the stack). **Restoring overwrites
 current data — take a fresh backup first if the data still matters.**
 
+The order matters: **`web` stays stopped from the first step until the erasures are
+replayed (step 4)**. A restored dump brings back every account erased since it was taken, and
+the privacy policy promises those erasures are re-applied before the site serves anyone again.
+
 ### 1. Postgres
 
 ```bash
 cd infra/compose
+docker compose stop web                # nobody reaches the site until step 4 is done
 # (optional) drop & recreate a clean schema first if restoring into a dirty DB:
 #   docker compose exec -T db psql -U bcweb -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;'
 gunzip -c /var/backups/bcweb/pg-bcweb-<ts>.sql.gz | docker compose exec -T db psql -U bcweb bcweb
+docker compose restart api             # reconnect to the restored database
 ```
 
 The API applies the checked-in migrations at boot (`boot-migrate.mjs` → `prisma migrate
 deploy`), so the schema self-heals — but the dump already contains it, so a plain restore is
-enough. Restart the api after restoring: `docker compose restart api`.
+enough. Do **not** start `web` yet.
 
 ### 2. MinIO object storage
 
@@ -122,7 +128,7 @@ docker compose stop api web            # avoid writes during restore
 # Wipe + repopulate the volume from the archive:
 docker run --rm -v bcweb_minio-data:/data -v /var/backups/bcweb:/backup alpine \
   sh -c 'rm -rf /data/* && tar xzf /backup/minio-<ts>.tar.gz -C /data'
-docker compose start api web
+docker compose start api               # NOT web: step 4 first
 ```
 
 (Replace `bcweb_` with your `COMPOSE_PROJECT_NAME` prefix if different.)
@@ -131,11 +137,32 @@ docker compose start api web
 
 ```bash
 docker run --rm -v bcweb_audit-anchor:/data -v /var/backups/bcweb:/backup alpine \
-  sh -c 'rm -rf /data/* && tar xzf /backup/audit-anchor-<ts>.tar.gz -C /data'
+  sh -c 'rm -rf /data/* && tar xzf /backup/audit-anchor-<ts>.tar.gz -C /data && chown -R 1000:1000 /data'
 ```
+
+The `chown` hands the files to uid 1000: the api runs as `node`, not root, and cannot write an
+anchor a root-owned restore left behind. (`docker compose up` does the same through its
+`volume-perms` one-shot; a plain `restart api` does not.)
 
 Keep the DB and audit-anchor from the **same** backup run so the audit HMAC chain still
 verifies (`/admin/security` → verify chain).
+
+### 4. Replay the erasures — always, before `web` starts
+
+```bash
+cd infra/compose
+docker compose exec api node src/replay-erasures.mjs            # report: who the dump brought back
+docker compose exec api node src/replay-erasures.mjs --write    # re-apply those erasures
+docker compose start web                                         # only now does the site serve anyone
+```
+
+`replay-erasures.mjs` reads the erasure log, which lives outside the database
+(`SERVER_BACKUP_ROOT/erasures.jsonl`) so a dump cannot take it back in time, and anonymises
+again every account the restored dump brought back — including, when you also restored MinIO,
+the avatar and feedback files those accounts had. It is idempotent: an account already erased
+is skipped, so running it after a restore that brought nobody back does nothing. Skipping this
+step undoes every erasure made since the dump was taken, which is exactly what the privacy
+policy says will not happen.
 
 ## The in-app backups are a different thing
 

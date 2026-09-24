@@ -1,3 +1,4 @@
+import { safeHref } from '../lib/safe-href.js';
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { ArrowRight, Scale,
@@ -83,9 +84,9 @@ function LinksRow({ links }) {
   return (
     <div className="flex flex-wrap gap-2 mb-8">
       {known.map((k) => { const m = LINK_META[k] || { icon: ExternalLink, label: k }; return (
-        <a key={k} href={links[k]} target="_blank" rel="noreferrer"><Button size="sm"><m.icon size={14} className={k === 'kofi' ? 'text-orange-400' : ''} /> {m.label}</Button></a>); })}
+        <a key={k} href={safeHref(links[k])} target="_blank" rel="noreferrer"><Button size="sm"><m.icon size={14} className={k === 'kofi' ? 'text-orange-400' : ''} /> {m.label}</Button></a>); })}
       {custom.map((d, i) => (
-        <a key={`c${i}`} href={d.url} target="_blank" rel="noreferrer"><Button size="sm">{d.icon ? <ShowcaseIcon icon={d.icon} size={14} /> : <ExternalLink size={14} />} {d.label || 'Link'}</Button></a>
+        <a key={`c${i}`} href={safeHref(d.url)} target="_blank" rel="noreferrer"><Button size="sm">{d.icon ? <ShowcaseIcon icon={d.icon} size={14} /> : <ExternalLink size={14} />} {d.label || 'Link'}</Button></a>
       ))}
     </div>
   );
@@ -148,7 +149,7 @@ function DownloadMenu({ downloads = [], children, pkey }) {
     : (/^source|code|src/i.test(d.label || '') ? <FolderGit2 size={size} className={cls} /> : <Download size={size} className={cls} />);
   if (list.length === 1) {
     return (<>
-      <a href={primary.url} download rel="noreferrer" onClick={fireDl}><Button variant="primary">{dlIcon(primary)} {primary.label}</Button></a>
+      <a href={safeHref(primary.url)} download rel="noreferrer" onClick={fireDl}><Button variant="primary">{dlIcon(primary)} {primary.label}</Button></a>
       {children}
     </>);
   }
@@ -161,7 +162,7 @@ function DownloadMenu({ downloads = [], children, pkey }) {
           now transparent (`!bg-none`) and this one surface shows through both. */}
       <div className="inline-flex rounded-[10px] overflow-hidden"
         style={{ background: 'linear-gradient(120deg, var(--primary), var(--primary-2))', boxShadow: '0 6px 20px -8px var(--primary-glow)' }}>
-        <a href={primary.url} download rel="noreferrer" className="inline-flex" onClick={fireDl}>
+        <a href={safeHref(primary.url)} download rel="noreferrer" className="inline-flex" onClick={fireDl}>
           <Button variant="primary" className="!bg-none !rounded-none !shadow-none">{dlIcon(primary)} {primary.label}</Button>
         </a>
         {/* The divider was `border-white/25` — invisible the moment the accent is a pastel,
@@ -183,7 +184,7 @@ function DownloadMenu({ downloads = [], children, pkey }) {
           {list.map((d) => {
             const isPrimary = d === primary;
             return (
-              <a key={`${d.label}:${d.url}`} href={d.url} download rel="noreferrer" role="menuitem" onClick={() => { setOpen(false); fireDl(); }}
+              <a key={`${d.label}:${d.url}`} href={safeHref(d.url)} download rel="noreferrer" role="menuitem" onClick={() => { setOpen(false); fireDl(); }}
                 className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm text-[var(--text)] hover:bg-[var(--surface-2)] transition-colors">
                 <span className={`shrink-0 ${isPrimary ? 'text-[var(--accent-ink)]' : 'text-[var(--muted)]'}`}>{dlIcon(d, 15)}</span>
                 <span className="min-w-0 flex-1 truncate" title={d.label}>{d.label}</span>
@@ -271,7 +272,7 @@ function CtaButton({ button }) {
   if (!button?.url) return null;
   const internal = button.url.startsWith('/');
   const inner = <Button variant="primary">{button.label || 'Learn more'} <ArrowRight size={15} /></Button>;
-  return <div className="mt-6">{internal ? <Link to={button.url}>{inner}</Link> : <a href={button.url} target="_blank" rel="noreferrer">{inner}</a>}</div>;
+  return <div className="mt-6">{internal ? <Link to={button.url}>{inner}</Link> : <a href={safeHref(button.url)} target="_blank" rel="noreferrer">{inner}</a>}</div>;
 }
 
 // The countdown itself — logo + title + digits + markdown + optional CTA. Shared by
@@ -725,7 +726,7 @@ function TimelineCard({ tl, showBody, onToggleBody, t }) {
             <div className="flex items-center gap-2 flex-wrap">
               <Badge tone={TL_KINDS[m.kind] || ''}>{m.tag || t(`tl.kind.${m.kind}`, TL_LABEL[m.kind] || m.kind)}</Badge>
               {m.title ? (m.url
-                ? <a href={m.url} target="_blank" rel="noreferrer" className="text-sm font-medium hover:underline">{m.title}</a>
+                ? <a href={safeHref(m.url)} target="_blank" rel="noreferrer" className="text-sm font-medium hover:underline">{m.title}</a>
                 : <span className="text-sm font-medium">{m.title}</span>) : null}
               <span className="text-[11px] text-[var(--faint)] ms-auto">{m.date}</span>
             </div>
@@ -780,7 +781,7 @@ function FeaturedCard({ f, t }) {
           {f.title && <span className="font-semibold text-sm">{f.title}</span>}
         </div>
         {f.body && <div className="text-[13px] text-[var(--muted)] leading-relaxed prose-sm"><Markdown>{f.body}</Markdown></div>}
-        {embed?.type === 'link' && f.url && <a href={f.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-[var(--accent-ink)] hover:underline mt-2">{t('proj.feat.open', 'Open')} <ExternalLink size={11} /></a>}
+        {embed?.type === 'link' && f.url && <a href={safeHref(f.url)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-[var(--accent-ink)] hover:underline mt-2">{t('proj.feat.open', 'Open')} <ExternalLink size={11} /></a>}
       </div>
     </Card>
   );
@@ -1064,7 +1065,7 @@ function Community({ c, communityUrl }) {
                   <div className="min-w-0"><div className="font-semibold truncate group-hover:text-[var(--accent-ink)] transition-colors" title={p.name}>{p.name}</div><div className="text-xs text-[var(--accent-ink)]">{p.role}</div></div>
                 </div>
                 {p.description && <p className="text-sm text-[var(--muted)] mt-3 line-clamp-3">{p.description}</p>}
-                {p.links && <div className="flex gap-2 mt-3">{Object.entries(p.links).filter(([, v]) => v).map(([k, v]) => { const m = LINK_META[k] || { icon: ExternalLink }; return <a key={k} href={v} target="_blank" rel="noreferrer" className="text-[var(--muted)] hover:text-[var(--accent-ink)]"><m.icon size={16} /></a>; })}</div>}
+                {p.links && <div className="flex gap-2 mt-3">{Object.entries(p.links).filter(([, v]) => v).map(([k, v]) => { const m = LINK_META[k] || { icon: ExternalLink }; return <a key={k} href={safeHref(v)} target="_blank" rel="noreferrer" className="text-[var(--muted)] hover:text-[var(--accent-ink)]"><m.icon size={16} /></a>; })}</div>}
               </Card>
             ))}
           </div>
@@ -1111,7 +1112,7 @@ function Legal({ c, quiet = false }) {
       </Card>}
       <div className="grid sm:grid-cols-2 gap-3">
         {docs.map((d) => (
-          <a key={d.title} href={d.url} target="_blank" rel="noreferrer">
+          <a key={d.title} href={safeHref(d.url)} target="_blank" rel="noreferrer">
             <Card hover className="p-4 flex items-center gap-3 h-full"><d.icon size={18} className="text-[var(--accent-ink)]" />
               <div className="flex-1 min-w-0"><div className="font-medium">{d.title}</div><div className="text-xs text-[var(--muted)]">{d.sub}</div></div>
               <ExternalLink size={15} className="text-[var(--faint)]" /></Card>
@@ -1432,7 +1433,7 @@ function ShowcaseCommunity({ cfg, c, slug }) {
     <Card className="p-8 text-center">
       <Users size={28} className="mx-auto text-[var(--accent-ink)] mb-3" />
       <div className="font-semibold mb-4">{t('proj.community')}</div>
-      <a href={cfg.community.url} target="_blank" rel="noreferrer"><Button variant="primary"><ExternalLink size={15} /> {t('prj.opencommunity', "Open community")}</Button></a>
+      <a href={safeHref(cfg.community.url)} target="_blank" rel="noreferrer"><Button variant="primary"><ExternalLink size={15} /> {t('prj.opencommunity', "Open community")}</Button></a>
     </Card>
   );
   return <Community c={c} communityUrl={c.contributorsUrl ? `/showcase/${slug}/community` : null} />;
@@ -1456,7 +1457,7 @@ function ShowcaseLegal({ legal, lang, quiet = false }) {
             {card.url && <ExternalLink size={15} className="text-[var(--faint)] shrink-0" />}
           </Card>
         );
-        return card.url ? <a key={i} href={card.url} target="_blank" rel="noreferrer">{inner}</a> : <div key={i}>{inner}</div>;
+        return card.url ? <a key={i} href={safeHref(card.url)} target="_blank" rel="noreferrer">{inner}</a> : <div key={i}>{inner}</div>;
       })}
     </div>
   );
@@ -1711,7 +1712,7 @@ function Marketplace({ pkey, products = [], onChanged }) {
             {(pr.redeemNote || pr.redeemUrl) && (
               <div className="text-[11px] text-[var(--muted)] mb-3 rounded-lg border border-[var(--line)] p-2 space-y-1">
                 {pr.redeemNote && <div className="whitespace-pre-wrap break-words">{pr.redeemNote}</div>}
-                {pr.redeemUrl && <a href={pr.redeemUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[var(--accent-ink)] hover:underline break-all"><ExternalLink size={11} /> {t('mk.redeem', 'Where to use it')}</a>}
+                {pr.redeemUrl && <a href={safeHref(pr.redeemUrl)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[var(--accent-ink)] hover:underline break-all"><ExternalLink size={11} /> {t('mk.redeem', 'Where to use it')}</a>}
               </div>
             )}
             {d ? (
@@ -1728,12 +1729,12 @@ function Marketplace({ pkey, products = [], onChanged }) {
                     {dl === pr.id ? <Spinner /> : <><Download size={13} /> {d.fileName || t('mk.dl', 'Download')}</>}
                   </Button>
                 )}
-                {d.url && <a href={d.url} target="_blank" rel="noreferrer" className="btn btn-sm mt-1"><ExternalLink size={13} /> {t('mk.open', 'Open')}</a>}
+                {d.url && <a href={safeHref(d.url)} target="_blank" rel="noreferrer" className="btn btn-sm mt-1"><ExternalLink size={13} /> {t('mk.open', 'Open')}</a>}
                 {d.licensed && <div className="text-[11px] text-[var(--faint)] mt-1">{t('mk.licensed', 'This key is yours alone, keep it, it is recorded against this purchase.')}</div>}
                 {d.error && <div className="text-xs text-[var(--error)]">{t('mk.derr', 'Delivery issue, contact the project.')}</div>}
                 {/* Repeated here on purpose. This is the moment somebody is holding a key and
                     wondering what to do with it, and the copy above has scrolled away. */}
-                {pr.redeemUrl && <a href={pr.redeemUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[11px] text-[var(--accent-ink)] hover:underline mt-1.5 break-all"><ExternalLink size={11} /> {t('mk.redeem', 'Where to use it')}</a>}
+                {pr.redeemUrl && <a href={safeHref(pr.redeemUrl)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[11px] text-[var(--accent-ink)] hover:underline mt-1.5 break-all"><ExternalLink size={11} /> {t('mk.redeem', 'Where to use it')}</a>}
               </div>
             ) : (
               <Button variant="primary" className="mt-auto justify-center" disabled={busy === pr.id || soldOut} onClick={() => buy(pr)}>

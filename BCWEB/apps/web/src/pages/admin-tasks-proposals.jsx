@@ -10,6 +10,7 @@
 //
 // The list only ever contains proposals from sources this account can already read; `hidden`
 // says how many others exist, so an empty list is never mistaken for "all clear".
+import { safeHref } from '../lib/safe-href.js';
 import { useState } from 'react';
 import { Lightbulb, Check, X, RefreshCw, ExternalLink, Activity, Inbox, ServerCrash, Bug, ShieldAlert } from 'lucide-react';
 import { api } from '../lib/api.js';
@@ -166,7 +167,7 @@ export function AdminTaskProposals({ meta, onChanged }) {
                       {sg.count > 1 && <Badge title={t('atask.sg.count.t', 'How many times, or how many items, stand behind it')}>×{sg.count}</Badge>}
                       <span className="text-[11px] text-[var(--faint)]">{t('atask.sg.seen', 'last seen {d}').replace('{d}', shortDateTime(sg.lastSeenAt))}</span>
                       {sg.href && (
-                        <a href={sg.href} className="text-[11px] text-[var(--accent-ink)] hover:underline inline-flex items-center gap-1">
+                        <a href={safeHref(sg.href)} className="text-[11px] text-[var(--accent-ink)] hover:underline inline-flex items-center gap-1">
                           <ExternalLink size={11} aria-hidden="true" />{t('atask.sg.source', 'Open the source')}
                         </a>
                       )}

@@ -26,4 +26,7 @@ configureMarkdown({
   // assets/iso written by scripts/build-iso-icons.mjs: same origin, nothing asked of a CDN.
   cdn: { iso: (name) => `/icons/iso/${name}.svg` },
   appIcons: { bmm: '/icons/bmm.png', bsm: '/icons/bsm.png', bi: '/icons/bi.png', installer: '/icons/bi.png', bc: '/logo.png' },
+  // Live blocks fetch from this site only until the admin's host list arrives (lib/bmd-hosts.js,
+  // loaded by the renderer chunk, ui/md.jsx). SECURITY_SUMMARY §9.
+  policy: { allowApiHosts: [] },
 });

@@ -95,3 +95,71 @@ test('normalising a stored list drops what cannot be drawn and caps the count', 
   const many = Array.from({ length: COMPONENT_LIMITS.count + 10 }, (_, i) => ({ ...good, id: `c${i}` }));
   assert.equal(normalizeComponents(many).length, COMPONENT_LIMITS.count);
 });
+
+// ── Preset libraries (studio phase 6) ───────────────────────────────────────────────────
+// Every preset is a stored StudioDoc, so what the gallery shows, what the API validates and what
+// a page made from it holds are one document. Each is checked by the package's validateDoc, the
+// function the API refuses a hostile preset with.
+test('presets: every coded preset is a valid stored document, and a page made from it too', async () => {
+  const lib = await import('../src/lib/studio-components.js');
+  const { validateDoc } = await import('../src/lib/canvas.js');
+  const coded = lib.codedPresets();
+  assert.ok(coded.filter((e) => e.sort === 'page').length >= 7, 'the seven coded page presets');
+  assert.ok(coded.some((e) => e.sort === 'background'));
+  for (const e of coded) {
+    assert.equal(e.scope, 'coded');
+    assert.deepEqual(validateDoc(e.doc), [], `${e.id}: ${JSON.stringify(validateDoc(e.doc))}`);
+  }
+  const hero = coded.find((e) => e.coded === 'hero');
+  const pg = lib.pageFromPreset(hero, 'cnew1', 'Welcome');
+  assert.equal(pg.id, 'cnew1');
+  assert.equal(pg.title, 'Welcome');
+  assert.ok(pg.blocks.length >= 5);
+  assert.deepEqual(validateDoc(pg), []);
+  // Built afresh each time: two pages from one coded preset share no block id.
+  const again = lib.pageFromPreset(hero, 'cnew2', '');
+  assert.ok(!again.blocks.some((x) => pg.blocks.some((y) => y.id === x.id)));
+});
+
+test('presets: saving a section, a component, a background and a page', async () => {
+  const lib = await import('../src/lib/studio-components.js');
+  const { validateDoc } = await import('../src/lib/canvas.js');
+  let k = 0;
+  const pid = () => `pr${++k}`;
+  const sel = [b('a', 200, 100), b('c', 320, 180, 80, 40, { component: { id: 'cmpX', inst: 'i1' } })];
+  const sec = lib.presetEntry({ name: ' Hero ', sort: 'section', blocks: sel }, pid);
+  assert.equal(sec.name, 'Hero');
+  assert.deepEqual(sec.doc.blocks.map((x) => [x.x, x.y]), [[0, 0], [120, 80]], 'the group starts at 0,0');
+  assert.ok(!sec.doc.blocks.some((x) => x.component), 'a preset does not carry another component link');
+  assert.deepEqual(validateDoc(sec.doc), []);
+  const bg = lib.presetEntry({ name: 'Night', sort: 'background', background: { type: 'color', color: '#101010' } }, pid);
+  assert.equal(bg.doc.background.color, '#101010');
+  assert.equal(bg.doc.blocks.length, 0);
+  const page = lib.presetEntry({ name: 'Whole', sort: 'page', canvas: { id: 'p9', title: 'T', blocks: sel } }, pid);
+  assert.equal(page.doc.blocks.length, 2);
+  assert.equal(lib.presetEntry({ name: '', sort: 'page', canvas: {} }, pid), null, 'no name, no preset');
+  assert.equal(lib.presetEntry({ name: 'x', sort: 'section', blocks: [] }, pid), null, 'nothing selected, no section');
+  assert.equal(lib.presetEntry({ name: 'x', sort: 'macro' }, pid), null);
+  // Dropped on a page: fresh ids, at the place asked, above what is there; a component is linked.
+  const dropped = lib.blocksFromPreset(sec, { x: 64, y: 400 }, 10, uid);
+  assert.deepEqual(dropped.map((x) => [x.x, x.y, x.z >= 10]), [[64, 400, true], [184, 480, true]]);
+  assert.ok(dropped.every((x) => !['a', 'c', 'b0', 'b1'].includes(x.id)));
+  const comp = lib.blocksFromPreset({ ...sec, sort: 'component' }, { x: 0, y: 0 }, 0, uid);
+  assert.ok(comp.every((x) => x.component?.id === sec.id && x.component.inst === comp[0].component.inst));
+});
+
+test('presets: a library read back keeps its scope, and drops what it cannot show', async () => {
+  const lib = await import('../src/lib/studio-components.js');
+  const list = lib.normalizeLibrary([
+    { id: 'a', name: 'A', sort: 'page', doc: { blocks: [] } },
+    { id: 'a', name: 'dup', sort: 'page', doc: { blocks: [] } },
+    { id: 'b', name: 'B', sort: 'macro', doc: {} },
+    { id: 'c', name: 'C', sort: 'background' },
+    null,
+  ], 'site');
+  assert.deepEqual(list.map((e) => [e.id, e.scope]), [['a', 'site']]);
+  assert.deepEqual(Object.keys(lib.storedEntry({ ...list[0], coded: 'x' })).sort(), ['doc', 'id', 'name', 'sort'], 'the gallery scope is never written back');
+  assert.equal(lib.libraryPath('site', 'x'), '/admin/studio/library/site/site');
+  assert.equal(lib.libraryPath('project', 'bmm'), '/admin/studio/library/project/bmm');
+  assert.equal(lib.libraryPath('showcase', 'id 1'), '/admin/studio/library/showcase/id%201');
+});

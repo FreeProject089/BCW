@@ -1,6 +1,7 @@
 // Teams: create one, invite members, put repos / catalogues / pools under it, and the
 // public card at /t/:slug. A team's members manage what is attached alongside its owner;
 // billing stays with the owner.
+import { safeHref } from '../lib/safe-href.js';
 import { useRef, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Users, Plus, Sparkles, UserPlus, Trash2, LogOut, Crown, Mail, Phone, Globe, Link2, Package, HardDrive, Layers, ArrowRightLeft, Check, X, Copy, ShoppingBag, Clock, InfinityIcon } from 'lucide-react';
@@ -263,7 +264,7 @@ function TeamDetail({ team, reload, justCreated = false }) {
             <div className="text-[12.5px] text-[var(--muted)] mt-1 flex items-center gap-3 flex-wrap">
               <span className="inline-flex items-center gap-1"><Mail size={12} /> {team.contactEmail}</span>
               {team.contactPhone && <span className="inline-flex items-center gap-1"><Phone size={12} /> {team.contactPhone}</span>}
-              {team.website && <a href={team.website} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 hover:text-[var(--accent-ink)]"><Globe size={12} /> {team.website}</a>}
+              {team.website && <a href={safeHref(team.website)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 hover:text-[var(--accent-ink)]"><Globe size={12} /> {team.website}</a>}
               <Link to={`/t/${team.slug}`} className="inline-flex items-center gap-1 hover:text-[var(--accent-ink)]"><Link2 size={12} /> /t/{team.slug}</Link>
             </div>
             {team.description && <p className="text-sm text-[var(--muted)] mt-2">{team.description}</p>}
@@ -508,8 +509,8 @@ export default function TeamPage() {
           <div className="text-[12.5px] text-[var(--muted)] mt-2 flex items-center gap-3 flex-wrap">
             <span className="inline-flex items-center gap-1"><Mail size={12} /> {tm.contactEmail}</span>
             {tm.contactPhone && <span className="inline-flex items-center gap-1"><Phone size={12} /> {tm.contactPhone}</span>}
-            {tm.website && <a href={tm.website} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 hover:text-[var(--accent-ink)]"><Globe size={12} /> {t('tm.website', 'Website')}</a>}
-            {tm.discord && <a href={tm.discord} target="_blank" rel="noreferrer" className="hover:text-[var(--accent-ink)]">Discord</a>}
+            {tm.website && <a href={safeHref(tm.website)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 hover:text-[var(--accent-ink)]"><Globe size={12} /> {t('tm.website', 'Website')}</a>}
+            {tm.discord && <a href={safeHref(tm.discord)} target="_blank" rel="noreferrer" className="hover:text-[var(--accent-ink)]">Discord</a>}
           </div>
         </div>
         <ContactButton kind="team" targetId={tm.slug} targetLabel={tm.name} variant="primary" />

@@ -273,7 +273,7 @@ interroge la route de statut ci-dessus jusqu'à lire `delivered`.
 | GET | `/me/economy/purchases` | user | L'inventaire, du plus récent au plus ancien, avec le code remis le cas échéant. |
 | GET | `/admin/economy/purchases` | admin | Chaque achat (en attente d'abord) — ce qu'une personne doit encore remettre. |
 | POST | `/admin/economy/purchases/:id/deliver` | admin | Marquer un rôle / une récompense perso comme remis. |
-| GET | `/bot/config` · `/bot/token` · `/bot/account/:discordId` | bot | Lookup config/token/compte du bot. |
+| GET | `/bot/config` · `/bot/account/:discordId` | bot | Lookup config/compte du bot. (Plus de `/bot/token` depuis sept. 2026 : le bot lit `DISCORD_TOKEN` dans son propre env.) |
 | POST | `/bot/heartbeat` · `/bot/activity` · `/bot/link/issue` | bot | Heartbeat, activité, émission de code de liaison. |
 | POST | `/bot/blog/sync` · `/bot/blog/announced` | bot | File d'annonce blog : le bot demande les articles dus dans ses salons, puis marque ce qu'il a publié. |
 | GET/POST | `/bot/kofi/unannounced` · `/kofi/announced` | bot | File d'annonce de pourboires Ko-fi. |
@@ -631,7 +631,9 @@ Une conversation avec le propriétaire et l’équipe derrière un dépôt, un c
 | GET | `/me/threads?box=inbox\|sent` | user | Reçues = adressées à moi ou à mes équipes ; envoyées = ouvertes par moi ; `unread`. |
 | GET | `/me/threads/:id` | participant | Le fil et ses messages (marque mon côté lu) ; 404 pour quiconque d’autre. |
 | POST | `/me/threads/:id/messages` · `/close` · `/reopen` · `/flag` | participant | Répondre (l’autre côté est notifié / e-mailé) ; fermer ; rouvrir ; signaler à l’équipe. |
-| GET / POST | `/threads/t/:token` · `/threads/t/:token/messages` | le jeton | Le côté de l’expéditeur anonyme. |
+| GET / POST | `/threads/t/:token` · `/threads/t/:token/messages` | le jeton | Le côté de l’expéditeur anonyme. Le lien expire 12 mois après la dernière activité de la conversation : chaque route `/threads/t/:token…` répond alors 410 `link_expired`, et rien d’autre. |
+| POST | `/threads/t/:token/renew` | un jeton expiré | Envoie un NOUVEAU lien à l’adresse que porte la conversation (jamais une adresse de la requête) et tue l’ancien jeton ; 409 `not_expired` / `use_account`, 403 `blocked`. 3 par heure. |
+| POST | `/me/threads/:id/revoke-link` | côté qui répond ou staff | Remplace le lien d’accès sur-le-champ ; un expéditeur anonyme reçoit le nouveau par e-mail (`mailed`). |
 | GET | `/admin/threads?status=&q=` · `/admin/threads/:id` | `manage_reports` | La file (`flagged` d’abord) et un fil avec messages masqués, e-mail et IP de l’expéditeur. |
 | POST | `/admin/threads/:id/close` · `/block` · `/messages/:mid/hide` · `/unhide` | `manage_reports` | Modération ; bloquer ajoute l’expéditeur à la liste et bloque chaque fil qu’il a ouvert. |
 | GET | `/legal` | public | Ajoute `optional: ['dpa']` — les documents livrés dans le bundle et DÉSACTIVÉS tant qu’aucune ligne `LegalPage` publiée n’existe. Leurs sections ne sont pas servies non plus, `/me/legal-pending` cesse d’en demander l’acceptation, et le client masque la copie qu’il détient. On en active un en publiant sa page (`PUT /admin/legal/pages/:id { published }`, ou `POST /admin/legal/pages` s’il n’y a pas encore de ligne). |

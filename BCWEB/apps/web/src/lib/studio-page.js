@@ -13,25 +13,97 @@
  *  canvasAt/withCanvasAt below. */
 export const STUDIO_KINDS = ['project', 'showcase', 'home'];
 
-/** `/studio/:kind/:id/:index` — built in one place so the editor and the page cannot disagree. */
-export function studioPath(kind, id, index) {
+/** The shape of a page id in a URL: the studio package's ID_SHAPE. */
+const PAGE_REF = /^[A-Za-z0-9_-]{1,60}$/;
+const DIGITS = /^[0-9]+$/;
+
+/**
+ * `/studio/:kind/:id/:page` — built in one place so the editor and the page cannot disagree.
+ *
+ * Phase 6: `page` is the page's ID (a string), which stays right whatever happens to the order
+ * of the pages. A NUMBER still builds the old index form, which is what links made before
+ * phase 6 look like; the studio resolves one (resolvePageRef) and replaces the URL with the id.
+ */
+export function studioPath(kind, id, page) {
   const k = STUDIO_KINDS.includes(kind) ? kind : 'project';
   const base = `/studio/${k}/${encodeURIComponent(String(id))}`;
-  return index == null ? base : `${base}/${Math.max(0, Number(index) || 0)}`;
+  if (page == null) return base;
+  if (typeof page === 'string') return `${base}/${encodeURIComponent(page)}`;
+  return `${base}/${Math.max(0, Number(page) || 0)}`;
 }
 
-/** The URL parameters, made sense of. `index` is null when the route left it out. */
+/**
+ * The URL parameters, made sense of. `page` is the raw last segment (a page id, or the digits
+ * of an old index link), `index` its number when it is only digits, both null when the route
+ * left it out; `bad` when the segment can be neither (the page says "not a studio address").
+ * The route names the segment `page`; `index` is still read, for a caller from before phase 6.
+ */
 export function parseStudioParams(params = {}) {
   const kind = STUDIO_KINDS.includes(params.kind) ? params.kind : null;
   const id = typeof params.id === 'string' && params.id.trim() ? params.id.trim().slice(0, 80) : null;
-  const n = params.index == null || params.index === '' ? null : Number(params.index);
-  const index = n == null ? null : (Number.isInteger(n) && n >= 0 ? n : NaN);
-  return { kind, id, index };
+  const raw = params.page != null ? params.page : params.index;
+  const seg = raw == null || raw === '' ? null : String(raw);
+  const bad = seg != null && !PAGE_REF.test(seg);
+  const page = seg == null || bad ? null : seg;
+  const index = page != null && DIGITS.test(page) ? Number(page) : null;
+  return { kind, id, page, index, bad };
+}
+
+/**
+ * The page a URL segment names, as `{ pageId, legacy }`: `legacy` when it was an old index
+ * link, which the studio then replaces with the id. `pageId` null = nothing there.
+ *
+ * An id wins over an index: every link the studio makes names an id. Digits that are not an id
+ * are an index into the order the pages had when the link was made: `studioIndexIds`, the
+ * order the API froze the first time the page list changed shape from the studio (phase 6),
+ * or the current order when it never did. The home page: its sections, by index as before.
+ */
+export function resolvePageRef(config, ref, kind = 'project') {
+  if (ref == null || ref === '') return { pageId: null, legacy: false };
+  const c = config && typeof config === 'object' ? config : {};
+  const ids = pageEntries(c, kind).map((x) => x.id);
+  const r = String(ref);
+  if (ids.includes(r)) return { pageId: r, legacy: false };
+  if (!DIGITS.test(r)) return { pageId: null, legacy: false };
+  const n = Number(r);
+  if (kind !== 'home' && Array.isArray(c.studioIndexIds)) {
+    const frozen = c.studioIndexIds[n];
+    // The page the link was made for, if it still exists; deleted since, it opens nothing
+    // rather than whichever page slid into its place.
+    if (typeof frozen === 'string') return { pageId: ids.includes(frozen) ? frozen : null, legacy: true };
+    if (n < c.studioIndexIds.length) return { pageId: null, legacy: true };
+  }
+  return { pageId: n < ids.length ? ids[n] : null, legacy: true };
+}
+
+/**
+ * The pages of a target, in order, as `{ id, title, hidden, blocks, drawn }`: a project's or
+ * showcase's `canvases`, or the home page's custom sections (whose id is the SECTION's).
+ */
+export function pageEntries(config, kind = 'project') {
+  const c = config && typeof config === 'object' ? config : {};
+  if (kind === 'home') {
+    return (Array.isArray(c.customSections) ? c.customSections : []).map((sec, i) => ({
+      id: typeof sec?.id === 'string' && sec.id ? sec.id : `s${i}`,
+      title: String(sec?.title?.en || sec?.title?.fr || ''), hidden: sec?.enabled === false,
+      blocks: Array.isArray(sec?.canvas?.blocks) ? sec.canvas.blocks.length : 0, drawn: sec?.mode === 'canvas',
+    }));
+  }
+  return (Array.isArray(c.canvases) ? c.canvases : []).filter((cv) => cv && typeof cv.id === 'string' && cv.id).map((cv) => ({
+    id: cv.id, title: String(cv.title || ''), hidden: cv.hidden === true,
+    blocks: Array.isArray(cv.blocks) ? cv.blocks.length : 0, drawn: true,
+  }));
+}
+
+/** The index of a page id in its target's list, or -1. */
+export function pageIndexOf(config, pageId, kind = 'project') {
+  return pageEntries(config, kind).findIndex((x) => x.id === pageId);
 }
 
 /** Where the editor hands the page its in-memory config, and where the page keeps a draft. */
 export const handoffKey = (kind, id) => `bcw_studio_handoff:${kind}:${id}`;
-export const draftKey = (kind, id, index) => `bcw_studio_draft:${kind}:${id}:${index}`;
+// Phase 6: `page` is the page's id, so a draft follows its page when the pages are reordered.
+export const draftKey = (kind, id, page) => `bcw_studio_draft:${kind}:${id}:${page}`;
 
 /** The canvas a studio URL points at, or null when the index names nothing. */
 export function canvasAt(config, index, kind = 'project') {
@@ -154,4 +226,65 @@ export function pageIdAt(config, index, kind = 'project') {
   const list = kind === 'home' ? c.customSections : c.canvases;
   const row = Array.isArray(list) && index >= 0 && index < list.length ? list[index] : null;
   return row && typeof row.id === 'string' && row.id ? row.id : null;
+}
+
+// ── Several pages (phase 6) ─────────────────────────────────────────────────────────────
+// The page list's own requests: create, delete, reorder. The server answers each on the config
+// as stored NOW (routes/projects.mjs, routes/showcase.mjs); nothing here sends a whole config.
+
+/** Where a target's page list lives: `{ pages, order }`, or null for the home page, whose
+ *  sections are made and ordered on the Home page screen, not in the studio. */
+export function studioListPaths(kind, saveId) {
+  if (kind !== 'project' && kind !== 'showcase') return null;
+  const ref = encodeURIComponent(String(saveId));
+  const base = kind === 'showcase' ? `/admin/showcase/${ref}/studio` : `/admin/projects/${ref}/studio`;
+  return { pages: `${base}/pages`, order: `${base}/order` };
+}
+
+/** A fresh page id, in the package's ID_SHAPE. */
+export function newPageId(now = Date.now(), rand = Math.random) {
+  return `c${now.toString(36)}${Math.floor(rand() * 36 ** 4).toString(36).padStart(4, '0')}`.slice(0, 60);
+}
+
+/** The config with one page (by id) replaced; the home page's by section id. Unknown id: unchanged. */
+export function withCanvasById(config, pageId, canvas, kind = 'project') {
+  const at = pageIndexOf(config, pageId, kind);
+  return at < 0 ? (config && typeof config === 'object' ? config : {}) : withCanvasAt(config, at, canvas, kind);
+}
+/** The stored page of an id, or for a home section never drawn, the blank it starts from. */
+export function canvasById(config, pageId, kind = 'project') {
+  const at = pageIndexOf(config, pageId, kind);
+  if (at < 0) return null;
+  return canvasAt(config, at, kind) || blankCanvasAt(config, at, kind);
+}
+/** The config with a page added after `after` ('' = at the end), as the server does it. */
+export function withPageInserted(config, canvas, after = '') {
+  const c = config && typeof config === 'object' ? config : {};
+  const list = Array.isArray(c.canvases) ? c.canvases.slice() : [];
+  const i = after ? list.findIndex((x) => x && x.id === after) : -1;
+  list.splice(i < 0 ? list.length : i + 1, 0, canvas);
+  return { ...c, canvases: list };
+}
+/** The config without a page. */
+export function withPageRemoved(config, pageId) {
+  const c = config && typeof config === 'object' ? config : {};
+  return { ...c, canvases: (Array.isArray(c.canvases) ? c.canvases : []).filter((x) => !x || x.id !== pageId) };
+}
+/** The config with its pages in `order` (ids); pages the order does not name keep their place at the end. */
+export function withPageOrder(config, order) {
+  const c = config && typeof config === 'object' ? config : {};
+  const list = Array.isArray(c.canvases) ? c.canvases : [];
+  const byId = new Map(list.filter((x) => x && x.id).map((x) => [x.id, x]));
+  const out = (Array.isArray(order) ? order : []).map((x) => byId.get(x)).filter(Boolean);
+  for (const x of list) if (!out.includes(x)) out.push(x);
+  return { ...c, canvases: out };
+}
+/** The order after moving one page up (-1) or down (+1); the same order when it cannot move. */
+export function movedOrder(ids, pageId, dir) {
+  const list = Array.isArray(ids) ? ids.slice() : [];
+  const i = list.indexOf(pageId);
+  const j = i + (dir < 0 ? -1 : 1);
+  if (i < 0 || j < 0 || j >= list.length) return list;
+  [list[i], list[j]] = [list[j], list[i]];
+  return list;
 }

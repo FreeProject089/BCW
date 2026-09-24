@@ -47,6 +47,24 @@ RUN npx prisma generate
 # Optional: if this were ever missing the app just uses the JS fallback.
 COPY --from=native /native/index.js /native/index.d.ts /native/*.node ./native/
 
+# Not root at runtime (SECURITY_SUMMARY §9 #10, F10-12): an RCE in the API was root in the
+# container. Everything above ran as root on purpose (npm ci, prisma generate, the native
+# copy), so node_modules/ and native/ stay root-owned and READ-ONLY to the process: a
+# compromised API cannot rewrite its own dependencies.
+#
+# What `node` must be able to write, and nothing more:
+#   /var/audit     the audit-chain anchor (a named volume; compose's volume-perms one-shot
+#                  hands an OLDER, root-owned volume over to uid 1000 before the api starts;
+#                  a fresh volume inherits this directory's owner from the image)
+#   /app-backups   SERVER_BACKUP_ROOT: git backups of edited files, snapshots, erasures.jsonl
+#   /app, src/, prisma/   the admin file manager edits files under FILES_ROOT=/app (behind
+#                  the elevated-admin gate); non-recursive on /app itself so node_modules
+#                  is not included.
+RUN mkdir -p /var/audit /app-backups \
+ && chown node:node /app /var/audit /app-backups \
+ && chown -R node:node /app/src /app/prisma
+USER node
+
 EXPOSE 3000
 # Schema management at boot = checked-in migrations via `migrate deploy` (NOT `db push`,
 # which can silently drop data on a rename/narrowing). boot-migrate.mjs makes deploy safe

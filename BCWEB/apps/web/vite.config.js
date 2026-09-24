@@ -98,7 +98,8 @@ function bcwebPwa() {
   // world.json (1 MB, the globe on the analytics map) is deliberately NOT here: it is not on
   // any path to the offline page, and precaching it would cost every visitor a megabyte on
   // install to make one admin screen work offline.
-  const STATIC = ['/manifest.webmanifest', '/logo.png', '/logo-white.webp', '/icons/maskable.svg'];
+  // theme-boot.js is the first script of every page (index.html), so the offline shell needs it.
+  const STATIC = ['/manifest.webmanifest', '/logo.png', '/logo-white.webp', '/icons/maskable.svg', '/theme-boot.js'];
   // Which lazily imported routes must survive offline. The 404 page is the offline
   // destination (the owner's call), so its chunk is not optional.
   // M18 (agent-perf-M18): plus the 3D backdrop. three.js used to be a static import of the
@@ -162,10 +163,13 @@ function bcwebPwa() {
  * critical path, for exactly the visitors it is meant to serve. A static <link modulepreload>
  * would put it back on EVERY visitor's first load, which is what moving it out undid.
  *
- * So a few bytes of inline script in <head> read the saved language and add the preload only
- * when it is French; the chunk then downloads in parallel with the entry. The site's CSP allows
- * inline scripts (infra/caddy/Caddyfile, script-src 'unsafe-inline'). Injected here rather than
- * written into index.html, which is the owner's file, and because the name carries a hash.
+ * So public/theme-boot.js, which already reads the saved language before the first paint, adds
+ * the preload only when it is French; the chunk then downloads in parallel with the entry.
+ * This plugin only tells it the chunk's name, in a <meta name="bcw-fr-chunk"> prepended to
+ * <head> so it precedes that script. It used to inject an INLINE script, which needed
+ * `'unsafe-inline'` in the site CSP's script-src; that is gone (SECURITY_SUMMARY §9 #5) and
+ * scripts/check-csp.mjs refuses a `tag: 'script'` with `children` here. Injected rather than
+ * written into index.html because the name carries a hash.
  */
 function bcwebLangPreload() {
   return {
@@ -179,9 +183,7 @@ function bcwebLangPreload() {
         if (!chunk) return [];
         const href = '/' + chunk.fileName;
         if (!/^\/[\w./-]+\.js$/.test(href)) return [];
-        const code = `try{if(localStorage.getItem('bcw_lang')==='fr'){var l=document.createElement('link');`
-          + `l.rel='modulepreload';l.crossOrigin='';l.href='${href}';document.head.appendChild(l)}}catch(e){}`;
-        return [{ tag: 'script', attrs: { 'data-lang-preload': 'fr' }, children: code, injectTo: 'head' }];
+        return [{ tag: 'meta', attrs: { name: 'bcw-fr-chunk', content: href }, injectTo: 'head-prepend' }];
       },
     },
   };

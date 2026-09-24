@@ -8,6 +8,7 @@
 // A draft is edited locally and written by one Save, like the page config above it. Removing
 // a catalogue, a tag, a field or an entry takes it out of the draft at once with an Undo window
 // (the house rule for every removal), and nothing reaches the server until Save.
+import { safeHref } from '../lib/safe-href.js';
 import { useEffect, useMemo, useState } from 'react';
 import { ChevronDown, FileJson, LayoutGrid, Plus, Save, Trash2, Upload, Boxes } from 'lucide-react';
 import { Button, Card, Badge, Field, Input, Textarea, Select, Spinner, useToast } from '../ui/ui.jsx';
@@ -368,7 +369,7 @@ export default function ProjectCatalogsPanel({ scope, refKey }) {
           </div>
 
           <div className="flex items-center gap-2 pt-2 border-t border-[var(--line)] flex-wrap">
-            {publicHref && <a href={publicHref} target="_blank" rel="noreferrer" className="text-xs text-[var(--accent-ink)] hover:underline">{t('apc.view', 'See on the Catalogue page')}</a>}
+            {publicHref && <a href={safeHref(publicHref)} target="_blank" rel="noreferrer" className="text-xs text-[var(--accent-ink)] hover:underline">{t('apc.view', 'See on the Catalogue page')}</a>}
             <div className="flex-1" />
             {dirty && <Button size="sm" variant="ghost" onClick={() => setDraft(JSON.parse(saved))}>{t('apc.reset', 'Discard changes')}</Button>}
             <Button size="sm" variant="primary" disabled={!dirty || busy} onClick={save}>{busy ? <Spinner /> : <><Save size={14} /> {t('apc.save', 'Save the catalogues')}</>}</Button>

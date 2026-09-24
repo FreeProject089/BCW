@@ -26,8 +26,10 @@ import { stepZoom } from '../lib/studio-page.js';
 import { PAGE_DEVICES } from '../lib/studio-preview.js';
 import {
   componentFromBlocks, instantiateComponent, detachBlocks, updateInstances, componentIdsIn,
-  thumbnailSvg, normalizeComponents, COMPONENT_LIMITS,
+  thumbnailSvg, normalizeComponents, COMPONENT_LIMITS, blocksFromPreset, presetEntry,
 } from '../lib/studio-components.js';
+// Studio phase 6: the page list and the preset gallery (dock panels).
+import { PagesPanel, PresetsPanel } from './studio-pages.jsx';
 import { lazy, Suspense, memo } from 'react';
 import { PATTERNS } from '../lib/patterns.js';
 import { BackgroundThumb } from '../ui/canvas-background.jsx';
@@ -65,7 +67,7 @@ const uid = () => `b${Date.now().toString(36)}${Math.random().toString(36).slice
  * panel that is dropped from this list disappears from a layout saved by an older build
  * instead of leaving an id nothing can render.
  */
-const PANEL_IDS = ['blocks', 'layers', 'components', 'props', 'page'];
+const PANEL_IDS = ['pages', 'blocks', 'layers', 'components', 'presets', 'props', 'page'];
 
 /** How far the snapping guides are drawn, in board px: past the ±20 000 guard rail both ways. */
 const BOARD_REACH = 40_000;
@@ -95,9 +97,11 @@ const NEW_BLOCK = {
  *        draftRestored, onDiscardDraft } — the document and its save path, owned by the page.
  * @param {Function} [props.renderPage]  page mode only: (canvas) => the WHOLE public page with
  *        this canvas in place, for the "page preview".
+ * @param {object} [props.pages]  page mode only (phase 6): the target's page list, its
+ *        operations and its preset libraries, owned by pages/studio.jsx (see studio-pages.jsx).
  */
-export default function CanvasStudio({ value, onChange, layout = 'modal', chrome = null, renderPage = null }) {
-  const { t } = useI18n();
+export default function CanvasStudio({ value, onChange, layout = 'modal', chrome = null, renderPage = null, pages = null }) {
+  const { t, lang } = useI18n();
   const toast = useToast();
   const pageMode = layout === 'page';
   const canvas = useMemo(() => normalizeCanvas(value), [value]);
@@ -591,6 +595,25 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
     addBlocks(instantiateComponent(comp, { x: 64, y: nextY() }, canvas.blocks.length, uid, DESIGN_WIDTH));
   };
   const deleteComponent = (id) => persistComponents(components.filter((c) => c.id !== id));
+
+  // ── Presets (phase 6) ─────────────────────────────────────────────────────
+  // A page preset makes a NEW page (the page list's create); the others land on this page: a
+  // section as plain blocks, a component as a linked copy, a background on the page itself.
+  const applyPreset = (entry) => {
+    if (!entry) return;
+    if (entry.sort === 'page') { pages?.create(entry); return; }
+    if (entry.sort === 'background') {
+      emit(canvas.blocks, { background: normalizeCanvas(entry.doc).background }, 'page-bg');
+      toast.success(t('cst.pr.applied.bg', 'Background applied to this page.'));
+      return;
+    }
+    addBlocks(blocksFromPreset(entry, { x: 64, y: nextY() }, canvas.blocks.length, uid));
+  };
+  const saveAsPreset = async (name, sort, scope) => {
+    const entry = presetEntry({ name, sort, canvas: serializeDoc(canvas), blocks: chosen, background: canvas.background });
+    if (!entry || !pages?.library) return false;
+    return pages.library.save(entry, scope);
+  };
   const detach = () => { if (!chosen.length) return; emit(detachBlocks(canvas.blocks, selIds)); };
   const refreshInstances = (compId) => {
     const comp = components.find((c) => c.id === compId);
@@ -936,7 +959,7 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
     {compOpen && <SaveComponentModal t={t} blocks={chosen} onSave={saveComponent} onClose={() => setCompOpen(false)} />}
   </>);
   const inspector = (<>
-    <Inspector {...{ t, sel, patch, canvas, emit, setSelId, hasDark, onOpenMd: setMdFor }} />
+    <Inspector {...{ t, sel, patch, canvas, emit, setSelId, hasDark, onOpenMd: setMdFor, pageList: pages ? pages.list.filter((x) => x.id !== pages.currentId) : null }} />
     {selComponentIds.length > 0 && (
       <ComponentSection t={t} ids={selComponentIds} components={components} onDetach={detach} onRefresh={refreshInstances} onRedefine={redefine} />
     )}
@@ -1098,6 +1121,13 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
       blocks: { title: t('cst.pane.blocks', 'Blocks'), icon: Blocks, render: () => <BlocksPanel {...{ t, add, addShape }} /> },
       layers: { title: t('cst.layers', 'Layers'), icon: LayoutList, render: () => <LayersPanel {...{ t, canvas, view, selIds, setSelIds, patch, emit, add, offIds }} bare /> },
       components: { title: t('cst.cmp', 'Components'), icon: Puzzle, render: () => <ComponentsPanel {...{ t, components, insertComponent, deleteComponent }} /> },
+      // Phase 6: the target's pages, and the preset gallery.
+      pages: { title: t('cst.pages', 'Pages'), icon: FileText, render: () => <PagesPanel t={t} lang={lang} pages={pages} /> },
+      presets: {
+        title: t('cst.presets', 'Presets'), icon: LayoutTemplate,
+        render: () => <PresetsPanel t={t} lang={lang} library={pages?.library || null} onApply={applyPreset} onSaveAs={saveAsPreset}
+          canSection={chosen.length > 0} canComponent={chosen.length > 0 && chosen.length <= COMPONENT_LIMITS.blocks} />,
+      },
       props: { title: t('cst.pane.props', 'Properties'), icon: SlidersHorizontal, render: () => inspector },
       // The page's own settings (background, stylesheet, imports): a panel like the others since
       // phase 4, so a background is tried on the board instead of behind a modal's Save.
@@ -2415,7 +2445,7 @@ function Toolbar({ t, preview, setPreview, snapOn, setSnapOn, add, addShape, sel
   );
 }
 
-function Inspector({ t, sel, patch, canvas, emit, setSelId, hasDark = false, onOpenMd }) {
+function Inspector({ t, sel, patch, canvas, emit, setSelId, hasDark = false, onOpenMd, pageList = null }) {
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   if (!sel) {
@@ -2551,7 +2581,7 @@ function Inspector({ t, sel, patch, canvas, emit, setSelId, hasDark = false, onO
       </Field>
       {/* What pressing the block does (phase 5), on every kind. Written to the BLOCK itself on
           any board: an action has one copy, like the content, never a theme or phone overlay. */}
-      <ActionFields t={t} sel={sel} blocks={canvas.blocks}
+      <ActionFields t={t} sel={sel} blocks={canvas.blocks} pages={pageList}
         onChange={(steps) => emit(canvas.blocks.map((b) => (b.id === sel.id ? { ...b, action: steps } : b)), {}, `act-${sel.id}`)} />
       <Field label={t('cst.bg', 'Background')}><Input value={p.bg || ''} onChange={(e) => setProp('bg', e.target.value)} placeholder="rgba(99,102,241,0.1)" /></Field>
       <Field label={t('cst.radius', 'Corner radius')}><Input type="number" value={p.radius ?? ''} onChange={(e) => setProp('radius', e.target.value === '' ? undefined : Number(e.target.value))} /></Field>

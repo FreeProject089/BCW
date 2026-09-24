@@ -22,6 +22,7 @@ import fsp from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import nodePath from 'node:path';
 import { safeFetch } from '../lib/net.mjs';
+import { errorReply } from '../lib/error-reply.mjs';
 
 // What a BMM-native catalog feed has to look like. Written here rather than imported from the
 // reader because the reader is forgiving on purpose — it has to keep working against feeds
@@ -215,7 +216,7 @@ export default async function devtoolRoutes(app) {
         name, src: await fsp.readFile(nodePath.join(dir, name), 'utf8'),
       })));
     } catch (e) {
-      return reply.code(500).send({ error: 'unreadable', detail: String(e).slice(0, 200) });
+      return errorReply(req, reply, 500, 'unreadable', e);
     }
     const map = buildRbacMap(files);
     // A map built from zero files would report zero problems, which is the most
@@ -274,7 +275,7 @@ export default async function devtoolRoutes(app) {
       }
     };
     try { await walk(srcRoot); } catch (e) {
-      return reply.code(500).send({ error: 'unreadable', detail: String(e).slice(0, 200) });
+      return errorReply(req, reply, 500, 'unreadable', e);
     }
     if (!files.length) return reply.code(500).send({ error: 'parsed_nothing' });
 
@@ -413,7 +414,7 @@ export default async function devtoolRoutes(app) {
         name, src: await fsp.readFile(nodePath.join(dir, name), 'utf8'),
       })));
     } catch (e) {
-      return reply.code(500).send({ error: 'unreadable', detail: String(e).slice(0, 200) });
+      return errorReply(req, reply, 500, 'unreadable', e);
     }
     const map = buildDataFlow(files, parseRoutes);
     // Zero routes would report zero public writes, which is the most reassuring wrong

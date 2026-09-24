@@ -37,6 +37,8 @@ export interface StudioDoc {
   v: 2;
   id: string;
   title: string;
+  /** Kept in the studio, out of the public page's tabs (phase 6). Present only when true. */
+  hidden?: true;
   frames: { desktop: Required<Frame>; phone: Required<PhoneFrame> };
   /** Read-only conveniences derived from `frames`; never stored. */
   height: number; phoneHeight: number; phoneBoard: boolean;
@@ -48,7 +50,7 @@ export interface StudioDoc {
 
 /** A document as it is STORED (serializeDoc): defaults left out, derived values never written. */
 export interface StoredDoc {
-  v: 2; id: string; title: string; frames: Frames;
+  v: 2; id: string; title: string; hidden?: true; frames: Frames;
   /** Absent = `site`. `bg` is only ever READ (a page saved before phase 4). */
   background?: Background; bg?: string; grid?: number; css?: string;
   blocks: Array<Partial<Block> & Pick<Block, 'id' | 'kind' | 'x' | 'y' | 'w' | 'h' | 'z'>>;
@@ -239,6 +241,8 @@ export interface SubmitField { kind: 'email' | 'id' | 'ids' | 'ref' | 'slug' | '
 export interface SubmitEntry {
   method: 'POST'; path: string; pow: string | null;
   author: Readonly<Record<string, SubmitField>>; visitor: Readonly<Record<string, SubmitField>>; rateLimit: string;
+  /** The visitor confirms before it is sent; `read` is the public GET the confirmation shows. */
+  confirm?: Readonly<{ read: string }>;
 }
 export interface ActionPlan {
   kind: 'none' | 'link' | 'button' | 'inert';
@@ -263,6 +267,8 @@ export const MAX_POLICY_HOSTS: number;
 export const DEFAULT_LINK_POLICY: Readonly<LinkPolicy>;
 export const SUBMIT_REGISTRY: Readonly<Record<string, SubmitEntry>>;
 export const SUBMIT_KEYS: readonly string[];
+export function submitNeedsConfirm(key: string): boolean;
+export function submitConfirmUrl(key: string, author: unknown): string;
 export function internalPath(raw: unknown): string;
 export function normalizeHost(raw: unknown): string;
 export function normalizeLinkPolicy(raw: unknown): LinkPolicy;

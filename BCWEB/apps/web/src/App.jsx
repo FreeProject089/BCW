@@ -1,3 +1,4 @@
+import { safeHref } from './lib/safe-href.js';
 import { useEffect, useState, useRef, useLayoutEffect, useSyncExternalStore } from 'react';
 import { stageClaimed, subscribeStage } from './hero/scene-stage.js';
 import { createPortal } from 'react-dom';
@@ -1231,7 +1232,7 @@ export const SOCIAL_ICONS = {
 function FooterSocial({ item }) {
   const Brand = SOCIAL_ICONS[String(item.icon || '').toLowerCase()];
   return (
-    <a href={item.href} target={/^https?:/i.test(item.href) ? '_blank' : undefined} rel="noreferrer" title={item.label}
+    <a href={safeHref(item.href)} target={/^https?:/i.test(item.href) ? '_blank' : undefined} rel="noreferrer" title={item.label}
       className="foot-social grid place-items-center w-9 h-9 rounded-xl border border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--line-strong)] hover:bg-[var(--surface-2)] transition">
       {Brand ? <Brand size={16} className={item.icon === 'kofi' ? 'text-orange-400' : ''} /> : <LucideCdnIcon name={item.icon} size={16} />}
       {/* The label is the accessible name. `title` alone is a tooltip, not a name, so a
@@ -1266,7 +1267,7 @@ const showsOn = (item, mobile) => {
 function FooterCol({ title, links }) {
   const [open, setOpen] = useState(false);
   const render = ([l, to, ext]) => ext
-    ? <a key={l} href={to} target="_blank" rel="noreferrer" className="foot-link text-sm text-[var(--muted)] hover:text-[var(--accent-ink)] transition w-fit">{l}</a>
+    ? <a key={l} href={safeHref(to)} target="_blank" rel="noreferrer" className="foot-link text-sm text-[var(--muted)] hover:text-[var(--accent-ink)] transition w-fit">{l}</a>
     : <Link key={l} to={to} className="foot-link text-sm text-[var(--muted)] hover:text-[var(--accent-ink)] transition w-fit">{l}</Link>;
   return (
     <div className="border-b border-[var(--line)] last:border-b-0 md:border-0">
@@ -1904,7 +1905,7 @@ export default function App() {
                   the admin's role gate let any MOD or page grantee in (PLAN-STUDIO-2026 1.5).
                   It draws itself over the shell (position: fixed), so it sits inside <main>
                   like every other route without needing a second layout. */}
-              <Route path="/studio/:kind/:id/:index?" element={<Protected><StudioPage /></Protected>} />
+              <Route path="/studio/:kind/:id/:page?" element={<Protected><StudioPage /></Protected>} />
               <Route path="*" element={<NotFound />} />
             </Routes>
             )}

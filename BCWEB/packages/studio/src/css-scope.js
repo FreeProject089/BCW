@@ -159,7 +159,10 @@ export function safeCssValue(input) {
 }
 
 const BLOCK_AT = /^@(media|supports|container|layer|scope)\b/i;
-const KEEP_AT = /^@(keyframes|-webkit-keyframes|font-face|property|counter-style|page)\b/i;
+// No `@page` (SECURITY_SUMMARY §9): it takes no selector, so the scope prefix cannot reach it,
+// and a member's stylesheet would set the margins and size of the WHOLE site when printed.
+// It falls to walk()'s "unknown at-rule is dropped", and scopeCss reports it as refused.
+const KEEP_AT = /^@(keyframes|-webkit-keyframes|font-face|property|counter-style)\b/i;
 
 function prefixSelector(sel, scope) {
   return sel.split(',').map((raw) => {
@@ -209,6 +212,9 @@ export function scopeCss(input, scope) {
   // refused and a second, valid rule do nothing.
   s = s.replace(/@(import|charset)\b[^;}]*;?/gi, (all, name) => { refused.add(`@${name.toLowerCase()}`); return ''; });
   for (const [re, name] of REFUSE) if (re.test(s)) { refused.add(name); s = s.replace(new RegExp(re.source, 'gi'), '/*refused*/'); }
+  // Block at-rules that cannot be scoped are dropped by walk(); say so for the one an author
+  // is likely to write on purpose, so the editor can tell them why it did nothing.
+  if (/@page\b/i.test(s)) refused.add('@page');
   // `position: fixed` / `sticky`: the declaration is taken out, the rule around it is kept.
   // A prefixed selector confines what a rule MATCHES, not where a fixed box is PAINTED: it
   // resolves against the viewport unless an ancestor has a transform, and the stacked phone

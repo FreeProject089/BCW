@@ -16,7 +16,14 @@ import { zipEntryName } from '../lib/zip-path.mjs';
 // own identical copy, and a field added to one would have been stripped by the other.
 const settingsSchema = SETTINGS_SCHEMA;
 
-const fileSer = (f) => ({ ...f, size: Number(f.size) });
+// An explicit field list, never a spread (SECURITY_SUMMARY §9, O4): the spread shipped the
+// row's object-storage `key` to everybody the dashboard admits — a whitelisted collaborator,
+// or anyone holding the dashboard password. The key is the server's business; clients name a
+// file by its id and its path. test/repo-file-ser.test.mjs.
+export const fileSer = (f) => ({
+  id: f.id, path: f.path, size: Number(f.size), contentType: f.contentType,
+  sha256: f.sha256 ?? null, createdAt: f.createdAt, updatedAt: f.updatedAt,
+});
 
 /**
  * What the resize control needs to know about this repo's pool.
@@ -60,6 +67,8 @@ async function poolInfo(p, repo) {
 const pwVersion = (hash) => (hash ? crypto.createHash('sha256').update(String(hash)).digest('base64url').slice(0, 16) : null);
 
 const STAFF_ROLES = ['MOD', 'ADMIN', 'SUPERADMIN'];
+/** The staff roles that may CHANGE a repo that is not theirs. A MOD reads. */
+const STAFF_WRITE_ROLES = ['ADMIN', 'SUPERADMIN'];
 
 // Resolve the caller's access to a repo → 'owner' | 'collab' | 'password' | null.
 //  owner    = the owner, or an ADMIN/MOD (logged in, 2FA on, not suspended)
@@ -79,7 +88,7 @@ async function accessLevel(req, p, repo) {
     const u = await p.user.findUnique({ where: { id: me.uid }, select: { email: true, displayName: true, emailVerified: true, totpEnabled: true } });
     if (repo.ownerId === me.uid) return { level: 'owner', uid: me.uid, staff: false, actor: u?.displayName || 'owner' };
     const staff = STAFF_ROLES.includes(me.role) && !!u?.totpEnabled && !(await accountLock(me.uid, 'service'));
-    if (staff) return { level: 'owner', uid: me.uid, staff, actor: `${u?.displayName || 'owner'} (admin)` };
+    if (staff) return { level: 'owner', uid: me.uid, staff, role: me.role, actor: `${u?.displayName || 'owner'} (admin)` };
     // The address has to be CONFIRMED: an owner lists a collaborator's address, and an account
     // that merely typed that address at sign-up proves nothing about owning it.
     const emails = (repo.accessEmails || []).map((e) => e.toLowerCase());
@@ -101,9 +110,17 @@ function resolve(opts = {}) {
     const p = await db();
     const repo = await p.serverRepo.findUnique({ where: { id: req.params.id }, include: { files: true, owner: { select: { id: true, displayName: true } } } });
     if (!repo) return reply.code(404).send({ error: 'not_found' });
-    const { level, uid, actor, staff } = await accessLevel(req, p, repo);
+    const { level, uid, actor, staff, role } = await accessLevel(req, p, repo);
     if (!level) return reply.code(401).send({ error: repo.dashPassword ? 'password_required' : 'auth_required', name: repo.name });
     if (opts.ownerOnly && level !== 'owner') return reply.code(403).send({ error: 'owner_only' });
+    // Staff hold the dashboard of EVERY repo, as its owner. Reading it is moderation, and a
+    // moderator may; CHANGING it — files, publish, settings, the access list, bans — is an
+    // administrator's act (SECURITY_SUMMARY §9, "Staff hold owner rights on every repo
+    // dashboard"). A MOD is read-only here. `opts.read` marks the POSTs that only read
+    // (the zip download). test/repo-dashboard-staff.test.mjs.
+    if (staff && !STAFF_WRITE_ROLES.includes(role) && req.method !== 'GET' && !opts.read) {
+      return reply.code(403).send({ error: 'admin_only' });
+    }
     // A SUSPENDED repo is FROZEN for the OWNER — the dashboard stays viewable (GET) but
     // every mutation (files, publish/list, settings, access, ban, state) is refused.
     // STAFF (admin/mod) are NOT frozen: the admin version of the dashboard can act on a
@@ -111,6 +128,7 @@ function resolve(opts = {}) {
     // mutations flow through here, so one guard covers them.
     if (repo.status === 'SUSPENDED' && req.method !== 'GET' && !staff) return reply.code(403).send({ error: 'repo_suspended' });
     req._p = p; req.repo = repo; req.level = level; req.uid = uid; req.actor = actor; req.staff = !!staff;
+    req.staffReadOnly = !!staff && !STAFF_WRITE_ROLES.includes(role);
   };
 }
 
@@ -160,6 +178,9 @@ export default async function repoDashboardRoutes(app) {
       settings: r.settings || DEFAULT_SETTINGS,
       files: r.files.map(fileSer), used: r.files.reduce((a, f) => a + Number(f.size), 0),
       level: req.level,
+      // A moderator reading somebody else's repo: every write here answers 403 admin_only,
+      // and the screen says so instead of offering buttons that fail.
+      readOnly: !!req.staffReadOnly,
       // Access config is owner-only (never expose collaborators' emails or the password).
       // Two DIFFERENT passwords, and conflating them would be a security bug rather than a
       // wording slip: `hasPassword` is the DASHBOARD one (who may manage this repo),
@@ -192,7 +213,7 @@ export default async function repoDashboardRoutes(app) {
   // .zip, preserving their relative paths — same access level as everything else
   // here (owner/collab/password), so this works for private, unpublished repos too
   // (the public repo.json download link only ever covers PUBLISHED repos).
-  app.post('/repos/:id/dashboard/files/download-zip', { preHandler: resolve(), config: { rateLimit: { max: 20, timeWindow: '10 minutes' } } }, async (req, reply) => {
+  app.post('/repos/:id/dashboard/files/download-zip', { preHandler: resolve({ read: true }), config: { rateLimit: { max: 20, timeWindow: '10 minutes' } } }, async (req, reply) => {
     const b = z.object({ ids: z.array(z.string()).max(2000).optional() }).safeParse(req.body || {});
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const wanted = b.data.ids?.length ? new Set(b.data.ids) : null;

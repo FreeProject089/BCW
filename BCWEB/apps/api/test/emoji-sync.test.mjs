@@ -19,7 +19,10 @@ const { planIconSync, syncIconBatch, discordClient, scrubber, mapFromDiscord, di
 const { KIT_FILES, buildEmojiKit } = await import('../src/lib/emoji-kit.mjs');
 const { findSecrets } = await import('../src/lib/secret-guard.mjs');
 
-const TOKEN = 'MTEST0000000000000000000000.GAbcde.planted_token_value_for_the_test_0001';
+// A FAKE Discord token, joined at run time so the source never holds a token-shaped literal
+// (the CI secret scan, .github/scripts/secret-scan.mjs, would otherwise need an allow entry).
+// Same value as before: the tests need it to LOOK like a token to prove it is scrubbed.
+const TOKEN = ['MTEST0000000000000000000000', 'GAbcde', 'planted_token_value_for_the_test_0001'].join('.');
 const APP = '111111111111111111';
 let idSeq = 200000000000000000n;
 const nextId = () => String(idSeq++);

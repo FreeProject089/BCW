@@ -1,3 +1,4 @@
+import { safeHref } from '../lib/safe-href.js';
 import { useEffect, useState, useRef } from 'react';
 import { useParams, Link, useSearchParams } from 'react-router-dom';
 import {
@@ -125,6 +126,13 @@ function Dashboard({ data, reload }) {
     <div>
       <Link to="/dashboard?s=repos" className="text-xs text-[var(--faint)] hover:text-[var(--text)] inline-flex items-center gap-1 mb-3"><ArrowLeft size={13} /> {t('rd.backdash', 'Back to dashboard')}</Link>
 
+      {/* A moderator reads any repo's dashboard; changing it is an administrator's act, so
+          the API refuses every write (admin_only). Said once, up front. */}
+      {r.readOnly && (
+        <div role="status" className="mb-3 text-[12px] rounded-lg border border-[var(--line)] bg-[var(--surface-2)] px-3 py-2 flex items-center gap-2">
+          <Eye size={13} aria-hidden /> {t('rd.readonly', 'Read-only: moderators can look at this dashboard. Changing files, publishing, settings or the access list needs an administrator.')}
+        </div>
+      )}
       {/* header */}
       <Card className="p-5 mb-4">
         <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -260,11 +268,11 @@ function TreeNode({ node, name, depth, sel, toggle, del, downloadUrl, copyUrl, c
                 <span className="flex-1 truncate font-mono text-xs" title={f.path}>{base}</span>
                 {isDeleting ? <span className="flex items-center gap-1.5 text-xs text-error shrink-0"><Spinner className="!w-3.5 !h-3.5" /> {t('rd.deleting', 'Deleting…')}</span> : <>
                   <span className="text-xs text-[var(--faint)] tabular-nums w-20 text-end shrink-0">{fmtSize(f.size)}</span>
-                  {dl && <a href={dl} download className="text-[var(--faint)] hover:text-[var(--accent-ink)] shrink-0" title={t('repos.download', 'Download')}><Download size={14} /></a>}
+                  {dl && <a href={safeHref(dl)} download className="text-[var(--faint)] hover:text-[var(--accent-ink)] shrink-0" title={t('repos.download', 'Download')}><Download size={14} /></a>}
                   {dl && <button className="text-[var(--faint)] hover:text-[var(--accent-ink)] shrink-0" onClick={() => copyUrl(dl)} title={t('rd.copyfileurl', 'Copy this file’s download URL')}><LinkIcon size={14} /></button>}
                   {/* Open rather than download: a manifest, a log or a README is something you want to
                       LOOK at, and forcing a save for every glance is why people stop checking. */}
-                  {dl && <a href={dl} target="_blank" rel="noreferrer" className="text-[var(--faint)] hover:text-[var(--accent-ink)] shrink-0" title={t('rd.openfile', 'Open in a new tab')}><ExternalLink size={14} /></a>}
+                  {dl && <a href={safeHref(dl)} target="_blank" rel="noreferrer" className="text-[var(--faint)] hover:text-[var(--accent-ink)] shrink-0" title={t('rd.openfile', 'Open in a new tab')}><ExternalLink size={14} /></a>}
                   {f.sha256 && <button className="text-[var(--faint)] hover:text-[var(--accent-ink)] shrink-0" onClick={() => copySha(f.sha256)} title={t('rd.copysha', 'Copy the SHA-256 checksum')}><Fingerprint size={14} /></button>}
                   <button className="text-[var(--faint)] hover:text-error shrink-0" onClick={() => del(f)}><Trash2 size={14} /></button>
                 </>}
@@ -518,11 +526,11 @@ function FilesTab({ r, reload }) {
                   {deleting.has(f.id) ? <span className="flex items-center gap-1.5 text-xs text-error shrink-0"><Spinner className="!w-3.5 !h-3.5" /> {t('rd.deleting', 'Deleting…')}</span> : <>
                     {f.sha256 && <span className="hidden md:flex items-center gap-1 text-[10px] text-[var(--faint)] font-mono" title={`SHA-256: ${f.sha256}`}><Hash size={10} /> {f.sha256.slice(0, 10)}…</span>}
                     <span className="text-xs text-[var(--faint)] tabular-nums w-20 text-end shrink-0">{fmtSize(f.size)}</span>
-                    {dl && <a href={dl} download className="text-[var(--faint)] hover:text-[var(--accent-ink)] shrink-0" title={t('repos.download', 'Download')}><Download size={14} /></a>}
+                    {dl && <a href={safeHref(dl)} download className="text-[var(--faint)] hover:text-[var(--accent-ink)] shrink-0" title={t('repos.download', 'Download')}><Download size={14} /></a>}
                     {dl && <button className="text-[var(--faint)] hover:text-[var(--accent-ink)] shrink-0" onClick={() => copyUrl(dl)} title={t('rd.copyfileurl', 'Copy this file’s download URL')}><LinkIcon size={14} /></button>}
                     {/* Open rather than download: a manifest, a log or a README is something you want to
                         LOOK at, and forcing a save for every glance is why people stop checking. */}
-                    {dl && <a href={dl} target="_blank" rel="noreferrer" className="text-[var(--faint)] hover:text-[var(--accent-ink)] shrink-0" title={t('rd.openfile', 'Open in a new tab')}><ExternalLink size={14} /></a>}
+                    {dl && <a href={safeHref(dl)} target="_blank" rel="noreferrer" className="text-[var(--faint)] hover:text-[var(--accent-ink)] shrink-0" title={t('rd.openfile', 'Open in a new tab')}><ExternalLink size={14} /></a>}
                     {f.sha256 && <button className="text-[var(--faint)] hover:text-[var(--accent-ink)] shrink-0" onClick={() => copySha(f.sha256)} title={t('rd.copysha', 'Copy the SHA-256 checksum')}><Fingerprint size={14} /></button>}
                     {!locked && <button className="text-[var(--faint)] hover:text-error shrink-0" onClick={() => del(f)}><Trash2 size={14} /></button>}
                   </>}
@@ -763,7 +771,7 @@ function OnlineTab({ r, reload, publicUrl }) {
           <FileJson size={14} className="text-[var(--accent-ink)] shrink-0" />
           <code className="text-xs text-[var(--muted)] break-all flex-1 min-w-0">{publicUrl}</code>
           <button onClick={() => { navigator.clipboard?.writeText(publicUrl); toast.success(t('repos.copy.ok', 'repo.json link copied.')); }} className="text-[var(--faint)] hover:text-[var(--accent-ink)] shrink-0"><Copy size={14} /></button>
-          <a href={publicUrl} target="_blank" rel="noreferrer" className="text-[var(--faint)] hover:text-[var(--accent-ink)] shrink-0"><ExternalLink size={14} /></a>
+          <a href={safeHref(publicUrl)} target="_blank" rel="noreferrer" className="text-[var(--faint)] hover:text-[var(--accent-ink)] shrink-0"><ExternalLink size={14} /></a>
         </div>
       )}
       {!online && !hasRepoJson && <div className="mt-3 text-xs text-warning flex items-center gap-1.5"><AlertTriangle size={13} /> {t('repos.needjsonhint', 'Upload a valid repo.json first, then Go online.')}</div>}

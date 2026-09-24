@@ -79,6 +79,14 @@ const DEFAULTS = {
     allowHosts: null,
     /** The same, for `:::file` download buttons, when it should be narrower. */
     allowDownloadHosts: null,
+    /**
+     * Hosts the live blocks (`:counter`, `::live`, `::chart`, `:action`, `::include`…) may
+     * FETCH from, besides the page's own origin. An array, even empty, is a strict allowlist:
+     * `[]` = same origin only. `null` = the link rule (`allowHosts`), as before.
+     */
+    allowApiHosts: null,
+    /** The page's origin for that same-origin test. Default: `location.origin` in a browser. */
+    origin: null,
     /** Protocols, as a RegExp or an array of scheme names. Default: http(s), mailto, tel, xmpp, irc. */
     allowProtocols: null,
     /** (url, { kind, host }) => url — a last-chance rewrite, e.g. through a redirect notice. */

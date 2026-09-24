@@ -64,16 +64,9 @@
       {"@type":"WebSite","@id":"https://bettercommunity.ch/#site","name":"BetterCommunity","url":"https://bettercommunity.ch/","publisher":{"@id":"https://bettercommunity.ch/#org"},"inLanguage":["en","fr"],"potentialAction":{"@type":"SearchAction","target":{"@type":"EntryPoint","urlTemplate":"https://bettercommunity.ch/catalog?q={search_term_string}"},"query-input":"required name=search_term_string"}}
     ]}
   </script>
-  <script>
-    // Apply the saved theme before paint to avoid a flash.
-    try { document.documentElement.setAttribute('data-theme', localStorage.getItem('bcw_theme') || 'light'); } catch (e) {}
-    // And the saved LANGUAGE, for the same reason and one more. i18n.jsx sets <html lang>
-    // once React has mounted, so until then the document claims to be English: a French
-    // reader's screen reader starts in the wrong voice, the browser offers to translate a
-    // page that is already in their language, and `:lang()` rules and hyphenation apply the
-    // wrong locale. Three characters of markup, set at the same moment as the theme.
-    try { var l = localStorage.getItem('bcw_lang'); if (l === 'fr' || l === 'en') document.documentElement.setAttribute('lang', l); } catch (e) {}
-  </script>
+  <!-- Saved theme + language before the first paint. A static file, not an inline script:
+       the site CSP has no 'unsafe-inline' in script-src (public/theme-boot.js says why). -->
+  <script src="/theme-boot.js"></script>
 </head>
 <body>
   <div id="root"></div>

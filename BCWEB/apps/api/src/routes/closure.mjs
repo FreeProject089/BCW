@@ -29,6 +29,7 @@ import crypto from 'node:crypto';
 import { db, requireRole, requireCap, logAudit, clientIp, clearSession, notify, ownedContent } from '../lib/lib.mjs';
 import { sendMail, mailShell, escapeHtml } from '../lib/mail.mjs';
 import { deleteObject } from '../lib/storage.mjs';
+import { keyFromMediaUrl } from '../lib/expiring-files.mjs';
 
 const GRACE_DAYS = 30;
 // Mirrors misc.mjs, where the same ladder governs suspending and banning. Duplicated
@@ -500,7 +501,10 @@ async function tearDownOwned(p, userId, log) {
  * Safe to run twice — `closedAt` is the guard the sweeper filters on, and every write here is
  * idempotent.
  */
-export async function anonymiseAccount(p, user) {
+export async function anonymiseAccount(p, user, { removeObject = deleteObject } = {}) {
+  // Read BEFORE the row is scrubbed: the avatar value goes with it, and callers pass a
+  // partial user (the sweeper selects id + email only).
+  const before = await p.user.findUnique({ where: { id: user.id }, select: { avatar: true } }).catch(() => null);
   await p.user.update({
     where: { id: user.id },
     data: {
@@ -534,7 +538,52 @@ export async function anonymiseAccount(p, user) {
     // A landing review (M11) carries a COPY of the display name in `author` and is public once
     // approved: anonymising the user row would leave it on the home page under the old name.
     p.review.deleteMany({ where: { userId: user.id } }).catch(() => {}),
+    // Outstanding reset and confirmation tokens (F23-2 residual). Hashed and single-use, but a
+    // row that outlives the account is a way back in written down; nothing needs them now.
+    p.passwordReset.deleteMany({ where: { userId: user.id } }).catch(() => {}),
+    p.emailVerification.deleteMany({ where: { userId: user.id } }).catch(() => {}),
   ]);
+  // The bytes, which no database cascade reaches (SECURITY_SUMMARY §9: "avatar and feedback
+  // objects left in S3 on erasure").
+  await eraseAvatarObject(p, user.id, before?.avatar, removeObject);
+  await eraseFeedbackAttachments(p, user.id, removeObject);
+}
+
+/**
+ * The uploaded avatar picture, deleted from object storage.
+ *
+ * Only an upload THIS account made: an avatar value is a `/api/media/<key>` path, and any
+ * account can point its avatar at any media path — so the key must be recorded as theirs
+ * (MediaHash.ownerId, written at presign time) and no other account may be using it, or
+ * erasing one person would delete another's picture. A GitHub / Discord picture is not ours
+ * to delete and is simply dropped with the row.
+ */
+async function eraseAvatarObject(p, userId, avatar, removeObject) {
+  const url = typeof avatar?.image === 'string' ? avatar.image : '';
+  const key = keyFromMediaUrl(url);
+  if (!key) return false;
+  const rec = await p.mediaHash.findUnique({ where: { key }, select: { ownerId: true } }).catch(() => null);
+  if (!rec || rec.ownerId !== userId) return false;
+  const others = await p.user.count({ where: { id: { not: userId }, avatar: { path: ['image'], equals: url } } }).catch(() => 1);
+  if (others) return false;
+  try { await removeObject(key); } catch { /* already gone */ }
+  await p.mediaHash.deleteMany({ where: { key } }).catch(() => {});
+  return true;
+}
+
+/** Every file attached to a feedback, bug or crash report this account sent. The report
+ *  text stays (it is the project's record, and anonymous once the account is); the files —
+ *  a crash zip is the sender's machine in a bottle — go. */
+async function eraseFeedbackAttachments(p, userId, removeObject) {
+  const rows = await p.feedback.findMany({ where: { userId }, select: { id: true, attachments: true } }).catch(() => []);
+  let n = 0;
+  for (const r of rows) {
+    const files = Array.isArray(r.attachments) ? r.attachments : [];
+    if (!files.length) continue;
+    for (const f of files) { if (f?.key) { try { await removeObject(f.key); n++; } catch { /* already gone */ } } }
+    await p.feedback.update({ where: { id: r.id }, data: { attachments: [] } }).catch(() => {});
+  }
+  return n;
 }
 
 export async function sweepAccountClosures(p, log) {

@@ -229,11 +229,18 @@ export const SUBMIT_REGISTRY = Object.freeze({
   }),
   // routes/polls.mjs: votes for the options the AUTHOR fixed, as the visitor (session or voter
   // key), under the poll's own rules (open, audience, single/multiple). Rate limit 20 / 5 min.
+  //
+  // `confirm` (owner decision after phase 5): the vote is cast with the CLICKER's session, and
+  // the author wrote the button's label, so a button labelled "Continue" could make a visitor
+  // vote without knowing it. The executor therefore asks first, showing the poll's question and
+  // the chosen options as the SERVER names them (`confirm.read`, a public GET of the poll, the
+  // one other request this entry may make), and sends nothing unless the visitor confirms.
   'poll.vote': Object.freeze({
     method: 'POST', path: '/api/polls/{pollId}/vote', pow: null,
     author: Object.freeze({ pollId: F('id', { required: true }), optionIds: F('ids', { required: true, min: 1, max: 20 }) }),
     visitor: Object.freeze({}),
     rateLimit: '20 / 5 min',
+    confirm: Object.freeze({ read: '/api/polls/{pollId}' }),
   }),
   // routes/threads.mjs: opens a conversation with the project's contact inbox, exactly what the
   // project page's own contact button does. Rate limit 12 / 10 min, plus a proof of work when
@@ -251,6 +258,24 @@ export const SUBMIT_REGISTRY = Object.freeze({
   }),
 });
 export const SUBMIT_KEYS = Object.keys(SUBMIT_REGISTRY);
+
+/** Must the visitor confirm this submit before it is sent (`confirm` on its registry entry)? */
+export function submitNeedsConfirm(key) {
+  return Object.prototype.hasOwnProperty.call(SUBMIT_REGISTRY, key) && !!SUBMIT_REGISTRY[key].confirm;
+}
+
+/**
+ * The read a confirmation shows: the URL of the registry's `confirm.read`, built from the step's
+ * author fields exactly as the request itself is, or '' when there is none or a field is wrong.
+ */
+export function submitConfirmUrl(key, authorFields) {
+  if (!submitNeedsConfirm(key)) return '';
+  const entry = SUBMIT_REGISTRY[key];
+  const a = isObj(authorFields) ? authorFields : {};
+  for (const [k, spec] of Object.entries(entry.author)) if (submitFieldProblem(spec, a[k])) return '';
+  if (key === 'poll.vote') return entry.confirm.read.replace('{pollId}', encodeURIComponent(a.pollId));
+  return '';
+}
 
 const REF = /^(sc:)?[a-z0-9][a-z0-9-]{0,79}$/;
 const SLUG = /^[A-Za-z0-9_-]{1,40}$/;

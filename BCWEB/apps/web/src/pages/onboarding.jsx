@@ -11,6 +11,7 @@
 //     snoozed, or the given fallback when there is nothing to show);
 //   · <WelcomePage/> at /welcome, the same flow on a page of its own;
 //   · the admin editor's live preview (`preview`), which draws a draft config and writes nothing.
+import { safeHref } from '../lib/safe-href.js';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import {
@@ -227,7 +228,7 @@ function NextStep({ data, chosen, lang, preview }) {
         );
         if (preview) return <div key={l.id}>{inner}</div>;
         return /^https:\/\//i.test(l.to)
-          ? <a key={l.id} href={l.to} target="_blank" rel="noopener noreferrer">{inner}</a>
+          ? <a key={l.id} href={safeHref(l.to)} target="_blank" rel="noopener noreferrer">{inner}</a>
           : <Link key={l.id} to={l.to}>{inner}</Link>;
       })}
     </div>

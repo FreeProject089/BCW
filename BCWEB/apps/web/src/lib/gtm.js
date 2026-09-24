@@ -40,9 +40,13 @@ export async function loadGtmIfConsented() {
     : `https://www.googletagmanager.com/gtm.js?id=${encodeURIComponent(id)}`;
   document.head.appendChild(s);
   if (/^G-/i.test(id)) {
-    // gtag.js needs its own bootstrap; gtm.js does not.
-    const g = document.createElement('script');
-    g.textContent = `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','${id.replace(/'/g, '')}')`;
-    document.head.appendChild(g);
+    // gtag.js needs its own bootstrap; gtm.js does not. It runs HERE, in the bundle, rather than
+    // as an inline <script> built from a string: an inline script needed `'unsafe-inline'` in
+    // the site CSP's script-src (SECURITY_SUMMARY §9 #5), and a string with the id pasted in
+    // was one quote-escape away from running whatever the SEO settings held.
+    // `arguments`, not an array: gtag.js only acts on an Arguments object in the dataLayer.
+    window.gtag = function gtag() { window.dataLayer.push(arguments); };
+    window.gtag('js', new Date());
+    window.gtag('config', id);
   }
 }

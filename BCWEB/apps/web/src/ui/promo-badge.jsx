@@ -1,3 +1,4 @@
+import { safeHref } from '../lib/safe-href.js';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { X, Tag, ArrowUpRight } from 'lucide-react';
@@ -70,7 +71,7 @@ export default function PromoBadge() {
     >
       {link
         ? (external
-          ? <a href={link} target="_blank" rel="noopener noreferrer" className={contentCls}>{inner}</a>
+          ? <a href={safeHref(link)} target="_blank" rel="noopener noreferrer" className={contentCls}>{inner}</a>
           : <Link to={link} className={contentCls}>{inner}</Link>)
         : <div className={contentCls}>{inner}</div>}
       <button

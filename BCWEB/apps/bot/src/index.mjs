@@ -269,10 +269,11 @@ async function disconnect() {
   currentToken = null;
 }
 
-// The env token always wins; otherwise use the dashboard-managed token.
+// The bot's Discord token comes from its OWN environment and nowhere else. It used to fall
+// back to GET /bot/token, which let the one shared secret of every /bot/* route fetch the
+// credential that controls the bot in every guild (SECURITY_SUMMARY §9 #4).
 async function resolveToken() {
-  if (process.env.DISCORD_TOKEN) return process.env.DISCORD_TOKEN;
-  try { return await api.getToken(); } catch { return null; }
+  return process.env.DISCORD_TOKEN || null;
 }
 
 // The restart stamp we have already acted on. Seeded on the FIRST tick rather than left
@@ -316,6 +317,6 @@ async function tick() {
   }
 }
 
-console.log('[bot] starting — will connect when a token is set (env DISCORD_TOKEN or the admin dashboard).');
+console.log('[bot] starting — will connect when DISCORD_TOKEN is set in this container\'s environment.');
 tick();
 setInterval(tick, 20_000);

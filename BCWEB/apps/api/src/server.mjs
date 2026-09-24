@@ -66,6 +66,7 @@ import roleRoutes from './routes/roles.mjs';
 import myoRoutes from './routes/myo.mjs';
 import accessPolicyRoutes from './routes/access-policy.mjs';
 import studioRoutes from './routes/studio.mjs';
+import bmdHostRoutes from './routes/bmd-hosts.mjs'; // hosts live B.MD blocks may fetch (SECURITY_SUMMARY §9)
 import siteBanRoutes from './routes/site-bans.mjs';
 import { installSiteBans } from './lib/siteban.mjs';
 import serverControlRoutes from './routes/server-control.mjs';
@@ -99,6 +100,7 @@ import connectionRoutes from './routes/connections.mjs';
 import { recordRequest } from './lib/monitor.mjs';
 import { registerApiUsageHook, flushApiUsage } from './lib/apiusage.mjs';
 import { installAbuseGuards } from './lib/abuse.mjs';
+import { installCsrfGuard } from './lib/csrf.mjs';
 import { productionSecretProblems, formatProblems, isProduction, productionSiteUrlProblem, formatSiteUrlProblem } from './lib/boot-guard.mjs';
 
 // Fail-safe: never boot in production on a secret that is in the repository (CWE-798).
@@ -203,6 +205,9 @@ await app.register(cors, {
   credentials: true,
 });
 await app.register(cookie);
+// CSRF: one onRequest hook for every route (lib/csrf.mjs). After the cookie plugin, whose
+// own onRequest hook is what fills `req.cookies`. The CORS allowlist counts as the site.
+installCsrfGuard(app, { trustedOrigins: corsAllow });
 // Rate-limit per *real* client IP — the last X-Forwarded-For entry Caddy appends —
 // not the socket peer, which behind the proxy is one shared bucket for every visitor
 // (that made normal browsing trip 429s). Auth endpoints keep their stricter override.
@@ -428,6 +433,7 @@ await app.register(roleRoutes); // custom roles + per-project edit grants
 await app.register(myoRoutes); // "Make Your Own" commission service
 await app.register(accessPolicyRoutes);
 await app.register(studioRoutes); // the studio's saved components, per user
+await app.register(bmdHostRoutes);
 await app.register(siteBanRoutes);
 await app.register(serverControlRoutes);
 await app.register(telemetryRoutes);

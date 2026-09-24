@@ -1,3 +1,4 @@
+import { safeHref } from '../lib/safe-href.js';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 // Three icons, drawn here rather than imported from lucide-react.
@@ -209,7 +210,7 @@ export default function ProjectShowcase({ config }) {
                     </Link>
                   ) : (
                     // External, so it says so to the browser as well as to the reader.
-                    <a href={cur.href} target="_blank" rel="noopener noreferrer"
+                    <a href={safeHref(cur.href)} target="_blank" rel="noopener noreferrer"
                       className="inline-flex items-center gap-1.5 text-sm font-semibold text-white hover:gap-2.5 transition-all">
                       {t('showcase.open', 'Open')} <ArrowRight size={15} />
                     </a>

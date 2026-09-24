@@ -48,7 +48,9 @@ services:
   #        DB_HOST=pgbouncer  DB_PORT=6432  DB_URL_PARAMS=?pgbouncer=true
   #      (DIRECT_DATABASE_URL stays on db:5432 for migrations — handled below).
   pgbouncer:
-    image: edoburu/pgbouncer:latest
+    # Pinned, bumped on purpose (F10-13): `latest` changed under a running deploy with no diff
+    # to review. v1.25.2-p0 = PgBouncer 1.25.2, the newest tag on 2026-09-24.
+    image: edoburu/pgbouncer:v1.25.2-p0
     restart: unless-stopped
     profiles: ["pgbouncer"]
     environment:
@@ -68,13 +70,23 @@ services:
         condition: service_healthy
 
   # S3-compatible object storage for catalog payloads, preset .json, repo data.
-  # Port 9000 is exposed so the browser can PUT/GET via pre-signed URLs (the
-  # signature is bound to the public host — see S3_PUBLIC_ENDPOINT).
+  # The browser PUTs/GETs via pre-signed URLs (the signature is bound to the public host —
+  # see S3_PUBLIC_ENDPOINT). In production it reaches MinIO THROUGH CADDY on S3_DOMAIN, never
+  # on :9000 directly.
   minio:
-    image: minio/minio:latest
+    # Pinned (F10-13). This is the last community release, and the only MinIO image this stack
+    # has run: MinIO stopped publishing community images in October 2025 and removed
+    # minio/minio from Docker Hub on 2026-09-11 (quay.io refuses anonymous pulls too). A host
+    # that already has it keeps working; a FRESH host cannot pull it from anywhere official.
+    # Replacing MinIO is an owner decision (SECURITY_SUMMARY §9), not a tag bump.
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     restart: unless-stopped
     command: server /data --console-address ":9001"
-    ports: ["9000:9000", "9001:9001"]
+    # Loopback ONLY (SECURITY_SUMMARY §9 #2). Docker-published ports bypass ufw on a standard
+    # install, so "9000:9000" put the S3 API and the MinIO CONSOLE (password guessing) on every
+    # interface of the production host. Browsers reach storage through Caddy (S3_DOMAIN);
+    # locally the browser runs on this machine, so http://localhost:9000 still answers.
+    ports: ["127.0.0.1:9000:9000", "127.0.0.1:9001:9001"]
     environment:
       MINIO_ROOT_USER: ${S3_ACCESS_KEY:?set in .env}
       MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:?set in .env}
@@ -84,6 +96,19 @@ services:
       MINIO_API_CORS_ALLOW_ORIGIN: ${MINIO_API_CORS_ALLOW_ORIGIN:-*}
     volumes:
       - minio-data:/data
+
+  # One-shot: hands the api's writable volume to the `node` user the api now runs as
+  # (SECURITY_SUMMARY §9 #10, F10-12). A FRESH volume needs nothing, Docker copies the image's
+  # node-owned /var/audit into it; a volume created while the api ran as root keeps root
+  # ownership, and the api would then fail to write the audit anchor, quietly. Runs as root
+  # for exactly one chown, exits, and the api waits for it (service_completed_successfully).
+  volume-perms:
+    image: node:22-alpine
+    user: "0:0"
+    restart: "no"
+    command: ["chown", "-R", "1000:1000", "/var/audit"]
+    volumes:
+      - audit-anchor:/var/audit
 
   api:
     build:
@@ -98,7 +123,11 @@ services:
     # the reason. With a range Docker hands each replica the next free one, the first still
     # gets 3000 (so the Vite dev proxy and every local curl keep working), and scaling up is
     # a flag with nothing else to change.
-    ports: ["3000-3009:3000"]
+    # Loopback ONLY (SECURITY_SUMMARY §9 #2). On every interface the API was reachable around
+    # the edge: it then trusts a client-written X-Forwarded-For (rate limits, bans, audit IPs),
+    # and skips Caddy's /api/domains/ask block and every security header. The Vite proxy and a
+    # local curl both dial 127.0.0.1, so nothing in the dev flow needs more.
+    ports: ["127.0.0.1:3000-3009:3000"]
     # How many API replicas, as a SETTING rather than a flag you have to remember.
     #
     # `--scale api=3` only lasts until the next `docker compose up -d` — and `infra/deploy.sh`
@@ -115,6 +144,9 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+      # The api runs as `node` (uid 1000) now; its audit-anchor volume may predate that.
+      volume-perms:
+        condition: service_completed_successfully
     environment:
       # Runtime URL — defaults to a DIRECT connection (DB_HOST=db). Set DB_HOST=pgbouncer,
       # DB_PORT=6432, DB_URL_PARAMS=?pgbouncer=true in .env to route through the pooler.
@@ -189,13 +221,16 @@ services:
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASS: ${SMTP_PASS:-}
       SMTP_FROM: ${SMTP_FROM:-}
-      BOT_SHARED_SECRET: ${BOT_SHARED_SECRET:-${LINK_LOOKUP_SECRET:-dev-bot-secret}}
+      BOT_SHARED_SECRET: ${BOT_SHARED_SECRET:-dev-bot-secret}
       GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
       DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID:-}
       DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET:-}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      # Shared with caddy (its on_demand_tls `ask`), F10-10. It reached no container before, so
+      # /domains/ask answered anyone who could reach the API. Set a long random value in prod.
+      DOMAIN_ASK_KEY: ${DOMAIN_ASK_KEY:-}
       # Append-only anchor for the tamper-evident audit log (sensitive-action hashes).
       # A dedicated volume mounted OUTSIDE /app so neither the DB viewer nor the
       # /app-confined file manager can reach it — closes the end-truncation gap.
@@ -287,7 +322,7 @@ services:
       DISCORD_TOKEN: ${DISCORD_TOKEN:-}
       BCWEB_API_URL: http://api:3000
       SITE_URL: ${SITE_URL:-http://localhost:5176}
-      BOT_SHARED_SECRET: ${BOT_SHARED_SECRET:-${LINK_LOOKUP_SECRET:-dev-bot-secret}}
+      BOT_SHARED_SECRET: ${BOT_SHARED_SECRET:-dev-bot-secret}
 
   # Dedicated Postgres for the telemetry dashboard (kept isolated from the app DB).
   telemetry-db:
@@ -363,6 +398,16 @@ services:
       # Object storage on its own origin. Unset → an unreachable default, so the block in the
       # Caddyfile never matches and MinIO stays reachable only on :9000 as it is locally.
       S3_DOMAIN: ${S3_DOMAIN:-http://s3.invalid}
+      # F10-10: the Caddyfile reads both and neither reached the container, so `ask` sent an
+      # empty key and the customer-domain block could never be switched on from .env.
+      DOMAIN_ASK_KEY: ${DOMAIN_ASK_KEY:-}
+      CUSTOM_DOMAIN_MATCHER: ${CUSTOM_DOMAIN_MATCHER:-http://custom-domains.invalid}
+      # The site CSP's connect-src (§9 #5) names the storage origin the browser PUTs to, so
+      # Caddy needs the same value the api signs into every pre-signed URL.
+      S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-http://localhost:9000}
+      # Extra origins the browser may fetch from (space-separated), for a live B.MD block or a
+      # project's live number on another host. Empty = the site, storage, and the fixed list.
+      CSP_CONNECT_SRC_EXTRA: ${CSP_CONNECT_SRC_EXTRA:-}
     volumes:
       - ../caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data

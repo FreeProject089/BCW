@@ -165,6 +165,13 @@ export interface MarkdownUrlPolicy {
   allowHosts?: string[] | null;
   /** The same, narrower, for `:::file` download buttons. */
   allowDownloadHosts?: string[] | null;
+  /**
+   * Hosts live blocks may fetch from besides the page's origin. An array (even empty) is a strict
+   * allowlist, `[]` = same origin only; `null`/absent = `allowHosts` decides, as before.
+   */
+  allowApiHosts?: string[] | null;
+  /** The origin the same-origin test uses. Default: `location.origin`. */
+  origin?: string | null;
   /** Schemes, as a RegExp or an array of names. Default: http(s), mailto, tel, xmpp, irc. */
   allowProtocols?: RegExp | string[] | null;
   /** Last-chance rewrite, e.g. through a redirect notice. */

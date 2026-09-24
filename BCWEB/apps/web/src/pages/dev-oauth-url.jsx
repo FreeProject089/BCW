@@ -1,3 +1,4 @@
+import { safeHref } from '../lib/safe-href.js';
 import { useState, useMemo } from 'react';
 import { Link2, Copy, ExternalLink, Check } from 'lucide-react';
 import { useI18n } from '../i18n.jsx';
@@ -137,7 +138,7 @@ export default function OAuthUrlBuilder({ clients = [], scopes = [] }) {
             <Button size="sm" variant="ghost" className="ms-auto" disabled={!url} onClick={() => { copyText(url); toast.success(t('common.copied', 'Copied.')); }}><Copy size={12} /></Button>
             {/* Opening it really starts a flow against the real provider — which is the point,
                 and also why it is a link the person chooses rather than a preview. */}
-            <a href={url || '#'} target="_blank" rel="noreferrer" className={`text-[11px] text-[var(--accent-ink)] hover:underline inline-flex items-center gap-1 ${url ? '' : 'pointer-events-none opacity-50'}`}>
+            <a href={safeHref(url || '#')} target="_blank" rel="noreferrer" className={`text-[11px] text-[var(--accent-ink)] hover:underline inline-flex items-center gap-1 ${url ? '' : 'pointer-events-none opacity-50'}`}>
               <ExternalLink size={11} /> {t('ourl.try', 'Try it')}
             </a>
           </div>

@@ -1,3 +1,4 @@
+import { safeHref } from '../lib/safe-href.js';
 import { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { BadgeCheck, Lock, Cookie, Palette, Shield, CheckCircle2, XCircle, Eye, Globe, Mail, Orbit, Package, Server, ShieldCheck, Users, Activity, Box, Clapperboard, Moon, Sun, Play, PartyPopper, SprayCan, MousePointerClick, Settings as SettingsIcon, Undo2, LogOut, AlertTriangle, FileText } from 'lucide-react';
@@ -361,7 +362,7 @@ export function Authorize() {
             {info.homepageUrl && (
               // rel=noreferrer as well as noopener: the referrer would tell an unreviewed
               // third party which account was looking at its consent screen.
-              <a href={info.homepageUrl} target="_blank" rel="noopener noreferrer nofollow"
+              <a href={safeHref(info.homepageUrl)} target="_blank" rel="noopener noreferrer nofollow"
                  className="mt-1 inline-block text-[var(--accent-ink)] hover:underline break-all">{info.homepageUrl}</a>
             )}
           </div>

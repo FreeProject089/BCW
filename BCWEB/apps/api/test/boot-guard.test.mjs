@@ -1,15 +1,19 @@
 // What an instance refuses to boot on in production.
 //
-// The check that matters is the CHAIN one. Bot auth reads
-// `BOT_SHARED_SECRET || LINK_LOOKUP_SECRET || 'dev-bot-secret'`, so a guard demanding one
+// The check that matters is the CHAIN one. The link lookup reads
+// `BC_LINK_SECRET || LINK_LOOKUP_SECRET || 'dev-link-secret'`, so a guard demanding one
 // specific name would reject a deployment that correctly set the other — and a boot guard
 // that rejects a correct deployment is a boot guard somebody deletes.
+//
+// Bot auth is NOT a chain any more (SECURITY_SUMMARY §9 #4): BOT_SHARED_SECRET only. The
+// LINK_LOOKUP_SECRET fallback let the telemetry service's secret speak as the bot.
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { productionSecretProblems, formatProblems, isProduction, PRODUCTION_SECRETS } from '../src/lib/boot-guard.mjs';
 
 const GOOD = {
   JWT_SECRET: 'a-real-secret-value',
+  BOT_SHARED_SECRET: 'the-bot-one',
   LINK_LOOKUP_SECRET: 'another-real-one',
 };
 
@@ -23,15 +27,23 @@ describe('productionSecretProblems', () => {
     assert.equal(p.length, 2);
     assert.deepEqual(p[0], {
       purpose: 'Discord bot authentication',
-      vars: ['BOT_SHARED_SECRET', 'LINK_LOOKUP_SECRET'],
+      vars: ['BOT_SHARED_SECRET'],
       reason: 'unset',
       consequence: 'the /bot/* endpoints would accept anyone',
     });
+    assert.deepEqual(p[1].vars, ['BC_LINK_SECRET', 'LINK_LOOKUP_SECRET']);
   });
 
   test('EITHER name in a chain satisfies it', () => {
-    // The bug this exists to avoid. Setting BOT_SHARED_SECRET alone is a correct deployment.
-    assert.deepEqual(productionSecretProblems({ ...GOOD, LINK_LOOKUP_SECRET: undefined, BOT_SHARED_SECRET: 'x', BC_LINK_SECRET: 'y' }), []);
+    // The bug this exists to avoid. Setting BC_LINK_SECRET alone is a correct deployment.
+    assert.deepEqual(productionSecretProblems({ ...GOOD, LINK_LOOKUP_SECRET: undefined, BC_LINK_SECRET: 'y' }), []);
+  });
+
+  test('LINK_LOOKUP_SECRET no longer satisfies bot auth (§9 #4)', () => {
+    // It used to: a deploy with only the link secret booted, and the telemetry service's
+    // secret authorised all sixty /bot/* routes. Now that deploy is refused at boot.
+    const p = productionSecretProblems({ JWT_SECRET: 'x', LINK_LOOKUP_SECRET: 'the-link-one' });
+    assert.deepEqual(p.map((x) => [x.purpose, x.reason]), [['Discord bot authentication', 'unset']]);
   });
 
   test('the value from the repository is reported even though the variable IS set', () => {
@@ -45,25 +57,27 @@ describe('productionSecretProblems', () => {
   });
 
   test('each chain is judged against ITS OWN fallback', () => {
-    // LINK_LOOKUP_SECRET feeds two purposes with different literals: 'dev-bot-secret' for the
-    // bot and 'dev-link-secret' for the link lookup. One shared list would clear the wrong one.
-    const bot = productionSecretProblems({ ...GOOD, LINK_LOOKUP_SECRET: 'dev-bot-secret' });
+    // Two purposes, two literals: 'dev-bot-secret' for the bot and 'dev-link-secret' for the
+    // link lookup. One shared list would clear the wrong one.
+    const bot = productionSecretProblems({ ...GOOD, BOT_SHARED_SECRET: 'dev-bot-secret' });
     assert.deepEqual(bot.map((x) => x.purpose), ['Discord bot authentication']);
     const link = productionSecretProblems({ ...GOOD, LINK_LOOKUP_SECRET: 'dev-link-secret' });
     assert.deepEqual(link.map((x) => x.purpose), ['telemetry and server-control link lookup']);
+    // The bot's literal in the LINK secret is not the link chain's fallback: nothing to say.
+    assert.deepEqual(productionSecretProblems({ ...GOOD, LINK_LOOKUP_SECRET: 'dev-bot-secret' }), []);
   });
 
   test('the FIRST name set is the one judged — the chain is ||', () => {
     // A later name never overrides an earlier one at runtime, so checking it would be
-    // checking a value nothing reads. BOT_SHARED_SECRET wins, and it is the insecure one.
-    const p = productionSecretProblems({ ...GOOD, BOT_SHARED_SECRET: 'dev-bot-secret' });
-    assert.deepEqual(p.map((x) => x.vars), [['BOT_SHARED_SECRET']]);
+    // checking a value nothing reads. BC_LINK_SECRET wins, and it is the insecure one.
+    const p = productionSecretProblems({ ...GOOD, BC_LINK_SECRET: 'dev-link-secret' });
+    assert.deepEqual(p.map((x) => x.vars), [['BC_LINK_SECRET']]);
   });
 
   test('an empty string is unset, not a value', () => {
     // `FOO=` in a .env file is the classic half-configured deploy, and `||` treats it as
     // absent — so the guard must too, or it clears a secret that falls back at runtime.
-    const p = productionSecretProblems({ JWT_SECRET: '', LINK_LOOKUP_SECRET: 'x' });
+    const p = productionSecretProblems({ JWT_SECRET: '', BOT_SHARED_SECRET: 'b', LINK_LOOKUP_SECRET: 'x' });
     assert.deepEqual(p.map((x) => x.reason), ['unset']);
   });
 
@@ -79,7 +93,8 @@ describe('productionSecretProblems', () => {
 describe('formatProblems', () => {
   test('names the variables to set and what it costs', () => {
     const out = formatProblems(productionSecretProblems({}));
-    assert.match(out, /BOT_SHARED_SECRET \/ LINK_LOOKUP_SECRET/);
+    assert.match(out, /set one of BOT_SHARED_SECRET \(/);
+    assert.match(out, /BC_LINK_SECRET \/ LINK_LOOKUP_SECRET/);
     assert.match(out, /accept anyone/);
   });
 

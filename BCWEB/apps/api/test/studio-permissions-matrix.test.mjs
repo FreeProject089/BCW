@@ -47,6 +47,8 @@ let p, app, lib, seq = 0;
 const A = {};
 const F = {};
 let homeBefore = null;
+const SITE_LIB = 'studio.library:site';
+let siteLibBefore = null;
 
 async function mkUser(name, data = {}) {
   const u = await p.user.create({ data: { email: `${TAG}${name}-${seq++}@bettercommunity.invalid`, displayName: `${TAG}${name}`, role: 'USER', totpEnabled: true, emailVerified: true, ...data } });
@@ -88,6 +90,8 @@ before(async () => {
   p = await lib.db();
   await lockRow(p, HOME_KEY);
   homeBefore = await p.adminSetting.findUnique({ where: { key: HOME_KEY } });
+  await lockRow(p, SITE_LIB);
+  siteLibBefore = await p.adminSetting.findUnique({ where: { key: SITE_LIB } });
 
   for (const k of [KA, KB]) {
     await p.project.create({ data: { key: k, name: `${TAG}${k}` } });
@@ -160,6 +164,8 @@ before(async () => {
   await app.register((await import('../src/routes/showcase.mjs')).default);
   await app.register((await import('../src/routes/misc.mjs')).default);
   await app.register((await import('../src/routes/roles.mjs')).default);
+  // Phase 6: the preset libraries.
+  await app.register((await import('../src/routes/studio.mjs')).default);
   await app.ready();
 });
 
@@ -173,7 +179,9 @@ after(async () => {
     await p.customRole.deleteMany({ where: { name: { startsWith: TAG } } });
     await p.projectConfigRevision.deleteMany({ where: { target: { in: [KA, KB] } } });
     await p.projectVersion.deleteMany({ where: { target: { in: [KA, KB, `sc:${F.X}`, `sc:${F.Y}`] } } });
-    await p.adminSetting.deleteMany({ where: { key: { in: [`project.${KA}`, `project.${KB}`] } } });
+    await p.adminSetting.deleteMany({ where: { key: { in: [`project.${KA}`, `project.${KB}`, `studio.library:project:${KA}`, `studio.library:project:${KB}`, `studio.library:sc:${F.X}`, `studio.library:sc:${F.Y}`] } } });
+    if (siteLibBefore) await p.adminSetting.update({ where: { key: SITE_LIB }, data: { value: siteLibBefore.value } });
+    else await p.adminSetting.deleteMany({ where: { key: SITE_LIB } });
     await p.project.deleteMany({ where: { key: { in: [KA, KB] } } });
     await p.showcaseProject.deleteMany({ where: { slug: { startsWith: TAG } } });
     await p.auditLogEntry.deleteMany({ where: { actorId: { in: none } } }).catch(() => null);
@@ -183,6 +191,7 @@ after(async () => {
     else await p.adminSetting.deleteMany({ where: { key: HOME_KEY } });
   } finally {
     await unlockRow(p, HOME_KEY);
+    await unlockRow(p, SITE_LIB);
     await app?.close();
   }
 });
@@ -601,6 +610,228 @@ describe('studio save: validation and concurrency', { skip }, () => {
   });
 });
 
+// ── PHASE 6: several pages, presets (PLAN-STUDIO-2026 section 4, phase 6) ────────────────
+// The studio now adds, deletes and reorders pages itself, and keeps preset libraries. Each new
+// door asks canUseStudio on THAT page (the library of the site: manage_studio to write, any
+// studio right to read), under the same 2FA gate. Same method as above: the refusal pass sends
+// every request the oracle refuses and checks nothing changed; the positive pass uses the
+// least privileged actor; then the two properties phase 6 is about, measured over HTTP:
+// concurrent saves of two pages both survive, and an old index link keeps its page.
+const PAGE_TARGETS = TARGETS.filter((t) => t.kind !== 'home');
+const pagesPath = (t) => (t.kind === 'project' ? `/admin/projects/${t.key}/studio/pages` : `/admin/showcase/${id(t)}/studio/pages`);
+const orderPath = (t) => (t.kind === 'project' ? `/admin/projects/${t.key}/studio/order` : `/admin/showcase/${id(t)}/studio/order`);
+const libPath = (t) => (t.kind === 'project' ? `/admin/studio/library/project/${t.key}` : `/admin/studio/library/showcase/${id(t)}`);
+const V2 = (docId, blocks = [], extra = {}) => ({ v: 2, id: docId, title: docId, frames: { desktop: { w: 1200, fit: 'content' }, phone: { w: 390, fit: 'content', mode: 'stack' } }, blocks, ...extra });
+const preset = (pid, sort = 'section') => ({ id: pid, name: `preset ${pid}`, sort, doc: sort === 'background' ? V2(pid, [], { background: { type: 'color', color: '#123456' } }) : V2(pid, [box('pb')]) });
+const idsOf = async (t) => (await storedDoc(t)).canvases.map((c) => c.id);
+const revsOf = async (t) => (await call('SUPERADMIN', 'GET', openPath(t))).body.revs;
+/** May `name` READ the site's preset library? manage_studio, or a studio right on any page. */
+function siteReadOracle(name) {
+  const s = A[name].spec;
+  if (s.twofa === false || s.suspended) return false;
+  if (ADMINS.has(s.role) || (s.caps || []).includes('manage_studio')) return true;
+  const g = s.studio;
+  return !!g && (!!g.allShowcase || (g.projects || []).length > 0 || (g.showcases || []).length > 0);
+}
+const siteWriteOracle = (name) => {
+  const s = A[name].spec;
+  return s.twofa !== false && !s.suspended && (ADMINS.has(s.role) || (s.caps || []).includes('manage_studio'));
+};
+
+describe('studio phase 6: the page list and the libraries, permission matrix', { skip }, () => {
+  test('refusals: create, delete, reorder and a page library are closed to every non-holder, and nothing changes', async () => {
+    const before = {};
+    for (const t of PAGE_TARGETS) before[t.name] = stable(await storedDoc(t));
+    const libBefore = stable(await p.adminSetting.findMany({ where: { key: { startsWith: 'studio.library:' } }, orderBy: { key: 'asc' } }));
+    let refused = 0;
+    for (const t of PAGE_TARGETS) {
+      const revs = await revsOf(t);
+      const order = await idsOf(t);
+      for (const name of ACTORS()) {
+        if (studioOracle(name, t)) continue;
+        const probes = [
+          ['POST', pagesPath(t), { canvas: page(`x-${name}`, [box('z')]) }],
+          ['DELETE', `${pagesPath(t)}/p2?base=${encodeURIComponent(revs.p2)}`],
+          ['PUT', orderPath(t), { order: [...order].reverse() }],
+          ['GET', libPath(t)],
+          ['PUT', libPath(t), { entries: [preset(`e${seq++}`)], base: '' }],
+        ];
+        for (const [method, url, payload] of probes) {
+          const r = await call(name, method, url, payload);
+          const why = `${name} ${method} ${url} → ${r.status} ${JSON.stringify(r.body)}`;
+          if (A[name].spec.twofa === false) { assert.equal(r.status, 403, why); assert.ok(['2fa_required', ...SOFT_REFUSALS].includes(r.body?.error), why); }
+          else {
+            assert.ok(r.status === 403 || r.status === 404, why);
+            assert.ok(SOFT_REFUSALS.includes(r.body?.error), `unexpected refusal (broken fixture?): ${why}`);
+          }
+          refused++;
+        }
+      }
+      for (const [method, url, payload] of [['POST', pagesPath(t), { canvas: page('anon') }], ['DELETE', `${pagesPath(t)}/p2?base=x`], ['PUT', orderPath(t), { order }], ['GET', libPath(t)], ['PUT', libPath(t), { entries: [], base: '' }]]) {
+        const r = await call(null, method, url, payload);
+        assert.ok(r.status === 401 || r.status === 403, `anonymous ${method} ${url} → ${r.status}`);
+      }
+    }
+    // The site library: read by any studio holder, written by manage_studio only.
+    for (const name of ACTORS()) {
+      const read = await call(name, 'GET', '/admin/studio/library/site/site');
+      const why = `${name} GET site library → ${read.status} ${JSON.stringify(read.body)}`;
+      if (siteReadOracle(name)) assert.equal(read.status, 200, why);
+      else { assert.ok(read.status === 403, why); refused++; }
+      if (!siteWriteOracle(name)) {
+        const w = await call(name, 'PUT', '/admin/studio/library/site/site', { entries: [preset(`s${seq++}`, 'page')], base: '' });
+        assert.equal(w.status, 403, `${name} wrote the site library: ${w.status} ${JSON.stringify(w.body)}`);
+        refused++;
+      }
+    }
+    for (const t of PAGE_TARGETS) assert.equal(stable(await storedDoc(t)), before[t.name], `${t.name} changed although every request was refused`);
+    assert.equal(stable(await p.adminSetting.findMany({ where: { key: { startsWith: 'studio.library:' } }, orderBy: { key: 'asc' } })), libBefore, 'a refused library write changed a library');
+    assert.ok(refused > 150, `only ${refused} refusals were exercised`);
+  });
+
+  test('positive pass: the least privileged holder creates, reorders, hides and deletes pages, and keeps a library', async () => {
+    const ORDER = ['studioA', 'scopedStudioB', 'studioX', 'allShowcaseStudio', 'manageStudio', 'ADMIN', 'SUPERADMIN'];
+    const used = {};
+    for (const t of PAGE_TARGETS) {
+      const keep = await storedDoc(t);
+      const who = ORDER.find((n) => studioOracle(n, t));
+      used[t.name] = who;
+      // From the fixture's own pages (an earlier test leaves B reordered and with a third page).
+      await writeDoc(t, projectConfig(t.on));
+      try {
+        // Create, after p1 (in the middle): the pre-phase-6 order is frozen for old links.
+        const made = await call(who, 'POST', pagesPath(t), { canvas: page('p6new', [box('n')]), after: 'p1' });
+        assert.equal(made.status, 201, `${who} could not create on ${t.name}: ${JSON.stringify(made.body)}`);
+        assert.deepEqual(made.body.order, ['p1', 'p6new', 'p2']);
+        const afterMake = await storedDoc(t);
+        assert.deepEqual(afterMake.studioIndexIds, ['p1', 'p2'], 'the order old index links were made for was not kept');
+        // Same id again: refused, nothing duplicated.
+        assert.equal((await call(who, 'POST', pagesPath(t), { canvas: page('p6new') })).body.error, 'page_exists');
+        // Reorder: a permutation lands; a stale list (missing a page) is a 409 with the stored order.
+        const ord = await call(who, 'PUT', orderPath(t), { order: ['p2', 'p6new', 'p1'] });
+        assert.equal(ord.status, 200, JSON.stringify(ord.body));
+        const stale = await call(who, 'PUT', orderPath(t), { order: ['p1', 'p2'] });
+        assert.equal(stale.status, 409);
+        assert.deepEqual(stale.body.order, ['p2', 'p6new', 'p1']);
+        assert.deepEqual((await storedDoc(t)).studioIndexIds, ['p1', 'p2'], 'a reorder moved the frozen order');
+        // Hide: a page save with `hidden`, kept out of the public GET.
+        const revs = (await call(who, 'GET', openPath(t))).body.revs;
+        const hid = await call(who, 'PUT', `${pagesPath(t)}/p1`, { canvas: { ...(await storedDoc(t)).canvases.find((c) => c.id === 'p1'), hidden: true }, base: revs.p1 });
+        assert.equal(hid.status, 200, JSON.stringify(hid.body));
+        if (t.on) {
+          const pub = t.kind === 'project' ? (await call(null, 'GET', `/projects/${t.key}`)).body.config : (await call(null, 'GET', `/showcase/${F[`slug${t.ref}`]}`)).body.project?.config;
+          assert.ok(!(pub?.canvases || []).some((c) => c.id === 'p1'), `${t.name}: a hidden page reached the public GET`);
+        }
+        // Delete: from a stale revision it is a 409; from the current one it lands.
+        const revs2 = (await call(who, 'GET', openPath(t))).body.revs;
+        assert.equal((await call(who, 'DELETE', `${pagesPath(t)}/p6new?base=stale`)).status, 409);
+        const del = await call(who, 'DELETE', `${pagesPath(t)}/p6new?base=${encodeURIComponent(revs2.p6new)}`);
+        assert.equal(del.status, 200, JSON.stringify(del.body));
+        assert.deepEqual(await idsOf(t), ['p2', 'p1']);
+        assert.equal((await call(who, 'DELETE', `${pagesPath(t)}/p6new?base=${encodeURIComponent(revs2.p6new)}`)).body.error, 'page_gone');
+        // The page's library: shared by its holders, written from its revision.
+        const lib = await call(who, 'GET', libPath(t));
+        assert.equal(lib.status, 200, JSON.stringify(lib.body));
+        assert.equal(lib.body.canWrite, true);
+        const w = await call(who, 'PUT', libPath(t), { entries: [preset('mine', 'page'), preset('bg1', 'background')], base: lib.body.rev });
+        assert.equal(w.status, 200, JSON.stringify(w.body));
+        assert.equal((await call(who, 'PUT', libPath(t), { entries: [], base: lib.body.rev })).status, 409, 'a library write from a stale revision landed');
+        assert.deepEqual((await call(who, 'GET', libPath(t))).body.entries.map((e) => e.id), ['mine', 'bg1']);
+      } finally { await writeDoc(t, keep); }
+    }
+    assert.equal(used['project A'], 'studioA');
+    assert.equal(used['project B'], 'scopedStudioB');
+    assert.equal(used['showcase X'], 'studioX');
+    assert.equal(used['showcase Y (studio off)'], 'manageStudio');
+  });
+
+  test('a holder of A writes neither B nor the site library; manage_studio writes the site library', async () => {
+    assert.equal((await call('studioA', 'PUT', libPath(T.B), { entries: [preset('x')], base: '' })).status, 403);
+    assert.equal((await call('studioA', 'GET', libPath(T.B))).status, 403);
+    const site = await call('studioA', 'GET', '/admin/studio/library/site/site');
+    assert.equal(site.status, 200);
+    assert.equal(site.body.canWrite, false);
+    assert.equal((await call('studioA', 'PUT', '/admin/studio/library/site/site', { entries: [preset('x')], base: site.body.rev })).status, 403, 'a presets write without manage_studio landed');
+    const ok = await call('manageStudio', 'PUT', '/admin/studio/library/site/site', { entries: [preset('official', 'page')], base: site.body.rev });
+    assert.equal(ok.status, 200, JSON.stringify(ok.body));
+  });
+
+  test('a preset is checked like a page: a hostile one is refused with its path', async () => {
+    const lib = await call('studioA', 'GET', libPath(T.A));
+    for (const [label, entry, path] of [
+      ['javascript: link', { ...preset('evil'), doc: V2('evil', [box('b1', { action: [{ type: 'navigate', to: 'javascript:alert(1)' }] })]) }, 'entries[0].doc.blocks[0].action[0].to'],
+      ['offsite background', { ...preset('evil', 'background'), doc: V2('evil', [], { background: { type: 'image', src: 'https://evil.example/x.png' } }) }, 'entries[0].doc.background'],
+      ['unknown field', { ...preset('evil'), script: 'x' }, 'entries[0].script'],
+      ['bad sort', { ...preset('evil'), sort: 'macro' }, 'entries[0].sort'],
+    ]) {
+      const r = await call('studioA', 'PUT', libPath(T.A), { entries: [entry], base: lib.body.rev });
+      assert.equal(r.status, 400, `${label}: ${JSON.stringify(r.body)}`);
+      assert.equal(r.body.error, 'invalid_studio_doc', label);
+      assert.ok(String(r.body.path).startsWith(path), `${label}: path ${r.body.path}`);
+    }
+  });
+});
+
+describe('studio phase 6: concurrency and old links', { skip }, () => {
+  test('two tabs save two different pages at the same instant: both saves survive (10 rounds)', async () => {
+    for (const t of [T.A, T.X]) {
+      const keep = await storedDoc(t);
+      await writeDoc(t, projectConfig(true));
+      try {
+        for (let round = 0; round < 10; round++) {
+          const revs = await revsOf(t);
+          const [one, two] = await Promise.all([
+            call('ADMIN', 'PUT', `${pagesPath(t)}/p1`, { canvas: page('p1', [box(`one${round}`)]), base: revs.p1 }),
+            call('SUPERADMIN', 'PUT', `${pagesPath(t)}/p2`, { canvas: page('p2', [box(`two${round}`)]), base: revs.p2 }),
+          ]);
+          assert.equal(one.status, 200, JSON.stringify(one.body));
+          assert.equal(two.status, 200, JSON.stringify(two.body));
+          const doc = await storedDoc(t);
+          assert.equal(doc.canvases.find((c) => c.id === 'p1').blocks[0].id, `one${round}`, `${t.name} round ${round}: page 1's save was lost`);
+          assert.equal(doc.canvases.find((c) => c.id === 'p2').blocks[0].id, `two${round}`, `${t.name} round ${round}: page 2's save was lost`);
+        }
+        // The same page from a stale revision: 409, and the stored page is untouched.
+        const revs = await revsOf(t);
+        assert.equal((await call('ADMIN', 'PUT', `${pagesPath(t)}/p1`, { canvas: page('p1', [box('fresh')]), base: revs.p1 })).status, 200);
+        const lost = await call('SUPERADMIN', 'PUT', `${pagesPath(t)}/p1`, { canvas: page('p1', [box('stale')]), base: revs.p1 });
+        assert.equal(lost.status, 409);
+        assert.equal((await storedDoc(t)).canvases.find((c) => c.id === 'p1').blocks[0].id, 'fresh');
+        // A save racing a page creation: both land.
+        const r2 = await revsOf(t);
+        const [c, s] = await Promise.all([
+          call('ADMIN', 'POST', pagesPath(t), { canvas: page('p3', [box('c')]) }),
+          call('SUPERADMIN', 'PUT', `${pagesPath(t)}/p2`, { canvas: page('p2', [box('race')]), base: r2.p2 }),
+        ]);
+        assert.equal(c.status, 201, JSON.stringify(c.body));
+        assert.equal(s.status, 200, JSON.stringify(s.body));
+        const doc = await storedDoc(t);
+        assert.deepEqual(doc.canvases.map((x) => x.id), ['p1', 'p2', 'p3']);
+        assert.equal(doc.canvases[1].blocks[0].id, 'race');
+      } finally { await writeDoc(t, keep); }
+    }
+  });
+
+  test('an old index link keeps its page after a reorder: studioIndexIds is kept, and no config save erases it', async () => {
+    const keep = await storedDoc(T.A);
+    await writeDoc(T.A, projectConfig(true));
+    try {
+      assert.equal((await call('studioA', 'PUT', orderPath(T.A), { order: ['p2', 'p1'] })).status, 200);
+      const doc = await storedDoc(T.A);
+      assert.deepEqual(doc.canvases.map((c) => c.id), ['p2', 'p1']);
+      assert.deepEqual(doc.studioIndexIds, ['p1', 'p2'], 'the index a link was made for is lost');
+      // The web resolves /studio/project/<key>/1 through it (lib/studio-page.js, tested there).
+      const open = await call('studioA', 'GET', openPath(T.A));
+      assert.deepEqual(open.body.config.studioIndexIds, ['p1', 'p2'], 'the studio does not receive the frozen order');
+      // A config form loaded earlier, saved now, does not erase it (guardStudioContent).
+      assert.equal((await call('ADMIN', 'PUT', `/projects/${KA}`, { config: { ...keep, tagline: 'form' } })).status, 200);
+      assert.deepEqual((await storedDoc(T.A)).studioIndexIds, ['p1', 'p2']);
+      // A second reorder does not move it.
+      assert.equal((await call('studioA', 'PUT', orderPath(T.A), { order: ['p1', 'p2'] })).status, 200);
+      assert.deepEqual((await storedDoc(T.A)).studioIndexIds, ['p1', 'p2']);
+    } finally { await writeDoc(T.A, keep); }
+  });
+});
+
 // MUTATION CHECK (run by hand, 23.09.2026) — phase 0/1:
 //   · GET /admin/projects/:key/studio with `canEditProject` replaced by `true`: the refusal
 //     pass goes red on the first non-grantee (USER GET project A → 200).
@@ -623,3 +854,14 @@ describe('studio save: validation and concurrency', { skip }, () => {
 //   · M7 projectGrants no longer filtering on the `pages` right: 4 tests red, /me included
 //     (a studio-only grant became a page grant).
 //   · M8 PUT /admin/showcase/:id without guardStudioContent: the config-door pass goes red.
+//
+// MUTATION CHECK — phase 6 (24.09.2026, scripted as above; each turned this file red, and it
+// was green again after the file was restored byte for byte):
+//   · A1 withStudioLock without the lock (fn(p) directly): "two tabs save two different pages
+//     at the same instant" goes red (a page's save is lost in the first rounds).
+//   · A2 the project studioWrite without canUseStudio: both refusal passes and the central
+//     case go red.
+//   · A3 the site library writable by any studio holder: the phase 6 refusal pass and "a
+//     holder of A writes neither B nor the site library" go red.
+//   · A4 insertConfigPage no longer freezing the order: the phase 6 positive pass goes red.
+//   · A5 a showcase library readable and writable by anybody: the phase 6 refusal pass goes red.

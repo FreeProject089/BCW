@@ -21,6 +21,7 @@ import { hasProjectLink, replyNeedsLink, requirementFor } from '../lib/project-l
 import { stripe } from './hosting.mjs';
 import { isProjectKey, KEY_SHAPE } from '../lib/project-keys.mjs';
 import { flagIfProtected } from './rights.mjs';
+import { errorReply } from '../lib/error-reply.mjs';
 
 // ── Blocked addresses ────────────────────────────────────────────────────────
 // The Terms promise that a link taken down after a notice cannot simply be posted again.
@@ -665,7 +666,7 @@ export default async function catalogRoutes(app) {
       const res = await validatePlugin(buf, meta.sha256);
       const url = item.payloadKey ? await presignGet(item.payloadKey) : meta.download_url;
       return { valid: res.valid, reason: res.reason, sha256: res.sha256, size: buf.length, files: res.files, manifest: res.manifest, downloadUrl: url };
-    } catch (e) { return reply.code(502).send({ error: 'fetch_failed', detail: String(e?.message || e) }); }
+    } catch (e) { return errorReply(req, reply, 502, 'fetch_failed', e); }
   });
 
   // Admin: examine ANY submitted item's payload (plugin/theme/app) without downloading —
@@ -692,7 +693,7 @@ export default async function catalogRoutes(app) {
       const nm = item.payloadKey || meta.download_url || item.name;
       const isText = INSPECT_TEXT_EXT.test(nm) || buf.length <= INSPECT_TEXT_MAX;
       return { type: 'file', size: buf.length, name: String(nm).split('/').pop(), text: isText ? buf.slice(0, INSPECT_TEXT_MAX).toString('utf-8') : null };
-    } catch (e) { return reply.code(502).send({ error: 'read_failed', detail: String(e?.message || e) }); }
+    } catch (e) { return errorReply(req, reply, 502, 'read_failed', e); }
   });
 
   // Admin: download a single entry from ANY zip payload (not just plugins) — ?path=… .
@@ -711,7 +712,7 @@ export default async function catalogRoutes(app) {
       reply.header('Content-Disposition', `attachment; filename="${name}"`);
       reply.header('Cache-Control', 'no-store');
       return reply.send(Buffer.from(data));
-    } catch (e) { return reply.code(502).send({ error: 'read_failed', detail: String(e?.message || e) }); }
+    } catch (e) { return errorReply(req, reply, 502, 'read_failed', e); }
   });
 
   // Admin: download a single extracted file from a plugin's .bmmplug (review each file
@@ -732,7 +733,7 @@ export default async function catalogRoutes(app) {
       reply.header('Content-Disposition', `attachment; filename="${name}"`);
       reply.header('Cache-Control', 'no-store');
       return reply.send(Buffer.from(data));
-    } catch (e) { return reply.code(502).send({ error: 'fetch_failed', detail: String(e?.message || e) }); }
+    } catch (e) { return errorReply(req, reply, 502, 'fetch_failed', e); }
   });
 
   // ── Propose an UPDATE to your own item ──

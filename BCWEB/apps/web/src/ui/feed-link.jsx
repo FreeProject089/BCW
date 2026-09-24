@@ -1,3 +1,4 @@
+import { safeHref } from '../lib/safe-href.js';
 import { useState } from 'react';
 import { FileJson, Copy, ExternalLink, Check } from 'lucide-react';
 import { useI18n } from '../i18n.jsx';
@@ -35,7 +36,7 @@ export default function FeedLink({ path, label, hint, className = '' }) {
         {done ? t('feed.copied', 'URL copied') : (label || t('feed.json', 'JSON feed'))}
         {!done && <Copy size={11} className="text-[var(--faint)]" />}
       </button>
-      <a href={url} target="_blank" rel="noreferrer" title={t('feed.open', 'Open it in a tab')}
+      <a href={safeHref(url)} target="_blank" rel="noreferrer" title={t('feed.open', 'Open it in a tab')}
         className="inline-grid place-items-center w-[30px] h-[30px] max-lg:w-11 max-lg:h-11 rounded-lg border border-[var(--line-strong)] hover:border-[var(--primary)] transition text-[var(--faint)] hover:text-[var(--accent-ink)]"
         style={{ background: 'var(--bg-solid)' }}>
         <ExternalLink size={13} />
@@ -104,7 +105,7 @@ export function FeedMenu({ project = '', kind = '', className = '' }) {
                 {copied === r.k
                   ? <Check size={13} className="text-success shrink-0" />
                   : <Copy size={11} className="text-[var(--faint)] shrink-0" />}
-                <a href={r.url} target="_blank" rel="noreferrer" className="shrink-0 text-[var(--faint)] hover:text-[var(--accent-ink)]"
+                <a href={safeHref(r.url)} target="_blank" rel="noreferrer" className="shrink-0 text-[var(--faint)] hover:text-[var(--accent-ink)]"
                   title={t('feed.open', 'Open it in a tab')} onClick={(e) => e.stopPropagation()}>
                   <ExternalLink size={12} />
                 </a>

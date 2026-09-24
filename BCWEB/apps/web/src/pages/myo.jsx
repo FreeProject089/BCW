@@ -1,3 +1,4 @@
+import { safeHref } from '../lib/safe-href.js';
 import { useState, useMemo } from 'react';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -441,7 +442,7 @@ function MessageRow({ m, lang }) {
         <div className={`inline-block rounded-2xl px-3.5 py-2 text-sm ${system ? 'bg-[var(--surface-2)] text-[var(--muted)] text-xs italic' : m.staff ? 'tint-primary border b-primary' : 'bg-[var(--surface-2)]'}`}>
           {!system && <div className="text-[11px] text-[var(--faint)] mb-0.5">{m.author?.displayName || ''}{m.staff ? ' · staff' : ''}</div>}
           {m.body && <div className="whitespace-pre-wrap break-words">{m.body}</div>}
-          {m.images?.length > 0 && <div className="flex flex-wrap gap-2 mt-2">{m.images.map((u) => <a key={u} href={u} target="_blank" rel="noreferrer"><img src={u} alt="" className="w-24 h-24 rounded-lg object-cover border border-[var(--line)]" /></a>)}</div>}
+          {m.images?.length > 0 && <div className="flex flex-wrap gap-2 mt-2">{m.images.map((u) => <a key={u} href={safeHref(u)} target="_blank" rel="noreferrer"><img src={u} alt="" className="w-24 h-24 rounded-lg object-cover border border-[var(--line)]" /></a>)}</div>}
         </div>
         <div className="text-[10px] text-[var(--faint)] mt-0.5 px-1">{new Date(m.createdAt).toLocaleString()} <ReceiptTicks state={m.receipt} /></div>
       </div>
@@ -488,8 +489,8 @@ function DeliverableCard({ d, t }) {
       )}
       {d.removed && <p className="text-[11px] text-[var(--faint)] mb-2">{t('myo.deliver.removed', 'File removed when the request was archived: {f}').replace('{f}', d.fileName || '')}</p>}
       <div className="flex flex-wrap gap-2">
-        {d.fileUrl && d.expiry?.status !== 'expired' && d.expiry?.status !== 'purged' && d.expiry?.status !== 'revoked' && <a href={d.fileUrl.startsWith('/f/') ? d.fileUrl : d.fileUrl} target={d.fileUrl.startsWith('/f/') ? undefined : '_blank'} rel="noreferrer" download={d.fileUrl.startsWith('/f/') ? undefined : (d.fileName || undefined)}><Button size="sm" variant="primary"><Download size={14} /> {t('myo.download', 'Download')}{d.fileName ? ` · ${d.fileName}` : ''}</Button></a>}
-        {d.linkUrl && <a href={d.linkUrl} target="_blank" rel="noreferrer"><Button size="sm" variant="default"><ExternalLink size={14} /> {t('myo.openlink', 'Open link')}</Button></a>}
+        {d.fileUrl && d.expiry?.status !== 'expired' && d.expiry?.status !== 'purged' && d.expiry?.status !== 'revoked' && <a href={safeHref(d.fileUrl.startsWith('/f/') ? d.fileUrl : d.fileUrl)} target={d.fileUrl.startsWith('/f/') ? undefined : '_blank'} rel="noreferrer" download={d.fileUrl.startsWith('/f/') ? undefined : (d.fileName || undefined)}><Button size="sm" variant="primary"><Download size={14} /> {t('myo.download', 'Download')}{d.fileName ? ` · ${d.fileName}` : ''}</Button></a>}
+        {d.linkUrl && <a href={safeHref(d.linkUrl)} target="_blank" rel="noreferrer"><Button size="sm" variant="default"><ExternalLink size={14} /> {t('myo.openlink', 'Open link')}</Button></a>}
       </div>
     </Card>
   );

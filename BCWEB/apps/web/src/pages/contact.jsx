@@ -1,3 +1,4 @@
+import { safeHref } from '../lib/safe-href.js';
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from './auth.jsx';
@@ -266,7 +267,7 @@ export function Contact() {
       <PageHeader icon={Mail} title={t('ct.title2', 'Contact')} subtitle={fr ? 'Dis-nous de quoi il s’agit, on t’envoie au bon endroit.' : 'Tell us what it is about, we send you to the right place.'} />
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-8">
         {channels.map((c) => (
-          <a key={c.label} href={c.href} target="_blank" rel="noreferrer">
+          <a key={c.label} href={safeHref(c.href)} target="_blank" rel="noreferrer">
             <Card hover className="p-5 h-full"><c.icon size={22} className={c.kofi ? 'text-orange-400' : 'text-[var(--accent-ink)]'} />
               <div className="font-semibold mt-3">{c.label}</div><div className="text-xs text-[var(--muted)] mt-0.5">{c.sub}</div></Card>
           </a>
@@ -292,7 +293,7 @@ export function Contact() {
               <p className="text-sm text-[var(--muted)] mt-1.5 max-w-sm mx-auto">
                 {fr ? 'Il est parti aux mainteneurs du projet.' : 'It went to the project’s maintainers.'}{' '}
                 {sent.link
-                  ? <>{fr ? 'Garde ce lien pour suivre la conversation :' : 'Keep this link to follow the conversation:'} <a className="text-[var(--accent-ink)] break-all" href={sent.link}>{sent.link}</a></>
+                  ? <>{fr ? 'Garde ce lien pour suivre la conversation :' : 'Keep this link to follow the conversation:'} <a className="text-[var(--accent-ink)] break-all" href={safeHref(sent.link)}>{sent.link}</a></>
                   : (fr ? 'La conversation est dans ton tableau de bord, Messages.' : 'The conversation is in your dashboard, Messages.')}
               </p>
             ) : (

@@ -147,7 +147,8 @@ compose le nomme d'après `name: bcweb`.)
 `example.com/status` partage l'**origine** de BetterCommunity. Son JavaScript peut appeler
 `/api` avec la session du visiteur : une faille dans cette application est une faille dans
 BetterCommunity. Elle hérite aussi des en-têtes de sécurité du site, Content-Security-Policy
-comprise, et doit être construite pour un chemin de base (une application qui pointe vers
+comprise (pas de script inline ni d'attribut `onclick=` : `script-src` n'a pas
+`'unsafe-inline'`), et doit être construite pour un chemin de base (une application qui pointe vers
 `/style.css` reçoit celui de BetterCommunity). La CLI refuse les chemins que le site route
 déjà (`/api`, `/hosting`, `/oauth2`, `/.well-known`, …), mais pas les pages du site : un
 chemin qui est aussi une page de BetterCommunity (`/blog`) remplace cette page. Un

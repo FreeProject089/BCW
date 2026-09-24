@@ -27,6 +27,7 @@
 // are previewed inline, text attachments open in place, and a delete has an undo window
 // instead of a confirm dialog — and removes the report's thread in Signalements with it, on
 // the server, in one transaction (lib/feedback-thread.mjs in the API).
+import { safeHref } from '../lib/safe-href.js';
 import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import Prism from 'prismjs';
@@ -248,7 +249,7 @@ function Attachments({ item }) {
               <ImageIcon size={11} className="shrink-0 text-[var(--faint)]" />
               <span className="truncate min-w-0 flex-1" title={a.name}>{a.name}</span>
               <span className="text-[var(--faint)] shrink-0">{fmtSize(a.size)}</span>
-              <a href={url(a)} className="p-0.5 text-[var(--faint)] hover:text-[var(--text)] shrink-0" title={t('fbx.download', 'Download')} aria-label={t('fbx.download', 'Download')}><Download size={11} /></a>
+              <a href={safeHref(url(a))} className="p-0.5 text-[var(--faint)] hover:text-[var(--text)] shrink-0" title={t('fbx.download', 'Download')} aria-label={t('fbx.download', 'Download')}><Download size={11} /></a>
             </figcaption>
           </figure>
         ))}
@@ -263,7 +264,7 @@ function Attachments({ item }) {
               {canPreview && <Button size="sm" variant="ghost" disabled={st?.loading} onClick={() => preview(a)}>
                 {st?.loading ? <Spinner /> : st?.text != null ? <><EyeOff size={12} /> {t('fbx.hide', 'Hide')}</> : <><Eye size={12} /> {t('fbx.preview', 'Read here')}</>}
               </Button>}
-              <a href={url(a)} className="inline-flex items-center gap-1 px-1.5 py-1 rounded-md hover:bg-[var(--surface-2)] shrink-0"><Download size={12} /> <span className="hidden sm:inline">{t('fbx.download', 'Download')}</span></a>
+              <a href={safeHref(url(a))} className="inline-flex items-center gap-1 px-1.5 py-1 rounded-md hover:bg-[var(--surface-2)] shrink-0"><Download size={12} /> <span className="hidden sm:inline">{t('fbx.download', 'Download')}</span></a>
             </div>
             {st?.error && <p className="text-[11px] text-error">{st.error}</p>}
             {st?.text != null && <LogView text={st.text} lang={langOf(a.name, a.type)} />}
@@ -272,7 +273,7 @@ function Attachments({ item }) {
       </div>}
       {big && <Modal open onClose={() => setBig(null)} title={big.name} icon={ImageIcon} width="max-w-5xl">
         <img src={url(big)} alt={big.name} className="max-w-full max-h-[75vh] mx-auto object-contain" />
-        <div className="mt-3 flex justify-end"><a href={url(big)} className="inline-flex items-center gap-1.5 text-sm text-[var(--accent-ink)] hover:underline"><Download size={14} /> {t('fbx.download', 'Download')}</a></div>
+        <div className="mt-3 flex justify-end"><a href={safeHref(url(big))} className="inline-flex items-center gap-1.5 text-sm text-[var(--accent-ink)] hover:underline"><Download size={14} /> {t('fbx.download', 'Download')}</a></div>
       </Modal>}
     </section>
   );

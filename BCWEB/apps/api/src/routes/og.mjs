@@ -230,6 +230,10 @@ export async function metaForRequest(path, lang = 'en') {
   };
 }
 
+// The redirect is the <meta http-equiv="refresh"> alone. There was also an inline
+// `<script>location.replace(…)</script>`: this page is served on the site's origin, whose CSP
+// has no 'unsafe-inline' in script-src any more (SECURITY_SUMMARY §9 #5), so the script only
+// produced a CSP violation while the meta tag did the redirect anyway.
 export function renderOgHtml(meta, lang = 'en') {
   // A LOGO in a large card is a small mark floating in a wide grey box. A real cover — a
   // blog post's, a project's icon — is what the large shape is for, so the card follows the
@@ -262,7 +266,6 @@ ${twCard === 'summary_large_image' ? `<meta property="og:image:width" content="1
 </head>
 <body>
 <p>Redirecting to <a href="${esc(meta.url)}">${esc(meta.url)}</a>…</p>
-<script>location.replace(${JSON.stringify(meta.url)});</script>
 </body>
 </html>`;
 }

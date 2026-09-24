@@ -56,7 +56,8 @@ export function isReady(e, { origin, frame }) {
  */
 export function canvasTabsFor(cfg, forceTab = null, untitled = 'Untitled page') {
   const list = Array.isArray(cfg?.canvases) ? cfg.canvases : [];
-  const complete = (cv) => cv && cv.id && String(cv.title || '').trim() && Array.isArray(cv.blocks) && cv.blocks.length;
+  // `hidden` (phase 6): kept in the studio, never a tab. The API's withoutStudioDrafts says the same.
+  const complete = (cv) => cv && cv.id && cv.hidden !== true && String(cv.title || '').trim() && Array.isArray(cv.blocks) && cv.blocks.length;
   const shown = cfg?.studioEnabled === true ? list.filter(complete) : [];
   if (!forceTab) return shown;
   const forced = list.find((cv) => cv && cv.id && `c-${cv.id}` === forceTab);
@@ -64,7 +65,7 @@ export function canvasTabsFor(cfg, forceTab = null, untitled = 'Untitled page') 
   return [...shown, { ...forced, title: String(forced.title || '').trim() || untitled }];
 }
 
-/** Why visitors do NOT see this page yet: a list of 'studio_off' | 'untitled' | 'empty' | 'section_off'. */
+/** Why visitors do NOT see this page yet: a list of 'studio_off' | 'untitled' | 'hidden' | 'empty' | 'section_off'. */
 export function previewReasons(kind, cfg, canvas, section = null) {
   const out = [];
   if (kind === 'home') {
@@ -72,6 +73,7 @@ export function previewReasons(kind, cfg, canvas, section = null) {
   } else {
     if (cfg?.studioEnabled !== true) out.push('studio_off');
     if (!String(canvas?.title || '').trim()) out.push('untitled');
+    if (canvas?.hidden === true) out.push('hidden');
   }
   if (!Array.isArray(canvas?.blocks) || !canvas.blocks.length) out.push('empty');
   return out;

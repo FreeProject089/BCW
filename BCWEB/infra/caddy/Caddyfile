@@ -102,11 +102,26 @@
 		# Sent unconditionally: a browser IGNORES this header when it arrives over plain HTTP,
 		# so the local `http://localhost:5176` default is unaffected.
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
-		# Permissive-but-real CSP (allows the app's github/minio fetches, youtube
-		# embeds, rrweb blob iframes, inline theme bootstrap + React inline styles).
-		# script-src also allows Google Tag Manager / Analytics so a consent-gated
-		# analytics tag works when enabled (it is only loaded after opt-in, client-side).
-		Content-Security-Policy "default-src 'self'; img-src 'self' data: https: blob:; media-src 'self' https: blob:; font-src 'self' data: https:; style-src 'self' 'unsafe-inline' https:; script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://www.google-analytics.com https://ssl.google-analytics.com https://tagmanager.google.com; worker-src 'self' blob:; child-src 'self' blob:; frame-src 'self' blob: https://www.youtube-nocookie.com https://www.youtube.com https://open.spotify.com https://www.googletagmanager.com; connect-src 'self' https: http://localhost:9000 ws: wss:; frame-ancestors 'self'; base-uri 'self'"
+		# CSP (SECURITY_SUMMARY §9 #5, F10-9). Allows youtube/spotify embeds, rrweb blob
+		# iframes and React inline STYLES.
+		#
+		# script-src has NO 'unsafe-inline'. It had, for one inline theme bootstrap, and that
+		# is what made W1, W2 and A-4 script execution instead of inert text. The bootstrap is
+		# apps/web/public/theme-boot.js now, the French preload reads a <meta>, and the GA4
+		# bootstrap runs in the bundle (src/lib/gtm.js). Google Tag Manager / Analytics hosts
+		# stay, for the consent-gated tag (loaded only after opt-in, client-side).
+		# apps/web/scripts/check-csp.mjs (web `lint`) fails if 'unsafe-inline' comes back.
+		#
+		# connect-src is no longer `https: ws: wss:` (any host): only the site, the storage
+		# origin the api signs into pre-signed URLs (S3_PUBLIC_ENDPOINT, and S3_DOMAIN which
+		# fronts it), and the hosts the site really calls from the browser:
+		#   raw.githubusercontent.com   project notes read from GitHub
+		#   cdn.jsdelivr.net, cdn.simpleicons.org   the icon picker's catalogues and SVGs
+		#   basemaps.cartocdn.com       the admin analytics map's raster tiles (maplibre fetches)
+		#   *.google-analytics.com, *.analytics.google.com, *.googletagmanager.com   GA4 hits
+		# CSP_CONNECT_SRC_EXTRA adds more (space-separated), for a live B.MD block's host or a
+		# project's live-number source; empty by default.
+		Content-Security-Policy "default-src 'self'; img-src 'self' data: https: blob:; media-src 'self' https: blob:; font-src 'self' data: https:; style-src 'self' 'unsafe-inline' https:; script-src 'self' https://www.googletagmanager.com https://www.google-analytics.com https://ssl.google-analytics.com https://tagmanager.google.com; worker-src 'self' blob:; child-src 'self' blob:; frame-src 'self' blob: https://www.youtube-nocookie.com https://www.youtube.com https://open.spotify.com https://www.googletagmanager.com; connect-src 'self' {$S3_PUBLIC_ENDPOINT:http://localhost:9000} {$S3_DOMAIN:http://s3.invalid} https://raw.githubusercontent.com https://cdn.jsdelivr.net https://cdn.simpleicons.org https://basemaps.cartocdn.com https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com {$CSP_CONNECT_SRC_EXTRA:}; object-src 'none'; frame-ancestors 'self'; base-uri 'self'"
 		-Server
 	}
 
@@ -349,8 +364,8 @@
 #
 # WHY IT IS NEEDED AT ALL: uploads never pass through the API. The browser asks for a
 # pre-signed URL and PUTs the bytes straight at MinIO, so MinIO needs a public address — and
-# the site's CSP allows only `https:` in connect-src, so a plain :9000 would be refused by
-# the browser before it even left.
+# MinIO's own :9000 is published on 127.0.0.1 only (compose), so from outside the host this
+# block IS that address. The site CSP's connect-src names it (S3_PUBLIC_ENDPOINT, S3_DOMAIN).
 #
 # NO `handle_path`, NO path prefix. A pre-signed S3 signature covers the HOST and the PATH,
 # so rewriting either makes MinIO compute a different signature and answer 403

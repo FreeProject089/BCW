@@ -77,7 +77,10 @@ export async function rebuildSnapshot(p, key, url, maxFiles = 150) {
         const meta = await fetch(`https://api.github.com/repos/${owner}/${repo}`, { headers: ghHeaders() }).then((r) => r.json());
         tree = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/trees/${meta.default_branch}?recursive=1`, { headers: ghHeaders() }).then((r) => r.json());
     } catch (e) {
-        return { ok: false, error: 'github_unreachable', detail: String(e.message || e).slice(0, 120) };
+        // A fixed token, the text to the log (SECURITY_SUMMARY §9, O3): this result is also
+        // the answer GitHub's webhook delivery receives, and the upstream error is not ours to hand out.
+        console.warn('[code-webhook] github unreachable:', String(e?.message || e).slice(0, 200));
+        return { ok: false, error: 'github_unreachable' };
     }
 
     // A rate-limited or errored answer has no `tree` at all. Reported as itself: without this

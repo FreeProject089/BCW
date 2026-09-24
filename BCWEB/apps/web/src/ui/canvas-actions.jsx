@@ -16,7 +16,9 @@
 // copy starts inside the click so the clipboard accepts it). `submit` sends exactly the
 // request `submitRequest` builds from a SUBMIT_REGISTRY entry, and nothing else: that is the
 // only `fetch` a click on a studio block can make (plus the entry's own proof-of-work
-// challenge, which the registry names).
+// challenge, which the registry names). A `poll.vote` is sent only after the visitor has
+// confirmed it in a dialog that shows the poll's question and the chosen options as the server
+// names them (the registry's `confirm.read`); Cancel sends nothing (lib/studio-submit.js).
 //
 // A text block's OWN links win over the block's action: the block's action is a cover under
 // the text's links (see `.cv-act` / `.cv-actionable` in index.css), never an anchor around
@@ -24,11 +26,13 @@
 // block. Nested anchors would be invalid HTML and would give the browser the choice.
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { UNSAFE_NavigationContext } from 'react-router-dom';
-import { ExternalLink, Send } from 'lucide-react';
+import { ExternalLink, Send, Vote } from 'lucide-react';
 import { Modal, Button, Input, Textarea, Field, copyText } from './ui.jsx';
 import { useTheme } from './theme.jsx';
 import { useI18n } from '../i18n.jsx';
-import { SUBMIT_REGISTRY, submitRequest, hostAllowed, planAction } from '../lib/canvas.js';
+import { SUBMIT_REGISTRY, hostAllowed, planAction } from '../lib/canvas.js';
+// Sending a submit, and the confirmation a vote needs first: lib/studio-submit.js (pure, tested).
+import { sendSubmit, runSubmit, loadVoteSummary } from '../lib/studio-submit.js';
 import { useStudioLinks, loadStudioLinks } from '../lib/studio-links.js';
 
 const Ctx = createContext(null);
@@ -61,6 +65,8 @@ export function CanvasActions({ blocks, rootRef, preview = false, children }) {
   const [shown, setShown] = useState({});
   const [leaving, setLeaving] = useState(null);
   const [form, setForm] = useState(null);
+  // A vote waiting for the visitor's yes: `{ step, answer(yes), returnTo }` (runSubmit's `ask`).
+  const [vote, setVote] = useState(null);
   const blockIds = useMemo(() => new Set((blocks || []).map((b) => b.id)), [blocks]);
   const hiddenAtLoad = useMemo(() => new Map((blocks || []).map((b) => [b.id, !!b.hidden])), [blocks]);
 
@@ -118,8 +124,13 @@ export function CanvasActions({ blocks, rootRef, preview = false, children }) {
     if (plan.last?.type === 'submit') {
       const entry = SUBMIT_REGISTRY[plan.last.endpoint];
       if (preview) { feedback?.('preview'); return; }
-      if (entry && Object.keys(entry.visitor).length) setForm({ step: plan.last, feedback });
-      else sendSubmit(plan.last, {}, { lang }).then((r) => feedback?.(r.ok ? 'sent' : 'error'));
+      if (entry && Object.keys(entry.visitor).length) { setForm({ step: plan.last, feedback }); return; }
+      // What the visitor is asked before anything leaves (a vote): the dialog below answers.
+      const returnTo = e.currentTarget || null;
+      const ask = (step) => new Promise((resolve) => setVote({ step, returnTo, answer: resolve }));
+      runSubmit(plan.last, { ask, ctx: { lang } }).then((r) => {
+        if (r.error !== 'cancelled') feedback?.(r.ok ? 'sent' : 'error');
+      });
     }
   }, [runLocal, preview, nav, lang]);
 
@@ -131,42 +142,19 @@ export function CanvasActions({ blocks, rootRef, preview = false, children }) {
       {children}
       <LeavingDialog leaving={leaving} onClose={() => setLeaving(null)} t={t} />
       <SubmitDialog form={form} onClose={() => setForm(null)} t={t} lang={lang} />
+      <VoteConfirmDialog vote={vote} t={t} onAnswer={(yes) => {
+        const v = vote;
+        setVote(null);
+        v?.answer(yes);
+        // Back to the button that asked, whatever the dialog did with the focus meanwhile.
+        if (v?.returnTo) setTimeout(() => { try { v.returnTo.focus({ preventScroll: true }); } catch { /* gone */ } }, 0);
+      }} />
     </Ctx.Provider>
   );
 }
 
-/**
- * Send one submit step: the request `submitRequest` builds, nothing else. Resolves
- * `{ ok, error }`; never throws.
- */
-export async function sendSubmit(step, visitor, ctx = {}) {
-  const entry = SUBMIT_REGISTRY[step?.endpoint];
-  if (!entry) return { ok: false, error: 'unknown_endpoint' };
-  let pow = null;
-  try {
-    const first = submitRequest(step.endpoint, step.fields || {}, visitor, ctx);
-    if (!first.ok) return { ok: false, error: first.reason, field: first.field };
-    if (entry.pow) {
-      const { solvePow } = await import('../lib/pow.js');
-      pow = await solvePow(async () => {
-        const r = await fetch(entry.pow, { credentials: 'include', headers: { accept: 'application/json' } });
-        return r.json();
-      });
-    }
-    const req = submitRequest(step.endpoint, step.fields || {}, visitor, { ...ctx, pow });
-    if (!req.ok) return { ok: false, error: req.reason, field: req.field };
-    const res = await fetch(req.url, {
-      method: req.method, credentials: 'include',
-      headers: { 'Content-Type': 'application/json', accept: 'application/json' },
-      body: JSON.stringify(req.body),
-    });
-    if (res.ok) return { ok: true };
-    const data = await res.json().catch(() => ({}));
-    return { ok: false, error: String(data?.error || res.status) };
-  } catch {
-    return { ok: false, error: 'network' };
-  }
-}
+// sendSubmit moved to lib/studio-submit.js (pure, tested under node); re-exported for callers.
+export { sendSubmit };
 
 /** Visitor-facing words for what a submit can answer. Literal keys, so i18n-check sees them. */
 function submitError(t, code) {
@@ -248,6 +236,54 @@ function SubmitDialog({ form, onClose, t, lang }) {
           </div>
         </form>
       ))}
+    </Modal>
+  );
+}
+
+/**
+ * "Vote in this poll?" (owner decision after phase 5): the poll's question and the chosen
+ * options, read from the server, before a `poll.vote` is sent. The Modal traps the focus and
+ * gives it back; Cancel, Escape and the close button all answer no, and nothing is sent.
+ */
+function VoteConfirmDialog({ vote, onAnswer, t }) {
+  const [info, setInfo] = useState(null);
+  const step = vote?.step || null;
+  useEffect(() => {
+    if (!step) { setInfo(null); return undefined; }
+    let alive = true;
+    setInfo(null);
+    loadVoteSummary(step).then((r) => { if (alive) setInfo(r); });
+    return () => { alive = false; };
+  }, [step]);
+  return (
+    <Modal open={!!vote} onClose={() => onAnswer(false)} title={t('cv.vote.title', 'Vote in this poll?')} icon={Vote}>
+      {vote && (
+        <div className="space-y-3" data-vote-confirm={step?.fields?.pollId || ''}>
+          {!info ? (
+            <p className="text-sm text-[var(--muted)]" role="status">{t('common.loading', 'Loading…')}</p>
+          ) : info.question ? (<>
+            <p className="text-sm">{t('cv.vote.body', 'This button votes in a poll, with your account if you are signed in:')}</p>
+            <p className="text-base font-semibold break-words" data-vote-question>{info.question}</p>
+            <div>
+              <p className="text-[12px] text-[var(--muted)]">{t('cv.vote.choice', 'Your answer:')}</p>
+              <ul className="list-disc pl-5 text-sm" data-vote-options>
+                {info.options.map((o) => (
+                  <li key={o.id} className={o.known ? '' : 'text-error'}>{o.known ? o.label : t('cv.vote.unknown', 'An answer this poll does not have')}</li>
+                ))}
+              </ul>
+            </div>
+            {!info.open && <p className="text-[12px] text-error" role="alert">{t('cv.submit.err.closed', 'This poll is closed.')}</p>}
+          </>) : (
+            <p className="text-sm text-error" role="alert">{t('cv.vote.missing', 'This poll could not be loaded, so nothing will be sent.')}</p>
+          )}
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => onAnswer(false)}>{t('common.cancel', 'Cancel')}</Button>
+            <Button variant="primary" disabled={!info?.ok} onClick={() => onAnswer(true)} data-vote-ok>
+              <Vote size={14} /> {t('cv.vote.ok', 'Vote')}
+            </Button>
+          </div>
+        </div>
+      )}
     </Modal>
   );
 }

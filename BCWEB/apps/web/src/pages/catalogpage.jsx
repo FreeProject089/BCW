@@ -1,3 +1,4 @@
+import { safeHref } from '../lib/safe-href.js';
 import { useState, useEffect } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { Boxes, Download, Copy, ArrowUpRight, Package, Music2, Palette, ShieldAlert, Fingerprint, Users, LayoutGrid } from 'lucide-react';
@@ -86,12 +87,12 @@ export default function CommunityCatalogPage() {
                 <div className="flex items-center gap-2 mb-2 font-medium"><Icon size={16} className="text-[var(--accent-ink)]" /> {t('ccp.kind.' + kind.toLowerCase(), kind)}</div>
                 <div className="flex flex-wrap items-center gap-2">
                   {DEEPLINKABLE.has(kind)
-                    ? <a href={deeplink(kind)}><Button size="sm" variant="primary"><Download size={14} /> {t('ccp.addbmm', 'Add to BMM')}</Button></a>
+                    ? <a href={safeHref(deeplink(kind))}><Button size="sm" variant="primary"><Download size={14} /> {t('ccp.addbmm', 'Add to BMM')}</Button></a>
                     : <span className="text-[11px] text-[var(--muted)]">
                         {t('ccp.pastein', 'Copy the address and paste it in BMM → Scheduler → From a catalog.')}
                       </span>}
                   <Button size="sm" variant="ghost" onClick={() => copy(feedUrl(kind))}><Copy size={13} /> {t('ccp.copyurl', 'Copy feed URL')}</Button>
-                  <a href={feedUrl(kind)} target="_blank" rel="noreferrer" className="text-xs text-[var(--muted)] hover:text-[var(--text)] flex items-center gap-1"><ArrowUpRight size={12} /> {t('ccp.view', 'View feed')}</a>
+                  <a href={safeHref(feedUrl(kind))} target="_blank" rel="noreferrer" className="text-xs text-[var(--muted)] hover:text-[var(--text)] flex items-center gap-1"><ArrowUpRight size={12} /> {t('ccp.view', 'View feed')}</a>
                 </div>
               </Card>
             );

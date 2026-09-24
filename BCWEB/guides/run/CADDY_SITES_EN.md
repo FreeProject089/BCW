@@ -141,7 +141,8 @@ names it after `name: bcweb`.)
 
 `example.com/status` shares the **origin** of BetterCommunity. Its JavaScript can call `/api`
 with the visitor's session, so a flaw in that app is a flaw in BetterCommunity. It also
-inherits the site's security headers, the Content-Security-Policy included, and it must be
+inherits the site's security headers, the Content-Security-Policy included (no inline script and no `onclick=`: `script-src`
+has no `'unsafe-inline'`), and it must be
 built for a base path (an app that links to `/style.css` gets BetterCommunity's). The CLI
 refuses the paths the site already routes (`/api`, `/hosting`, `/oauth2`, `/.well-known`,
 …), but not the site's own pages: a path that is also a BetterCommunity page (`/blog`)

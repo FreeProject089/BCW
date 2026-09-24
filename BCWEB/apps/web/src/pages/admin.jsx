@@ -1,3 +1,4 @@
+import { safeHref } from '../lib/safe-href.js';
 import { useEffect, useLayoutEffect, useState, useRef, useMemo, useCallback, lazy, Suspense } from 'react';
 // The page builder pulls in the markdown renderer and the selection toolbar. An admin who
 // opened this screen to approve a submission must not download a page builder to do it.
@@ -112,6 +113,7 @@ import { AdminReactions } from './admin-reactions.jsx';
 import AdminGuide from './admin-guide.jsx';
 import { AdminThreads } from './admin-threads.jsx';
 import { StudioLinksCard } from './admin-studio-links.jsx'; // studio phase 5 (agent-studio-5): the link policy of studio block actions
+import { BmdHostsCard } from './admin-bmd-hosts.jsx'; // sec-infra: hosts live B.MD blocks may fetch (SECURITY_SUMMARY §9)
 import { AdminMediaFlags } from './admin-media-flags.jsx';
 import ReplayPlayer from '../ui/ReplayPlayer.jsx';
 import { useAsync, Loading, useUndoableDelete, useUndoableToggle, useUndoableSave, useElementWidth, statusTone, KIND_ICON, KIND_LABEL, kindLabel, kindsFor, CATALOG_PROJECTS, csvCell, downloadCsv, toCsv, fmtRemaining, seededAvatar, SideDash, useThreadStream } from './pages.jsx';
@@ -570,7 +572,7 @@ export function Admin() {
         {s === 'navui' && <AdminNav />}
         {s === 'footer' && <AdminFooter />}
         {s === 'guide' && <AdminGuide />}
-        {s === 'settings' && <><AdminSettings /><StudioLinksCard /></>}
+        {s === 'settings' && <><AdminSettings /><StudioLinksCard /><BmdHostsCard /></>}
         {s === 'sitetheme' && <AdminSiteTheme />}
       </>)}
     </SideDash>
@@ -744,7 +746,7 @@ function AdminCatalogCreator() {
         <span className="text-xs font-semibold text-[var(--muted)]">{t('cc.feed', 'Catalog URL for BMM')}</span>
         <code className="font-mono text-xs px-2 py-1 rounded-lg bg-[var(--surface-2)] break-all flex-1 min-w-0">{feedUrl}</code>
         <Button size="sm" variant="ghost" onClick={copyFeed}><Copy size={13} /> {t('common.copy', 'Copy')}</Button>
-        <a href={feedUrl} target="_blank" rel="noreferrer"><Button size="sm" variant="ghost"><ExternalLink size={13} /> {t('cc.open', 'Open')}</Button></a>
+        <a href={safeHref(feedUrl)} target="_blank" rel="noreferrer"><Button size="sm" variant="ghost"><ExternalLink size={13} /> {t('cc.open', 'Open')}</Button></a>
       </Card>
       <Card className="p-5 space-y-3">
         <div className="grid sm:grid-cols-2 gap-3">
@@ -7249,7 +7251,7 @@ function PluginContentModal({ item, onClose }) {
   const errMsg = data?.error ? (data.detail || data.error) : err ? (err.data?.detail || err.data?.error || t('pcm.nosource', 'This plugin has no downloadable source.')) : null;
   return (
     <Modal open onClose={onClose} title={t('pcm.title', 'Plugin content: {n}').replace('{n}', item.name)} icon={Files} width="max-w-2xl"
-      footer={<><Button variant="ghost" onClick={onClose}>{t('su.close', 'Close')}</Button>{data?.downloadUrl && <a href={data.downloadUrl} target="_blank" rel="noreferrer"><Button variant="primary"><Download size={15} /> {t('pcm.dlplug', 'Download .bmmplug')}</Button></a>}</>}>
+      footer={<><Button variant="ghost" onClick={onClose}>{t('su.close', 'Close')}</Button>{data?.downloadUrl && <a href={safeHref(data.downloadUrl)} target="_blank" rel="noreferrer"><Button variant="primary"><Download size={15} /> {t('pcm.dlplug', 'Download .bmmplug')}</Button></a>}</>}>
       {loading ? <Loading /> : errMsg ? (
         <div className="flex items-start gap-2.5 text-sm text-[var(--muted)] py-2">
           <XCircle size={18} className="text-warning shrink-0 mt-0.5" />
@@ -7264,7 +7266,7 @@ function PluginContentModal({ item, onClose }) {
           </div>
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)]">{t('pcm.files', 'Files')} ({(data.files || []).length})</span>
-            {data.downloadUrl && <a href={data.downloadUrl} target="_blank" rel="noreferrer" className="text-xs text-[var(--accent-ink)] hover:underline flex items-center gap-1"><Download size={12} /> {t('pcm.dlall', 'Download all (.bmmplug)')}</a>}
+            {data.downloadUrl && <a href={safeHref(data.downloadUrl)} target="_blank" rel="noreferrer" className="text-xs text-[var(--accent-ink)] hover:underline flex items-center gap-1"><Download size={12} /> {t('pcm.dlall', 'Download all (.bmmplug)')}</a>}
           </div>
           <div className="space-y-1 max-h-[38vh] overflow-auto">
             {(data.files || []).map((fl) => (
@@ -8987,7 +8989,7 @@ function AdminAssets() {
               {a.kind === 'file' ? (
                 <div className="flex flex-wrap items-center gap-2 text-sm">
                   <span className="text-[var(--muted)]">{a.filename || '\u2014'} {a.size > 0 && <span className="text-[var(--faint)]">\u00b7 {assetSize(a.size)}</span>}</span>
-                  <a href={publicUrl(a.key)} target="_blank" rel="noreferrer"><Button size="sm" variant="ghost"><Download size={13} /> {t('assets.download', 'Download')}</Button></a>
+                  <a href={safeHref(publicUrl(a.key))} target="_blank" rel="noreferrer"><Button size="sm" variant="ghost"><Download size={13} /> {t('assets.download', 'Download')}</Button></a>
                   <input ref={(el) => (fileRefs.current[a.key] = el)} type="file" className="hidden" onChange={(e) => { pickFile(a.key, a.label, e.target.files?.[0]); e.target.value = ''; }} />
                   <Button size="sm" variant="default" disabled={busy === a.key} onClick={() => fileRefs.current[a.key]?.click()}><UploadIcon size={13} /> {busy === a.key ? t('assets.uploading', 'Uploading\u2026') : t('assets.replace', 'Replace file')}</Button>
                   <AssetStats asset={a} onChange={setAsset} />
@@ -9072,7 +9074,7 @@ function AdminAssets() {
                         <div className="flex items-center gap-1 mt-2">
                           <button onClick={() => { navigator.clipboard?.writeText(publicUrl(a.key)); toast.success(t('common.copied', 'Copied.')); }}
                             title={publicUrl(a.key)} className="p-1.5 rounded-lg text-[var(--faint)] hover:text-[var(--accent-ink)]"><Copy size={13} /></button>
-                          <a href={publicUrl(a.key)} target="_blank" rel="noreferrer"
+                          <a href={safeHref(publicUrl(a.key))} target="_blank" rel="noreferrer"
                             className="p-1.5 rounded-lg text-[var(--faint)] hover:text-[var(--accent-ink)]"><Download size={13} /></a>
                           <input ref={(el) => (fileRefs.current[a.key] = el)} type="file" className="hidden" onChange={(e) => { pickFile(a.key, a.label, e.target.files?.[0]); e.target.value = ''; }} />
                           <button onClick={() => fileRefs.current[a.key]?.click()} disabled={busy === a.key}
@@ -9505,7 +9507,7 @@ function ShowcaseQueue() {
                   <div className="flex-1" />
                   <span className="text-[11px] text-[var(--faint)]">{r.user?.displayName || r.user?.email}</span>
                 </div>
-                {r.url && <a href={r.url} target="_blank" rel="noreferrer" className="text-[11px] text-[var(--accent-ink)] underline break-all">{r.url}</a>}
+                {r.url && <a href={safeHref(r.url)} target="_blank" rel="noreferrer" className="text-[11px] text-[var(--accent-ink)] underline break-all">{r.url}</a>}
                 {r.description && <p className="text-xs text-[var(--muted)] mt-1.5 whitespace-pre-wrap">{r.description}</p>}
                 {r.pitch && <p className="text-xs mt-1.5 whitespace-pre-wrap"><b>{t('sq.why', 'Why:')}</b> {r.pitch}</p>}
                 {/* Declarations + evidence the reviewer needs: source & licence, whether the
@@ -9703,8 +9705,13 @@ function AdminProjects() {
     if (projects[active]) { setText(JSON.stringify(projects[active], null, 2)); setProgUrl(projects[active].progressSource || ''); }
   }, [data, show.data, active]);
   const putConfig = async (cfg) => {
-    if (isShowcase) await api.put(`/admin/showcase/${activeShow.id}`, { config: cfg });
-    else await api.put(`/projects/${active}`, { config: cfg });
+    // The studio pages are made and saved in the studio, each on its own route (studio phase
+    // 6); the form leaves them out, and the server keeps the stored ones when `canvases` is
+    // absent (guardStudioContent). A form opened before a page was added in the studio would
+    // otherwise erase that page by being saved.
+    const { canvases: _studioPages, ...rest } = cfg || {};
+    if (isShowcase) await api.put(`/admin/showcase/${activeShow.id}`, { config: rest });
+    else await api.put(`/projects/${active}`, { config: rest });
   };
   const undoSaveSrc = useUndoableSave(() => { reload(); show.reload?.(); });
   const saveSource = () => {
@@ -10792,7 +10799,7 @@ function SubmissionReview({ sub, onClose, onApprove, onReject, reload }) {
               : <p className="text-[var(--faint)]">{t('sr.binary', 'Binary file, download to inspect.')} ({fmtBytes(insp.data.size)})</p>)
           ) : null}
         </div>}
-        {dl && <div className="mt-2 flex items-center gap-2 text-[11px]"><Download size={12} className="text-[var(--accent-ink)] shrink-0" /><a href={dl} target="_blank" rel="noreferrer" className="text-[var(--accent-ink)] break-all hover:underline">{dl}</a></div>}
+        {dl && <div className="mt-2 flex items-center gap-2 text-[11px]"><Download size={12} className="text-[var(--accent-ink)] shrink-0" /><a href={safeHref(dl)} target="_blank" rel="noreferrer" className="text-[var(--accent-ink)] break-all hover:underline">{dl}</a></div>}
       </div>
       {meta.validation && <div className="mb-4"><div className="text-xs font-semibold text-[var(--faint)] uppercase mb-1.5 flex items-center gap-2">{t('sr.pluginval', 'Plugin validation')} {meta.validation.valid ? <Badge tone="green"><CheckCircle2 size={10} /> {t('sr.valid', 'valid')}</Badge> : <Badge tone="red"><XCircle size={10} /> {t('sr.invalid', 'invalid')}</Badge>}</div><pre className="text-xs bg-[var(--surface-2)] rounded-lg p-3 max-h-40 overflow-auto">{JSON.stringify(meta.validation, null, 2)}</pre></div>}
       {Object.keys(meta).length > 0 && <div><div className="text-xs font-semibold text-[var(--faint)] uppercase mb-1.5">{t('sr.fullmeta', 'Full metadata (review before approving)')}</div><pre className="text-xs bg-[var(--surface-2)] rounded-lg p-3 max-h-56 overflow-auto">{JSON.stringify(meta, null, 2)}</pre></div>}
@@ -14732,7 +14739,7 @@ function AdminBot() {
   // than a plain yes: you want to know, at the moment you click, that it has taken effect.
   const saveToken = async () => {
     if (!tokenInput.trim()) return toast.error(t('db.token.entered', 'Enter a token.'));
-    try { await api.put('/admin/bot/token', { token: tokenInput.trim() }); toast.success(t('db.token.tsaved', 'Token saved, the bot will connect within ~20s.')); setTokenInput(''); reload(); }
+    try { await api.put('/admin/bot/token', { token: tokenInput.trim() }); toast.success(t('db.token.tsaved2', 'Token saved. The site uses it for its own Discord calls (the emoji upload); the bot connects with DISCORD_TOKEN from its own container.')); setTokenInput(''); reload(); }
     catch (x) { toast.error(x.data?.error === 'bot_enabled' ? t('db.token.offfirst', 'Disable the bot first to change its token.') : x.data?.error === 'token_from_env' ? t('db.token.fromenv', 'Token is set via env, can’t change it here.') : t('db.token.failed', 'Failed.')); }
   };
   // A RECONNECT, not a process restart: the API cannot signal the bot's container, but the
@@ -14924,7 +14931,7 @@ function AdminBot() {
             <p className="text-xs text-[var(--muted)]">{t('db.token.adminonly', 'The token is set by an administrator, it is not part of the bot-management permission.')}</p>
           ) : botDisabled ? (
             <>
-              <p className="text-xs text-[var(--muted)] mb-2">{t('db.token.paste', 'Paste your Discord bot token, it’s stored server-side and the bot connects automatically within ~20s. The token is never shown again.')}</p>
+              <p className="text-xs text-[var(--muted)] mb-2">{t('db.token.paste2', 'Paste your Discord bot token for the site’s own Discord calls (the emoji upload). It is stored server-side and never shown again. The bot does not read it: it connects with DISCORD_TOKEN from its own environment.')}</p>
               <div className="flex gap-2">
                 <Input type="password" value={tokenInput} onChange={(e) => setTokenInput(e.target.value)} placeholder={data?.hasToken ? t('db.token.new', 'New token…') : t('db.token.ph', 'Bot token…')} onKeyDown={(e) => e.key === 'Enter' && saveToken()} />
                 <Button variant="primary" onClick={saveToken}>{data?.hasToken ? t('db.token.change', 'Change') : t('db.token.settoken', 'Set token')}</Button>
@@ -14934,7 +14941,7 @@ function AdminBot() {
           ) : (
             <p className="text-xs text-warning flex items-center gap-1.5"><Bell size={12} /> {t('db.token.needoff', 'Turn the bot off (master switch) and Save to change the token.')}</p>
           )}
-          {!online && !data?.hasToken && <div className="text-[11px] text-[var(--muted)] mt-2 flex items-center gap-1.5"><Bell size={12} /> {t('db.token.none', 'No token set, add one (or set DISCORD_TOKEN in compose .env) to bring the bot online.')}</div>}
+          {!online && !data?.hasToken && <div className="text-[11px] text-[var(--muted)] mt-2 flex items-center gap-1.5"><Bell size={12} /> {t('db.token.none2', 'No token set. The bot comes online once DISCORD_TOKEN is set in the compose .env and its container is recreated.')}</div>}
           {/* Offered whenever a token exists, including while the bot is offline — a stuck
               connection is exactly when somebody wants this, and requiring it to be online
               first would withhold the button in the only case that needs it. */}
@@ -16519,7 +16526,7 @@ function LedgerRow({ row }) {
       </div>
       {hasBar && <div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className={`h-full ${pct >= 90 ? 'bg-error' : 'bg-gradient-to-r from-brand to-brand-2'}`} style={{ width: `${pct}%` }} /></div>}
       {row.note && <div className="text-[10px] text-[var(--faint)] mt-0.5">{row.note}</div>}
-      {row.export && <a href={row.export} download className="text-[11px] text-[var(--accent-ink)] hover:underline inline-flex items-center gap-1"><Download size={11} /> {t('as.exportcsv', 'Export CSV')}</a>}
+      {row.export && <a href={safeHref(row.export)} download className="text-[11px] text-[var(--accent-ink)] hover:underline inline-flex items-center gap-1"><Download size={11} /> {t('as.exportcsv', 'Export CSV')}</a>}
     </div>
   );
 }
@@ -19420,7 +19427,8 @@ function ShowcaseEditModal({ project, draft = null, onSubmit = null, canManage =
     undoSave(async () => {
       if (onSubmit) await onSubmit(payload);
       else if (isNew) await api.post('/admin/showcase', payload);
-      else await api.put(`/admin/showcase/${id}`, payload);
+      // Studio pages are the studio's (phase 6): an edit here never sends them back.
+      else { const { canvases: _studioPages, ...cfgRest } = payload.config || {}; await api.put(`/admin/showcase/${id}`, { ...payload, config: cfgRest }); }
       onDone();
     }, t('common.saved', 'Saved.'),
        { onSettled: () => setBusy(false),
@@ -21371,7 +21379,7 @@ function AdminCatalogExamine({ catalog, onClose }) {
               <Badge tone="">{it.kind}</Badge>
               <span className="flex-1 min-w-0 truncate font-medium" title={it.name}>{it.name}</span>
               <span className="text-[11px] text-[var(--faint)]">v{it.version}</span>
-              {it.payloadKey ? <span className="text-[11px] text-[var(--faint)] flex items-center gap-1"><HardDrive size={11} /> {fmtBytes(it.payloadSize)}</span> : it.downloadUrl && <a href={it.downloadUrl} target="_blank" rel="noreferrer" className="text-[11px] underline text-[var(--muted)] truncate max-w-[180px]">{t('cc.ex.exturl', 'external URL')}</a>}
+              {it.payloadKey ? <span className="text-[11px] text-[var(--faint)] flex items-center gap-1"><HardDrive size={11} /> {fmtBytes(it.payloadSize)}</span> : it.downloadUrl && <a href={safeHref(it.downloadUrl)} target="_blank" rel="noreferrer" className="text-[11px] underline text-[var(--muted)] truncate max-w-[180px]">{t('cc.ex.exturl', 'external URL')}</a>}
               {it.payloadKey && <><Button size="sm" variant="ghost" onClick={() => doInspect(it)}><FileText size={12} /> {t('cc.ex.inspect', 'Inspect')}</Button><Button size="sm" variant="ghost" onClick={() => dl(it)}><Download size={12} /></Button></>}
             </div>
             {openItem === it.id && <div className="mt-2 pt-2 border-t border-[var(--line)] text-xs">
@@ -21729,7 +21737,7 @@ function RightsNoticeModal({ id, onClose }) {
             <Card className="p-3">
               <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1">{t('rn.s3', 'The work')}</div>
               <div><b>{n.work.title}</b> · {t(`rn.b.${n.work.basis || 'owner'}`, n.work.basis)}</div>
-              {n.work.urls?.map((u) => <div key={u} className="text-xs"><a href={u} target="_blank" rel="noreferrer" className="text-[var(--accent-ink)] break-all">{u}</a></div>)}
+              {n.work.urls?.map((u) => <div key={u} className="text-xs"><a href={safeHref(u)} target="_blank" rel="noreferrer" className="text-[var(--accent-ink)] break-all">{u}</a></div>)}
               {n.work.basisText && <p className="text-xs text-[var(--muted)] whitespace-pre-wrap mt-1">{n.work.basisText}</p>}
               {n.work.hashes?.length > 0 && <div className="text-[11px] text-[var(--faint)] mt-1">{n.work.hashes.length} {t('rn.adm.hashes', 'hash(es) supplied')}</div>}
             </Card>
@@ -21739,7 +21747,7 @@ function RightsNoticeModal({ id, onClose }) {
             <div className="text-[11px] uppercase tracking-wider text-[var(--faint)]">{t('rn.s1', 'Where')}</div>
             {resolved.map((tg, i) => (
               <div key={i} className="rounded-lg border border-[var(--line)] p-2">
-                <div className="flex items-center gap-2 flex-wrap"><Badge>{t(`rn.t.${tg.type}`, tg.type)}</Badge><span className="font-medium">{tg.label || tg.url}</span>{tg.url && <a href={tg.url} target="_blank" rel="noreferrer" className="text-xs text-[var(--accent-ink)]">{t('common.open', 'open')}</a>}
+                <div className="flex items-center gap-2 flex-wrap"><Badge>{t(`rn.t.${tg.type}`, tg.type)}</Badge><span className="font-medium">{tg.label || tg.url}</span>{tg.url && <a href={safeHref(tg.url)} target="_blank" rel="noreferrer" className="text-xs text-[var(--accent-ink)]">{t('common.open', 'open')}</a>}
                   <span className="text-xs text-[var(--faint)]">{tg.live?.exists === false ? t('rn.adm.gone', 'no longer exists') : tg.live?.status ? `${t('common.status', 'status')} ${tg.live.status}` : ''}{tg.live?.files != null ? ` · ${tg.live.files} ${t('rn.adm.files', 'files')}` : ''}{tg.live?.items != null ? ` · ${tg.live.items} ${t('rn.adm.items', 'items')}` : ''}</span></div>
                 {tg.files?.length > 0 && <div className="text-xs font-mono text-[var(--muted)] mt-1">{tg.files.join(' · ')}</div>}
                 {tg.note && <div className="text-xs text-[var(--muted)] mt-1">{tg.note}</div>}

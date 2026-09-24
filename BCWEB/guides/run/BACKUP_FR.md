@@ -103,15 +103,23 @@ la procédure de restauration, pas dans la mémoire de quelqu'un.
 À lancer depuis `infra/compose/`. **La restauration écrase les données actuelles — refais
 une sauvegarde d'abord si elles comptent encore.**
 
+L'ordre compte : **`web` reste arrêté de la première étape jusqu'à la relecture des
+effacements (étape 4)**. Un dump restauré ramène chaque compte effacé depuis qu'il a été pris,
+et la politique de confidentialité promet que ces effacements sont réappliqués avant que le
+site ne serve qui que ce soit.
+
 ### 1. Postgres
 
 ```bash
 cd infra/compose
+docker compose stop web                # personne n'atteint le site avant la fin de l'étape 4
 # (optionnel) repartir d'un schéma propre :
 #   docker compose exec -T db psql -U bcweb -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;'
 gunzip -c /var/backups/bcweb/pg-bcweb-<ts>.sql.gz | docker compose exec -T db psql -U bcweb bcweb
-docker compose restart api
+docker compose restart api             # se reconnecter à la base restaurée
 ```
+
+Ne démarre **pas** encore `web`.
 
 ### 2. Stockage objet MinIO
 
@@ -120,7 +128,7 @@ cd infra/compose
 docker compose stop api web
 docker run --rm -v bcweb_minio-data:/data -v /var/backups/bcweb:/backup alpine \
   sh -c 'rm -rf /data/* && tar xzf /backup/minio-<ts>.tar.gz -C /data'
-docker compose start api web
+docker compose start api               # PAS web : l'étape 4 d'abord
 ```
 
 (Remplace le préfixe `bcweb_` par ton `COMPOSE_PROJECT_NAME` si différent.)
@@ -129,11 +137,32 @@ docker compose start api web
 
 ```bash
 docker run --rm -v bcweb_audit-anchor:/data -v /var/backups/bcweb:/backup alpine \
-  sh -c 'rm -rf /data/* && tar xzf /backup/audit-anchor-<ts>.tar.gz -C /data'
+  sh -c 'rm -rf /data/* && tar xzf /backup/audit-anchor-<ts>.tar.gz -C /data && chown -R 1000:1000 /data'
 ```
+
+Le `chown` donne les fichiers à l'uid 1000 : l'api tourne en `node`, pas en root, et ne peut pas
+écrire une ancre qu'une restauration en root a laissée. (`docker compose up` fait la même chose
+par son ponctuel `volume-perms` ; un simple `restart api`, non.)
 
 Garde la base et l'ancre d'audit de la **même** exécution pour que la chaîne HMAC se
 vérifie encore (`/admin/security` → vérifier la chaîne).
+
+### 4. Rejouer les effacements — toujours, avant que `web` ne démarre
+
+```bash
+cd infra/compose
+docker compose exec api node src/replay-erasures.mjs            # rapport : qui le dump a ramené
+docker compose exec api node src/replay-erasures.mjs --write    # réappliquer ces effacements
+docker compose start web                                         # c'est seulement maintenant que le site sert quelqu'un
+```
+
+`replay-erasures.mjs` lit le journal des effacements, qui vit hors de la base
+(`SERVER_BACKUP_ROOT/erasures.jsonl`) pour qu'un dump ne puisse pas le ramener en arrière, et
+anonymise de nouveau chaque compte que le dump restauré a ramené — y compris, si tu as aussi
+restauré MinIO, l'avatar et les fichiers de retours de ces comptes. Il est idempotent : un
+compte déjà effacé est ignoré, donc le lancer après une restauration qui n'a ramené personne ne
+fait rien. Sauter cette étape défait chaque effacement fait depuis la prise du dump, soit
+exactement ce que la politique de confidentialité dit qui n'arrivera pas.
 
 ## Les sauvegardes dans l’app sont autre chose
 

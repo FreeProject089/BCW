@@ -30,7 +30,14 @@ const REPO_EXPORT_MAX_BYTES = Math.max(1, Number(process.env.REPO_EXPORT_MAX_MB)
 // (which made big uploads trip 429). Still capped, just high enough for real uploads.
 const FILE_RL = { rateLimit: { max: 6000, timeWindow: '1 minute' } };
 
-const fileSer = (f) => ({ ...f, size: Number(f.size) });
+// An explicit field list, never a spread (SECURITY_SUMMARY §9, O4): the spread shipped the
+// row's object-storage `key` to everybody the dashboard admits — a whitelisted collaborator,
+// or anyone holding the dashboard password. The key is the server's business; clients name a
+// file by its id and its path. test/repo-file-ser.test.mjs.
+export const fileSer = (f) => ({
+  id: f.id, path: f.path, size: Number(f.size), contentType: f.contentType,
+  sha256: f.sha256 ?? null, createdAt: f.createdAt, updatedAt: f.updatedAt,
+});
 // Every character outside [A-Za-z0-9._-] becomes '_', which PERMITS '.', so a segment of
 // exactly '..' used to pass through whole — and a repo file path is later used as a zip
 // entry name. '.' and '..' are dropped here so a traversal segment never reaches a row.

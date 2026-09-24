@@ -53,6 +53,16 @@ try {
     '    chrome={{ title: "Doc", state: "dirty", canSave: true, onSave() {}, onBack() {} }} /></I18nProvider>);',
     // The SAME surface with no page renderer: a document being edited on its own. What is
     // asserted on it is that the page preview is still OFFERED and says why it cannot run.
+    // Studio phase 6: the page list, the preset gallery, a thumbnail, and the studio with its pages.
+    "import { PagesPanel, PresetGallery } from '../src/editor/studio-pages.jsx';",
+    "import CanvasThumb from '../src/ui/canvas-thumb.jsx';",
+    'const tt = (k, f) => f;',
+    'export const pagesPanel = (pages) => renderToStaticMarkup(<I18nProvider><PagesPanel t={tt} lang="en" pages={pages} /></I18nProvider>);',
+    'export const gallery = (entries) => renderToStaticMarkup(<I18nProvider><PresetGallery t={tt} lang="en" entries={entries} onUse={() => {}} /></I18nProvider>);',
+    'export const thumb = (doc) => renderToStaticMarkup(<I18nProvider><CanvasThumb doc={doc} /></I18nProvider>);',
+    'export const renderWithPages = (value, pages) => renderToStaticMarkup(',
+    '  <I18nProvider><CanvasStudio layout="page" value={value} onChange={() => {}} renderPage={() => null} pages={pages}',
+    '    chrome={{ title: "Doc", state: "saved", canSave: false, onSave() {}, onBack() {} }} /></I18nProvider>);',
     'export const renderLoose = (value) => renderToStaticMarkup(',
     '  <I18nProvider><CanvasStudio layout="page" value={value} onChange={() => {}}',
     '    chrome={{ title: "Doc", state: "dirty", canSave: true, onSave() {}, onBack() {} }} /></I18nProvider>);',
@@ -83,7 +93,8 @@ try {
 }
 
 let render; let page; let renderPage; let renderLoose; let stack; let setStudioLinks;
-try { ({ render, page, renderPage, renderLoose, stack, setStudioLinks } = await import(pathToFileURL(bundle).href)); }
+let pagesPanel; let gallery; let thumb; let renderWithPages;
+try { ({ render, page, renderPage, renderLoose, stack, setStudioLinks, pagesPanel, gallery, thumb, renderWithPages } = await import(pathToFileURL(bundle).href)); }
 catch (e) { console.error(`✗ the studio would not load: ${e?.message || e}`); cleanup(); process.exit(1); }
 
 const problems = [];
@@ -566,6 +577,85 @@ try {
   must(!/evil\.example/.test(pol) && /data-inert="host_not_allowed"/.test(pol), 'an off-allowlist host reached the page, or was not marked inert');
 } catch (e) { problems.push(`the hostile action render threw: ${e?.message || e}`); }
 must(/\.cv-act:focus-visible\s*\{[^}]*outline:\s*2px/.test((await import('node:fs')).readFileSync('src/index.css', 'utf8')), 'a block action has no visible focus ring (.cv-act:focus-visible in index.css)');
+
+// ── Several pages and presets (PLAN-STUDIO-2026, phase 6). ──────────────────────────────
+// The page list does every operation from a real, named button; the page being edited is the
+// one marked current; the studio docks the Pages and Presets panels; a preset thumbnail is a
+// real render of the page (its text is there, not grey rectangles) and never mounts a WebGL
+// canvas, a video or a third-party frame; an old index link resolves to the page it was made for.
+// Each assertion was checked by breaking what it guards (recorded in the phase 6 report).
+try {
+  const noop = () => {};
+  const PAGES = {
+    kind: 'project', currentId: 'pb', canEditList: true, busy: false,
+    list: [
+      { id: 'pa', title: 'Alpha', hidden: true, blocks: 2, dirty: false },
+      { id: 'pb', title: 'Beta', hidden: false, blocks: 1, dirty: false },
+      { id: 'pc', title: 'Gamma', hidden: false, blocks: 0, dirty: true },
+    ],
+    select: noop, create: noop, duplicate: noop, move: noop, remove: noop, rename: noop, setHidden: noop,
+    library: { entries: [], canWrite: { site: false, project: true }, save: noop, remove: noop },
+  };
+  const out = pagesPanel(PAGES);
+  const rows = tagWith(out, 'data-page-row=');
+  must(rows.length === 3, `the Pages panel drew ${rows.length} row(s) for 3 pages`);
+  const current = rows.filter((r) => /aria-current="page"/.test(r));
+  must(current.length === 1 && /data-page-row="pb"/.test(current[0] || ''), `the page being edited is not the one row marked aria-current="page": ${current.join(' | ')}`);
+  for (const act of ['rename', 'up', 'down', 'duplicate', 'hide', 'delete']) {
+    const btns = tagWith(out, `data-page-act="${act}"`);
+    must(btns.length === 3, `the "${act}" control is on ${btns.length} of 3 pages`);
+    must(btns.every((b) => /^<button\b/.test(b) && /aria-label="[^"]*(Alpha|Beta|Gamma)[^"]*"/.test(b)), `a "${act}" control is not a button named after its page: ${btns[0] || ''}`);
+  }
+  must(/disabled/.test(tagWith(out, 'data-page-act="up"')[0] || ''), 'the first page can be moved up');
+  must(/disabled/.test(tagWith(out, 'data-page-act="down"')[2] || ''), 'the last page can be moved down');
+  must(tagWith(out, 'data-page-open=').length === 3, 'a page has no button that opens it');
+  must(/aria-label="Hidden from visitors"/.test(out), 'a hidden page is not marked hidden');
+  must(tagWith(out, 'data-page-dirty').length === 1, 'a page with unsaved changes is not marked');
+  must(tagWith(out, 'data-page-new').length === 1, 'there is no "New page" button');
+  // The home page: its sections are opened here, managed elsewhere.
+  const home = pagesPanel({ ...PAGES, kind: 'home', canEditList: false });
+  must(!tagWith(home, 'data-page-act=').length && !tagWith(home, 'data-page-new').length, 'the home page offers page operations its sections do not have');
+  must(tagWith(home, 'data-page-open=').length === 3, 'the home page does not list its sections');
+
+  // The studio docks both panels, in page mode, with the pages it was given.
+  const studio = renderWithPages(CANVAS, PAGES);
+  must(/data-studio-pages/.test(studio), 'the studio has no Pages panel');
+  must(/data-preset-gallery/.test(studio), 'the studio has no preset gallery');
+  must(/data-page-row="pb"/.test(studio), 'the studio\'s Pages panel does not list the pages it was given');
+
+  // The gallery: a real thumbnail per coded page preset.
+  const { codedPresets } = await import(pathToFileURL(join(process.cwd(), 'src/lib/studio-components.js')).href);
+  const coded = codedPresets();
+  const g = gallery(coded);
+  const cards = tagWith(g, 'data-preset=');
+  must(cards.length === coded.filter((e) => e.sort === 'page').length && cards.length >= 7, `the gallery drew ${cards.length} page preset(s)`);
+  must(tagWith(g, 'data-cv-thumb=').length === cards.length, 'a preset card has no thumbnail');
+  must(/Your title/.test(g), 'the hero preset thumbnail is not a render of the page (its text is missing)');
+  must(tagWith(g, 'data-preset-use').length === cards.length, 'a preset card has no Use button');
+  // A thumbnail never starts anything heavy: no WebGL canvas, no video, no frame.
+  const heavy = thumb({
+    v: 2, id: 'heavy', frames: { desktop: { w: 1200, h: 800, fit: 'fixed' }, phone: { w: 390, fit: 'content', mode: 'stack' } },
+    background: { type: 'scene3d', shape: 'orb' },
+    blocks: [
+      { id: 'v', kind: 'video', x: 0, y: 0, w: 400, h: 200, props: { src: '/uploads/a.mp4' } },
+      { id: 'e', kind: 'embed', x: 0, y: 220, w: 400, h: 200, props: { url: 'https://www.youtube.com/embed/x' } },
+      { id: 't', kind: 'text', x: 500, y: 0, w: 400, h: 200, props: { md: 'Thumb text' } },
+    ],
+  });
+  must(!/<canvas|<iframe|<video/i.test(heavy), `a thumbnail mounted a canvas, a frame or a video: ${(heavy.match(/<(canvas|iframe|video)[^>]*>/i) || [''])[0]}`);
+  must(/data-scene-mode="still"/.test(heavy), 'a thumbnail\'s 3D background is not the still drawing');
+  must(tagWith(heavy, 'data-thumb-placeholder=').length === 2 && /Thumb text/.test(heavy), 'a thumbnail lost its placeholders or its text');
+  must(/inert=""/.test(heavy) && /aria-hidden="true"/.test(heavy), 'a thumbnail can be focused or read out');
+  must(/<CanvasBackground[^>]*\bstill\b/.test((await import('node:fs')).readFileSync('src/ui/canvas-thumb.jsx', 'utf8')), 'the thumbnail background is not drawn `still`, so a live scene could start in a gallery');
+
+  // Addressed by id; an old index link resolves to the page it was made for, after a reorder.
+  const sp = await import(pathToFileURL(join(process.cwd(), 'src/lib/studio-page.js')).href);
+  must(sp.studioPath('project', 'bmm', 'pb') === '/studio/project/bmm/pb', 'the studio URL does not name the page by id');
+  const moved = { canvases: [{ id: 'pc' }, { id: 'pa' }, { id: 'pb' }], studioIndexIds: ['pa', 'pb', 'pc'] };
+  must(sp.resolvePageRef(moved, '0').pageId === 'pa', `/studio/project/bmm/0 opens ${sp.resolvePageRef(moved, '0').pageId} after a reorder instead of the page it was made for`);
+  const appSrc = (await import('node:fs')).readFileSync('src/App.jsx', 'utf8');
+  must(/path="\/studio\/:kind\/:id\/:page\?"/.test(appSrc), 'the studio route does not carry the page segment');
+} catch (e) { problems.push(`the phase 6 render threw: ${e?.message || e}`); }
 
 cleanup();
 

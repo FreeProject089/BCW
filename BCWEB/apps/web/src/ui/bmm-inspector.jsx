@@ -139,6 +139,10 @@ export default function BmmInspector({ endpoint = '/admin/inspect' }) {
     deeplink: t('bmi.p.deeplink', 'Fires bmm:// deeplinks'),
     stopProcess: t('bmi.p.stop', 'Stops running programs'),
     delete: t('bmi.p.delete', 'Deletes profiles, modpacks or mod folders'),
+    // One label per RISK_KEYS entry in apps/api/src/lib/bmmpa.mjs (test/bmmpa-perms.test.mjs
+    // holds the two lists together): a missing one printed the raw code to the moderator.
+    resources: t('bmi.p.resources', 'Changes how hard BMM works (CPU, disk and network limits, pausing work)'),
+    tasks: t('bmi.p.tasks', 'Runs or switches on other scheduled tasks'),
   };
   const REACH = {
     'custom.command': t('bmi.r.command', 'Runs an external program'),

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { db, requireCap, requireEditor, optionalAuth, slugify, pageVisibilitySchema, pageAccountEntrySchema, canViewPage, applyScheduledUpdate, canManageShowcase, canEditShowcase, projectGrants , guardStudioFlag, hasCap, canUseStudio, studioRefusal, studioChecker, guardStudioContent, withoutStudioDrafts, draftReader } from '../lib/lib.mjs';
-import { configStudioProblems, studioDocError, configRevs, parsePageSave, replaceConfigPage, studioValidateOpts } from '../lib/studio-doc.mjs';
+import { configStudioProblems, studioDocError, configRevs, parsePageSave, replaceConfigPage, studioValidateOpts, insertConfigPage, removeConfigPage, reorderConfigPages, withStudioLock, parsePageCreate } from '../lib/studio-doc.mjs';
 import { configLinkProblems, configLinkError } from '../lib/config-links.mjs';
 import { computeActivity, releaseMarkers } from '../lib/git-activity.mjs';
 
@@ -31,6 +31,7 @@ import { invalidate, replyCachedJson } from '../lib/cache.mjs';
 import { safeFetch } from '../lib/net.mjs';
 import { gh, ghCache, ghStats, repoOf, versionedRawUrl } from './projects.mjs';
 import { ciEquals } from '../lib/ci-equals.mjs';
+import { errorReply } from '../lib/error-reply.mjs';
 
 // Cached fetch for progress.json / GitHub release-notes trees / community
 // contributors. Shares `ghCache` with projects.mjs (previously a SEPARATE Map
@@ -116,7 +117,7 @@ export default async function showcaseRoutes(app) {
     if (!row) return reply.code(404).send({ error: 'not_found' });
     if (!isAnnouncing(row) && !(await canViewPage(p, row, req))) return reply.code(403).send({ error: 'no_access' });
     const src = row.config?.progressSource;
-    if (src && /^https?:\/\//.test(src)) { try { return { progress: await cachedJson(await versionedRawUrl(src)) }; } catch (e) { return reply.code(502).send({ error: 'progress_unreachable', detail: String(e.message) }); } }
+    if (src && /^https?:\/\//.test(src)) { try { return { progress: await cachedJson(await versionedRawUrl(src)) }; } catch (e) { return errorReply(req, reply, 502, 'progress_unreachable', e); } }
     if (row.config?.progressData) return { progress: row.config.progressData };
     return { progress: null };
   });
@@ -139,7 +140,7 @@ export default async function showcaseRoutes(app) {
           rawUrl: `https://raw.githubusercontent.com/${rn.owner}/${rn.repo}/${branch}/${e.path}?v=${(e.sha || '').slice(0, 8)}` }; })
         .sort((a, b) => b.path.localeCompare(a.path));
       return { source: { owner: rn.owner, repo: rn.repo, branch, path: base }, files };
-    } catch (e) { return reply.code(502).send({ error: 'github_unreachable', detail: String(e.message) }); }
+    } catch (e) { return errorReply(req, reply, 502, 'github_unreachable', e); }
   });
 
   // Git-linked activity (B13), the showcase twin of /projects/:key/activity — same engine and
@@ -164,7 +165,7 @@ export default async function showcaseRoutes(app) {
         ...computeActivity(ca.data || [], cb.data || []),
         markers: releaseMarkers(releases, { includeMessages }),
       };
-    } catch (e) { return reply.code(502).send({ error: 'github_unreachable', detail: String(e.message) }); }
+    } catch (e) { return errorReply(req, reply, 502, 'github_unreachable', e); }
   });
 
   // Community tab data (contributors + messages) for a showcase project — same
@@ -178,7 +179,7 @@ export default async function showcaseRoutes(app) {
     if (!url) return { data: null };
     if (!/^https?:\/\//.test(url)) return reply.code(400).send({ error: 'bad_source' });
     try { return { data: await gh(await versionedRawUrl(url)) }; }
-    catch (e) { return reply.code(502).send({ error: 'community_unreachable', detail: String(e.message) }); }
+    catch (e) { return errorReply(req, reply, 502, 'community_unreachable', e); }
   });
 
   // ── Admin ──
@@ -321,16 +322,23 @@ export default async function showcaseRoutes(app) {
       project: { id: row.id, slug: row.slug, name: row.name, short: row.short, icon: row.icon, published: row.published },
     };
   });
-  app.put('/admin/showcase/:id/studio/pages/:pageId', { preHandler: requireEditor(), bodyLimit: 600 * 1024 }, async (req, reply) => {
+  // Every studio write on a showcase page, under one lock per row (see studioWrite in
+  // projects.mjs): the save of one page, and the page list's create / delete / reorder.
+  async function studioWrite(req, reply, op) {
     const p = await db();
-    const cur = await p.showcaseProject.findUnique({ where: { id: String(req.params.id).slice(0, 80) }, select: { config: true } }).catch(() => null);
-    if (!cur) return reply.code(404).send({ error: 'not_found' });
-    if (!(await canUseStudio(req.user, 'showcase', req.params.id, cur.config))) return reply.code(403).send({ error: await studioRefusal(req.user, 'showcase', req.params.id) });
-    const b = parsePageSave(req.body);
-    if (!b.ok) return reply.code(400).send({ error: b.error });
-    const r = await replaceConfigPage(cur.config, String(req.params.pageId), b.canvas, b.base, await studioValidateOpts(p));
-    if (r.status) return reply.code(r.status).send(r.body);
-    const row = await p.showcaseProject.update({ where: { id: req.params.id }, data: { config: r.config } });
+    const id = String(req.params.id).slice(0, 80);
+    const opts = await studioValidateOpts(p);
+    const out = await withStudioLock(p, `sc:${id}`, async (tx) => {
+      const cur = await tx.showcaseProject.findUnique({ where: { id }, select: { config: true } });
+      if (!cur) return { status: 404, body: { error: 'not_found' } };
+      if (!(await canUseStudio(req.user, 'showcase', id, cur.config))) return { status: 403, body: { error: await studioRefusal(req.user, 'showcase', id) } };
+      const r = await op(cur.config, opts);
+      if (r.status) return r;
+      const row = await tx.showcaseProject.update({ where: { id }, data: { config: r.config } });
+      return { ...r, row };
+    });
+    if (out.status) return reply.code(out.status).send(out.body);
+    const row = out.row;
     const version = typeof row.config?.version === 'string' ? row.config.version.trim().slice(0, 40) : '';
     if (version) {
       await p.projectVersion.upsert({
@@ -340,7 +348,34 @@ export default async function showcaseRoutes(app) {
       }).catch(() => {});
     }
     invalidate('showcase.list');
-    return { ok: true, rev: r.rev };
+    return out;
+  }
+  app.put('/admin/showcase/:id/studio/pages/:pageId', { preHandler: requireEditor(), bodyLimit: 600 * 1024 }, async (req, reply) => {
+    const out = await studioWrite(req, reply, async (cur, opts) => {
+      const b = parsePageSave(req.body);
+      if (!b.ok) return { status: 400, body: { error: b.error } };
+      return replaceConfigPage(cur, String(req.params.pageId), b.canvas, b.base, opts);
+    });
+    return out === reply ? reply : { ok: true, rev: out.rev };
+  });
+  // The page list (phase 6), as for a project.
+  app.post('/admin/showcase/:id/studio/pages', { preHandler: requireEditor(), bodyLimit: 600 * 1024 }, async (req, reply) => {
+    const out = await studioWrite(req, reply, async (cur, opts) => {
+      const b = parsePageCreate(req.body);
+      if (!b.ok) return { status: 400, body: { error: b.error } };
+      return insertConfigPage(cur, b.canvas, b.after, opts);
+    });
+    if (out === reply) return reply;
+    reply.code(201);
+    return { ok: true, id: req.body.canvas.id, rev: out.rev, order: out.config.canvases.map((c) => c?.id) };
+  });
+  app.delete('/admin/showcase/:id/studio/pages/:pageId', { preHandler: requireEditor() }, async (req, reply) => {
+    const out = await studioWrite(req, reply, async (cur) => removeConfigPage(cur, String(req.params.pageId), typeof req.query?.base === 'string' ? req.query.base : null));
+    return out === reply ? reply : { ok: true, order: out.config.canvases.map((c) => c?.id) };
+  });
+  app.put('/admin/showcase/:id/studio/order', { preHandler: requireEditor() }, async (req, reply) => {
+    const out = await studioWrite(req, reply, async (cur) => reorderConfigPages(cur, req.body?.order));
+    return out === reply ? reply : { ok: true, order: out.order };
   });
 
   // Public: version history for a showcase project (by slug). Mirrors /projects/:key/versions.

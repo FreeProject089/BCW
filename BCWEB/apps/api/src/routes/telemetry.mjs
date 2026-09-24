@@ -5,6 +5,7 @@ import crypto from 'node:crypto';
 import { db, requireRole, logAudit, safeEqual, clientIp, sessionUser } from '../lib/lib.mjs';
 import { boundedSet } from '../lib/boundedmap.mjs';
 import { sendMail, mailShell, emailEnabled, escapeHtml } from '../lib/mail.mjs';
+import { errorReply } from '../lib/error-reply.mjs';
 
 const ADMIN_TIER = ['MOD', 'ADMIN', 'SUPERADMIN'];
 // Same scheme-derived Secure flag as the main session cookie (lib.mjs).
@@ -275,7 +276,7 @@ export default async function telemetryRoutes(app) {
       await logAudit(p, req.user.uid, 'telemetry.data_request', `${b.data.kind} for creator ${b.data.creatorId.slice(0, 12)}…`, clientIp(req)).catch(() => {});
       return { ok: true, id: out.id, duplicate: !!out.duplicate, kind: b.data.kind };
     } catch (e) {
-      return reply.code(502).send({ error: 'telemetry_unreachable', detail: String(e?.message || e) });
+      return errorReply(req, reply, 502, 'telemetry_unreachable', e);
     }
   });
 }

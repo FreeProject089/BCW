@@ -1,3 +1,4 @@
+import { safeHref } from '../lib/safe-href.js';
 import { useEffect, useState, useRef, useId, lazy, Suspense } from 'react';
 // Lazily: the showcase pulls in rrweb the moment a `.bmmreplay` panel is shown, and a
 // visitor to a site with no showcase configured must not pay for any of it.
@@ -1021,7 +1022,7 @@ export function BotInviteButton({ className = '' }) {
   const url = data?.url;
   if (!url) return null;
   return (
-    <a href={url} target="_blank" rel="noreferrer"
+    <a href={safeHref(url)} target="_blank" rel="noreferrer"
       className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold text-white bg-[#5865F2] hover:opacity-90 transition ${className}`}>
       <DiscordIcon size={17} className="text-white" /> {t('home.botinvite', 'Add our Discord bot to your server')} <Plus size={14} className="opacity-80" />
     </a>

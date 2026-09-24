@@ -9,6 +9,7 @@ import crypto from 'node:crypto';
 import { db, requireRole, requireCap, httpUrl } from '../lib/lib.mjs';
 import { sendMail, mailShell, emailEnabled, escapeHtml, mdToEmailHtml } from '../lib/mail.mjs';
 import { BRAND_LOGO_DATA_URI } from '../lib/brand-logo-data.mjs';
+import { errorReply } from '../lib/error-reply.mjs';
 
 const SITE_URL = (process.env.SITE_URL || 'http://localhost:5176').replace(/\/$/, '');
 const tok = () => crypto.randomBytes(24).toString('hex');
@@ -261,7 +262,7 @@ export default async function newsletterRoutes(app) {
       if (ok === false) return reply.code(502).send({ error: 'send_failed' });
       return { ok: true, to };
     } catch (e) {
-      return reply.code(502).send({ error: 'send_failed', detail: String(e?.message || e).slice(0, 200) });
+      return errorReply(req, reply, 502, 'send_failed', e);
     }
   });
 }

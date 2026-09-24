@@ -22,7 +22,12 @@ RUN cargo build --release
 # server is a rustls-only Rust binary (sqlx + reqwest use rustls, not openssl), so it needs
 # nothing more. Dropping debian-slim removes the passive `perl` package and its unfixed
 # CVEs (CVE-2026-12087 etc.) that were never actually reachable here.
-FROM gcr.io/distroless/cc-debian12
+#
+# `:nonroot` (SECURITY_SUMMARY §9 #10, F10-12): the same image with uid 65532 as the default
+# user instead of root. The server writes nothing to disk (Postgres holds its state, the
+# dashboard is read from /app/public) and listens on 8900, above 1024, so it needs no
+# privilege at all.
+FROM gcr.io/distroless/cc-debian12:nonroot
 WORKDIR /app
 COPY --from=server /app/target/release/bmm-telemetry-server /usr/local/bin/bmm-telemetry-server
 COPY --from=web /web/dist ./public

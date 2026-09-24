@@ -11,6 +11,7 @@ import { presignGet, deleteObject, getObject } from '../lib/storage.mjs';
 import { userBcId } from '../lib/repofingerprint.mjs';
 import { replyCachedJson } from '../lib/cache.mjs';
 import { KEY_SHAPE } from '../lib/project-keys.mjs';
+import { errorReply } from '../lib/error-reply.mjs';
 
 // Read an object-storage stream fully into a Buffer (bounded by the payload's stored size).
 async function readObject(key) {
@@ -290,10 +291,15 @@ function publicContents(c) {
   }));
 }
 
+// The SHARED serialiser: public routes (`GET /c`, `GET /c/:slug`) and the staff list use it,
+// so it never names `shareKey` (SECURITY_SUMMARY §9, O1). A private catalogue admits a reader
+// either by the key OR by its access list — and a whitelisted creator id or IP that never held
+// the key used to receive it here, and could pass the link on. The key belongs to the people
+// who manage the catalogue: `serOwner` below, on the /me/catalogs routes only.
 const ser = (c) => ({
   id: c.id, name: c.name, slug: c.slug, description: c.description,
   kind: catalogKind(c), kinds: c.kinds, mode: c.mode,
-  status: c.status, visibility: c.visibility, listed: c.listed, shareKey: c.shareKey,
+  status: c.status, visibility: c.visibility, listed: c.listed,
   groupId: c.groupId, storageQuotaBytes: Number(c.storageQuotaBytes || 0n), storageUsedBytes: Number(c.storageUsedBytes || 0n),
   views: c.views, downloads: c.downloads, itemCount: catalogItemCount(c),
   // Null when nobody has said — the UI shows "not specified" rather than picking one.
@@ -305,6 +311,8 @@ const ser = (c) => ({
   hasPassword: !!(c.syncPasswordHash || '').trim(),
   teamId: c.teamId || null, contactEmail: c.contactEmail || '', contactPhone: c.contactPhone || '',
 });
+/** The owner's view: the shared one plus the share key. /me/catalogs routes only. */
+const serOwner = (c) => ({ ...ser(c), shareKey: c.shareKey });
 
 /**
  * A one-line description of a .cbmp, or null when the zip is not one.
@@ -663,14 +671,14 @@ export default async function communityCatalogRoutes(app) {
   app.get('/me/catalogs', { preHandler: requireRole() }, async (req) => {
     const p = await db();
     const rows = await p.communityCatalog.findMany({ where: { ownerId: req.user.uid }, orderBy: { createdAt: 'desc' }, include: { project: { select: { key: true } }, _count: { select: { items: true } } } });
-    return { catalogs: rows.map(ser) };
+    return { catalogs: rows.map(serOwner) };
   });
 
   app.get('/me/catalogs/:id', { preHandler: requireRole() }, async (req, reply) => {
     const p = await db();
     const c = await p.communityCatalog.findUnique({ where: { id: req.params.id }, include: { items: true, project: { select: { key: true } }, _count: { select: { items: true } } } });
     if (!c || !(await canManage(p, req.user, c))) return reply.code(404).send({ error: 'not_found' });
-    return { catalog: { ...ser(c), access: c.access || {}, rawJson: c.rawJson || null, items: c.items } };
+    return { catalog: { ...serOwner(c), access: c.access || {}, rawJson: c.rawJson || null, items: c.items } };
   });
 
   // Owner: live traffic for one of my catalogues (feed fetches + item downloads).
@@ -759,7 +767,7 @@ export default async function communityCatalogRoutes(app) {
         : undefined,
       access: b.data.pubkeys?.length ? { pubkeys: b.data.pubkeys } : undefined,
     } });
-    return reply.code(201).send({ catalog: ser(c), slug: c.slug });
+    return reply.code(201).send({ catalog: serOwner(c), slug: c.slug });
   });
 
   // Update meta, visibility, access lists, listing, or the raw feed.
@@ -1059,7 +1067,7 @@ export default async function communityCatalogRoutes(app) {
       }
       const isText = TEXT_EXT.test(it.payloadKey) || buf.length <= TEXT_PREVIEW_MAX;
       return { type: 'file', size: buf.length, name: it.payloadKey.split('/').pop(), text: isText ? buf.slice(0, TEXT_PREVIEW_MAX).toString('utf-8') : null };
-    } catch (e) { return reply.code(502).send({ error: 'read_failed', detail: String(e?.message || e) }); }
+    } catch (e) { return errorReply(req, reply, 502, 'read_failed', e); }
   });
 
   // Admin review: download the whole payload, or a single entry from within a zip payload
@@ -1079,6 +1087,6 @@ export default async function communityCatalogRoutes(app) {
       reply.header('Content-Disposition', `attachment; filename="${name}"`);
       reply.header('Cache-Control', 'no-store');
       return reply.send(Buffer.from(data));
-    } catch (e) { return reply.code(502).send({ error: 'read_failed', detail: String(e?.message || e) }); }
+    } catch (e) { return errorReply(req, reply, 502, 'read_failed', e); }
   });
 }

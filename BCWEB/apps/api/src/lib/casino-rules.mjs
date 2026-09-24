@@ -166,3 +166,143 @@ export function settleTable(plays, { pot = false, edgePct = 0, covered = () => t
   const refund = split.length > 0 && split.every((p) => p.refund);
   return { seats: [...out, ...skipped], pot: split[0]?.pot || 0, refund, winners: refund ? 0 : live.filter((p) => p.multiplier > 0 && p.bet > 0).length };
 }
+
+// ── THE DRAW ─────────────────────────────────────────────────────────────────────────
+//
+// The draw used to happen on the bot, which then told the API the multiplier it had rolled.
+// `POST /bot/economy/casino` took that `multiplier` at face value (0 to 10 000), so anybody
+// holding the bot's shared secret could mint points by "rolling" 10 000× on every bet
+// (SECURITY_SUMMARY §9 #4). The rolls now happen HERE, on the API, AFTER the player's choices
+// are committed; the bot sends what the player picked and receives what came out.
+//
+// Every function takes `rand(n)`: an integer uniform on [0, n). The routes pass
+// `crypto.randomInt`; the tests pass a fixed sequence, so each game's odds are pinned without
+// rolling ten thousand times.
+
+/** The games a single player plays against the house (`/casino`). */
+export const SOLO_GAMES = ['coinflip', 'dice', 'slots', 'roulette', 'wheel', 'plinko'];
+/** The classic games a live table plays on ONE shared roll. */
+export const SHARED_GAMES = ['coinflip', 'dice', 'roulette', 'wheel'];
+export const ROULETTE_REDS = [1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36];
+/** The wheel: [multiplier, weight out of 100]. The thinner the slice, the bigger it pays. */
+export const WHEEL_SLICES = [[2, 45], [3, 24], [5, 16], [10, 9], [20, 4], [50, 2]];
+export const WHEEL_TARGETS = WHEEL_SLICES.map(([m]) => m);
+export const PLINKO_TABLES = {
+  low: [5, 3, 1.5, 1.2, 1, 0.5, 1, 1.2, 1.5, 3, 5],
+  medium: [13, 4, 2, 1.2, 0.6, 0.3, 0.6, 1.2, 2, 4, 13],
+  high: [50, 10, 3, 1, 0.3, 0.2, 0.3, 1, 3, 10, 50],
+};
+export const SLOT_SYMBOLS = ['cherry', 'lemon', 'bell', 'star', 'diamond'];
+
+const U_SPAN = 2 ** 47;
+/** A uniform u in [0, 1) from `rand` — for the functions above that take one (crash, pot). */
+export const uniform = (rand) => rand(U_SPAN) / U_SPAN;
+
+const rouletteColour = (pocket) => (pocket === 0 ? 'green' : ROULETTE_REDS.includes(pocket) ? 'red' : 'black');
+function wheelLanded(rand) {
+  let roll = rand(100);
+  for (const [m, w] of WHEEL_SLICES) { if (roll < w) return m; roll -= w; }
+  return WHEEL_SLICES[0][0];
+}
+
+/**
+ * One single-player round. `opts` is what the player chose (validated by the route):
+ * roulette `betOn` red|black|green|number (+ `num` 0–36), wheel `target`, plinko `risk`.
+ * Returns `{ multiplier, outcome }`; `outcome` is what the bot draws on the card.
+ */
+export function drawSolo(game, opts, rand) {
+  const o = opts || {};
+  if (game === 'roulette') {
+    const pocket = rand(37);
+    const colour = rouletteColour(pocket);
+    const multiplier = o.betOn === 'number' ? (pocket === o.num ? 35 : 0)
+      : o.betOn === 'green' ? (pocket === 0 ? 14 : 0)
+      : (colour === o.betOn ? 2 : 0);
+    return { multiplier, outcome: { pocket, colour } };
+  }
+  if (game === 'wheel') {
+    const landed = wheelLanded(rand);
+    return { multiplier: landed === o.target ? o.target : 0, outcome: { landed } };
+  }
+  if (game === 'plinko') {
+    const table = PLINKO_TABLES[o.risk] || PLINKO_TABLES.medium;
+    let path = '', rights = 0;
+    for (let k = 0; k < 10; k++) { const r = rand(2) === 1; path += r ? 'R' : 'L'; if (r) rights++; }
+    return { multiplier: table[rights], outcome: { path, rights } };
+  }
+  if (game === 'dice') {
+    const roll = 1 + rand(6);
+    return { multiplier: roll >= 4 ? 2 : 0, outcome: { roll } };
+  }
+  if (game === 'slots') {
+    const reels = [0, 1, 2].map(() => SLOT_SYMBOLS[rand(SLOT_SYMBOLS.length)]);
+    const multiplier = reels[0] === reels[1] && reels[1] === reels[2] ? 8
+      : reels[0] === reels[1] || reels[1] === reels[2] || reels[0] === reels[2] ? 1.5 : 0;
+    return { multiplier, outcome: { reels } };
+  }
+  const heads = rand(2) === 1;
+  return { multiplier: heads ? 2 : 0, outcome: { heads } };
+}
+
+/**
+ * The picks a live table accepts, per game — the same lists the bot's controls offer.
+ * `null` = the game takes no pick (dice: everybody plays the same roll; pot: stake only).
+ */
+export const LIVE_PICKS = {
+  race: Array.from({ length: RACE_CARS }, (_, i) => i),
+  coinflip: ['heads', 'tails'],
+  roulette: ['red', 'black', 'green'],
+  wheel: WHEEL_TARGETS,
+  dice: null,
+  pot: null,
+};
+
+/** Is `pick` one this live game accepts? Crash takes a cash-out target (1.01×–1000×). */
+export function validLivePick(game, pick) {
+  if (game === 'crash') return typeof pick === 'number' && Number.isFinite(pick) && pick >= 1.01 && pick <= 1000;
+  if (!(game in LIVE_PICKS)) return false;
+  const allowed = LIVE_PICKS[game];
+  if (allowed === null) return pick === undefined || pick === null || pick === '';
+  return allowed.some((a) => a === pick || String(a) === String(pick));
+}
+
+/**
+ * One live round, drawn once for the whole table after every pick is in.
+ *
+ * `seats` are `{ discordId, bet, pick }` — only the seats that can still pay (the route
+ * decides that first), so the pot is drawn among stakes that exist. Returns the outcome and
+ * each seat's WIN WEIGHT (the multiplier `settleTable` reads: 0 for a loss).
+ */
+export function drawLive(game, seats, rand, { edgePct = 0 } = {}) {
+  const list = seats || [];
+  if (game === 'race') {
+    const winner = rand(RACE_CARS);
+    return { outcome: { winner }, multipliers: list.map((s) => (Number(s.pick) === winner ? RACE_MULTIPLIER : 0)) };
+  }
+  if (game === 'pot') {
+    const idx = potWinner(list, uniform(rand));
+    return { outcome: { winner: idx >= 0 ? list[idx].discordId : null, winnerIndex: idx }, multipliers: list.map((_, i) => (i === idx ? 1 : 0)) };
+  }
+  if (game === 'crash') {
+    const crashAt = crashPoint(uniform(rand), edgePct);
+    return { outcome: { crashAt }, multipliers: list.map((s) => (Number(s.pick) <= crashAt ? Number(s.pick) : 0)) };
+  }
+  if (game === 'coinflip') {
+    const side = rand(2) === 1 ? 'heads' : 'tails';
+    return { outcome: { side }, multipliers: list.map((s) => (s.pick === side ? 2 : 0)) };
+  }
+  if (game === 'dice') {
+    const roll = 1 + rand(6);
+    return { outcome: { roll }, multipliers: list.map(() => (roll >= 4 ? 2 : 0)) };
+  }
+  if (game === 'roulette') {
+    const pocket = rand(37);
+    const colour = rouletteColour(pocket);
+    return { outcome: { pocket, colour }, multipliers: list.map((s) => (s.pick === colour ? (colour === 'green' ? 14 : 2) : 0)) };
+  }
+  if (game === 'wheel') {
+    const landed = wheelLanded(rand);
+    return { outcome: { landed }, multipliers: list.map((s) => (Number(s.pick) === landed ? landed : 0)) };
+  }
+  throw new Error(`no live draw for ${game}`);
+}

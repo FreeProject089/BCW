@@ -1,8 +1,9 @@
 // Conversations: the dashboard's inbox / sent boxes with a thread view, and the page an
 // anonymous sender reaches by the link in their e-mail (/messages/t/:token).
-import { useEffect, useState } from 'react';
+import { safeHref } from '../lib/safe-href.js';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
-import { MessageSquare, Inbox, Send, Lock, Flag, RotateCcw, ArrowLeft, Users, Archive, Paperclip, X, FileText, Fingerprint, Mail, Download, ShieldCheck } from 'lucide-react';
+import { MessageSquare, Inbox, Send, Lock, Flag, RotateCcw, ArrowLeft, Users, Archive, Paperclip, X, FileText, Fingerprint, Mail, Download, ShieldCheck, KeyRound } from 'lucide-react';
 import Avatar from '../ui/Avatar.jsx';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
@@ -19,7 +20,7 @@ const when = (d) => new Date(d).toLocaleString();
 const fmtSize = (b) => (b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
 function FileChip({ f, href, onFill }) {
   return (
-    <a href={href} download={f.name} className={`inline-flex items-center gap-1.5 text-[12px] rounded-lg px-2 py-1 mt-1.5 me-1.5 border ${onFill ? 'border-transparent underline decoration-dotted' : 'border-[var(--line)] hover:border-[var(--ring)]'}`}>
+    <a href={safeHref(href)} download={f.name} className={`inline-flex items-center gap-1.5 text-[12px] rounded-lg px-2 py-1 mt-1.5 me-1.5 border ${onFill ? 'border-transparent underline decoration-dotted' : 'border-[var(--line)] hover:border-[var(--ring)]'}`}>
       <FileText size={12} aria-hidden /> <span className="truncate max-w-[12rem]" title={f.name}>{f.name}</span> <span className="opacity-70">{fmtSize(f.size)}</span>
     </a>
   );
@@ -32,7 +33,7 @@ function Bubble({ m, me, fileHref }) {
     <div className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
       <div className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-sm whitespace-pre-wrap break-words ${m.hidden ? 'italic text-[var(--faint)] border border-dashed border-[var(--line)]' : mine ? 'bg-[var(--primary)] text-[var(--on-primary)]' : 'bg-[var(--surface-2)]'} ${m.side === 'staff' ? 'ring-1 ring-warning' : ''}`}>
         {m.hidden ? t('th.hidden', 'Message hidden by staff.') : m.body}
-        {!m.hidden && m.files?.length > 0 && <div className="flex flex-wrap">{m.files.map((f) => <FileChip key={f.id} f={f} href={fileHref(f.id)} onFill={mine} />)}</div>}
+        {!m.hidden && m.files?.length > 0 && <div className="flex flex-wrap">{m.files.map((f) => <FileChip key={f.id} f={f} href={safeHref(fileHref(f.id))} onFill={mine} />)}</div>}
         <div className={`text-[10.5px] mt-1 ${mine ? 'opacity-75' : 'text-[var(--faint)]'}`}>{m.author || (m.side === 'sender' ? t('th.sender', 'Sender') : m.side === 'staff' ? t('th.staff', 'Staff') : t('th.owner', 'Owner'))} · {when(m.createdAt)} {mine && <ReceiptTicks state={m.receipt} onFill />}</div>
       </div>
     </div>
@@ -124,10 +125,13 @@ function SenderCard({ th }) {
 
 /** One thread, signed in or by token. `load`/`post` abstract the two APIs; `fileBase` is
  *  the path its files are downloaded from (they differ the same way). */
-export function ThreadView({ load, post, actions, back, fileBase }) {
+export function ThreadView({ load, post, actions, back, fileBase, expired }) {
   const { t } = useI18n(); const toast = useToast();
-  const { data, loading, reload } = useAsync(load, [load]);
+  const { data, err, loading, reload } = useAsync(load, [load]);
   if (loading && !data) return <div className="py-8 text-center"><Spinner /></div>;
+  // An access link past its twelve months (API: 410 link_expired). The page that owns the
+  // link decides what to offer; the API says nothing else about the conversation.
+  if (!data && expired && err?.data?.error === 'link_expired') return expired();
   if (!data) return <EmptyState icon={MessageSquare} title={t('th.gone.t', 'Conversation not available')}
     sub={t('th.gone.s', 'It may have been closed and removed, or the link you followed may have expired.')}
     action={{ label: t('th.gone.a', 'Your messages'), to: '/dashboard?s=reports', icon: Inbox }} />;
@@ -220,6 +224,16 @@ export function MyThreads() {
               <Button size="sm" variant="ghost" onClick={async () => { await api.post(`/me/threads/${th.id}/archive`); r(); }}><Archive size={13} /> {t('th.archive', 'Archive')}</Button>
             </>
             : (th.status === 'closed' || th.status === 'archived') && <Button size="sm" variant="ghost" onClick={async () => { await api.post(`/me/threads/${th.id}/reopen`); r(); }}><RotateCcw size={13} /> {t('th.reopen', 'Reopen')}</Button>}
+          {/* An anonymous sender follows the conversation by a link. The answering side can
+              replace it (a forwarded mail, a link seen by somebody else): the old one stops
+              at once and the sender is e-mailed the new one. SECURITY_SUMMARY §9 #11. */}
+          {!th.sender && th.senderEmail && (
+            <Button size="sm" variant="ghost" onClick={async () => {
+              if (!await dialog.confirm({ title: t('th.revoke.q', 'Replace the link to this conversation?'), message: t('th.revoke.m', 'The sender’s current link stops working at once, and they are e-mailed a new one. Use it when the link may have reached somebody else.'), okLabel: t('th.revoke', 'Replace the link') })) return;
+              try { const res = await api.post(`/me/threads/${th.id}/revoke-link`); toast.success(res.mailed ? t('th.revoke.ok', 'Link replaced. The sender was e-mailed the new one.') : t('th.revoke.ok2', 'Link replaced.')); }
+              catch { toast.error(t('common.failed', 'Failed.')); }
+            }}><KeyRound size={13} /> {t('th.revoke', 'Replace the link')}</Button>
+          )}
           <Button size="sm" variant="ghost" className="!text-error" onClick={async () => { if (!await dialog.confirm({ title: t('th.flag.q', 'Report this conversation to staff?'), message: t('th.flag.m', 'Staff will read it and may hide messages or block the sender.') })) return; await api.post(`/me/threads/${th.id}/flag`); toast.success(t('th.flagged', 'Reported to staff.')); }}><Flag size={13} /> {t('th.flag', 'Report to staff')}</Button>
         </>)} />
     );
@@ -280,11 +294,35 @@ export function MyThreads() {
 
 /** /messages/t/:token — the anonymous sender's side. */
 export default function AnonThreadPage() {
-  const { t } = useI18n(); const { token } = useParams(); const { user } = useAuth();
+  const { t } = useI18n(); const { token } = useParams(); const { user } = useAuth(); const toast = useToast();
+  // Stable across renders: ThreadView refetches whenever `load` changes, and the renewal
+  // state below re-renders this page.
+  const load = useCallback(() => api.get(`/threads/t/${encodeURIComponent(token)}`), [token]);
+  const [renewed, setRenewed] = useState(false);
+  const [renewing, setRenewing] = useState(false);
+  // The link expired: a new one is MAILED to the address the conversation was started with,
+  // never shown here — holding an old link must not be enough to get a working one.
+  const renew = async () => {
+    setRenewing(true);
+    try {
+      const r = await api.post(`/threads/t/${encodeURIComponent(token)}/renew`);
+      if (r.sent) setRenewed(true); else toast.info(t('th.expired.nomail', 'E-mail is switched off on this site, so no new link can be sent.'));
+    } catch { toast.error(t('common.failed', 'Failed.')); }
+    finally { setRenewing(false); }
+  };
+  const expired = () => (
+    <Card className="p-4 sm:p-5 space-y-3">
+      <div className="font-semibold flex items-center gap-2"><Lock size={15} aria-hidden /> {t('th.expired.t', 'This link has expired')}</div>
+      <p className="text-[13px] text-[var(--muted)]">{t('th.expired.s', 'A conversation link stops working 12 months after the last message. We can e-mail a new link to the address this conversation was started from.')}</p>
+      {renewed
+        ? <p className="text-[13px] text-[var(--text)] flex items-center gap-1.5"><Mail size={13} aria-hidden /> {t('th.expired.sent', 'Sent. Look in the inbox of the address you wrote from.')}</p>
+        : <Button size="sm" variant="primary" disabled={renewing} onClick={renew}>{renewing ? <Spinner /> : <Mail size={13} />} {t('th.expired.a', 'E-mail me a new link')}</Button>}
+    </Card>
+  );
   return (
     <div className="max-w-2xl mx-auto px-4 py-8 space-y-4">
       <h1 className="text-xl font-extrabold flex items-center gap-2"><MessageSquare size={18} className="text-[var(--accent-ink)]" /> {t('th.title', 'Conversations')}</h1>
-      <ThreadView load={() => api.get(`/threads/t/${encodeURIComponent(token)}`)} post={(body, files) => api.post(`/threads/t/${encodeURIComponent(token)}/messages`, { body, files })} fileBase={`/threads/t/${encodeURIComponent(token)}`} />
+      <ThreadView load={load} post={(body, files) => api.post(`/threads/t/${encodeURIComponent(token)}/messages`, { body, files })} fileBase={`/threads/t/${encodeURIComponent(token)}`} expired={expired} />
       <p className="text-[12px] text-[var(--faint)]">{t('th.anon.note', 'This page is reachable only by the link you were e-mailed. Anyone holding the link can read and answer.')} {!user && <Link to="/signin" className="text-[var(--accent-ink)] hover:underline">{t('th.anon.signin', 'With an account, conversations live in your dashboard.')}</Link>}</p>
     </div>
   );

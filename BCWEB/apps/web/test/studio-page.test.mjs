@@ -9,12 +9,17 @@ test('the path and the parser agree', () => {
   assert.equal(studioPath('project', 'bmm', 2), '/studio/project/bmm/2');
   assert.equal(studioPath('showcase', 'my slug'), '/studio/showcase/my%20slug');
   assert.equal(studioPath('bogus', 'x', 0), '/studio/project/x/0', 'an unknown kind falls back rather than building a dead URL');
-  assert.deepEqual(parseStudioParams({ kind: 'project', id: 'bmm', index: '2' }), { kind: 'project', id: 'bmm', index: 2 });
-  assert.deepEqual(parseStudioParams({ kind: 'showcase', id: 'abc' }), { kind: 'showcase', id: 'abc', index: null });
+  // CHANGED in studio phase 6: the last segment is a page ID (any ID_SHAPE string), or the
+  // digits of an old index link; `abc` and `-1` are ids now, not refused indexes. What cannot be
+  // an id (a dot, a slash, too long) is `bad`.
+  assert.deepEqual(parseStudioParams({ kind: 'project', id: 'bmm', index: '2' }), { kind: 'project', id: 'bmm', page: '2', index: 2, bad: false });
+  assert.deepEqual(parseStudioParams({ kind: 'project', id: 'bmm', page: 'c1x' }), { kind: 'project', id: 'bmm', page: 'c1x', index: null, bad: false });
+  assert.deepEqual(parseStudioParams({ kind: 'showcase', id: 'abc' }), { kind: 'showcase', id: 'abc', page: null, index: null, bad: false });
   assert.equal(parseStudioParams({ kind: 'nope', id: 'x' }).kind, null);
   assert.equal(parseStudioParams({ kind: 'project', id: '  ' }).id, null);
-  assert.ok(Number.isNaN(parseStudioParams({ kind: 'project', id: 'x', index: '-1' }).index), 'a negative index is refused, not clamped');
-  assert.ok(Number.isNaN(parseStudioParams({ kind: 'project', id: 'x', index: 'abc' }).index));
+  assert.equal(parseStudioParams({ kind: 'project', id: 'x', page: '-1' }).index, null, 'a negative number is not an index');
+  for (const bad of ['a.b', '../x', 'x'.repeat(61), 'a b']) assert.equal(parseStudioParams({ kind: 'project', id: 'x', page: bad }).bad, true, bad);
+  assert.equal(studioPath('project', 'bmm', 'c1x'), '/studio/project/bmm/c1x', 'a page id builds the id form');
 });
 
 test('draft and handoff keys are per target, and the draft is per canvas', () => {
@@ -173,5 +178,62 @@ describe('where the studio loads and saves', async () => {
     assert.equal(lib.pageIdAt({ canvases: [{ id: 'a' }, { id: 'b' }] }, 1, 'project'), 'b');
     assert.equal(lib.pageIdAt({ customSections: [{ id: 's1', canvas: { id: 'cv-s1' } }] }, 0, 'home'), 's1');
     assert.equal(lib.pageIdAt({ canvases: [] }, 3, 'project'), null);
+  });
+});
+
+// ── Several pages (studio phase 6) ───────────────────────────────────────────────────────
+describe('pages are addressed by id; an old index link keeps its page', async () => {
+  const lib = await import('../src/lib/studio-page.js');
+  const cfg = (ids, extra = {}) => ({ canvases: ids.map((x) => ({ id: x, title: x.toUpperCase(), blocks: [] })), ...extra });
+
+  test('an id is its page, wherever it sits', () => {
+    assert.deepEqual(lib.resolvePageRef(cfg(['a', 'b', 'c']), 'b'), { pageId: 'b', legacy: false });
+    assert.deepEqual(lib.resolvePageRef(cfg(['c', 'b', 'a']), 'b'), { pageId: 'b', legacy: false });
+    assert.deepEqual(lib.resolvePageRef(cfg(['a']), 'zz'), { pageId: null, legacy: false });
+  });
+
+  test('/studio/project/bmm/0 opens the page that was first when the link was made, after a reorder', () => {
+    // Never reordered from the studio: the index is the current order.
+    assert.deepEqual(lib.resolvePageRef(cfg(['a', 'b', 'c']), '0'), { pageId: 'a', legacy: true });
+    // Reordered (the API froze the order the link was made for in studioIndexIds).
+    const moved = cfg(['c', 'a', 'b'], { studioIndexIds: ['a', 'b', 'c'] });
+    assert.deepEqual(lib.resolvePageRef(moved, '0'), { pageId: 'a', legacy: true });
+    assert.deepEqual(lib.resolvePageRef(moved, '2'), { pageId: 'c', legacy: true });
+    // The page the link was made for was deleted: nothing, not whichever page slid into its place.
+    assert.deepEqual(lib.resolvePageRef(cfg(['c', 'b'], { studioIndexIds: ['a', 'b', 'c'] }), '0'), { pageId: null, legacy: true });
+    // A page created after the freeze has no index link: past the frozen list, the current order.
+    assert.deepEqual(lib.resolvePageRef(cfg(['c', 'b', 'a', 'd'], { studioIndexIds: ['a', 'b', 'c'] }), '3'), { pageId: 'd', legacy: true });
+    // An id that happens to be digits wins over the index.
+    assert.deepEqual(lib.resolvePageRef(cfg(['x', '0']), '0'), { pageId: '0', legacy: false });
+  });
+
+  test('home: a section by id, or by index', () => {
+    const home = { customSections: [{ id: 's1', title: { en: 'One' } }, { id: 's2', mode: 'canvas', canvas: { id: 'cv', blocks: [{ id: 'q' }] } }] };
+    assert.deepEqual(lib.resolvePageRef(home, '1', 'home'), { pageId: 's2', legacy: true });
+    assert.deepEqual(lib.resolvePageRef(home, 's1', 'home'), { pageId: 's1', legacy: false });
+    assert.equal(lib.canvasById(home, 's2', 'home').id, 'cv');
+    assert.equal(lib.canvasById(home, 's1', 'home').blocks.length, 0, 'a section never drawn opens on its blank');
+  });
+
+  test('the draft key follows the page id, so a draft survives a reorder', () => {
+    assert.equal(lib.draftKey('project', 'bmm', 'c1'), 'bcw_studio_draft:project:bmm:c1');
+    assert.notEqual(lib.draftKey('project', 'bmm', 'c1'), lib.draftKey('project', 'bmm', 'c2'));
+  });
+
+  test('the list helpers do what the server does', () => {
+    const c = cfg(['a', 'b', 'c']);
+    assert.deepEqual(lib.withPageInserted(c, { id: 'n' }, 'a').canvases.map((x) => x.id), ['a', 'n', 'b', 'c']);
+    assert.deepEqual(lib.withPageInserted(c, { id: 'n' }).canvases.map((x) => x.id), ['a', 'b', 'c', 'n']);
+    assert.deepEqual(lib.withPageRemoved(c, 'b').canvases.map((x) => x.id), ['a', 'c']);
+    assert.deepEqual(lib.withPageOrder(c, ['c', 'a']).canvases.map((x) => x.id), ['c', 'a', 'b']);
+    assert.deepEqual(lib.movedOrder(['a', 'b', 'c'], 'b', -1), ['b', 'a', 'c']);
+    assert.deepEqual(lib.movedOrder(['a', 'b', 'c'], 'c', 1), ['a', 'b', 'c']);
+    assert.equal(lib.withCanvasById(c, 'b', { id: 'b', title: 'NEW', blocks: [] }).canvases[1].title, 'NEW');
+    assert.equal(lib.withCanvasById(c, 'zz', { id: 'zz' }), c);
+    assert.match(lib.newPageId(), /^[A-Za-z0-9_-]{1,60}$/);
+    assert.equal(lib.studioListPaths('project', 'bmm').order, '/admin/projects/bmm/studio/order');
+    assert.equal(lib.studioListPaths('showcase', 'id1').pages, '/admin/showcase/id1/studio/pages');
+    assert.equal(lib.studioListPaths('home', 'home'), null);
+    assert.deepEqual(lib.pageEntries(cfg(['a'], {}), 'project')[0], { id: 'a', title: 'A', hidden: false, blocks: 0, drawn: true });
   });
 });

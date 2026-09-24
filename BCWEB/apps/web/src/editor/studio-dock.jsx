@@ -38,7 +38,9 @@ const STORE_KEY = 'bcw_studio_dock_v2';
 export function defaultDockLayout() {
   return {
     zones: {
-      left: { panels: ['blocks', 'layers', 'components'], size: 280, collapsed: false },
+      // `pages` (the target's page list) and `presets` (the gallery), studio phase 6. A layout
+      // saved before them gets them here too, at the end of the zone.
+      left: { panels: ['pages', 'blocks', 'layers', 'components', 'presets'], size: 280, collapsed: false },
       // `page` (background, stylesheet) under the inspector: both describe what is selected, the
       // block or, with nothing selected, the page. A layout saved before it existed gets it here.
       right: { panels: ['props', 'page'], size: 320, collapsed: false },
