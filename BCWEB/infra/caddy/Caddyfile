@@ -381,14 +381,18 @@
 	# storage.mjs presignPut), so the gateway refuses 403 SignatureDoesNotMatch a PUT whose type
 	# or byte count differs from what the API validated (measured against versitygw v1.8.0,
 	# 2026-09-25, agent-presign; until then it signed `host` only and any type was stored).
-	# NOT solved here: nothing sets Content-Disposition, so an object stored as text/html
-	# RENDERS as a page on this sub-domain of the brand. Which types the API presigns at all is
-	# therefore the policy that matters (uploads.mjs LIMITS; a hosted-repo file takes the type
-	# its uploader names), not an edge one — see SECURITY_AUDIT.md.
+	# A hosted-repo file still takes the type its uploader names, text/html and SVG included,
+	# and nothing sets Content-Disposition, so such an object opens as a document on this
+	# sub-domain of the brand. The CSP below makes that document inert: `sandbox` without
+	# allow-scripts gives it a unique opaque origin and no script, form or popup, and
+	# `default-src 'none'` stops it loading anything. It costs the legitimate uses nothing: an
+	# <img>, <video> or fetch of an object from the site is governed by the SITE's CSP, not by
+	# the response's, and a download is a download (owner decision, Sept 25).
 	header {
 		X-Content-Type-Options nosniff
 		X-Frame-Options SAMEORIGIN
 		Referrer-Policy no-referrer
+		Content-Security-Policy "sandbox; default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'unsafe-inline'; frame-ancestors 'none'"
 		-Server
 	}
 	reverse_proxy storage:9000
