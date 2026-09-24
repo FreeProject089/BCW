@@ -826,6 +826,25 @@ async function authenticated(req, reply) {
     return { user: { ...claims, role: cur.role || claims.role, perms: cur.perms } };
 }
 
+/**
+ * A SUSPENDED account keeps sign-in (accountLock 'signin' lets it through, on purpose: the
+ * person has to be able to read why, appeal, and fetch their invoices) — and nothing else. Its
+ * staff powers are services too. `authenticated()` asks only the sign-in question, so until
+ * this check a suspended moderator went on suspending other people, and a suspended admin kept
+ * the whole dashboard: 1018 staff doors answered a suspended account (pentest round 2, R3,
+ * test/capability-route-matrix.test.mjs). Asked AFTER the role/capability check, so somebody
+ * who holds nothing still hears `forbidden` / `missing_permission`, as before.
+ *
+ * Staff doors only (requireCap, requireRole with a role list). requireRole() with no roles is
+ * the account's own pages — the ones a suspension exists to leave open.
+ */
+async function staffLocked(uid, reply) {
+  const lock = await accountLock(uid, 'service');
+  if (!lock) return false;
+  reply.code(403).send(lockBody(lock));
+  return true;
+}
+
 export function requireRole(...roles) {
   return async (req, reply) => {
     try {
@@ -836,6 +855,7 @@ export function requireRole(...roles) {
       const { user } = got;
       const role = user.role;
       if (roles.length && role !== 'SUPERADMIN' && !roles.includes(role)) return reply.code(403).send({ error: 'forbidden' });
+      if (roles.length && (await staffLocked(user.uid, reply))) return;
       if (roles.length && ADMIN_TIER_ROLES.includes(role)) { if (!(await ensure2fa(user.uid, reply))) return; }
       req.user = user; // { uid, role (live), perms }
     } catch { return reply.code(401).send({ error: 'unauthenticated' }); }
@@ -896,6 +916,7 @@ export function requireCap(cap, ...alsoRoles) {
       const { user } = got;
       const allowed = hasCap(user, cap) || alsoRoles.includes(user.role);
       if (!allowed) return reply.code(403).send({ error: 'missing_permission', capability: cap });
+      if (await staffLocked(user.uid, reply)) return;
       if (!(await ensure2fa(user.uid, reply))) return;
       req.user = user;
     } catch { return reply.code(401).send({ error: 'unauthenticated' }); }

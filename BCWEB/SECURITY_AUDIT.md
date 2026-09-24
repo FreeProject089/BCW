@@ -3096,3 +3096,194 @@ own permission-filtered `tabs` (an unknown id draws nothing), and no server rout
   OS-mode work in progress; this part added no user-facing string.
 - Fixtures tagged `pentestc-*` / `pentestC-*`, all removed (checked: 0 users, 0 items, 0 reviews,
   no seed record left). Nothing committed.
+
+## Agent A: cards R3, R4, R7, R10
+
+### A-1 (R3): a suspended account kept every staff power it held (FIXED)
+
+**CWE-285 / CWE-613.** CVSS 3.1 **6.5 medium**, `AV:N/AC:L/PR:H/UI:N/S:U/C:H/I:H/A:N`.
+
+Since `775ccd99` (Aug 14, "a suspension freezes the service, a ban freezes everything") the four
+guards call `authenticated()`, which asks `accountLock(uid, 'signin')`. A suspension answers "yes,
+sign in" on purpose, so the person can read why, appeal and fetch invoices. Nothing asked the
+`service` question afterwards, so the staff doors stayed open to a suspended account: **1018
+(account, door) pairs** over 3 fixtures (suspended MOD, suspended USER holding every capability,
+suspended ADMIN) against the 363 `requireCap` and 204 `requireRole(...)` routes. Concrete trigger:
+an ADMIN suspends a moderator; the moderator sends
+`POST /admin/users/<victim>/moderate {"action":"suspend"}` and gets **200**, the victim is
+suspended and a `SNC-…` sanction is issued in the moderator's name.
+
+**Fix.** `staffLocked()` in `apps/api/src/lib/lib.mjs`: `requireCap` and `requireRole` **with a
+role list** answer `403 account_suspended` (the existing `lockBody`) when `accountLock(uid,
+'service')` holds. It runs after the role/capability check, so somebody who holds nothing still
+hears `forbidden` / `missing_permission`, and before the 2FA check. `requireRole()` with no roles
+(the account's own pages) is untouched: those are the pages a suspension exists to leave open.
+**Why it holds:** every staff door goes through one of these two guards (the matrix below proves
+it for every route), and the lock is read from the same cached state that already signs a banned
+account out, so a suspension now takes effect on staff powers within `MOD_TTL` (15 s).
+
+**Measured.** `test/capability-route-matrix.test.mjs` "a suspended account keeps none of its staff
+powers": 1018 wrong before, 0 after; "the concrete case, real handler": 200 + victim suspended
+before, `403 account_suspended` + victim active after, the same moderator unsuspended still 200.
+Mutation: removing the line from `requireCap` turns both red again (805 wrong).
+
+### A-2 (R4): the code-graph routes had no project check at all (FIXED)
+
+**CWE-862 / CWE-639.** CVSS 3.1 **6.3 medium**, `AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:L/A:L`.
+
+`GET|PUT /admin/projects/:key/code-graph`, `GET …/code-graph/snapshot`, `POST …/code-graph/refresh`
+and `GET /admin/projects/code-graphs` were `requireEditor()` and nothing else. `requireEditor` is
+"any account with 2FA": the door per-project grantees come through, which every other editor
+route follows with `canEditProject`. These five did not. So the editor of project A, or any
+account that turned 2FA on, could on project B:
+
+- set B's webhook **secret** (a page secret wins over `GITHUB_WEBHOOK_SECRET`) and then sign
+  pushes for B at will;
+- `refresh` B from a repository of their choice: B's **public** code map (source excerpts
+  included) is rebuilt from it on B's own page;
+- read B's stored snapshot and settings, whatever B's page visibility says;
+- with the key `settings.<B>`, write a snapshot **over B's settings row**
+  (`snapshotKey('settings.b') === settingsKey('b')`), which erases B's secret.
+
+**Fix.** `codeGraphDoor()` in `apps/api/src/routes/projects.mjs`: an official project key needs
+`canEditProject`, a showcase slug needs `canEditShowcase` on that row, anything else is 404 (which
+closes the `settings.<key>` collision). The saved-graph list keeps only the graphs the reader may
+edit. **Why it holds:** it is the same predicate pair the page config itself uses, asked on the
+key in the URL, so the code graph can never be wider than the page it belongs to.
+
+**Measured.** `test/code-graph-access.test.mjs`: 4 of 5 red before (first failure: the editor of
+A set B's webhook secret, `{"ok":true}`), 5/5 after. No network: `refresh` is sent a URL that is
+not a GitHub repository, so a request past the door answers 502 before fetching anything; the
+control (editor of A on A) proves that 502 is reachable.
+
+### A-3 (R4): the project save history handed studio drafts to the `pages` right (FIXED)
+
+**CWE-200 / CWE-285.** CVSS 3.1 **4.3 medium**, `AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:N/A:N`.
+
+Reading unpublished studio pages is the studio right's (`draftReader`; `versions/:version` strips
+them for everybody else). `GET /admin/projects/:key/history` returned every saved config in full
+and asked only `canEditProject`, so a grantee holding `pages` alone read every draft drawn on the
+page. **Fix:** the same `canUseStudio` question, `withoutStudioDrafts` otherwise.
+**Measured:** `test/project-history-drafts.test.mjs`, pages-only grantee saw `p1,p2` before, `p1`
+after; the studio holder and an admin still see both (controls).
+
+### A-4 (R10): a project grantee could put a `javascript:` link on the public project page (FIXED)
+
+**CWE-79 (stored).** CVSS 3.1 **8.7 high**, `AV:N/AC:L/PR:L/UI:R/S:C/C:H/I:H/A:N`.
+
+The project page config is free-form (`z.record(z.any())`) and `pages/project.jsx` puts its legal
+cards, downloads, social links, buttons, community link and milestone links straight into
+`<a href>` (about twenty sinks). React 18 renders a `javascript:` href with a console warning, and
+the CSP allows inline script. Since per-project grants exist, the config is written by an account
+that is not staff. Trigger, as the `pages` grantee of one project:
+`PUT /projects/<key> {"config":{"legal":[{"title":"Privacy policy","url":"javascript:…"}]}}` →
+**200**, stored; every visitor who clicks "Privacy policy" runs the script on the site's origin
+with their own session, an admin included. Same through the version snapshot, the staged swap,
+and the showcase copy (plus `announceButtonUrl`).
+
+**Fix.** `apps/api/src/lib/config-links.mjs`: `configLinkProblems()` walks the config and refuses
+(`400 unsafe_link`, with the path) any value under a link key (`url`, `href`, `link`, `…Url`,
+`…Link`, anything under `links`) whose scheme, read the way the browser's URL parser reads it
+(leading C0/space dropped, tab/newline removed, case folded), is `javascript:` or `vbscript:`.
+Wired into `PUT /projects/:key`, `PUT /admin/projects/:key/versions/:version`,
+`PUT /admin/projects/:key/schedule`, and in `showcase.mjs` `POST /admin/showcase`,
+`PUT /admin/showcase/:id`, `PUT /admin/showcase/:id/schedule`. The studio pages (`canvases`) are
+skipped: `lib/studio-doc.mjs` already refuses a script href there (`unsafe_url`) with its own
+stored-value rule. **Why it holds:** the check is at the write, where every one of the twenty
+sinks gets its data, not at one sink; a deny list of the two code-running schemes keeps
+`mailto:`, `steam:`, relative paths and `data:image` previews working, and prose that merely
+starts with "JavaScript:" is not a link key.
+
+**Measured.** `test/config-links.test.mjs`: the HTTP half was 2 red before (grantee's PUT
+answered `{"ok":true}`), 6/6 after; the pure half covers `java\tscript:`, ` JavaScript:`,
+`\u0001javascript:` and the controls. The dev database's 5 stored configs were scanned: 0 would
+be refused. **Owner action:** run the same scan on production (a value stored before this fix is
+still served).
+
+### A-5 (R3, tooling): the RBAC map called open routes guarded (FIXED)
+
+Not a vulnerability; the tool that reports them. `parseRoutes` (`lib/rbac-map.mjs`) read a fixed
+six-line window, which ran into the NEXT route whenever a route was a one-liner, and it read
+comments. 10 routes were misclassified, 7 of them in the dangerous direction (open, reported
+guarded): `GET /hosting/capacity` read as `requireCap('manage_hosting')`, `GET|POST
+/account/closure/cancel` and `GET /v1/webhook-events` as signed-in, `GET /v1/scopes` as API-key,
+`GET /contact/projects` and `GET /auth/connect/providers` likewise. `GET /admin/marketplace/storage`
+read as `requireEditor` (it is `requireRole('ADMIN')`), `GET /admin/rights/config` lost its `MOD`,
+and `POST /dev/inspect` read as `requireRole('USER')` from a comment explaining why it is not. All
+seven open routes are public by design (checked by hand: token link, public lists). **Fix:** the
+window stops at the next route and skips comment lines. **Measured:** two new cases in
+`test/rbac-map.test.mjs`, red on the old parser, green on the new; the live matrix below is what
+found it.
+
+### R3 matrix: zero elevation, proven over HTTP for the whole API
+
+`test/capability-route-matrix.test.mjs` registers **every** `src/routes/*.mjs` in one Fastify
+instance with every handler replaced by a stub (an `onRoute` hook), so the guards run for real and
+no handler ever does. The route list is the code: 1205 live routes, and the test fails if one is
+live and not parsed or the other way round. Expectations come from a hand-written oracle.
+
+- every capability x every capability route (363 routes x 32 single-capability accounts + USER,
+  MOD, a per-project grantee on everything, a SCOPED custom role listing every capability):
+  only that capability, or the route's own roles, opens it;
+- an account holding every OTHER capability never opens a capability route;
+- no capability combination (direct, WIDE custom role, scoped role, MOD + all) opens any of the
+  204 role-only routes; ADMIN and SUPERADMIN open exactly what their role allows;
+- a WIDE custom role opens exactly what the same direct grants open;
+- no 2FA: every staff door refuses with `2fa_required`, capability or ADMIN role alike;
+- anonymous: 401 at every capability, role and editor door;
+- the grant routes keep their role (permissions ADMIN, role / custom roles / server control /
+  telemetry SUPERADMIN, project and blog grants ADMIN), and the only enforced capability missing
+  from the grantable list is `manage_server`, on purpose.
+
+About 14,000 requests in ~5 s. Controls both ways: the single holder must PASS its door, so a
+guard that refuses everybody fails too. Non-escalation of the grant HANDLERS (no self-grant,
+nothing above one's own, team chiefs) was already proven by `task-permissions-matrix` and
+re-read here: `/admin/users/:id/permissions`, `/custom-roles`, `/role` and
+`/project-permissions` all refuse the caller's own account, `mayGrant` checks the granter holds
+the right on the target, and the teams routes (`routes/teams.mjs`) let an admin of a team invite
+only `admin|member`, never `owner`, and only the owner transfers.
+
+### Attacked and found to hold (agent A)
+
+- **R4 studio**: the studio doors (`/admin/projects|showcase/:id/studio`, page saves, config PUTs
+  through `guardStudioContent`, version edits) re-run green in `studio-permissions-matrix`;
+  key case variants (`BMM` vs `bmm`) are 404 (`isProjectKey` is exact, grants are exact);
+  showcase `PUT` asks `canEditShowcase`; `/admin/project-catalogs/:scope/:ref` asks `editable()`;
+  upload keys are server-made UUIDs, so one editor cannot overwrite another's asset; saved
+  components are per user (agent B hardened their content, B-3).
+- **R7 shortcuts**: `lib/shortcuts.js` only navigates, runs local UI actions (theme, language,
+  scroll) or calls a mounted page's handler; the palette runners navigate; the one page whose
+  keys write (lookalike-picture review: A/C) calls `POST /admin/media-flags/:id`, a
+  `manage_reports` door covered by the matrix; the studio's keys are local and its save is a
+  studio door. A hidden shortcut hides nothing the server relies on.
+- **R10 legal/docs per language**: `project-content.mjs` computes the target from the URL, `kind`
+  is `doc|legal`, and the site's `/admin/legal/*` are `manage_legal` doors, which the matrix proves
+  no project grant opens; project bodies render through `ui/md.jsx` (the B.MD sanitiser), with no
+  prop a stored body could flip; language keys are locale codes (`isValidLocaleCode`), so
+  `__proto__` is not a language.
+
+### Open (agent A), owner decision
+
+- **`requireEditor` and in-handler staff checks for a suspended account.** A-1 closes the staff
+  DOORS. `requireEditor` (project pages) still lets a suspended grantee edit a project's words,
+  which `studio-permissions-matrix` encodes on purpose ("a suspension leaves the door open"),
+  and a few staff powers live INSIDE signed-in routes (for example an ADMIN reading every
+  conversation through `GET /me/threads/:id`). Both would follow A-1 with one line each; the
+  first reverses a recorded decision, so it is yours.
+- **`POST /admin/projects/code-graph` and `/admin/projects/stack/detect`** (no key) remain open to
+  any account with 2FA: they read a public GitHub repository (or uploaded files) and return a
+  draft, storing nothing. Cost, not access; a rate limit or an "editor of something" check would
+  close it.
+- **Stored configs in production**: scan them with `configLinkProblems` (A-4) once.
+
+### Verification run (agent A)
+
+- `apps/api`: `npm test` with `DATABASE_URL` + `DIRECT_DATABASE_URL`, no `REDIS_URL`, no API
+  server running: **2229 tests, 2229 pass, 0 skipped, 0 fail** (includes this part's 5 new files).
+  `node --check` on every changed module.
+- `apps/web`: no web file changed. `check-capabilities` and `check-url-schemas` (the two gates
+  that read the API) pass. `npm run lint` stops on `check-wall-of-text` at
+  `src/pages/admin.jsx:21063` (`nav.util.groups.desc`), another agent's work in progress.
+- Fixtures tagged `capmx-*`, `cgacc-*`, `hisdr-*`, `cfgln-*`; checked removed (0 users, 0 roles,
+  0 settings left). The `bcweb-db-1` container was stopped mid-run and was started again
+  (`docker start`), nothing else. Nothing committed.

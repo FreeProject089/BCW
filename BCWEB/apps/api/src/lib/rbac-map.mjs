@@ -103,18 +103,31 @@ function guardConstants(src) {
   return out;
 }
 
+const ROUTE_LINE = /\bapp\.(get|post|put|patch|delete)\(\s*'([^']+)'/;
+/** A comment line. Its words are not code: `/dev/inspect` explains in a comment why it is NOT
+ *  `requireRole('USER')`, and the map used to read that sentence as the route's guard. */
+const COMMENT_LINE = /^\s*(\/\/|\/\*|\*)/;
+
 export function parseRoutes(filename, src) {
   const out = [];
   const lines = String(src).split(/\r?\n/);
   const consts = guardConstants(src);
-  for (let i = 0; i < lines.length; i++) {
-    const m = lines[i].match(/\bapp\.(get|post|put|patch|delete)\(\s*'([^']+)'/);
-    if (!m) continue;
+  // Where each route starts, so no window reads past it.
+  const starts = [];
+  for (let i = 0; i < lines.length; i++) if (ROUTE_LINE.test(lines[i]) && !COMMENT_LINE.test(lines[i])) starts.push(i);
+  for (let s = 0; s < starts.length; s++) {
+    const i = starts[s];
+    const m = lines[i].match(ROUTE_LINE);
     const [, verb, path] = m;
     // The options object may be on this line or the next few — preHandler is conventionally
-    // written just under the path. Six lines covers every shape in this codebase without
-    // running into the next route.
-    let window = lines.slice(i, i + 6).join('\n');
+    // written just under the path. Six lines, and NEVER past the next route: a fixed count ran
+    // into the next route's options whenever a route was a one-liner, and lent it that guard.
+    // `GET /hosting/capacity` (public, no guard) read as requireCap('manage_hosting') from the
+    // line under it — the map's wrong direction, calling an open route closed — and
+    // `GET /admin/marketplace/storage` read as requireEditor for the same reason.
+    const next = s + 1 < starts.length ? starts[s + 1] : lines.length;
+    const code = (from, n) => lines.slice(from, Math.min(from + n, next)).filter((l) => !COMMENT_LINE.test(l)).join('\n');
+    let window = code(i, 6);
     // …and when those lines name a constant instead of spelling the guard out, read what
     // the constant holds. Two shapes, both real here:
     //   app.get('/x', CAP, …)                 the whole options object in a const
@@ -146,7 +159,7 @@ export function parseRoutes(filename, src) {
     // that needs the reply object has to live. Twelve lines, because it is conventionally
     // the first statement and a longer window starts reading the next route.
     if (guard.kind === 'none') {
-      const body = lines.slice(i, i + 12).join('\n');
+      const body = code(i, 12);
       for (const g of IN_HANDLER) {
         if (g.re.test(body)) { guard = { kind: g.kind, inHandler: true }; break; }
       }

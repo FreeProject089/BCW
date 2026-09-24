@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { db, requireCap, requireEditor, optionalAuth, pageVisibilitySchema, pageAccountEntrySchema, canViewPage, canManageProjects, canEditProject, projectGrants, logAudit, clientIp , guardStudioFlag, httpUrl, canUseStudio, studioRefusal, guardStudioContent, withoutStudioDrafts, draftReader } from '../lib/lib.mjs';
+import { db, requireCap, requireEditor, optionalAuth, pageVisibilitySchema, pageAccountEntrySchema, canViewPage, canManageProjects, canEditProject, canEditShowcase, projectGrants, logAudit, clientIp , guardStudioFlag, httpUrl, canUseStudio, studioRefusal, guardStudioContent, withoutStudioDrafts, draftReader } from '../lib/lib.mjs';
 import { toCurrentShape } from '../lib/project-config.mjs';
 import { computeActivity, computeActivityFromCommits, computeActivityFromCounts, parseGitLog, releaseMarkers } from '../lib/git-activity.mjs';
 import { safeFetch } from '../lib/net.mjs';
@@ -11,6 +11,7 @@ import { functionEdges, buildFlow, drawableFunctions } from '../lib/code-flow.mj
 import { snapshotKey, settingsKey, secretFor, rebuildSnapshot } from './code-webhook.mjs';
 import { projectKeys, isProjectKey, forgetProjectKeys, BUILTIN_PROJECT_KEYS, KEY_SHAPE } from '../lib/project-keys.mjs';
 import { configStudioProblems, studioDocError, configRevs, parsePageSave, replaceConfigPage } from '../lib/studio-doc.mjs';
+import { configLinkProblems, configLinkError } from '../lib/config-links.mjs';
 
 // Per-project, admin-editable config (downloads, links, contributors, progress,
 // legal, release-notes source) stored as an AdminSetting row `project.<key>`.
@@ -503,6 +504,9 @@ export default async function projectRoutes(app) {
     }
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     if (b.data.at && !b.data.next) return reply.code(400).send({ error: 'next_required' });
+    // A staged config reaches the public page by itself: no link in it may run script.
+    const badLinks = configLinkProblems(b.data.next?.config);
+    if (badLinks.length) return reply.code(400).send(configLinkError(badLinks));
     const p = await db();
     await p.project.update({ where: { key: req.params.key }, data: { scheduledAt: b.data.at ? new Date(b.data.at) : null, scheduledNext: b.data.at ? b.data.next : null } });
     return { ok: true };
@@ -589,6 +593,9 @@ export default async function projectRoutes(app) {
     if (!(await canEditProject(req.user, req.params.key))) return reply.code(403).send({ error: 'forbidden' });
     const b = z.object({ config: z.record(z.any()) }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_config' });
+    // A snapshot is public too: no link in it may run script (lib/config-links.mjs).
+    const badLinks = configLinkProblems(b.data.config);
+    if (badLinks.length) return reply.code(400).send(configLinkError(badLinks));
     const p = await db();
     // A snapshot is public (GET /projects/:key/versions/:version renders it): its studio pages
     // are studio content, and a stored snapshot is checked like a stored config.
@@ -845,7 +852,29 @@ export default async function projectRoutes(app) {
   // but NEVER read back — a field that returns the secret is a field that leaks it to anybody
   // who can open the page, and the page only needs to know whether one is set and where it
   // comes from.
-  app.get('/admin/projects/:key/code-graph', { preHandler: requireEditor() }, async (req) => {
+  // ── Who may touch a code graph: whoever may edit THAT page ──────────────────────
+  // These routes were requireEditor() alone, and requireEditor is "any account with 2FA": the
+  // door the per-project grantees come through, which every other editor route follows with
+  // canEditProject. These did not, so an editor of project A — or anybody with 2FA — set B's
+  // webhook secret, rebuilt B's PUBLIC code map from a repository of their choice, and read B's
+  // stored graph whatever B's visibility said (pentest round 2, R4; test/code-graph-access).
+  // A key is an official project key or a showcase slug; anything else is 404 — which also
+  // closes `settings.<key>`, whose snapshot key IS <key>'s settings row.
+  async function codeGraphDoor(req, reply) {
+    const key = String(req.params.key || '');
+    let ok;
+    if (await isProjectKey(key)) ok = await canEditProject(req.user, key);
+    else {
+      const sc = await (await db()).showcaseProject.findUnique({ where: { slug: key }, select: { id: true } }).catch(() => null);
+      if (!sc) { reply.code(404).send({ error: 'unknown_project' }); return false; }
+      ok = await canEditShowcase(req.user, sc.id);
+    }
+    if (!ok) reply.code(403).send({ error: 'forbidden' });
+    return ok;
+  }
+
+  app.get('/admin/projects/:key/code-graph', { preHandler: requireEditor() }, async (req, reply) => {
+    if (!(await codeGraphDoor(req, reply))) return;
     const p = await db();
     const [row, snap, sec] = await Promise.all([
       p.adminSetting.findUnique({ where: { key: settingsKey(req.params.key) } }).catch(() => null),
@@ -870,13 +899,21 @@ export default async function projectRoutes(app) {
   // The webhook has been keeping these current since it was written and NOTHING displayed one:
   // the settings screen showed a line of statistics and the map tool could only re-read a
   // repository from GitHub, which is the slow path the snapshot exists to avoid.
-  app.get('/admin/projects/code-graphs', { preHandler: requireEditor() }, async () => {
+  app.get('/admin/projects/code-graphs', { preHandler: requireEditor() }, async (req) => {
     const p = await db();
     const rows = await p.adminSetting.findMany({ where: { key: { startsWith: 'codegraph.' } } }).catch(() => []);
+    // Only the graphs of pages this reader may edit: the same door as the routes below, asked
+    // with a reply that swallows the refusal.
+    const quiet = { code: () => ({ send: () => null }) };
+    const mayRead = new Set();
+    for (const r of rows) {
+      // `codegraph.settings.<key>` shares the prefix and is not a snapshot.
+      if (r.key.startsWith('codegraph.settings.') || !r.value?.graph) continue;
+      if (await codeGraphDoor({ user: req.user, params: { key: r.key.slice('codegraph.'.length) } }, quiet)) mayRead.add(r.key);
+    }
     return {
       items: rows
-        // `codegraph.settings.<key>` shares the prefix and is not a snapshot.
-        .filter((r) => !r.key.startsWith('codegraph.settings.') && r.value?.graph)
+        .filter((r) => mayRead.has(r.key))
         .map((r) => ({
           key: r.key.slice('codegraph.'.length),
           url: r.value.url || '', generatedAt: r.value.generatedAt || null,
@@ -887,6 +924,7 @@ export default async function projectRoutes(app) {
   });
 
   app.get('/admin/projects/:key/code-graph/snapshot', { preHandler: requireEditor() }, async (req, reply) => {
+    if (!(await codeGraphDoor(req, reply))) return;
     const p = await db();
     const row = await p.adminSetting.findUnique({ where: { key: snapshotKey(req.params.key) } }).catch(() => null);
     if (!row?.value?.graph) return reply.code(404).send({ error: 'no_snapshot' });
@@ -897,6 +935,7 @@ export default async function projectRoutes(app) {
   });
 
   app.put('/admin/projects/:key/code-graph', { preHandler: requireEditor() }, async (req, reply) => {
+    if (!(await codeGraphDoor(req, reply))) return;
     const b = CODEGRAPH_SETTINGS_BODY.safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
@@ -915,6 +954,7 @@ export default async function projectRoutes(app) {
   // The manual "read it now" — the same rebuild the webhook triggers, so a project without a
   // webhook is not a second-class one.
   app.post('/admin/projects/:key/code-graph/refresh', { preHandler: requireEditor() }, async (req, reply) => {
+    if (!(await codeGraphDoor(req, reply))) return;
     const p = await db();
     const row = await p.adminSetting.findUnique({ where: { key: settingsKey(req.params.key) } }).catch(() => null);
     const url = req.body?.url || row?.value?.url;
@@ -932,6 +972,10 @@ export default async function projectRoutes(app) {
     if (!(await canEditProject(req.user, req.params.key))) return reply.code(403).send({ error: 'forbidden' });
     const b = PROJECT_CONFIG_BODY.safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_config' });
+    // Every link the public page draws from this config goes into an <a href>: a grantee who
+    // is not staff writes it, so none may run script (lib/config-links.mjs, pentest R10).
+    const badLinks = configLinkProblems(b.data.config);
+    if (badLinks.length) return reply.code(400).send(configLinkError(badLinks));
     const p = await db();
     const k = settingKey(req.params.key);
     // The studio switch is an admin decision; a per-project grantee editing their own page
@@ -1020,9 +1064,12 @@ export default async function projectRoutes(app) {
     const ids = [...new Set(rows.map((r) => r.editorId).filter(Boolean))];
     const users = ids.length ? await p.user.findMany({ where: { id: { in: ids } }, select: { id: true, displayName: true, avatar: true } }) : [];
     const byId = Object.fromEntries(users.map((u) => [u.id, u]));
+    // The drafts are the STUDIO right's (draftReader, and versions/:version beside this): the
+    // `pages` right that opens this history read every unpublished studio page through it.
+    const mayStudio = await canUseStudio(req.user, 'project', target, await getConfig(p, target));
     return {
       revisions: rows.map((r) => ({
-        id: r.id, createdAt: r.createdAt, config: r.config,
+        id: r.id, createdAt: r.createdAt, config: mayStudio ? r.config : withoutStudioDrafts(r.config),
         // A deleted account still has its edits in the list; naming it "(deleted)" is
         // more honest than dropping the entry or showing a bare id.
         editor: r.editorId ? (byId[r.editorId] || { id: r.editorId, displayName: '(deleted)' }) : null,

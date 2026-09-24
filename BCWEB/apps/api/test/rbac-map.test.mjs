@@ -28,6 +28,37 @@ describe('parseRoutes', () => {
     assert.deepEqual(r.guard.roles, ['MOD', 'ADMIN']);
   });
 
+  test('a one-line route does not borrow the guard of the route under it', () => {
+    // The real case (Sept 24 2026): GET /hosting/capacity has no guard and is public on
+    // purpose; the fixed six-line window read the next route's requireCap('manage_hosting')
+    // and the map called an OPEN route closed — the direction nobody double-checks.
+    const [open, admin] = parseRoutes('x.mjs', [
+      "app.get('/hosting/capacity', async () => ({}));",
+      '',
+      "app.get('/admin/hosting/free-pool', { preHandler: requireCap('manage_hosting') }, h);",
+    ].join('\n'));
+    assert.equal(open.guard.kind, 'none');
+    assert.equal(admin.guard.kind, 'cap');
+    // …and a hoisted constant still resolves when the next route spells another guard out.
+    const [cfg] = parseRoutes('y.mjs', [
+      "const CAP = { preHandler: requireCap('manage_reports', 'MOD') };",
+      "app.get('/admin/rights/config', CAP, h);",
+      "app.put('/admin/rights/config', { preHandler: requireCap('manage_reports') }, h);",
+    ].join('\n'));
+    assert.deepEqual(cfg.guard.alsoRoles, ['MOD']);
+  });
+
+  test('a guard named in a COMMENT is not the guard', () => {
+    // POST /dev/inspect explains in a comment why it is not requireRole('USER').
+    const [r] = parseRoutes('x.mjs', [
+      "app.post('/dev/inspect', {",
+      "  // requireRole('USER') would 403 a moderator.",
+      '  preHandler: requireRole(),',
+      '}, h);',
+    ].join('\n'));
+    assert.equal(r.guard.kind, 'signed-in');
+  });
+
   test('requireRole() with no argument means signed in, not unguarded', () => {
     const [r] = parseRoutes('x.mjs', "app.post('/me/thing', { preHandler: requireRole() }, h);");
     assert.equal(r.guard.kind, 'signed-in');
