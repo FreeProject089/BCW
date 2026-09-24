@@ -55,7 +55,7 @@ import { MYO_SETTINGS_BODY } from '../routes/myo.mjs';
 import { SEASON_BODY } from '../routes/economy-admin.mjs';
 import { HISTORY_RETENTION_BODY } from '../routes/history.mjs';
 import { CODEGRAPH_SETTINGS_BODY, PROJECT_CONFIG_BODY } from '../routes/projects.mjs';
-import { configStudioProblems } from './studio-doc.mjs';
+import { configStudioProblems, studioValidateOpts } from './studio-doc.mjs';
 import { pageSchema as DOC_PAGE_SCHEMA } from '../routes/docs.mjs';
 import { faqSchema as FAQ_SCHEMA } from '../routes/faq.mjs';
 import { badgeInput as BADGE_SCHEMA } from '../routes/social.mjs';
@@ -344,7 +344,7 @@ export const DOMAINS = [
           // Its studio pages are checked as PUT /projects/:key checks them (lib/studio-doc.mjs):
           // an imported file is one more way for a hostile page to arrive.
           const stored = await p.adminSetting?.findUnique({ where: { key }, select: { value: true } }).catch(() => null);
-          const problems = configStudioProblems(r.data.config, stored?.value);
+          const problems = configStudioProblems(r.data.config, stored?.value, await studioValidateOpts(p));
           if (problems.length) return { ok: false, error: `${problems[0].path}: ${problems[0].reason}` };
           return { ok: true, value: r.data.config };
         },

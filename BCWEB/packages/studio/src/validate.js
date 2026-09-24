@@ -26,6 +26,7 @@ import {
 } from './canvas.js';
 import { safeCssValue, decodeCssEscapes } from './css-scope.js';
 import { backgroundProblems } from './background.js';
+import { actionProblems, normalizeLinkPolicy, DEFAULT_LINK_POLICY } from './actions.js';
 
 /** A page, serialised, may not be larger than this. */
 export const MAX_DOC_BYTES = LIMITS.bytes;
@@ -37,7 +38,7 @@ const DOC_KEYS_V1 = ['id', 'title', 'height', 'phoneHeight', 'phoneBoard', 'bg',
 const DOC_KEYS_V2 = ['v', 'id', 'title', 'frames', 'background', 'bg', 'grid', 'css', 'blocks'];
 /** The fields a block may have. */
 export const BLOCK_KEYS = ['id', 'kind', 'x', 'y', 'w', 'h', 'z', 'props', 'opacity', 'themes', 'phone', 'anim',
-  'name', 'locked', 'hidden', 'rotate', 'shadow', 'hover', 'link', 'component'];
+  'name', 'locked', 'hidden', 'rotate', 'shadow', 'hover', 'link', 'component', 'action'];
 const OVERLAY_KEYS = ['x', 'y', 'w', 'h', 'opacity', 'hidden', 'props'];
 const PHONE_KEYS = ['order', 'hidden', 'h', 'x', 'y', 'w'];
 const ANIM_KEYS = ['kind', 'trigger', 'delay', 'duration', 'easing', 'loop', 'custom'];
@@ -81,12 +82,16 @@ export function pinsToViewport(css) {
  * Reasons (the web turns each into words, `cst.save.why.<reason>`): `too_large`, `bad_type`,
  * `unknown_field`, `bad_value`, `out_of_bounds`, `too_many`, `too_long`, `bad_id`,
  * `unsafe_url`, `unsafe_css`, `position_fixed`, `api_removed`, `unknown_action`,
- * `bad_scroll_target`.
+ * `bad_scroll_target`, and for a block's `action` (actions.js, phase 5): `reserved_action`,
+ * `https_only`, `host_not_allowed`, `bad_target`, `unknown_endpoint`, `terminal_not_last`,
+ * `too_short`.
  *
  * @param {unknown} doc
  * @param {string} [prefix]  prepended to every path, e.g. `canvases[2]`
+ * @param {{ links?: object }} [opts]  `links`: the site's link policy (actions.js), which an
+ *        `external` step is checked against. Absent = the default (every https host).
  */
-export function validateDoc(doc, prefix = '') {
+export function validateDoc(doc, prefix = '', opts = {}) {
   const out = [];
   const pre = prefix ? `${prefix}.` : '';
   if (!isObj(doc)) {
@@ -129,7 +134,12 @@ export function validateDoc(doc, prefix = '') {
   if (c.blocks != null && !Array.isArray(c.blocks)) { add('blocks', 'bad_type', null); return out; }
   const blocks = Array.isArray(c.blocks) ? c.blocks : [];
   if (blocks.length > LIMITS.blocks) add('blocks', 'too_many', blocks.length);
-  blocks.forEach((b, i) => blockProblems(b, i, add));
+  // What a scroll or a reveal may name: the page's own blocks (ids as stored).
+  const actx = {
+    links: opts && opts.links ? normalizeLinkPolicy(opts.links) : DEFAULT_LINK_POLICY,
+    blockIds: new Set(blocks.map((b) => (isObj(b) && typeof b.id === 'string' ? b.id : '')).filter(Boolean)),
+  };
+  blocks.forEach((b, i) => blockProblems(b, i, add, actx));
   return out;
 }
 
@@ -228,7 +238,7 @@ function propsProblems(kind, props, at, push) {
   }
 }
 
-function blockProblems(b, i, add) {
+function blockProblems(b, i, add, actx) {
   if (!isObj(b)) { add(`blocks[${i}]`, 'bad_type', null); return; }
   const bid = typeof b.id === 'string' ? b.id : '';
   const push = (path, reason, value) => add(`blocks[${i}]${path ? `.${path}` : ''}`, reason, value, bid);
@@ -245,7 +255,11 @@ function blockProblems(b, i, add) {
   for (const k of ['locked', 'hidden']) if (b[k] != null && typeof b[k] !== 'boolean') push(k, 'bad_type', b[k]);
   if (b.shadow != null && b.shadow !== '' && !SHADOWS.includes(b.shadow)) push('shadow', 'bad_value', b.shadow);
   if (b.hover != null && b.hover !== '' && !HOVER_EFFECTS.includes(b.hover)) push('hover', 'bad_value', b.hover);
+  // `link` (and a button's `props.action`, below) are the fields before phase 5, still read
+  // and converted by normalizeDoc, and checked by their own rule for a page that carries them.
   if (b.link != null && b.link !== '' && (typeof b.link !== 'string' || !safeLink(b.link))) push('link', 'unsafe_url', b.link);
+  // The closed action vocabulary (actions.js): every step, every field, with its path.
+  actionProblems(b.action, actx, push);
   if (b.component != null) {
     if (!isObj(b.component)) push('component', 'bad_type', null);
     else {

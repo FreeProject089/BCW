@@ -8,7 +8,7 @@ import {
   normalizeCanvas, layoutFor, phoneBoardBlocks, phoneContentHeight, dragTo, resizeTo, moveMany,
   PHONE_WIDTH, DESIGN_WIDTH, STACK_BELOW, BLOCK_KINDS, ANIM_KINDS, GRID,
   reorder, paintOrder, safeLink, presetBlocks, CANVAS_PRESETS, SHADOWS, HOVER_EFFECTS, GRID_SIZES,
-  ANIM_EASINGS, EASING_CURVES, STAGGER_STEPS,
+  ANIM_EASINGS, EASING_CURVES, STAGGER_STEPS, planAction,
 } from '../src/lib/canvas.js';
 
 const B = (id, x, y, w, h, extra = {}) => ({ id, kind: 'text', x, y, w, h, props: { md: id }, ...extra });
@@ -156,7 +156,10 @@ describe('the button block', () => {
     assert.ok(BLOCK_KINDS.includes('button'));
     const b = normalizeCanvas({ blocks: [{ id: 'b', kind: 'button', x: 0, y: 0, w: 240, h: 56, props: { label: 'Go', variant: 'card', action: { type: 'copy', text: 'hi' } } }] }).blocks[0];
     assert.equal(b.kind, 'button');
-    assert.equal(b.props.action.type, 'copy');
+    // CHANGED in studio phase 5: a button's `props.action` is read into the block's `action`
+    // steps (packages/studio/src/actions.js), and is no longer a prop.
+    assert.deepEqual(b.action, [{ type: 'copy', text: 'hi' }]);
+    assert.equal(b.props.action, undefined);
   });
 });
 
@@ -170,7 +173,9 @@ describe('the layer fields', () => {
     assert.equal(b.rotate, 180, 'rotation is clamped to ±180');
     assert.equal(b.shadow, 'md');
     assert.equal(b.hover, 'lift');
-    assert.equal(b.link, '/docs');
+    // CHANGED in studio phase 5: the legacy `link` becomes a `navigate` step.
+    assert.deepEqual(b.action, [{ type: 'navigate', to: '/docs' }]);
+    assert.equal(b.link, undefined);
     const junk = normalizeCanvas({ blocks: [{ id: 'j', kind: 'box', x: 0, y: 0, w: 200, h: 100,
       name: 42, locked: 'yes', rotate: 'x', shadow: 'huge', hover: 'explode', link: 'javascript:alert(1)' }] }).blocks[0];
     assert.equal(junk.name, '');
@@ -179,7 +184,10 @@ describe('the layer fields', () => {
     assert.equal(junk.rotate, 0);
     assert.equal(junk.shadow, '');
     assert.equal(junk.hover, '');
-    assert.equal(junk.link, '', 'a javascript: link never reaches an href');
+    // CHANGED in studio phase 5: the hostile link is kept as a step, so the editor can show it in
+    // red (D5), and the plan the renderer draws from is inert: it never reaches an href.
+    assert.equal(planAction(junk.action).kind, 'inert', 'a javascript: link never reaches an href');
+    assert.equal(planAction(junk.action).href, '');
   });
 
   test('a block link is a same-site path, an anchor, https or mailto — nothing else', () => {

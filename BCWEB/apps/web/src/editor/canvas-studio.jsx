@@ -36,6 +36,7 @@ import { scopeCss } from '../lib/css-scope.js';
 // The full B.MD editor is heavy and most sessions never open it: loaded on first use.
 const LazyMarkdownEditor = lazy(() => import('./markdown-editor.jsx').then((m) => ({ default: m.MarkdownEditor })));
 import CanvasView, { CanvasBlock } from '../ui/canvas-view.jsx';
+import ActionFields from './studio-actions.jsx'; // studio phase 5: the "On click" section
 import {
   DOCK_ZONES, DockZone, DockResizer, DockGhost, PanelsMenu, useDockLayout, useDockDrag, zoneOf, movePanel,
   BoardEdge,
@@ -48,7 +49,7 @@ import {
   boundsOf, blocksInRect, moveMany, alignMany, distributeMany, phoneOrder, resolveBlock,
   reorder, DESIGN_WIDTH, GRID, HANDLES,
   alignOnBoard, distributeOnBoard, matchSizeOnBoard, duplicateOnBoard, placeOnBoard, dragPatch,
-  ANIM_KINDS, ANIM_TRIGGERS, ANIM_EASINGS, STAGGER_STEPS, BUTTON_VARIANTS, BUTTON_ACTIONS, LEGACY_ACTIONS, buttonTarget, menuItemHref, SHADOWS, HOVER_EFFECTS, GRID_SIZES, TEXT_ALIGNS, SHAPES,
+  ANIM_KINDS, ANIM_TRIGGERS, ANIM_EASINGS, STAGGER_STEPS, BUTTON_VARIANTS, menuItemHref, SHADOWS, HOVER_EFFECTS, GRID_SIZES, TEXT_ALIGNS, SHAPES,
   BACKGROUND_TYPES, BG_TOKENS, BG_IMAGE_FITS, BG_POSITIONS, SCENE3D_POSITIONS, BOARD_GRIDS, GRADIENT_STOPS, bgColor, patternColor, bgImagePath,
   SCENE_SHAPES, SCENE_SURFACES, SCENE_BOUNDS, detailMaxFor,
 } from '../lib/canvas.js';
@@ -78,7 +79,7 @@ const NEW_BLOCK = {
   video: { kind: 'video', w: 560, h: 315, props: { src: '', controls: true, muted: false, loop: false, fit: 'contain' } },
   embed: { kind: 'embed', w: 560, h: 315, props: { url: '', title: '' } },
   replay: { kind: 'replay', w: 640, h: 400, props: { src: '' } },
-  button: { kind: 'button', w: 240, h: 56, props: { label: 'Discover', variant: 'button', size: 'md', action: { type: 'link', href: '/' } } },
+  button: { kind: 'button', w: 240, h: 56, props: { label: 'Discover', variant: 'button', size: 'md' }, action: [{ type: 'navigate', to: '/' }] },
   shape: { kind: 'shape', w: 200, h: 200, props: { shape: 'rounded', fill: 'var(--primary)', corner: 16 } },
   svg: { kind: 'svg', w: 240, h: 240, props: { svg: '' } },
 };
@@ -1440,7 +1441,7 @@ function PreviewSurface({ t, preview, canvas, renderPage, onReplay, pageNote = n
         </>
       ) : (
         <div className={frame ? 'cst-device mx-auto max-w-full' : ''} style={frame ? { width: frame } : undefined}>
-          <CanvasView canvas={canvas} stackPreview={preview === 'phone'} />
+          <CanvasView canvas={canvas} stackPreview={preview === 'phone'} actionsPreview />
         </div>
       )}
     </div>
@@ -1760,12 +1761,9 @@ function LayersPanel({ t, canvas, view, selIds, setSelIds, patch, emit, add, bar
   );
 }
 
-/** The button block's own fields: the look, the action, and the action's parameters. */
+/** The button block's own fields: its look. What it DOES is the "On click" section, which every
+ *  block has (editor/studio-actions.jsx, phase 5). */
 function ButtonFields({ t, p, setProp }) {
-  const act = p.action || { type: 'link' };
-  const setAct = (k, v) => setProp('action', { ...act, [k]: v });
-  // The same decision the page makes (lib/canvas.js), so the editor's red is the page's inert.
-  const target = buttonTarget(act);
   const items = Array.isArray(p.items) ? p.items : [];
   const itemsText = items.map((it) => `${it.label || ''} | ${it.href || ''}`).join('\n');
   const isDropdown = (p.variant || 'button').startsWith('dropdown');
@@ -1802,28 +1800,9 @@ function ButtonFields({ t, p, setProp }) {
           </p>
         )}
       </Field>
-    ) : (<>
-      {/* An action this page may no longer run is said, in red, with the reason (D5): the
-          button renders inert for visitors, and an author must never discover that by a
-          silent button. The select offers only the actions that still exist. */}
-      {LEGACY_ACTIONS[act.type] && (
-        <div className="rounded-lg border border-[var(--error-border)] p-2 text-[11px] text-error" data-legacy-action={act.type} role="alert">
-          {t('cst.btn.legacy.api', 'This button called the site API with the visitor’s own session. That action was removed for security: the button does nothing for visitors now. Pick another action below.')}
-        </div>
-      )}
-      <Field label={t('cst.btn.action', 'On press')}>
-        <Select value={LEGACY_ACTIONS[act.type] ? '' : (act.type || 'link')} onChange={(e) => setProp('action', { type: e.target.value, ...(act.href ? { href: act.href } : {}), ...(act.text ? { text: act.text } : {}), ...(act.target ? { target: act.target } : {}) })}>
-          {LEGACY_ACTIONS[act.type] && <option value="">{t('cst.btn.a.pick', 'Choose an action')}</option>}
-          {BUTTON_ACTIONS.map((v) => <option key={v} value={v}>{t(`cst.btn.a.${v}`, v)}</option>)}
-        </Select>
-      </Field>
-      {(act.type === 'link' || act.type === 'download' || !act.type) && <Field label={t('cst.btn.href', 'Link')}><Input value={act.href || ''} onChange={(e) => setAct('href', e.target.value)} placeholder="/hosting · https://…" /></Field>}
-      {target.reason === 'unsafe_url' && <p className="text-[11px] text-error" role="alert">{t('cst.btn.unsafe', 'This link is refused: only a path on this site, an anchor (#), an http(s) address or a mailto. It does nothing for visitors.')}</p>}
-      {act.type === 'copy' && <Field label={t('cst.btn.copytext', 'Text to copy')}><Input value={act.text || ''} onChange={(e) => setAct('text', e.target.value)} /></Field>}
-      {act.type === 'scroll' && <Field label={t('cst.btn.target.id', 'Scroll to (an element id, e.g. #plans)')}><Input value={act.target || ''} onChange={(e) => setAct('target', e.target.value)} placeholder="#plans" /></Field>}
-      {target.reason === 'bad_scroll_target' && <p className="text-[11px] text-error" role="alert">{t('cst.btn.badscroll', 'Only an element id is accepted here (# then letters, digits, - or _), not a CSS selector. The button does nothing for visitors until it is one.')}</p>}
-      <Field label={t('cst.btn.done.copy', 'Label after copying')}><Input value={p.doneLabel || ''} onChange={(e) => setProp('doneLabel', e.target.value)} placeholder="✓" /></Field>
-    </>)}
+    ) : (
+      <Field label={t('cst.btn.doneafter', 'Label after it ran (copied, sent)')}><Input value={p.doneLabel || ''} onChange={(e) => setProp('doneLabel', e.target.value)} placeholder="✓" /></Field>
+    )}
   </>);
 }
 
@@ -2570,11 +2549,10 @@ function Inspector({ t, sel, patch, canvas, emit, setSelId, hasDark = false, onO
           {HOVER_EFFECTS.map((v) => <option key={v} value={v}>{t(`cst.hover.${v}`, v)}</option>)}
         </Select>
       </Field>
-      {sel.kind !== 'button' && (
-        <Field label={t('cst.link', 'Link (whole block)')} hint={t('cst.link.h', 'A path on this site, an anchor, or an https address. The block becomes clickable.')}>
-          <Input value={sel.link || ''} onChange={(e) => patch(sel.id, { link: e.target.value }, `link-${sel.id}`)} placeholder="/docs · #plans · https://…" />
-        </Field>
-      )}
+      {/* What pressing the block does (phase 5), on every kind. Written to the BLOCK itself on
+          any board: an action has one copy, like the content, never a theme or phone overlay. */}
+      <ActionFields t={t} sel={sel} blocks={canvas.blocks}
+        onChange={(steps) => emit(canvas.blocks.map((b) => (b.id === sel.id ? { ...b, action: steps } : b)), {}, `act-${sel.id}`)} />
       <Field label={t('cst.bg', 'Background')}><Input value={p.bg || ''} onChange={(e) => setProp('bg', e.target.value)} placeholder="rgba(99,102,241,0.1)" /></Field>
       <Field label={t('cst.radius', 'Corner radius')}><Input type="number" value={p.radius ?? ''} onChange={(e) => setProp('radius', e.target.value === '' ? undefined : Number(e.target.value))} /></Field>
       <button className="text-[11px] text-[var(--faint)] hover:text-[var(--text)]" onClick={() => setSelId(null)}>{t('cst.deselect', 'Deselect')}</button>

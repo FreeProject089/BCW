@@ -26,7 +26,9 @@ export interface Block {
   phone: PhonePlace | null;
   anim: BlockAnim | null;
   name: string; locked: boolean; hidden: boolean;
-  rotate: number; shadow: string; hover: string; link: string;
+  rotate: number; shadow: string; hover: string;
+  /** What pressing it does (actions.js, phase 5). A legacy `link` / `props.action` is read into it. */
+  action: ActionStep[];
   component: { id: string; inst: string } | null;
 }
 
@@ -96,7 +98,7 @@ export function normalizeDoc(raw: unknown): StudioDoc;
 export const normalizeCanvas: typeof normalizeDoc;
 export function serializeDoc(doc: unknown, extra?: Record<string, unknown>): StoredDoc;
 export function serializeCanvas(doc: unknown, raw?: unknown, extra?: Record<string, unknown>): StoredDoc;
-export function validateDoc(doc: unknown, prefix?: string): Problem[];
+export function validateDoc(doc: unknown, prefix?: string, opts?: { links?: LinkPolicy }): Problem[];
 export function cssValueOk(value: unknown): boolean;
 export function pinsToViewport(css: unknown): boolean;
 export function propAllowed(kind: string, key: string): boolean;
@@ -224,3 +226,59 @@ export const SHAPE_DETAIL_MAX: Readonly<Record<string, number>>;
 export const SCENE_LOOK_DEFAULTS: Readonly<Record<string, string | number>>;
 export function detailMaxFor(shape: string): number;
 export function clampSceneNumber(key: string, value: unknown, shape: string, fallback?: number): number;
+
+// ── Actions (actions.js, phase 5) ──────────────────────────────────────────────────────
+export type ActionType = 'navigate' | 'page' | 'external' | 'mailto' | 'scroll' | 'reveal' | 'copy' | 'download' | 'submit' | 'theme';
+export interface ActionStep {
+  type: ActionType | string;
+  to?: string; canvasId?: string; url?: string; address?: string; target?: string; mode?: string;
+  text?: string; file?: string; asset?: string; endpoint?: string; fields?: Record<string, unknown>;
+}
+export interface LinkPolicy { mode: 'block' | 'allow'; hosts: string[] }
+export interface SubmitField { kind: 'email' | 'id' | 'ids' | 'ref' | 'slug' | 'text'; required?: boolean; min?: number; max?: number; multiline?: boolean }
+export interface SubmitEntry {
+  method: 'POST'; path: string; pow: string | null;
+  author: Readonly<Record<string, SubmitField>>; visitor: Readonly<Record<string, SubmitField>>; rateLimit: string;
+}
+export interface ActionPlan {
+  kind: 'none' | 'link' | 'button' | 'inert';
+  href: string; steps: ActionStep[]; reason: string;
+  internal?: boolean; external?: boolean; download?: boolean; host?: string; at?: number; last?: ActionStep;
+}
+export const ACTION_TYPES: readonly ActionType[];
+export const RESERVED_ACTIONS: readonly string[];
+export const REMOVED_ACTIONS: Readonly<Record<string, string>>;
+export const MAX_STEPS: number;
+export const NAV_TYPES: readonly string[];
+export const TERMINAL_TYPES: readonly string[];
+export const STEP_FIELDS: Readonly<Record<ActionType, readonly string[]>>;
+export const REVEAL_MODES: readonly string[];
+export const THEME_MODES: readonly string[];
+export const COPY_MAX: number;
+export const URL_MAX: number;
+export const DOWNLOAD_PREFIXES: readonly string[];
+export const ASSET_KEY: RegExp;
+export const LINK_POLICY_MODES: readonly string[];
+export const MAX_POLICY_HOSTS: number;
+export const DEFAULT_LINK_POLICY: Readonly<LinkPolicy>;
+export const SUBMIT_REGISTRY: Readonly<Record<string, SubmitEntry>>;
+export const SUBMIT_KEYS: readonly string[];
+export function internalPath(raw: unknown): string;
+export function normalizeHost(raw: unknown): string;
+export function normalizeLinkPolicy(raw: unknown): LinkPolicy;
+export function linkPolicyProblems(raw: unknown): Array<{ path: string; reason: string }>;
+export function hostAllowed(host: string, policy: unknown): boolean;
+export function externalUrl(raw: unknown, policy?: unknown): { href: string; host: string; reason: string };
+export function mailAddress(raw: unknown): string;
+export function downloadPath(raw: unknown): string;
+export function submitFieldProblem(spec: SubmitField, value: unknown): string;
+export function submitRequest(key: string, author: unknown, visitor: unknown, ctx?: { lang?: string; pow?: unknown }):
+  { ok: true; method: string; url: string; body: Record<string, unknown>; pow: string | null } | { ok: false; field: string; reason: string };
+export function stepProblems(step: unknown, ctx: { links?: LinkPolicy; blockIds?: Set<string> | null } | null, push: (field: string, reason: string, value: unknown) => void): void;
+export function actionProblems(raw: unknown, ctx: { links?: LinkPolicy; blockIds?: Set<string> | null } | null, push: (path: string, reason: string, value: unknown) => void, at?: string): void;
+export function normalizeAction(raw: unknown): ActionStep[];
+export function legacyAction(block: unknown): ActionStep[];
+export function blockSteps(block: unknown): ActionStep[];
+export function migrateDocActions<T>(doc: T): T;
+export function planAction(steps: unknown, ctx?: { links?: unknown; blockIds?: Set<string> | null }): ActionPlan;
+export function revealTargets(blocks: unknown): Set<string>;

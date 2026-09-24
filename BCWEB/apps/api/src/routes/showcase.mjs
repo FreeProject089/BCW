@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { db, requireCap, requireEditor, optionalAuth, slugify, pageVisibilitySchema, pageAccountEntrySchema, canViewPage, applyScheduledUpdate, canManageShowcase, canEditShowcase, projectGrants , guardStudioFlag, hasCap, canUseStudio, studioRefusal, studioChecker, guardStudioContent, withoutStudioDrafts, draftReader } from '../lib/lib.mjs';
-import { configStudioProblems, studioDocError, configRevs, parsePageSave, replaceConfigPage } from '../lib/studio-doc.mjs';
+import { configStudioProblems, studioDocError, configRevs, parsePageSave, replaceConfigPage, studioValidateOpts } from '../lib/studio-doc.mjs';
 import { configLinkProblems, configLinkError } from '../lib/config-links.mjs';
 import { computeActivity, releaseMarkers } from '../lib/git-activity.mjs';
 
@@ -244,9 +244,9 @@ export default async function showcaseRoutes(app) {
     if (badLinks.length) return reply.code(400).send(configLinkError(badLinks));
     // A new page has no studio switch yet (it is off): only manage_studio draws on it (D2).
     b.data.config = guardStudioContent(b.data.config, null, hasCap(req.user, 'manage_studio'));
-    const born = configStudioProblems(b.data.config, null);
-    if (born.length) return reply.code(400).send(studioDocError(born));
     const p = await db();
+    const born = configStudioProblems(b.data.config, null, await studioValidateOpts(p));
+    if (born.length) return reply.code(400).send(studioDocError(born));
     const base = slugify(b.data.name) || 'project';
     let slug = base; for (let i = 1; await p.showcaseProject.findUnique({ where: { slug } }); i++) slug = `${base}-${i}`;
     const { announceRevealAt, ...data } = b.data;
@@ -278,7 +278,7 @@ export default async function showcaseRoutes(app) {
       // ones are put back, whatever was sent. Asked against the STORED switch (D2).
       data.config = guardStudioContent(data.config, cur?.config, await canUseStudio(req.user, 'showcase', req.params.id, cur?.config));
       // Studio pages are checked on the way in, with the path of the field (lib/studio-doc.mjs).
-      const problems = configStudioProblems(data.config, cur?.config);
+      const problems = configStudioProblems(data.config, cur?.config, await studioValidateOpts(p));
       if (problems.length) return reply.code(400).send(studioDocError(problems));
       data.config = guardStudioFlag(data.config, cur?.config, canManageShowcase(req.user));
     }
@@ -328,7 +328,7 @@ export default async function showcaseRoutes(app) {
     if (!(await canUseStudio(req.user, 'showcase', req.params.id, cur.config))) return reply.code(403).send({ error: await studioRefusal(req.user, 'showcase', req.params.id) });
     const b = parsePageSave(req.body);
     if (!b.ok) return reply.code(400).send({ error: b.error });
-    const r = await replaceConfigPage(cur.config, String(req.params.pageId), b.canvas, b.base);
+    const r = await replaceConfigPage(cur.config, String(req.params.pageId), b.canvas, b.base, await studioValidateOpts(p));
     if (r.status) return reply.code(r.status).send(r.body);
     const row = await p.showcaseProject.update({ where: { id: req.params.id }, data: { config: r.config } });
     const version = typeof row.config?.version === 'string' ? row.config.version.trim().slice(0, 40) : '';
@@ -376,7 +376,7 @@ export default async function showcaseRoutes(app) {
       // A staged config is a config save that lands later: its studio pages are the studio
       // right's, now and at the scheduled time (guardStudioContent, asked against the stored switch).
       req.body.next.config = guardStudioContent(req.body.next.config, cur?.config, await canUseStudio(req.user, 'showcase', req.params.id, cur?.config));
-      const problems = configStudioProblems(req.body.next.config, cur?.config);
+      const problems = configStudioProblems(req.body.next.config, cur?.config, await studioValidateOpts(await db()));
       if (problems.length) return reply.code(400).send(studioDocError(problems));
     }
     const b = z.object({

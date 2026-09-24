@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { ipOf } from '../lib/client-ip.mjs';
-import { sectionsStudioProblems, studioDocError, sectionRevs, parsePageSave, replaceSectionCanvas } from '../lib/studio-doc.mjs';
+import { sectionsStudioProblems, studioDocError, sectionRevs, parsePageSave, replaceSectionCanvas, studioValidateOpts } from '../lib/studio-doc.mjs';
 import { db, requireRole, requireCap, hasCap, optionalAuth, slugify, logAudit, notify, notifyAll, clearAccountLockCache, clearUserCache, CAPABILITIES, NOTIF_CATEGORIES, currentUser, httpUrl, canUseStudio, guardStudioSections, sectionsWithoutDrafts } from '../lib/lib.mjs';
 import { SECRET_SETTING_KEYS } from '../lib/secret-guard.mjs';
 import { suspendOwned, restoreOwned, cancelSubscriptions, anonymiseAccount } from './closure.mjs';
@@ -1057,7 +1057,7 @@ export default async function miscRoutes(app) {
     const p = await db();
     const row = await p.adminSetting.findUnique({ where: { key: HOME_KEY } });
     const current = homeConfig(row);
-    const r = await replaceSectionCanvas(current.customSections, sectionId.slice(0, 60), b.canvas, b.base);
+    const r = await replaceSectionCanvas(current.customSections, sectionId.slice(0, 60), b.canvas, b.base, await studioValidateOpts(p));
     if (r.status) return reply.code(r.status).send(r.body);
     const value = { ...(row?.value && typeof row.value === 'object' ? row.value : {}), ...current, customSections: r.sections };
     await p.adminSetting.upsert({ where: { key: HOME_KEY }, create: { key: HOME_KEY, value }, update: { value } });
@@ -1098,7 +1098,7 @@ export default async function miscRoutes(app) {
     if (b.data.customSections != null) b.data.customSections = guardStudioSections(b.data.customSections, current.customSections, await canUseStudio(req.user, 'home'));
     // A drawn section is a studio document: checked on the way in (lib/studio-doc.mjs).
     if (b.data.customSections != null) {
-      const problems = sectionsStudioProblems(b.data.customSections, current.customSections);
+      const problems = sectionsStudioProblems(b.data.customSections, current.customSections, await studioValidateOpts(p));
       if (problems.length) return reply.code(400).send(studioDocError(problems));
     }
     // An empty string DELETES the override rather than storing one. Otherwise clearing a box

@@ -9,5 +9,6 @@ export * from './validate.js';
 export * from './css-scope.js';
 export * from './svg-safe.js';
 export * from './background.js';
+export * from './actions.js';
 export * from './patterns.js';
 export * from './scene.js';

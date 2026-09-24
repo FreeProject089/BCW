@@ -38,6 +38,8 @@ try {
     "export const page = (value, theme) => renderToStaticMarkup(",
     '  <I18nProvider><CanvasView canvas={value} themePreview={theme} /></I18nProvider>);',
     // The stacked phone column: the layout where a fixed box had nothing to confine it (S5).
+    // Studio phase 5: the link policy an external step is drawn under, set by the check itself.
+    "export { setStudioLinks } from '../src/lib/studio-links.js';",
     "export const stack = (value) => renderToStaticMarkup(",
     '  <I18nProvider><CanvasView canvas={value} stackPreview /></I18nProvider>);',
     // Rendered inside the real provider, the way the app mounts it. Its network fetch lives in
@@ -80,8 +82,8 @@ try {
   cleanup(); process.exit(2);
 }
 
-let render; let page; let renderPage; let renderLoose; let stack;
-try { ({ render, page, renderPage, renderLoose, stack } = await import(pathToFileURL(bundle).href)); }
+let render; let page; let renderPage; let renderLoose; let stack; let setStudioLinks;
+try { ({ render, page, renderPage, renderLoose, stack, setStudioLinks } = await import(pathToFileURL(bundle).href)); }
 catch (e) { console.error(`✗ the studio would not load: ${e?.message || e}`); cleanup(); process.exit(1); }
 
 const problems = [];
@@ -456,6 +458,114 @@ try {
   const legacy = withWindow(mq(true, false), () => renderPage({ id: 'lg1', title: '', bg: 'color-mix(in srgb, var(--primary) 10%, transparent)', blocks: [] }));
   must(/data-bg-note/.test(legacy), 'an old background that was replaced is not reported in the Page panel');
 } catch (e) { problems.push(`the legacy background note threw: ${e?.message || e}`); }
+
+// ── Block actions (PLAN-STUDIO-2026 2.5, phase 5). ───────────────────────────────────
+// Every element can be a button. What a reader gets, in both layouts: a navigation is a REAL
+// <a href> (middle click, screen readers), an external one opens a new tab with
+// rel="noopener noreferrer", anything else is a <button>; a text block's own links are never
+// inside the block's link (anchors are never nested: the action is a cover beside them); a
+// hidden block a reveal step names is mounted, out of sight. Then a hostile document: every
+// refused step renders INERT with its reason, and no href leaves the admitted forms.
+// Each assertion was checked by breaking what it guards (recorded in the phase 5 report).
+const ACT = {
+  v: 2, id: 'act1', frames: { desktop: { w: 1200, h: 900, fit: 'fixed' }, phone: { w: 390, fit: 'content', mode: 'stack' } },
+  blocks: [
+    { id: 'nav', kind: 'box', x: 0, y: 0, w: 200, h: 60, name: 'Docs band', action: [{ type: 'navigate', to: '/docs' }] },
+    { id: 'ext', kind: 'image', x: 0, y: 80, w: 200, h: 60, props: { src: '/a.png', alt: 'Logo' }, action: [{ type: 'external', url: 'https://github.com/x' }] },
+    { id: 'cpy', kind: 'button', x: 0, y: 160, w: 200, h: 60, props: { label: 'Copy' }, action: [{ type: 'copy', text: 'X' }] },
+    { id: 'txt', kind: 'text', x: 0, y: 240, w: 300, h: 80, props: { md: 'Read [the docs](/docs/inner) now' }, action: [{ type: 'navigate', to: '/outer' }] },
+    { id: 'more', kind: 'text', x: 0, y: 340, w: 300, h: 60, hidden: true, props: { md: 'More' } },
+    { id: 'gone', kind: 'text', x: 0, y: 380, w: 300, h: 20, hidden: true, props: { md: 'Never mounted' } },
+    { id: 'rev', kind: 'button', x: 0, y: 420, w: 200, h: 60, props: { label: 'Show' }, action: [{ type: 'reveal', target: 'more' }] },
+    { id: 'dl', kind: 'box', x: 0, y: 500, w: 200, h: 60, action: [{ type: 'download', asset: 'setup.exe' }] },
+    { id: 'pg', kind: 'box', x: 0, y: 580, w: 200, h: 60, action: [{ type: 'page', canvasId: 'pricing' }] },
+    { id: 'sub', kind: 'button', x: 0, y: 660, w: 200, h: 60, props: { label: 'Join' }, action: [{ type: 'submit', endpoint: 'newsletter.subscribe' }] },
+  ],
+};
+/** The deepest <a> nesting in a markup string. */
+const anchorDepth = (html) => {
+  let d = 0; let max = 0;
+  for (const m of html.matchAll(/<a[\s>]|<\/a>/g)) { d += m[0] === '</a>' ? -1 : 1; max = Math.max(max, d); }
+  return max;
+};
+const tagWith = (html, attr) => [...html.matchAll(/<[a-z]+\b[^>]*>/g)].map((m) => m[0]).filter((tag) => tag.includes(attr));
+const hrefOk5 = (h) => hrefOk(h) || /^\?tab=c-[A-Za-z0-9_-]{1,60}$/.test(h);
+try {
+  for (const [name, out] of [['scaled', page(ACT, 'light')], ['stacked', stack(ACT)]]) {
+    const acts = tagWith(out, 'data-act=');
+    must(acts.length === 8, `${name}: ${acts.length} actionable element(s) for 8 blocks with an action`);
+    for (const tag of acts) {
+      const ok = /^<a\b/.test(tag) ? /\shref="[^"]+"/.test(tag) : /^<button\b[^>]*type="button"/.test(tag);
+      must(ok, `${name}: an actionable element is neither a link with an href nor a <button>, so Tab and Enter cannot reach it: ${tag.slice(0, 160)}`);
+    }
+    const nav = tagWith(out, 'href="/docs"').find((tag) => /class="cv-act"/.test(tag)) || '';
+    must(!!nav, `${name}: a navigate step did not make the block a real <a href>`);
+    must(/aria-label="Docs band"/.test(nav), `${name}: the block's cover has no accessible name`);
+    const ext = tagWith(out, 'href="https://github.com/x"')[0] || '';
+    must(/target="_blank"/.test(ext) && /rel="noopener noreferrer"/.test(ext), `${name}: an external link does not open a new tab with rel="noopener noreferrer": ${ext.slice(0, 200)}`);
+    must(/^<button\b/.test(tagWith(out, 'data-act="copy"')[0] || ''), `${name}: a copy button is not a <button>`);
+    must(/download=""/.test(tagWith(out, 'href="/api/assets/setup.exe"')[0] || ''), `${name}: a download step lost its download attribute`);
+    must(tagWith(out, 'href="?tab=c-pricing"').length === 1, `${name}: a page step does not link to the page's tab`);
+    must(/^<button\b/.test(tagWith(out, 'data-act="submit"')[0] || ''), `${name}: a submit step is not a <button>`);
+    // A text block's own links win: its link is there, and no anchor is ever inside another.
+    must(/href="\/docs\/inner"/.test(out) && /href="\/outer"/.test(out), `${name}: the text block's own link or its action is missing`);
+    must(anchorDepth(out) === 1, `${name}: an <a> is nested inside another (depth ${anchorDepth(out)}): the block action swallowed the text's own link`);
+    const more = tagWith(out, 'data-cvb="more"')[0] || '';
+    must(!!more && /display:\s*none/.test(more), `${name}: a hidden block named by a reveal step is not mounted out of sight: ${more.slice(0, 160) || 'absent'}`);
+    must(!/Never mounted/.test(out), `${name}: a hidden block no reveal names was mounted`);
+    const hrefs = [...out.matchAll(/\shref="([^"]*)"/g)].map((m) => decodeAttr(m[1]));
+    must(hrefs.every(hrefOk5), `${name}: an href outside the admitted forms: ${hrefs.filter((h) => !hrefOk5(h)).join(' | ')}`);
+  }
+} catch (e) { problems.push(`the phase 5 action render threw: ${e?.message || e}`); }
+
+// Hostile steps, stored anyway (the API refuses them; a page saved before, or written by hand
+// into the database, still reaches the renderer). Each renders INERT, with its reason, no href.
+const ACT_EVIL = [
+  [{ type: 'navigate', to: 'javascript:alert(1)' }, 'unsafe_url'],
+  [{ type: 'navigate', to: ' JaVaScRiPt:alert(1)' }, 'unsafe_url'],
+  [{ type: 'navigate', to: 'data:text/html,x' }, 'unsafe_url'],
+  [{ type: 'navigate', to: '//evil.example' }, 'unsafe_url'],
+  [{ type: 'navigate', to: `/${String.fromCharCode(92)}evil.example` }, 'unsafe_url'],
+  [{ type: 'navigate', to: '/%2F%2Fevil.example' }, 'unsafe_url'],
+  [{ type: 'external', url: 'http://evil.example' }, 'https_only'],
+  [{ type: 'external', url: 'javascript:alert(1)' }, 'unsafe_url'],
+  [{ type: 'mailto', address: 'a@evil.example?bcc=x@y.z' }, 'bad_value'],
+  [{ type: 'download', file: 'https://evil.example/x.exe' }, 'unsafe_url'],
+  [{ type: 'scroll', target: 'body > div' }, 'bad_scroll_target'],
+  [{ type: 'submit', endpoint: 'admin.users' }, 'unknown_endpoint'],
+  [{ type: 'modal', target: 'e0' }, 'reserved_action'],
+  [{ type: 'api', path: '/admin/users', method: 'POST' }, 'api_removed'],
+];
+const evilDoc = (withSixth) => ({
+  v: 2, id: 'actx', frames: { desktop: { w: 1200, h: 2000, fit: 'fixed' }, phone: { w: 390, fit: 'content', mode: 'stack' } },
+  blocks: [
+    ...ACT_EVIL.map(([step], i) => ({ id: `e${i}`, kind: i % 2 ? 'button' : 'box', x: 0, y: i * 70, w: 200, h: 60, props: i % 2 ? { label: `E${i}` } : {}, action: [step] })),
+    ...(withSixth ? [{ id: 'six', kind: 'box', x: 300, y: 0, w: 100, h: 60, action: [1, 2, 3, 4, 5, 6].map(() => ({ type: 'copy', text: 'x' })) }] : []),
+  ],
+});
+try {
+  for (const [name, out] of [['scaled', page(evilDoc(true), 'light')], ['stacked', stack(evilDoc(true))]]) {
+    for (const [i, [step, reason]] of ACT_EVIL.entries()) {
+      const inert = tagWith(out, `data-inert="${reason}"`);
+      must(inert.length > 0, `${name}: hostile step #${i} (${step.type}) is not rendered inert with its reason "${reason}"`);
+    }
+    must(tagWith(out, 'data-inert="too_many"').length === 1, `${name}: a sixth step did not make the block inert`);
+    must(!tagWith(out, 'data-inert=').some((tag) => /\shref=/.test(tag)), `${name}: an inert element carries an href`);
+    const hrefs = [...out.matchAll(/\shref="([^"]*)"/g)].map((m) => decodeAttr(m[1]));
+    must(!hrefs.some((h) => /evil\.example|javascript|vbscript|data:/i.test(h)), `${name}: a hostile step reached an href: ${hrefs.join(' | ')}`);
+    must(!tagWith(out, 'data-act=').length, `${name}: a hostile step rendered a live link or button`);
+  }
+  // The site's link policy, when an admin set one: an off-list host is inert on the page too.
+  setStudioLinks({ mode: 'allow', hosts: ['github.com'] });
+  const pol = page({ id: 'pol', blocks: [
+    { id: 'ok', kind: 'box', x: 0, y: 0, w: 100, h: 50, action: [{ type: 'external', url: 'https://docs.github.com/a' }] },
+    { id: 'no', kind: 'box', x: 0, y: 60, w: 100, h: 50, action: [{ type: 'external', url: 'https://evil.example/a' }] },
+  ] }, 'light');
+  setStudioLinks({ mode: 'block', hosts: [] });
+  must(/href="https:\/\/docs\.github\.com\/a"/.test(pol), 'an allowlisted host was not rendered as a link');
+  must(!/evil\.example/.test(pol) && /data-inert="host_not_allowed"/.test(pol), 'an off-allowlist host reached the page, or was not marked inert');
+} catch (e) { problems.push(`the hostile action render threw: ${e?.message || e}`); }
+must(/\.cv-act:focus-visible\s*\{[^}]*outline:\s*2px/.test((await import('node:fs')).readFileSync('src/index.css', 'utf8')), 'a block action has no visible focus ring (.cv-act:focus-visible in index.css)');
 
 cleanup();
 

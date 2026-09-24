@@ -766,6 +766,20 @@ code, .break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
 .cv-hov-dim:hover { opacity: .7; }
 .cv-hov-tilt:hover { transform: rotate(-1.5deg) scale(1.02); }
 .cv-blk-link { display: block; width: 100%; height: 100%; color: inherit; text-decoration: none; }
+/* Block actions (studio phase 5, ui/canvas-actions.jsx). A block that is not a button gets a
+   COVER: a real <a href> or <button> laid over it, with no content of its own. The block's own
+   interactive content sits ABOVE the cover, so a text block's links win over the block's action
+   (and a click anywhere else in the block runs it). */
+.cv-actionable { position: relative; }
+.cv-act { position: absolute; inset: 0; z-index: 1; display: block; margin: 0; padding: 0; border: 0; background: transparent; color: inherit; cursor: pointer; font: inherit; text-decoration: none; }
+.cv-actionable .bcw-canvas-text :is(a[href], button, summary, input, select, textarea, label, [tabindex]) { position: relative; z-index: 2; }
+/* The focus ring, drawn INSIDE the box: the shell clips, and a ring outside it would be cut. */
+.cv-act:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: -3px; border-radius: inherit; }
+.cv-btn-act { font: inherit; cursor: pointer; }
+button.cv-btn-card { text-align: start; }
+.cv-btn-act:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
+.cv-btn-act[aria-disabled="true"], [data-inert] > .cv-act { cursor: not-allowed; }
+.cv-act-fb { position: absolute; right: 8px; bottom: 8px; padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--bg-solid); color: var(--text); border: 1px solid var(--line); pointer-events: none; }
 @media (prefers-reduced-motion: reduce) {
   .cv-shell { transition: none; }
   .cv-hov-lift:hover, .cv-hov-grow:hover, .cv-hov-tilt:hover { transform: none; }

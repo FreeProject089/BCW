@@ -9,5 +9,8 @@ export * from '../../../../packages/studio/src/canvas.js';
 export * from '../../../../packages/studio/src/validate.js';
 // The closed page background (phase 4), for the renderer and the studio's Page panel.
 export * from '../../../../packages/studio/src/background.js';
+// What a block does when pressed (phase 5): the closed action vocabulary, the link policy and
+// the submit registry, for the renderer and the studio's "On click" section.
+export * from '../../../../packages/studio/src/actions.js';
 // The scene vocabulary (shapes, bounds) a 3D page background is edited with; no three.js in it.
 export * from '../../../../packages/studio/src/scene.js';

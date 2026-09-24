@@ -10,7 +10,7 @@ import { buildEndpointGraph, endpointPathsToFetch } from '../lib/endpoint-graph.
 import { functionEdges, buildFlow, drawableFunctions } from '../lib/code-flow.mjs';
 import { snapshotKey, settingsKey, secretFor, rebuildSnapshot } from './code-webhook.mjs';
 import { projectKeys, isProjectKey, forgetProjectKeys, BUILTIN_PROJECT_KEYS, KEY_SHAPE } from '../lib/project-keys.mjs';
-import { configStudioProblems, studioDocError, configRevs, parsePageSave, replaceConfigPage } from '../lib/studio-doc.mjs';
+import { configStudioProblems, studioDocError, configRevs, parsePageSave, replaceConfigPage, studioValidateOpts } from '../lib/studio-doc.mjs';
 import { configLinkProblems, configLinkError } from '../lib/config-links.mjs';
 
 // Per-project, admin-editable config (downloads, links, contributors, progress,
@@ -499,7 +499,7 @@ export default async function projectRoutes(app) {
       // Its studio pages are studio content, whoever stages them (guardStudioContent):
       // manage_projects alone does not draw a page, now or at the scheduled time.
       b.data.next.config = guardStudioContent(b.data.next.config, stored, await canUseStudio(req.user, 'project', req.params.key, stored));
-      const problems = configStudioProblems(b.data.next.config, stored);
+      const problems = configStudioProblems(b.data.next.config, stored, await studioValidateOpts(await db()));
       if (problems.length) return reply.code(400).send(studioDocError(problems));
     }
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
@@ -603,7 +603,7 @@ export default async function projectRoutes(app) {
     if (!snap) return reply.code(404).send({ error: 'not_found' });
     const live = await getConfig(p, req.params.key);
     b.data.config = guardStudioContent(b.data.config, snap.config, await canUseStudio(req.user, 'project', req.params.key, live));
-    const problems = configStudioProblems(b.data.config, snap.config);
+    const problems = configStudioProblems(b.data.config, snap.config, await studioValidateOpts(p));
     if (problems.length) return reply.code(400).send(studioDocError(problems));
     const done = await p.projectVersion.updateMany({
       where: { target: req.params.key, version: req.params.version },
@@ -988,7 +988,7 @@ export default async function projectRoutes(app) {
     // The studio pages inside the config are author-written documents a visitor's browser
     // renders: a hostile href, colour, id or position is refused here, with the path of the
     // field (lib/studio-doc.mjs). A value already stored is tolerated, see there.
-    const problems = configStudioProblems(guarded, cur?.value);
+    const problems = configStudioProblems(guarded, cur?.value, await studioValidateOpts(p));
     if (problems.length) return reply.code(400).send(studioDocError(problems));
     const cfg = guardStudioFlag(guarded, cur?.value, canManageProjects(req.user));
     await p.adminSetting.upsert({ where: { key: k }, create: { key: k, value: cfg }, update: { value: cfg } });
@@ -1024,7 +1024,7 @@ export default async function projectRoutes(app) {
     if (!(await canUseStudio(req.user, 'project', req.params.key, cur?.value))) return reply.code(403).send({ error: await studioRefusal(req.user, 'project', req.params.key) });
     const b = parsePageSave(req.body);
     if (!b.ok) return reply.code(400).send({ error: b.error });
-    const r = await replaceConfigPage(cur?.value, String(req.params.pageId), b.canvas, b.base);
+    const r = await replaceConfigPage(cur?.value, String(req.params.pageId), b.canvas, b.base, await studioValidateOpts(p));
     if (r.status) return reply.code(r.status).send(r.body);
     await p.adminSetting.upsert({ where: { key: k }, create: { key: k, value: r.config }, update: { value: r.config } });
     await snapshotVersion(p, req.params.key, r.config);

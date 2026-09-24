@@ -54,6 +54,7 @@
 // (`serializeDoc`). Nothing is migrated in SQL.
 
 import { normalizeBackground, backgroundFromLegacy, serializeBackground } from './background.js';
+import { blockSteps, revealTargets } from './actions.js';
 
 /** The document version this code writes. */
 export const DOC_VERSION = 2;
@@ -259,6 +260,12 @@ export const KIND_PROPS = {
 };
 /** Is `key` a prop this kind may carry? */
 export const propAllowed = (kind, key) => COMMON_PROPS.includes(key) || (KIND_PROPS[kind] || []).includes(key);
+/** Props without the legacy `action` (it is the block's `action` now, actions.js). */
+function withoutAction(props) {
+  if (!props || !('action' in props)) return props;
+  const { action: _legacy, ...rest } = props;
+  return rest;
+}
 /** The props, reduced to the allow-list of the kind. Values are filtered where they are USED. */
 export function cleanProps(kind, raw) {
   const o = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
@@ -317,7 +324,8 @@ function normalizeBlock(b, i, taken) {
     h: size(b.h, 120),
     z: num(b.z, i),
     // Per-kind allow-list: a field the renderer never reads is not carried to the next save.
-    props: cleanProps(kind, b.props),
+    // `props.action` is not a prop any more: it became `action` above.
+    props: withoutAction(cleanProps(kind, b.props)),
     // Opacity lives on the BLOCK, not in props: it applies to the wrapper, so it works the
     // same for a picture, a video and a text block. In props it would have had to be
     // re-implemented per kind, and three of them would have been forgotten.
@@ -335,7 +343,10 @@ function normalizeBlock(b, i, taken) {
     rotate: clamp(Math.round(num(b.rotate, 0)), -180, 180),
     shadow: SHADOWS.includes(b.shadow) ? b.shadow : '',
     hover: HOVER_EFFECTS.includes(b.hover) ? b.hover : '',
-    link: safeLink(b.link),
+    // What pressing it does (actions.js, PLAN-STUDIO-2026 2.5, phase 5): a list of steps. A
+    // block saved before phase 5 carried a `link` (any kind) or a button's `props.action`; both
+    // are READ here as steps, and `serializeDoc` writes `action` alone from then on.
+    action: blockSteps(b),
     // Which saved component this block came from, if any: `{ id, inst }` — the component
     // and the particular copy of it, so "update every instance" can find the copies and
     // "detach" can forget one. Absent on a block placed by hand. Kept here because this
@@ -513,7 +524,12 @@ function serializeBlock(b) {
   if (b.rotate) out.rotate = b.rotate;
   if (b.shadow) out.shadow = b.shadow;
   if (b.hover) out.hover = b.hover;
-  if (b.link) out.link = b.link;
+  // The steps, whichever way this block holds them (a block inserted from an old template may
+  // still carry `props.action` or `link`): written as `action`, never as the legacy fields.
+  const steps = blockSteps(b);
+  if (steps.length) out.action = steps;
+  if (out.props && 'action' in out.props) out.props = withoutAction(out.props);
+  if (out.props && !Object.keys(out.props).length) delete out.props;
   if (b.component) out.component = b.component;
   return out;
 }
@@ -611,7 +627,7 @@ function themeOverlays(raw, kind = 'text') {
     for (const k of ['w', 'h']) if (o[k] != null && Number.isFinite(Number(o[k]))) t[k] = size(o[k]);
     if (o.opacity != null && Number.isFinite(Number(o.opacity))) t.opacity = clamp(num(o.opacity, 1), 0, 1);
     if (o.hidden === true) t.hidden = true;
-    if (o.props && typeof o.props === 'object') { const p = cleanProps(kind, o.props); if (Object.keys(p).length) t.props = p; }
+    if (o.props && typeof o.props === 'object') { const p = withoutAction(cleanProps(kind, o.props)); if (Object.keys(p).length) t.props = p; }
     if (Object.keys(t).length) out[mode] = t;
   }
   return out;
@@ -772,12 +788,17 @@ export function frameBlocks(doc, mode = 'scale', theme = 'light') {
   const blocks = Array.isArray(doc?.blocks) ? doc.blocks : [];
   const desk = doc?.frames?.desktop || { w: DESIGN_WIDTH, h: Infinity };
   const show = (b) => resolveBlock(b, theme);
-  if (mode === 'stack') return phoneOrder(blocks).map(show).filter((b) => !b.hidden && inFrame(b, desk));
+  // A block hidden at load that a `reveal` step names (phase 5) IS mounted, still flagged
+  // `hidden`: the renderer keeps it out of sight until the step shows it. Any other hidden
+  // block stays unmounted, as before.
+  const revealable = revealTargets(blocks);
+  const keep = (b) => !b.hidden || revealable.has(b.id);
+  if (mode === 'stack') return phoneOrder(blocks).map(show).filter((b) => keep(b) && inFrame(b, desk));
   if (mode === 'phone') {
     const pf = doc?.frames?.phone || { w: PHONE_WIDTH, h: Infinity };
-    return phoneBoardBlocks(blocks.map(show).filter((b) => !b.hidden), 40, desk).filter((b) => !b.parked && inFrame(b, pf));
+    return phoneBoardBlocks(blocks.map(show).filter(keep), 40, desk).filter((b) => !b.parked && inFrame(b, pf));
   }
-  return paintOrder(blocks).map(show).filter((b) => !b.hidden && inFrame(b, desk));
+  return paintOrder(blocks).map(show).filter((b) => keep(b) && inFrame(b, desk));
 }
 
 /**

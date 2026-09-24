@@ -23,9 +23,29 @@
 // checked.
 import {
   validateDoc, safeLink, cssValueOk, pinsToViewport, ID_SHAPE, MAX_DOC_BYTES,
+  migrateDocActions, normalizeLinkPolicy, linkPolicyProblems, DEFAULT_LINK_POLICY,
 } from '../../../../packages/studio/src/index.js';
 
-export { safeLink, cssValueOk, pinsToViewport, ID_SHAPE, MAX_DOC_BYTES };
+export { safeLink, cssValueOk, pinsToViewport, ID_SHAPE, MAX_DOC_BYTES, normalizeLinkPolicy, linkPolicyProblems };
+
+// ── The link policy (PLAN-STUDIO-2026 decision D7, phase 5) ────────────────────────────
+// Which hosts a studio `external` step may open: `{ mode: 'block' | 'allow', hosts }`, an
+// admin site setting. Read FRESH at every studio save (saves are rare, a stale copy would let
+// a host the admin just blocked through), and publicly by GET /site/studio-links, which the
+// renderer uses to draw a now-blocked link inert without anybody re-saving the page.
+export const LINK_POLICY_KEY = 'studio.links';
+
+/** The stored policy, normalised; the default (every https host) when there is none. */
+export async function studioLinkPolicy(p) {
+  if (!p?.adminSetting) return normalizeLinkPolicy(DEFAULT_LINK_POLICY);
+  const row = await p.adminSetting.findUnique({ where: { key: LINK_POLICY_KEY } }).catch(() => null);
+  return normalizeLinkPolicy(row?.value || DEFAULT_LINK_POLICY);
+}
+
+/** What every studio validation below is given: `{ links }`. */
+export async function studioValidateOpts(p) {
+  return { links: await studioLinkPolicy(p) };
+}
 
 /**
  * Every problem in ONE studio document, as `{ path, reason, key }`: the package's validator
@@ -47,24 +67,32 @@ function sectionDocs(sections) {
   return (Array.isArray(sections) ? sections : []).map((s, i) => [s?.canvas, `customSections[${i}].canvas`]).filter(([d]) => d);
 }
 
-function newProblems(docs, currentDocs) {
+function newProblems(docs, currentDocs, opts = {}) {
   const known = new Set();
-  for (const [doc] of currentDocs) for (const p of studioDocProblems(doc)) known.add(p.key);
+  for (const [doc] of currentDocs) {
+    for (const p of studioDocProblems(doc, '', opts)) known.add(p.key);
+    // The stored page as the studio will write it back: its legacy `link` / `props.action`
+    // as `action` steps (phase 5). A value already stored the old way (an `api` button, D5, a
+    // plain http link) is then recognised under its new path, and tolerated like any other
+    // legacy value, instead of locking the page's editor out of its next save.
+    for (const p of studioDocProblems(migrateDocActions(doc), '', opts)) known.add(p.key);
+  }
   const out = [];
   for (const [doc, prefix] of docs) {
-    for (const p of studioDocProblems(doc, prefix)) if (!known.has(p.key)) out.push({ path: p.path, reason: p.reason });
+    for (const p of studioDocProblems(doc, prefix, opts)) if (!known.has(p.key)) out.push({ path: p.path, reason: p.reason });
   }
   return out;
 }
 
-/** Problems a project/showcase config would ADD over what is stored. [] = accept. */
-export function configStudioProblems(incoming, current) {
-  return newProblems(configDocs(incoming), configDocs(current));
+/** Problems a project/showcase config would ADD over what is stored. [] = accept.
+ *  `opts` = studioValidateOpts(): the link policy an `external` step is checked against. */
+export function configStudioProblems(incoming, current, opts = {}) {
+  return newProblems(configDocs(incoming), configDocs(current), opts);
 }
 
 /** Problems a home `customSections` list would ADD over what is stored. [] = accept. */
-export function sectionsStudioProblems(incoming, current) {
-  return newProblems(sectionDocs(incoming), sectionDocs(current));
+export function sectionsStudioProblems(incoming, current, opts = {}) {
+  return newProblems(sectionDocs(incoming), sectionDocs(current), opts);
 }
 
 // ── Saving ONE page (the studio's own save) ────────────────────────────────────────────
@@ -112,7 +140,7 @@ export function parsePageSave(body) {
  * Put one page back into a project/showcase config, by id. Returns
  * `{ status, body }` for a refusal, or `{ config, rev }` for the config to store.
  */
-export async function replaceConfigPage(current, pageId, canvas, base) {
+export async function replaceConfigPage(current, pageId, canvas, base, opts = {}) {
   const cur = current && typeof current === 'object' ? current : {};
   const list = Array.isArray(cur.canvases) ? cur.canvases : [];
   const at = list.findIndex((c) => c && c.id === pageId);
@@ -122,7 +150,7 @@ export async function replaceConfigPage(current, pageId, canvas, base) {
     // studio opened and was deleted since: a stale tab must not bring it back.
     if (base !== '') return { status: 404, body: { error: 'page_gone' } };
     const next = { ...cur, canvases: [...list, { ...canvas, id: pageId }] };
-    const problems = configStudioProblems(next, cur);
+    const problems = configStudioProblems(next, cur, opts);
     if (problems.length) return { status: 400, body: studioDocError(problems) };
     return { config: next, rev: await pageRev(next.canvases[next.canvases.length - 1]) };
   }
@@ -131,20 +159,20 @@ export async function replaceConfigPage(current, pageId, canvas, base) {
   if (now !== base) return { status: 409, body: { error: 'conflict', rev: now, current: stored } };
   // The page keeps its id: the URL named it, and a body that renamed it would orphan drafts.
   const next = { ...cur, canvases: list.map((c, i) => (i === at ? { ...canvas, id: pageId } : c)) };
-  const problems = configStudioProblems(next, cur);
+  const problems = configStudioProblems(next, cur, opts);
   if (problems.length) return { status: 400, body: studioDocError(problems) };
   return { config: next, rev: await pageRev(next.canvases[at]) };
 }
 
 /** The same for a home section's drawing. The section is switched to drawn, as before. */
-export async function replaceSectionCanvas(sections, sectionId, canvas, base) {
+export async function replaceSectionCanvas(sections, sectionId, canvas, base, opts = {}) {
   const list = Array.isArray(sections) ? sections : [];
   const at = list.findIndex((s) => s && s.id === sectionId);
   if (at < 0) return { status: 404, body: { error: 'page_gone' } };
   const now = await pageRev(list[at].canvas);
   if (now !== base) return { status: 409, body: { error: 'conflict', rev: now, current: list[at].canvas || null } };
   const next = list.map((s, i) => (i === at ? { ...s, mode: 'canvas', canvas } : s));
-  const problems = sectionsStudioProblems(next, list);
+  const problems = sectionsStudioProblems(next, list, opts);
   if (problems.length) return { status: 400, body: studioDocError(problems) };
   return { sections: next, rev: await pageRev(canvas) };
 }

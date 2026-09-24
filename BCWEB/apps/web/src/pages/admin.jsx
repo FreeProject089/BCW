@@ -111,6 +111,7 @@ import { ADMIN_SCREENS_REF } from '../lib/admin-screens-ref.js';
 import { AdminReactions } from './admin-reactions.jsx';
 import AdminGuide from './admin-guide.jsx';
 import { AdminThreads } from './admin-threads.jsx';
+import { StudioLinksCard } from './admin-studio-links.jsx'; // studio phase 5 (agent-studio-5): the link policy of studio block actions
 import { AdminMediaFlags } from './admin-media-flags.jsx';
 import ReplayPlayer from '../ui/ReplayPlayer.jsx';
 import { useAsync, Loading, useUndoableDelete, useUndoableToggle, useUndoableSave, useElementWidth, statusTone, KIND_ICON, KIND_LABEL, kindLabel, kindsFor, CATALOG_PROJECTS, csvCell, downloadCsv, toCsv, fmtRemaining, seededAvatar, SideDash, useThreadStream } from './pages.jsx';
@@ -569,7 +570,7 @@ export function Admin() {
         {s === 'navui' && <AdminNav />}
         {s === 'footer' && <AdminFooter />}
         {s === 'guide' && <AdminGuide />}
-        {s === 'settings' && <AdminSettings />}
+        {s === 'settings' && <><AdminSettings /><StudioLinksCard /></>}
         {s === 'sitetheme' && <AdminSiteTheme />}
       </>)}
     </SideDash>

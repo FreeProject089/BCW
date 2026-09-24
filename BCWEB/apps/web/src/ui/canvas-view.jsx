@@ -9,7 +9,8 @@
 // B.MD later shows up here without this file changing.
 import { useEffect, useRef, useState } from 'react';
 import Markdown from './md.jsx';
-import { normalizeDoc, layoutFor, frameBlocks, buttonTarget, menuItemHref, safeLink, backgroundStyle, EASING_CURVES, DESIGN_WIDTH, PHONE_WIDTH } from '../lib/canvas.js';
+import { normalizeDoc, layoutFor, frameBlocks, menuItemHref, safeLink, backgroundStyle, planAction, EASING_CURVES, DESIGN_WIDTH, PHONE_WIDTH } from '../lib/canvas.js';
+import { CanvasActions, ActionCover, useCanvasActions, planAttrs, useFeedback, feedbackText } from './canvas-actions.jsx';
 import CanvasBackground from './canvas-background.jsx';
 import { markdownConfig } from '@bettercommunity/bmd/config';
 import { sanitizeSvg } from '../lib/svg-safe.js';
@@ -52,7 +53,7 @@ function keyframeBody(src) {
  * Reduced motion is honoured in the stylesheet, so a reader who asked for stillness gets the
  * block, already in place, with nothing moving.
  */
-function Animated({ anim, id, style, className, children }) {
+function Animated({ anim, id, style, className, children, shown = true }) {
   const ref = useRef(null);
   const trigger = anim?.trigger || 'show';
   const [on, setOn] = useState(!anim || trigger === 'hover' || trigger === 'load');
@@ -65,7 +66,12 @@ function Animated({ anim, id, style, className, children }) {
     io.observe(el);
     return () => io.disconnect();
   }, [anim, trigger]);
-  if (!anim) return <div style={style} className={className}>{children}</div>;
+  // `data-cvb` names the block for a `scroll` or `reveal` step (canvas-actions.jsx), which looks
+  // it up by this attribute and never through a selector. A block hidden at load that a reveal
+  // step names is mounted with `display: none` until the step shows it.
+  const cvb = String(id ?? '').replace(/[^\w-]/g, '').slice(0, 60) || undefined;
+  const st = shown ? style : { ...style, display: 'none' };
+  if (!anim) return <div style={st} className={className} data-cvb={cvb}>{children}</div>;
   // The curve comes from the NAME the author picked, resolved through the one table in
   // lib/canvas.js — never from a string they typed, because this lands in a style attribute
   // on a public page.
@@ -86,7 +92,7 @@ function Animated({ anim, id, style, className, children }) {
     ? `@keyframes cv-${cssId}{${keyframeBody(anim.custom)}}[data-anim="${cssId}"].in,[data-anim="${cssId}"].cv-hover:hover{animation-name:cv-${cssId}}`
     : null;
   return (
-    <div ref={ref} style={{ ...style, ...vars }} className={cls} data-anim={cssId}>
+    <div ref={ref} style={{ ...st, ...vars }} className={cls} data-anim={cssId} data-cvb={cvb}>
       {custom ? <style>{custom}</style> : null}
       {children}
     </div>
@@ -102,6 +108,11 @@ function Animated({ anim, id, style, className, children }) {
  */
 function BlockShell({ b, children }) {
   const p = b.props || {};
+  const ex = useCanvasActions();
+  // What pressing the block does (phase 5). A button block carries its own element (see
+  // CanvasButton); every other kind gets the cover, UNDER its own links (canvas-actions.jsx).
+  const plan = b.kind !== 'button' && ex ? ex.plan(b.action) : null;
+  const acts = !!plan && plan.kind !== 'none';
   // The author's own classes (utility-shaped tokens only — a class exists at runtime only if
   // the build knows it, which the studio says) and inline declarations, through the same
   // filter as the page stylesheet.
@@ -114,64 +125,53 @@ function BlockShell({ b, children }) {
     transform: b.rotate ? `rotate(${b.rotate}deg)` : undefined,
     ...safeInlineStyle(p.style),
   };
-  const body = <div className={cls} style={style}>{children}</div>;
-  if (b.link && b.kind !== 'button') {
-    const ext = /^https?:\/\//i.test(b.link);
-    return <a href={b.link} className="cv-blk-link" {...(ext ? { target: '_blank', rel: 'noreferrer noopener' } : {})}>{body}</a>;
-  }
-  return body;
+  if (!acts) return <div className={cls} style={style}>{children}</div>;
+  return (
+    <div className={`${cls} cv-actionable`} style={{ ...style, position: 'relative' }} data-inert={plan.kind === 'inert' ? plan.reason : undefined}>
+      {children}
+      {plan.kind !== 'inert' && <ActionCover plan={plan} label={actionLabel(b)} doneLabel={p.doneLabel} />}
+    </div>
+  );
+}
+/**
+ * The accessible name of a block's action cover: the block's own name, else what it shows (its
+ * alt text, its label, the first words of its text). A cover has no content of its own, so
+ * without this a screen reader would announce "link" and nothing else.
+ */
+function actionLabel(b) {
+  const p = b.props || {};
+  // A link's words, not its address: `[the docs](/docs)` reads "the docs".
+  const md = typeof p.md === 'string' ? p.md.replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/[#>*_`~[\]()!|:-]+/g, ' ').replace(/\s+/g, ' ').trim() : '';
+  return String(b.name || p.alt || p.text || p.title || p.label || md || '').slice(0, 120);
 }
 /** Whether the wrapper must stop clipping so the shell's effects can paint outside the box. */
 const spills = (b) => b.kind === 'button' || !!b.rotate || !!b.shadow || !!b.hover;
 
 /**
- * What a button does when pressed.
- *
- * Decided by `buttonTarget` (lib/canvas.js), the one place an action becomes an href: the
- * link policy is applied there, never here (S1). An action the page may no longer run (the
- * old `api` one, S2; a scroll to a selector) renders INERT, a button that does nothing, with
- * `aria-disabled`, rather than one that does something nobody reviewed.
+ * A button block. What it does is the block's `action` (phase 5), decided by planAction in the
+ * studio package: a link plan is a real `<a href>`, any other a `<button>`, an inert one (the old
+ * `api` action, a refused value) a disabled element that says why (`data-inert`) and carries no
+ * href. Without an executor (the editor's own board draws blocks bare) nothing runs.
  */
-function useButtonAction(p) {
-  const [state, setState] = useState('');
-  const act = p.action || {};
-  const target = buttonTarget(act);
-  const run = async (e) => {
-    if ((target.type === 'link' || target.type === 'download') && target.href) return;   // the anchor does it
-    e.preventDefault();
-    if (target.type === 'inert' || (!target.href && target.type !== 'copy')) return;
-    try {
-      if (target.type === 'copy') { await navigator.clipboard.writeText(String(act.text || '')); setState('done'); }
-      else if (target.type === 'scroll') {
-        // An element id, looked up as one: never handed to querySelector as a selector.
-        const el = target.href === '#top' ? (document.getElementById('top') || document.body) : document.getElementById(target.href.slice(1));
-        el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
-    } catch { setState('err'); }
-    setTimeout(() => setState(''), 1800);
-  };
-  const anchorProps = target.type === 'link' && target.href ? { href: target.href, ...(target.external ? { target: '_blank', rel: 'noopener noreferrer' } : {}) }
-    : target.type === 'download' && target.href ? { href: target.href, download: true, ...(target.external ? { rel: 'noopener noreferrer' } : {}) }
-    : target.type === 'inert' ? { role: 'button', 'aria-disabled': true, tabIndex: -1, 'data-inert': target.reason }
-    : { href: '#', role: 'button' };
-  return { run, state, anchorProps };
-}
-
-function CanvasButton({ p }) {
+function CanvasButton({ p, b }) {
   const variant = p.variant || 'button';
   const size = ['sm', 'md', 'lg'].includes(p.size) ? p.size : 'md';
   const btn = safeCssValue(p.color);
   const style = btn ? { '--btn': btn } : undefined;
-  const { run, state, anchorProps } = useButtonAction(p);
+  const ex = useCanvasActions();
+  const plan = ex ? ex.plan(b?.action) : planAction(b?.action);
+  const [fb, show] = useFeedback();
   const [open, setOpen] = useState(false);
-  const face = state === 'done' ? (p.doneLabel || '✓') : state === 'err' ? '✕' : (p.label || 'Button');
+  const face = fb ? feedbackText(ex?.t || ((_k, f) => f), fb, p.doneLabel) : (p.label || 'Button');
+  const { Tag, attrs } = plan.kind === 'none' ? { Tag: 'span', attrs: {} } : planAttrs(plan);
+  const onClick = (e) => { if (ex) ex.activate(e, plan, show); else e.preventDefault(); };
   if (variant === 'card') {
     return (
-      <a {...anchorProps} onClick={run} className="cv-btn-card" style={style}>
-        <span className="cv-btn-card-t">{face}</span>
+      <Tag {...attrs} onClick={onClick} className="cv-btn-card cv-btn-act" style={style}>
+        <span className="cv-btn-card-t" role={fb ? 'status' : undefined}>{face}</span>
         {p.desc ? <span className="cv-btn-card-d">{p.desc}</span> : null}
         <span className="cv-btn-card-arrow" aria-hidden>→</span>
-      </a>
+      </Tag>
     );
   }
   if (variant === 'dropdown-down' || variant === 'dropdown-up') {
@@ -195,7 +195,9 @@ function CanvasButton({ p }) {
     );
   }
   return (
-    <a {...anchorProps} onClick={run} className={`doc-btn doc-btn-${size}${p.outline ? ' doc-btn-outline' : ''}`} style={style}>{face}</a>
+    <Tag {...attrs} onClick={onClick} className={`doc-btn doc-btn-${size}${p.outline ? ' doc-btn-outline' : ''} cv-btn-act`} style={style}>
+      <span role={fb ? 'status' : undefined}>{face}</span>
+    </Tag>
   );
 }
 
@@ -247,7 +249,7 @@ export function CanvasBlock({ b, stacked }) {
   const p = b.props || {};
   if (b.kind === 'button') {
     // Centred in its box on the board; a natural inline element in a stack.
-    return <div className="cv-btn-wrap" style={stacked ? undefined : { display: 'flex', alignItems: 'center', justifyContent: p.align === 'left' ? 'flex-start' : p.align === 'right' ? 'flex-end' : 'center', height: '100%' }}><CanvasButton p={p} /></div>;
+    return <div className="cv-btn-wrap" style={stacked ? undefined : { display: 'flex', alignItems: 'center', justifyContent: p.align === 'left' ? 'flex-start' : p.align === 'right' ? 'flex-end' : 'center', height: '100%' }}><CanvasButton p={p} b={b} /></div>;
   }
   // A tiling pattern rides on top of a plain colour; a gradient background keeps the
   // shorthand and the pattern is skipped — two images in one shorthand is a syntax lesson.
@@ -358,6 +360,14 @@ export function CanvasBlock({ b, stacked }) {
  */
 const CONFINE = { contain: 'layout paint', transform: 'translateZ(0)' };
 
+/** Whether a block is visible NOW: hidden at load (and named by a reveal step) until a step
+ *  shows it, or shown until a step hides it. The state lives in the executor. */
+function Shown({ b, children }) {
+  const ex = useCanvasActions();
+  const shown = ex ? ex.isShown(b.id, !!b.hidden) : !b.hidden;
+  return children(shown);
+}
+
 /**
  * @param {object} props
  * @param {object} props.canvas  the stored canvas (raw; normalised here)
@@ -365,7 +375,7 @@ const CONFINE = { contain: 'layout paint', transform: 'translateZ(0)' };
  *        "what does this look like on a phone" toggle — the reason it is a prop and not
  *        purely a measurement is that an author on a desktop cannot otherwise ever see it.
  */
-export default function CanvasView({ canvas: raw, stackPreview = false, themePreview = null }) {
+export default function CanvasView({ canvas: raw, stackPreview = false, themePreview = null, actionsPreview = false }) {
   const canvas = normalizeDoc(raw);
   const hostRef = useRef(null);
   const [vw, setVw] = useState(DESIGN_WIDTH);
@@ -416,17 +426,22 @@ export default function CanvasView({ canvas: raw, stackPreview = false, themePre
   // set for phones where they set one, and in reading order everywhere else.
   // Sizes go with it: a width measured in design pixels means nothing in a column.
   // Only what is ON the desktop page reaches the column: the stack is that page, read in order.
+  // Every block that says what it does is run by the executor (canvas-actions.jsx), which also
+  // owns the runtime state a reveal step changes (see Shown).
+  const wrap = (node) => <CanvasActions blocks={canvas.blocks} rootRef={hostRef} preview={actionsPreview}>{node}</CanvasActions>;
   if (L.mode === 'stack') {
-    return (
+    return wrap(
       <div ref={hostRef} className="space-y-4" data-cv={canvas.id} data-cv-background={bg.type} style={{ ...rootBg, position: 'relative', ...CONFINE }}>
         <ScopedCss canvas={canvas} />
         {/* The column is the frame here. z-index -1 inside the root's own stacking context (its
             transform makes one): under the blocks, over the root's own background. */}
         {!rootBg && <CanvasBackground bg={bg} style={{ zIndex: -1 }} />}
         {frameBlocks(canvas, 'stack', mode).map((b) => (
-          <Animated key={b.id} id={b.id} anim={b.anim} className="min-w-0" style={b.opacity < 1 ? { opacity: b.opacity } : undefined}>
-            <BlockShell b={b}><CanvasBlock b={b} stacked /></BlockShell>
-          </Animated>
+          <Shown key={b.id} b={b}>{(shown) => (
+            <Animated id={b.id} anim={b.anim} shown={shown} className="min-w-0" style={b.opacity < 1 ? { opacity: b.opacity } : undefined}>
+              <BlockShell b={b}><CanvasBlock b={b} stacked /></BlockShell>
+            </Animated>
+          )}</Shown>
         ))}
       </div>
     );
@@ -445,7 +460,7 @@ export default function CanvasView({ canvas: raw, stackPreview = false, themePre
   // Off the frame = not mounted (frameBlocks, see above). On the phone board a block the
   // author did not place there and that is off the DESKTOP page is parked too.
   const blocks = frameBlocks(canvas, phone ? 'phone' : 'scale', mode);
-  return (
+  return wrap(
     <div ref={hostRef} className="w-full overflow-hidden" data-cv={canvas.id} data-cv-background={bg.type} style={{ ...rootBg, ...CONFINE }}>
       <ScopedCss canvas={canvas} />
       <div style={{ height: planeH * L.scale, position: 'relative', ...(phone ? { width: planeW * L.scale, margin: '0 auto' } : {}) }}>
@@ -472,8 +487,9 @@ export default function CanvasView({ canvas: raw, stackPreview = false, themePre
           }}
         >
           {blocks.map((b) => (
+            <Shown key={b.id} b={b}>{(shown) => (
             <Animated
-              key={b.id} id={b.id} anim={b.anim}
+              id={b.id} anim={b.anim} shown={shown}
               // CLIPPED, on purpose. A block has the size the author gave it, and content
               // that spills would land on top of whatever is placed below it — a canvas
               // where one paragraph silently pushes into its neighbour is not a layout.
@@ -484,6 +500,7 @@ export default function CanvasView({ canvas: raw, stackPreview = false, themePre
             >
               <BlockShell b={b}><CanvasBlock b={b} /></BlockShell>
             </Animated>
+            )}</Shown>
           ))}
         </div>
       </div>

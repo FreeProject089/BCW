@@ -96,7 +96,10 @@ function page(title, body, opts = {}) {
 
 export default async function newsletterRoutes(app) {
   // ── Public: subscribe (starts the double opt-in) ────────────────────────────
-  app.post('/newsletter/subscribe', async (req, reply) => {
+  // Its own limit (studio phase 5): each call can send a confirmation mail to any address, and
+  // a studio page can now carry a "subscribe" button (packages/studio SUBMIT_REGISTRY), so the
+  // global 600/min limiter alone let one IP mail a stranger hundreds of times a minute.
+  app.post('/newsletter/subscribe', { config: { rateLimit: { max: 8, timeWindow: '10 minutes' } } }, async (req, reply) => {
     const b = z.object({ email: z.string().email().max(160), locale: z.enum(['en', 'fr']).optional() }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_email' });
     const email = b.data.email.trim().toLowerCase();
