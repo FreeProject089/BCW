@@ -7,14 +7,11 @@
 // too many, and the dev-machine geo fallback in particular is subtle enough that a
 // re-derivation would get it wrong. Moved here VERBATIM and imported by both.
 import { createHash } from 'node:crypto';
+import { ipOf } from './client-ip.mjs';
 import { JWT_SECRET } from './jwt-secret.mjs';
 
 // Real client IP as seen by our trusted proxy (Caddy appends it last on X-Forwarded-For).
-export function clientIp(req) {
-  const xff = req.headers['x-forwarded-for'];
-  if (xff) { const parts = String(xff).split(',').map((s) => s.trim()).filter(Boolean); if (parts.length) return parts[parts.length - 1]; }
-  return req.ip || '0.0.0.0';
-}
+export const clientIp = (req) => ipOf(req, '0.0.0.0');
 // Daily-rotating anonymous visitor hash — no persistent cookie, no PII stored.
 export function visitorHash(req) {
   const day = new Date().toISOString().slice(0, 10);

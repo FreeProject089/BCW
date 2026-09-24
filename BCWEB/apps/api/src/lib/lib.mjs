@@ -1,5 +1,6 @@
 // Shared helpers: Prisma singleton, JWT sessions, role guards, slugify.
 import jwt from 'jsonwebtoken';
+import { ipOf } from './client-ip.mjs';
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -1394,11 +1395,7 @@ export function matchAccountList(list, userId, discordId) {
 }
 
 // The connecting client's IP (honours the last X-Forwarded-For hop, set by our edge).
-export function clientIp(req) {
-  const xff = req.headers['x-forwarded-for'];
-  if (xff) { const parts = String(xff).split(',').map((s) => s.trim()).filter(Boolean); if (parts.length) return parts[parts.length - 1]; }
-  return req.ip;
-}
+export const clientIp = (req) => ipOf(req);
 // Resolve the FULL client identity from the X-Creator-ID header BMM sends on repo AND
 // catalog requests. The header is trusted only as far as CreatorLink allows — userId,
 // that account's Discord, email and BC id are all derived server-side, so a banned

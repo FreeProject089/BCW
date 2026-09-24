@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ipOf } from '../lib/client-ip.mjs';
 import argon2 from 'argon2';
 import { keyAuthOk, keyAudience } from '../lib/keyauth.mjs';
 import { Transform } from 'node:stream';
@@ -39,11 +40,7 @@ const norm = (p) => p.replace(/\\/g, '/').replace(/^\/+/, '').split('/').map((s)
 
 // ── Runtime sandbox enforcement (the serving side of the sandbox) ──
 // The real client IP as observed by our trusted proxy (Caddy appends it last).
-function clientIp(req) {
-  const xff = req.headers['x-forwarded-for'];
-  if (xff) { const parts = String(xff).split(',').map((s) => s.trim()).filter(Boolean); if (parts.length) return parts[parts.length - 1]; }
-  return req.ip;
-}
+const clientIp = (req) => ipOf(req);
 // Record a consumer access event (fire-and-forget; never blocks or fails the response).
 // Opportunistically prunes events older than 30 days so the table stays bounded.
 function logAccess(p, repoId, req, path, kind, identity) {

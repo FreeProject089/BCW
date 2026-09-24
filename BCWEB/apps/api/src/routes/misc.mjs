@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ipOf } from '../lib/client-ip.mjs';
 import { sectionsStudioProblems, studioDocError, sectionRevs, parsePageSave, replaceSectionCanvas } from '../lib/studio-doc.mjs';
 import { db, requireRole, requireCap, hasCap, optionalAuth, slugify, logAudit, notify, notifyAll, clearAccountLockCache, clearUserCache, CAPABILITIES, NOTIF_CATEGORIES, currentUser, httpUrl, canUseStudio, guardStudioSections, sectionsWithoutDrafts } from '../lib/lib.mjs';
 import { SECRET_SETTING_KEYS } from '../lib/secret-guard.mjs';
@@ -37,11 +38,7 @@ import { issueSanction, splitSubscriptionsByTerm, cancelSubscriptionList } from 
 import { sceneTransitions, transitionsBody } from '../lib/scene-transitions.mjs'; // D4 (agent-admin-D)
 
 // The real client IP as observed by our trusted proxy (Caddy appends it last).
-function clientIp(req) {
-  const xff = req.headers['x-forwarded-for'];
-  if (xff) { const parts = String(xff).split(',').map((s) => s.trim()).filter(Boolean); if (parts.length) return parts[parts.length - 1]; }
-  return req.ip;
-}
+const clientIp = (req) => ipOf(req);
 
 const GiB = 1024 ** 3;
 

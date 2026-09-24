@@ -9,6 +9,7 @@
 // The repo access policy (GlobalAccessPolicy) is a different thing: it decides who may
 // read HOSTED CONTENT. This decides who is answered at all.
 import { db } from './lib.mjs';
+import { ipOf } from './client-ip.mjs';
 import { normaliseCreatorId } from './creator-proof.mjs';
 
 export const BANS_KEY = 'security.bans';
@@ -109,11 +110,7 @@ export function banNow(ip, minutes = 30, reason = 'manual') {
 }
 export function liftBlock(ip) { return live.delete(String(ip || '').trim()); }
 
-function clientIp(req) {
-  const xff = req.headers['x-forwarded-for'];
-  if (xff) { const parts = String(xff).split(',').map((s) => s.trim()).filter(Boolean); if (parts.length) return parts[parts.length - 1]; }
-  return req.ip || '0.0.0.0';
-}
+const clientIp = (req) => ipOf(req, '0.0.0.0');
 
 /** The hooks. Installed once, before the routes. */
 export function installSiteBans(app) {

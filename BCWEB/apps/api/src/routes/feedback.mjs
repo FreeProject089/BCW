@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ipOf } from '../lib/client-ip.mjs';
 import crypto from 'node:crypto';
 import { db, requireCap, optionalAuth, notify } from '../lib/lib.mjs';
 import { findUserIdByBcId, looksLikeBcId } from '../lib/repofingerprint.mjs';
@@ -97,11 +98,7 @@ function hit(key, max, windowMs) {
   return true;
 }
 
-function clientIp(req) {
-  const xff = req.headers['x-forwarded-for'];
-  if (xff) { const parts = String(xff).split(',').map((s) => s.trim()).filter(Boolean); if (parts.length) return parts[parts.length - 1]; }
-  return req.ip || '0.0.0.0';
-}
+const clientIp = (req) => ipOf(req, '0.0.0.0');
 const sha1 = (s) => crypto.createHash('sha1').update(s).digest('hex');
 const ipHash = (ip) => sha1(`fb:${ip}`).slice(0, 24);
 

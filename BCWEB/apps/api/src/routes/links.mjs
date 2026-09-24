@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ipOf } from '../lib/client-ip.mjs';
 import crypto from 'node:crypto';
 import { db, requireRole, notify, hashApiKey, safeEqual, ownedContent } from '../lib/lib.mjs';
 import { boundedSet } from '../lib/boundedmap.mjs';
@@ -55,11 +56,7 @@ export function hitLinkLimit(key, max, now = Date.now(), map = linkHits) {
 }
 
 /** The real client IP — the last X-Forwarded-For hop Caddy appends, as server.mjs does. */
-function linkClientIp(req) {
-  const xff = req.headers?.['x-forwarded-for'];
-  if (xff) { const parts = String(xff).split(',').map((x) => x.trim()).filter(Boolean); if (parts.length) return parts[parts.length - 1]; }
-  return req.ip || '0.0.0.0';
-}
+const linkClientIp = (req) => ipOf(req, '0.0.0.0');
 
 // Account ↔ BMM creator-id linking. Local-first: BMM keeps working offline; only
 // when the user chooses to link does the server learn the account↔creator mapping.

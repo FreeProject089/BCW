@@ -2,6 +2,7 @@
 // registers the feature routes. See ARCHITECTURE.md for the design.
 
 import Fastify from 'fastify';
+import { ipOf } from './lib/client-ip.mjs';
 import { JWT_SECRET } from './lib/jwt-secret.mjs';
 import cors from '@fastify/cors';
 import cookie from '@fastify/cookie';
@@ -205,11 +206,7 @@ await app.register(cookie);
 // Rate-limit per *real* client IP — the last X-Forwarded-For entry Caddy appends —
 // not the socket peer, which behind the proxy is one shared bucket for every visitor
 // (that made normal browsing trip 429s). Auth endpoints keep their stricter override.
-const clientKey = (req) => {
-  const xff = req.headers['x-forwarded-for'];
-  if (xff) { const parts = String(xff).split(',').map((s) => s.trim()).filter(Boolean); if (parts.length) return parts[parts.length - 1]; }
-  return req.ip || '0.0.0.0';
-};
+const clientKey = (req) => ipOf(req, '0.0.0.0');
 // `ban: 4` — after an IP exceeds the limit 4 windows in a row the plugin stops
 // even counting and just 403s it, so a sustained flood from one address costs
 // almost nothing to reject. keyGenerator is the real client IP (see above).

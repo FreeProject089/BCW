@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ipOf } from '../lib/client-ip.mjs';
 import { JWT_SECRET } from '../lib/jwt-secret.mjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'node:crypto';
@@ -73,11 +74,7 @@ export function telemetryDb() {
   return _telemetryPool;
 }
 
-function clientIp(req) {
-  const xff = req.headers['x-forwarded-for'];
-  if (xff) { const parts = String(xff).split(',').map((s) => s.trim()).filter(Boolean); if (parts.length) return parts[parts.length - 1]; }
-  return req.ip;
-}
+const clientIp = (req) => ipOf(req);
 // Resolves a user-supplied relative path against FILES_ROOT and refuses anything
 // that would escape it (CWE-22) — the one hard boundary the file manager has.
 function safePath(rel) {

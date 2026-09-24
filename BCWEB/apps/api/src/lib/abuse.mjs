@@ -1,3 +1,4 @@
+import { ipOf } from './client-ip.mjs';
 // Lightweight anti-DDoS / anti-bot guards that run BEFORE routing, so junk
 // traffic (vuln scanners, bad bots, exploit probes) is rejected as cheaply as
 // possible — no DB, no route handler. This complements, and sits in front of:
@@ -36,11 +37,7 @@ const MAX_TRACKED = 20000;
 const BLOCK_MS = 10 * 60 * 1000;
 const STRIKE_LIMIT = 6;
 
-function clientIp(req) {
-  const xff = req.headers['x-forwarded-for'];
-  if (xff) { const parts = String(xff).split(',').map((s) => s.trim()).filter(Boolean); if (parts.length) return parts[parts.length - 1]; }
-  return req.ip || '0.0.0.0';
-}
+const clientIp = (req) => ipOf(req, '0.0.0.0');
 
 function strike(ip) {
   if (strikes.size > MAX_TRACKED) { const k = strikes.keys().next().value; strikes.delete(k); }

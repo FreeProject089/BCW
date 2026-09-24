@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ipOf } from '../lib/client-ip.mjs';
 import { JWT_SECRET } from '../lib/jwt-secret.mjs';
 import { safeAvatarImage } from '../lib/avatar-url.mjs';
 import jwt from 'jsonwebtoken';
@@ -70,11 +71,7 @@ export async function resendWaitMs(p, userId, now = Date.now()) {
 }
 
 // The real client IP as observed by our trusted proxy (Caddy appends it last).
-function clientIp(req) {
-  const xff = req.headers['x-forwarded-for'];
-  if (xff) { const parts = String(xff).split(',').map((s) => s.trim()).filter(Boolean); if (parts.length) return parts[parts.length - 1]; }
-  return req.ip;
-}
+const clientIp = (req) => ipOf(req);
 async function logLogin(p, { email, ip, success, reason, userId }) {
   try { await p.loginAttempt.create({ data: { email: String(email || '').slice(0, 160), ip: String(ip || '').slice(0, 64), success, reason: reason || null, userId: userId || null } }); } catch { /* non-fatal */ }
 }

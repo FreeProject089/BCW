@@ -1,11 +1,8 @@
 import { z } from 'zod';
+import { ipOf } from '../lib/client-ip.mjs';
 import { db, requireRole, accountEntrySchema, getGlobalAccessPolicy, getUserAccessPolicy, logAudit } from '../lib/lib.mjs';
 
-function clientIp(req) {
-  const xff = req.headers['x-forwarded-for'];
-  if (xff) { const parts = String(xff).split(',').map((s) => s.trim()).filter(Boolean); if (parts.length) return parts[parts.length - 1]; }
-  return req.ip;
-}
+const clientIp = (req) => ipOf(req);
 
 const policySchema = z.object({
   whitelistOnly: z.boolean().optional(),
