@@ -5105,9 +5105,9 @@ const DICT = {
     'rl.nopay': "Les paiements sont indisponibles pour l'instant, votre demande a été enregistrée, non payée.",
     'rl.fail': "Impossible d'envoyer cela.",
     'hs.l.hosting.graceLapseHours': "Délai après la fin d'un terme (heures)",
-    'hs.d.hosting.graceLapseHours': "Un terme d'hébergement terminé, ou un abonnement annulé, suspend le contenu au lieu de le supprimer, et voici le temps dont la personne dispose avant qu'il SOIT supprimé. Suspendu veut dire lecture seule, pas disparu : le propriétaire peut encore télécharger une copie, la transférer à un autre compte, ou renouveler et tout retrouve sa place. 72 = trois jours.",
+    'hs.d.hosting.graceLapseHours': "Un terme d'hébergement terminé, ou un abonnement annulé, suspend le contenu au lieu de le supprimer, et voici le temps dont la personne dispose avant qu'il SOIT supprimé. Suspendu veut dire lecture seule, pas disparu : le propriétaire peut encore télécharger une copie, la transférer à un autre compte, ou renouveler et tout retrouve sa place. 72 = trois jours. Jamais moins de 72 : les CGU promettent au moins cela.",
     'hs.l.hosting.graceUnpaidHours': "Délai après un paiement ÉCHOUÉ (heures)",
-    'hs.d.hosting.graceUnpaidHours': "La même fenêtre, pour le cas où la carte a échoué plutôt que la personne décidé. Plus long exprès : annuler est une décision, une carte expirée est un accident, et les mêmes trois jours punissent l'accident. Ça compte à partir du moment où Stripe cesse de réessayer, pas du premier échec. 168 = une semaine.",
+    'hs.d.hosting.graceUnpaidHours': "La même fenêtre, pour le cas où la carte a échoué plutôt que la personne décidé. Plus long exprès : annuler est une décision, une carte expirée est un accident, et les mêmes trois jours punissent l'accident. Ça compte à partir du moment où Stripe cesse de réessayer, pas du premier échec. 168 = une semaine. Jamais moins de 72 : les CGU promettent au moins cela.",
     'hs.l.hosting.termMinMonths': 'Terme prépayé : minimum (mois)',
     'hs.d.hosting.termMinMonths': "Le terme le plus court qu'un paiement d'hébergement accepte ; tout ce qui sort du minimum et du maximum est refusé par le serveur, quoi que la page ait envoyé. 1 = un mois. Par défaut 1.", // N-hosting (agent-hosting-N)
     'hs.l.hosting.termMaxMonths': 'Terme prépayé : maximum (mois)',

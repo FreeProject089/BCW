@@ -1573,9 +1573,11 @@ export async function hostingGrace(p) {
     const n = Number(rows.find((r) => r.key === k)?.value);
     return Number.isFinite(n) && n > 0 ? Math.min(8760, Math.max(1, Math.round(n))) : d;
   };
+  // The Terms promise AT LEAST 72 hours before content goes (legal.jsx, both grace clauses): no
+  // admin value can shorten a window below what the site told its customers.
   return {
-    lapseHours: get('hosting.graceLapseHours', 72),
-    unpaidHours: get('hosting.graceUnpaidHours', 168),
+    lapseHours: Math.max(72, get('hosting.graceLapseHours', 72)),
+    unpaidHours: Math.max(72, get('hosting.graceUnpaidHours', 168)),
     warnHours: get('hosting.warnBeforeHours', 72),
   };
 }
