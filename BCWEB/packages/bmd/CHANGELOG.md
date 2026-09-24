@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- **Isometric icons**: `iso:<name>` (or `isometric:`), 83 full-colour SVGs shipped in `assets/iso/` from three MIT sets (Isoflow isopack, MI2, Jolloficons; MI2's glyphs are Material Design Icons, Apache-2.0), with every notice in `assets/iso/LICENSES.txt`. Drawn as an `<img>`; `cdn.iso` in the config says where from (jsDelivr's copy of this package by default, `null` switches the family off). `ISO_NAMES` and `isoRef()` exported from `./icons`; `./iso/icons.json` is the picker manifest.
+
+### Unchanged
+- Every existing icon name resolves as before: `iso:` was not a valid name in any family.
+
 ## 3.0.0 — 2026-09-07
 
 ### Added

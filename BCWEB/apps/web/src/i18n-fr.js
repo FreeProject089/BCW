@@ -9193,6 +9193,12 @@ const DICT = {
     'adm.loyal.dirty': 'Modifications non enregistrées',
     'adm.loyal.warn': 'Baisser un palier, ou désactiver la remise, est une hausse de prix pour ceux qui l’auraient eue : la politique Paiements leur promet le même préavis que pour tout changement de prix, donc annonce-le avant d’enregistrer.',
     // fin N-hosting (agent-hosting-N)
+    // G5-icons (agent-icons-G5) : la section « Isométrique » du sélecteur d’icônes (editor/icon-picker.jsx).
+    'ip.iso.title': 'Isométrique',
+    'ip.iso.credit': 'Isoflow, MI2, Jolloficons (MIT)',
+    'ip.iso.licences': 'licences',
+    'ip.iso.none': 'Aucune icône isométrique ne correspond à « {q} ».',
+    // fin G5-icons (agent-icons-G5)
   },
 };
 

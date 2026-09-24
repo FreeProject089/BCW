@@ -157,8 +157,9 @@ function CustomIcons({ onReload, builtinKeys }) {
   const keyOk = EMOJI_KEY_RE.test(key);
   const isBuiltin = keyOk && (builtinKeys || new Set()).has(key);
   const replaces = keyOk && icons.find((ic) => ic.key === key);
-  // The bot draws Lucide and Phosphor glyphs; a brand or a project logo has no glyph it can draw.
-  const glyphBad = form.source === 'glyph' && /^(simple|app):/.test(form.icon);
+  // The bot draws Lucide and Phosphor glyphs; a brand, a project logo or a full-colour
+  // isometric drawing (G5: `iso:`) has no glyph it can draw.
+  const glyphBad = form.source === 'glyph' && /^(simple|si|app|iso|isometric):/.test(form.icon);
   const missing = [
     !form.label.trim() && t('mA.ci.need.name', 'a name'),
     form.source === 'image' && !form.image && t('mA.ci.need.image', 'an image'),

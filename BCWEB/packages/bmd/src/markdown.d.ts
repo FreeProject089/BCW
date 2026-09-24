@@ -176,7 +176,7 @@ export interface MarkdownOptions {
   /** `app:<key>` → an image URL. */
   appIcons?: Record<string, string>;
   /** Where a non-bundled icon comes from. `null` for a family switches it off entirely. `mermaid` is an ES-module URL. */
-  cdn?: { lucide?: ((name: string) => string) | null; brand?: ((slug: string) => string) | null; phosphor?: ((path: string) => string) | null; mermaid?: string | null };
+  cdn?: { lucide?: ((name: string) => string) | null; brand?: ((slug: string) => string) | null; phosphor?: ((path: string) => string) | null; iso?: ((name: string) => string) | null; mermaid?: string | null };
   policy?: MarkdownUrlPolicy;
   /** Which iframes survive sanitising — a RegExp on the src, or a predicate. */
   allowIframes?: RegExp | ((src: string) => boolean);
@@ -201,7 +201,7 @@ export function urlPolicy(): MarkdownUrlPolicy;
 export function appIcon(key: string): string;
 
 /** The URL for a remote icon, or '' when that family is switched off. */
-export function cdnIconUrl(family: 'lucide' | 'brand' | 'phosphor' | 'mermaid', name: string): string;
+export function cdnIconUrl(family: 'lucide' | 'brand' | 'phosphor' | 'iso' | 'mermaid', name: string): string;
 
 /**
  * Register the `app:<key>` icons from a list ({ key, url, label }) — what a host that loads
@@ -214,6 +214,12 @@ export function appIconLabel(key: string): string;
 
 /** `ph:rocket` / `ph-bold:rocket` → the `<weight>/<file>` path under Phosphor's assets, or null. */
 export function phosphorRef(name: string): string | null;
+
+/** The isometric icon names (`iso:<name>`), full-colour SVGs shipped in assets/iso/. */
+export const ISO_NAMES: readonly string[];
+
+/** `iso:server` / `isometric:server` → `server` when it is one of ISO_NAMES, else null. */
+export function isoRef(name: string): string | null;
 
 /* ── url.js ────────────────────────────────────────────────────────────── */
 

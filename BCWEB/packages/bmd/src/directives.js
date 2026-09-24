@@ -89,6 +89,14 @@ const EVENT_STATE = { done: 'done', past: 'done', shipped: 'done', now: 'now', c
 const iconNode = (nm) => ({ type: 'emphasis', data: { hName: 'doc-icon', hProperties: { className: ['doc-icon'], 'data-name': nm } }, children: [] });
 
 function nodeText(n) { if (!n) return ''; if (typeof n.value === 'string') return n.value; return (n.children || []).map(nodeText).join(''); }
+// An icon's label written back as the author typed it: a nested text directive (`:rocket` in
+// `ph:rocket`) becomes `:rocket` again instead of vanishing.
+function iconLabel(n) {
+  if (!n) return '';
+  if (typeof n.value === 'string') return n.value;
+  const inner = (n.children || []).map(iconLabel).join('');
+  return n.type === 'textDirective' ? `:${n.name}${inner ? `[${inner}]` : ''}` : inner;
+}
 
 /** A heading's id — what the `::toc` links and every `#anchor` are built from. */
 export function slugify(s) { return String(s).toLowerCase().trim().replace(/[^\wÀ-ɏ]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'section'; }
@@ -427,7 +435,11 @@ export function remarkDocBlocks() {
         if (attrs.color) props.style = `--badge:${attrs.color}`;
         setEl('span', ['doc-badge'], props); // children (the label) are kept
       } else if (name === 'icon') {
-        setEl('doc-icon', ['doc-icon'], { 'data-name': (nodeText(node) || attrs.name || '').trim() });
+        // `iconLabel`, not `nodeText`: inside `:icon[ph:rocket]` the parser reads `:rocket` as a
+        // text directive of its own, so nodeText saw only `ph` and the icon drawn was a lucide
+        // mask called "ph". Every prefixed family (`ph:`, `simple:`, `app:`, `iso:`) written
+        // inline came out that way; `icon=` attributes never did, which is why it hid (G5).
+        setEl('doc-icon', ['doc-icon'], { 'data-name': ((node.children || []).map(iconLabel).join('') || attrs.name || '').trim() });
         node.children = [];
       } else if (name === 'kbd') {
         setEl('doc-kbd', ['doc-kbd'], { 'data-keys': (nodeText(node) || '').trim() });

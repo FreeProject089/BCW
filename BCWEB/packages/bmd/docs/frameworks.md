@@ -138,7 +138,8 @@ validateLinks(body, { pageMap });
 
 ## Content Security Policy
 
-What the defaults reach for: `cdn.jsdelivr.net` (uncurated lucide and Phosphor icons, mermaid
-when not installed), `cdn.simpleicons.org` (brand icons not bundled), `www.youtube-nocookie.com`
+What the defaults reach for: `cdn.jsdelivr.net` (uncurated lucide and Phosphor icons, the
+isometric icons from this package's own `assets/iso`, mermaid when not installed), `cdn.simpleicons.org` (brand icons not bundled), `www.youtube-nocookie.com`
 and `open.spotify.com` (frames). Every one is a config knob: `cdn.lucide: null`,
-`cdn.brand: null`, `cdn.phosphor: null`, `cdn.mermaid: null`, `allowIframes: /…/`.
+`cdn.brand: null`, `cdn.phosphor: null`, `cdn.iso` (or serve `assets/iso` yourself), `cdn.mermaid: null`,
+`allowIframes: /…/`.

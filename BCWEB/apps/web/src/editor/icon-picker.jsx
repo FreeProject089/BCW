@@ -3,7 +3,7 @@ import { useI18n } from '../i18n.jsx';
 import { createPortal } from 'react-dom';
 import { Search, X } from 'lucide-react';
 import PHOSPHOR_NAMES from './phosphor-names.json';
-import { ICON_NAMES, IconGlyph, appIconKeys, appIconLabel } from '../ui/md-lite.js'; // M18: icons without the renderer
+import { ICON_NAMES, ISO_NAMES, IconGlyph, appIconKeys, appIconLabel } from '../ui/md-lite.js'; // M18: icons without the renderer
 import { Button } from '../ui/ui.jsx';
 
 // The names come from the kit's registry — the bundled four plus whatever an admin added
@@ -78,9 +78,14 @@ export default function IconPicker({ onPick, onClose, title = 'Pick an icon' }) 
   // @phosphor-icons/core package listing), drawn as currentColor masks straight from the CDN.
   // Inserted as `ph:<name>`; a weight is a prefix the author adds by hand (`ph-bold:<name>`).
   const phHits = useMemo(() => (nq ? PHOSPHOR_NAMES.filter((n) => n.includes(nq)) : PHOSPHOR_NAMES).slice(0, MAX_SHOWN), [nq]);
+  // G5: the isometric family (`iso:<name>`), 83 full-colour drawings from three third-party sets
+  // whose licences allow redistribution; the notices are served beside the files
+  // (/icons/iso/LICENSES.txt, linked from the section). Drawn as <img>, each fetched only when
+  // its cell scrolls into view (loading="lazy"), and none of them is in any JS chunk.
+  const isoHits = useMemo(() => (nq ? ISO_NAMES.filter((n) => n.includes(nq) || `iso:${n}`.includes(nq)) : ISO_NAMES).slice(0, MAX_SHOWN), [nq]);
   const simpleHits = useMemo(() => (nq ? simple.filter((s) => s.slug.includes(nq) || s.title.toLowerCase().includes(nq)) : simple).slice(0, MAX_SHOWN / 2), [simple, nq]);
   const projectHits = useMemo(() => appIconKeys().filter((k) => !nq || k.includes(nq) || PROJECT_LABEL[k]?.toLowerCase().includes(nq)), [nq]);
-  const nothingAnywhere = !!nq && !projectHits.length && !lucideHits.length && !phHits.length && !simpleHits.length;
+  const nothingAnywhere = !!nq && !projectHits.length && !lucideHits.length && !phHits.length && !isoHits.length && !simpleHits.length;
 
   // Portal to <body>: the picker is often opened from inside a modal whose card uses a
   // transform (anim-pop) for its entrance. A CSS transform makes it the containing block
@@ -95,7 +100,7 @@ export default function IconPicker({ onPick, onClose, title = 'Pick an icon' }) 
         </div>
         <div className="px-3 py-2.5 border-b border-[var(--line)] flex items-center gap-2 shrink-0">
           <Search size={14} className="text-[var(--faint)]" />
-          <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder={`Search ${lucide.length + PHOSPHOR_NAMES.length + simple.length} icons…`} className="flex-1 bg-transparent border-0 outline-none text-sm text-[var(--text)]" />
+          <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder={`Search ${lucide.length + PHOSPHOR_NAMES.length + ISO_NAMES.length + simple.length} icons…`} className="flex-1 bg-transparent border-0 outline-none text-sm text-[var(--text)]" />
         </div>
         <div className="p-3 overflow-auto">
           {/* Every catalogue empty at once is a search result, not an empty picker: say which
@@ -140,6 +145,16 @@ export default function IconPicker({ onPick, onClose, title = 'Pick an icon' }) 
               </button>
             ))}
             {!phHits.length && <div className="col-span-full text-center text-sm text-[var(--faint)] py-4">{t('ip.ph.none', 'No Phosphor icon matches “{q}”.').replace('{q}', q)}</div>}
+          </div>
+          <div className="text-[11px] font-bold uppercase tracking-wide text-[var(--faint)] mt-4 mb-1.5">{t('ip.iso.title', 'Isometric')} {nq && `· ${isoHits.length}`} <span className="normal-case font-normal tracking-normal">· {t('ip.iso.credit', 'Isoflow, MI2, Jolloficons (MIT)')} · <a href="/icons/iso/LICENSES.txt" target="_blank" rel="noreferrer" className="underline hover:text-[var(--text)]">{t('ip.iso.licences', 'licences')}</a></span></div>
+          <div className="grid grid-cols-7 sm:grid-cols-9 gap-1.5">
+            {isoHits.map((name) => (
+              <button key={name} type="button" title={`iso:${name}`} onClick={() => { onPick(`iso:${name}`); onClose(); }}
+                className="aspect-square grid place-items-center rounded-lg border border-[var(--line)] hover:border-[var(--primary)] hover:bg-[var(--surface-2)]">
+                <IconGlyph name={`iso:${name}`} size={24} />
+              </button>
+            ))}
+            {!isoHits.length && <div className="col-span-full text-center text-sm text-[var(--faint)] py-4">{t('ip.iso.none', 'No isometric icon matches “{q}”.').replace('{q}', q)}</div>}
           </div>
           <div className="text-[11px] font-bold uppercase tracking-wide text-[var(--faint)] mt-4 mb-1.5">Brands · Simple Icons {nq && `· ${simpleHits.length}`}</div>
           <div className="grid grid-cols-7 sm:grid-cols-9 gap-1.5">

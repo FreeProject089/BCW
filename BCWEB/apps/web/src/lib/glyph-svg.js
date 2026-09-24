@@ -13,6 +13,10 @@ export function glyphSource(name, cfg, fileName = (n) => n) {
   const cdn = cfg?.cdn || {};
   const app = n.match(/^app:(.+)$/);
   if (app) { const url = cfg?.appIcons?.[app[1]] || ''; return url ? { kind: 'url', url } : null; }
+  // G5: an isometric icon is already a full-colour image the site hosts; like an `app:` mark,
+  // its URL is stored as it is (recolouring it would flatten the drawing).
+  const iso = n.toLowerCase().match(/^(?:iso|isometric):([a-z0-9]+(?:-[a-z0-9]+)*)$/);
+  if (iso) return typeof cdn.iso === 'function' ? { kind: 'url', url: cdn.iso(iso[1]) } : null;
   const ph = n.toLowerCase().match(PH);
   if (ph) {
     const w = ph[1] && ph[1] !== 'regular' ? ph[1] : 'regular';

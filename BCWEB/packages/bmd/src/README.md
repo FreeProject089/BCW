@@ -284,6 +284,7 @@ short version:
 :::grid{cols=3 gap=lg}                              a fixed-column grid
 :meter[60]{label=Done max=100 color=}               an inline progress bar
 :icon[ph:rocket]  :icon[ph-bold:rocket]             Phosphor icons, six weights (ph-thin/light/regular/bold/fill/duotone)
+:icon[iso:server]  :icon[iso:cube-cloud]           isometric icons, full colour (83, see assets/iso/LICENSES.txt)
 $$E = mc^2$$                                        maths
 :rocket: :tada: :+1:                                emoji, by GitHub's names
 ```

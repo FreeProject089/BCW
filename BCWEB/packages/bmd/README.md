@@ -5,8 +5,8 @@ tabs, steps, columns, buttons with brand logos, file downloads, a roadmap, timel
 FAQs, changelogs, a hero, a quote, a checklist that counts, styled tables, images with captions,
 audio, YouTube and Spotify embeds, API endpoint cards (hand-written or from an OpenAPI
 document), live values and action buttons, includes, Mermaid diagrams, wiki links, marks,
-footnotes, an automatic table of contents, maths, emoji, three icon families (lucide, Phosphor,
-Simple Icons) — ninety-odd directives, no build step. Beside the component: a public AST, a
+footnotes, an automatic table of contents, maths, emoji, four icon families (lucide, Phosphor,
+Simple Icons, and 83 full-colour isometric icons) — ninety-odd directives, no build step. Beside the component: a public AST, a
 link checker, an HTML exporter, a plugin API, and a separate editor package.
 
 It is the renderer behind every blog post, doc page, FAQ answer and legal document on

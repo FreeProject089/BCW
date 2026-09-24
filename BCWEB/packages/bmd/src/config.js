@@ -51,6 +51,10 @@ const DEFAULTS = {
     // Phosphor, drawn as a mask like lucide. `name` arrives as `<weight>/<file>` — see
     // phosphorRef in icons.jsx — so a project can point this at its own copy of the assets.
     phosphor: (path) => `https://cdn.jsdelivr.net/npm/@phosphor-icons/core@2/assets/${path}.svg`,
+    // Isometric icons (`iso:server`): full-colour SVGs shipped IN this package, under
+    // assets/iso/ (third-party sets, see assets/iso/LICENSES.txt). A host that serves that
+    // folder itself points this at its own copy, as BetterCommunity does (`/icons/iso/…`).
+    iso: (name) => `https://cdn.jsdelivr.net/npm/@bettercommunity/bmd@3/assets/iso/${name}.svg`,
     // Where mermaid comes from when the host did not supply `loadMermaid`. An ES module URL,
     // imported on the first diagram; null draws diagrams as their source text.
     mermaid: 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs',

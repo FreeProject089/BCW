@@ -18,11 +18,14 @@
     "./editor-blocks": "./src/editor-blocks.js",
     "./links": "./src/links.js",
     "./markdown.css": "./src/markdown.css",
+    "./iso/icons.json": "./assets/iso/icons.json",
+    "./assets/iso/*": "./assets/iso/*",
     "./src/*": "./src/*",
     "./package.json": "./package.json"
   },
   "files": [
     "src",
+    "assets",
     "docs",
     "README.md",
     "CHANGELOG.md",

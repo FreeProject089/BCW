@@ -11,6 +11,7 @@ configureMarkdown({
     lucide: (name) => `https://cdn.jsdelivr.net/npm/lucide-static@latest/icons/${name}.svg`,
     phosphor: (path) => `https://cdn.jsdelivr.net/npm/@phosphor-icons/core@2/assets/${path}.svg`,
     brand: (slug) => `https://cdn.simpleicons.org/${slug}`,
+    iso: (name) => `/icons/iso/${name}.svg`,     // :icon[iso:server], your copy of assets/iso
   },
   policy: {                                       // where authored URLs may point
     allowHosts: ['example.com'],

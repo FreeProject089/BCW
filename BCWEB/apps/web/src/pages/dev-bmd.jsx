@@ -95,7 +95,8 @@ function Compose() {
 
 const CONFIG = `configureMarkdown({
   appIcons: { bmm: '/icons/bmm.png' },                     // app:<key> logos
-  cdn: { lucide: null, brand: null, phosphor: null, mermaid: null },   // no third-party requests at all
+  cdn: { lucide: null, brand: null, phosphor: null, mermaid: null,     // no third-party requests at all
+         iso: (n) => \`/icons/iso/\${n}.svg\` },                          // iso:<name>, served from your copy of assets/iso
   policy: { allowHosts: ['bettercommunity.ch'], allowDownloadHosts: ['cdn.example.com'] },
   allowIframes: /^https:\\/\\/(www\\.)?youtube-nocookie\\.com\\//,
   radius: '8px',                                          // every block, unless {radius=} says otherwise

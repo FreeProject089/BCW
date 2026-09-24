@@ -169,6 +169,27 @@ if (!shapeHtml(stepsDoc('{shape=square}', '{shape=triangle}')).includes('doc-ste
   problems.push('a step could not override the shape its block set');
 }
 
+// ── inline icons with a family prefix ───────────────────────────────────────────────
+//
+// G5. Inside `:icon[ph:rocket]` the parser reads `:rocket` as a text directive of its own, so
+// the name the renderer received was `ph` and it drew a lucide mask called "ph". Every prefixed
+// family written inline came out that way (`ph:`, `simple:`, `app:`, and the isometric `iso:`),
+// while `:icon[rocket]` above kept passing. Each case names what it must draw.
+for (const [md, must, mustNot] of [
+  ['x :icon[ph:rocket] y', 'regular/rocket.svg', '/icons/ph.svg'],
+  ['x :icon[ph-bold:rocket] y', 'bold/rocket-bold.svg', '/icons/ph-bold.svg'],
+  ['x :icon[simple:discord] y', '<svg', '/icons/simple.svg'],
+  ['x :icon[app:bmm] y', '/icons/bmm.png', 'lucide-hash'],
+  ['x :icon[iso:server] y', '/iso/server.svg', '/icons/iso.svg'],
+  ['x :icon[iso:truck-2] y', '/iso/truck-2.svg', '/icons/iso.svg'],
+  ['x :icon[isometric:solid-chart-2] y', '/iso/solid-chart-2.svg', '/icons/isometric.svg'],
+  ['x :icon[iso:not-an-icon] y', 'lucide-hash', '<img'],   // outside the closed list: the neutral glyph
+]) {
+  const html = shapeHtml(md);
+  if (!html.includes(must)) problems.push(`${md}: expected ${must} in ${html.replace(/\s+/g, ' ').slice(0, 160)}`);
+  if (html.includes(mustNot)) problems.push(`${md}: drew ${mustNot}`);
+}
+
 // ── mermaid theme / look ─────────────────────────────────────────────────────────────
 //
 // These values are written into the diagram's own `%%{init}%%` front-matter, so a free string
