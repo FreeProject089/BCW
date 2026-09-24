@@ -24,13 +24,12 @@ describe('discountFor', () => {
   const tiers = TERM_FALLBACK.tiers;
   test('exact tiers', () => {
     assert.equal(discountFor(tiers, 1), 0);
-    assert.equal(discountFor(tiers, 3), 0.05);
+    assert.equal(discountFor(tiers, 6), 0.10);
     assert.equal(discountFor(tiers, 12), 0.20);
-    assert.equal(discountFor(tiers, 24), 0.35);
   });
   test('between tiers takes the one below', () => {
+    assert.equal(discountFor(tiers, 3), 0);
     assert.equal(discountFor(tiers, 7), 0.10);
-    assert.equal(discountFor(tiers, 30), 0.35);
   });
   test('tiers in any order', () => {
     assert.equal(discountFor([{ from: 3, off: 0.05 }, { from: 12, off: 0.2 }], 12), 0.2);
@@ -42,6 +41,7 @@ describe('snapTerm', () => {
   test('clamps', () => {
     assert.equal(snapTerm(b, 0), 1);
     assert.equal(snapTerm(b, 500), 36);
+    assert.equal(snapTerm(normaliseTerm(null), 24), 12);
     assert.equal(snapTerm(b, 'x'), 1);
   });
   test('rounds to the grid counted from the minimum', () => {
@@ -65,11 +65,11 @@ describe('termTotalCents', () => {
 describe('nextTier', () => {
   const b = normaliseTerm(null);
   test('names the next reachable tier', () => {
-    assert.deepEqual(nextTier(b, 1), { months: 3, off: 0.05 });
+    assert.deepEqual(nextTier(b, 1), { months: 6, off: 0.10 });
     assert.deepEqual(nextTier(b, 7), { months: 12, off: 0.20 });
   });
   test('null at the top, or when the range ends first', () => {
-    assert.equal(nextTier(b, 24), null);
+    assert.equal(nextTier(b, 12), null);
     assert.equal(nextTier(normaliseTerm({ max: 6 }), 6), null);
   });
 });

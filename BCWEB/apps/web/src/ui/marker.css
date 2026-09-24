@@ -45,6 +45,34 @@
 }
 .mk--circle .mk-swash path { fill: none; stroke: currentColor; stroke-width: max(2px, 0.07em); stroke-linecap: round; stroke-linejoin: round; }
 
+/* N-hosting (agent-hosting-N): the highlighter, behind the words (Marker variant="highlight").
+   A translucent accent band over the lower ~55% of the line, the way a highlighter pen is run
+   under a phrase, not a solid block. The words stay in the text colour on top of it; at 32 %
+   (38 % dark) of the accent the band is a tint, so the text keeps its contrast in both themes.
+   The gradient runs at 179.3deg rather than 180 so the band's edges tilt slightly, like a hand
+   stroke, without the tilt outgrowing the band on a long line. `clone` gives every wrapped line
+   its own band and its own rounded ends. Draws in left to right, once. */
+.mk-hl {
+  --mk-ink: color-mix(in srgb, var(--primary) 32%, transparent);
+  background-image: linear-gradient(179.3deg, transparent 0 14%, var(--mk-ink) 14% 90%, transparent 90%);
+  background-repeat: no-repeat;
+  background-size: 100% 0.6em;
+  background-position: 0 88%;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  padding-inline: 0.1em;
+  margin-inline: -0.05em;
+  border-radius: 0.22em 0.12em 0.25em 0.1em;
+  animation: mkHl 0.9s cubic-bezier(0.6, 0.05, 0.3, 1) var(--mk-delay, 420ms) both;
+}
+[data-theme="dark"] .mk-hl { --mk-ink: color-mix(in srgb, var(--primary) 38%, transparent); }
+@keyframes mkHl { from { background-size: 0% 0.6em; } to { background-size: 100% 0.6em; } }
+[dir="rtl"] .mk-hl { background-position: 100% 88%; }
+@media (prefers-reduced-motion: reduce) { .mk-hl { animation: none; } }
+@media (forced-colors: active) { .mk-hl { background-image: none; } }
+@media print { .mk-hl { animation: none; } }
+/* fin N-hosting (agent-hosting-N) */
+
 @keyframes mkDraw { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
 @keyframes mkDrawRtl { from { clip-path: inset(0 0 0 100%); } to { clip-path: inset(0 0 0 0); } }
 [dir="rtl"] .mk-swash { animation-name: mkDrawRtl; transform: rotate(0.8deg); transform-origin: 100% 50%; }

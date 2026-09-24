@@ -11,6 +11,7 @@ import { validatePromo, redeemPromoAtomic } from './promo.mjs';
 import { getActiveCampaign, applyCampaign } from './campaigns.mjs';
 import { promoMeetsMinimum } from '../lib/promo-rules.mjs';
 import { grantAutoBadges } from './social.mjs';
+import { LOYALTY_KEY, normaliseLoyalty, loyaltyFromSettings, LOYALTY_HARD_MAX_PCT } from '../lib/loyalty.mjs'; // N-hosting (agent-hosting-N)
 
 const GiB = 1024 ** 3;
 
@@ -230,8 +231,12 @@ export async function recomputePoolBytes(p, groupId) {
 // `hosting.term*Months` settings, read live. The client sends a number; the server is the
 // only place that decides whether that number is allowed, and it prices it exactly
 // (months × monthly price, then the tier discount below, then the scarcity multiplier).
-export const TERM_DEFAULTS = { min: 1, max: 36, step: 1 };
-export const TERM_LIMIT_MONTHS = 120; // nothing on the platform sells more than ten years
+// N-hosting (agent-hosting-N): at most 12 months. Terms of 24 and 36 months were sold as one
+// payment up front, which is a promise to still be running the service in three years; the
+// Terms now say plainly that no multi-year availability is promised, so nothing longer than
+// a year can be prepaid. Monthly, 6 and 12 months are the choices the page offers.
+export const TERM_DEFAULTS = { min: 1, max: 12, step: 1 };
+export const TERM_LIMIT_MONTHS = 12;
 /** The admin's term bounds, clamped to something that cannot break checkout: integers,
  *  1 ≤ min ≤ max ≤ 120, step ≥ 1. A setting that is missing, empty or nonsense falls back
  *  to its default rather than to "no term is valid". */
@@ -260,7 +265,9 @@ export function termCheck(bounds, months) {
 // carried, generalised — 7 months earns the 6-month rate, 30 months the 24-month one — so
 // no term that was sold before prices differently now, and nothing between two tiers is
 // priced worse than the tier below it.
-export const TERM_DISCOUNT_TIERS = [[24, 0.35], [12, 0.20], [6, 0.10], [3, 0.05]];
+// N-hosting (agent-hosting-N): the 24-month tier went with the 24-month term, and the 3-month
+// one with the 3-month button: the offer is monthly, 6 months (−10 %) or 12 months (−20 %).
+export const TERM_DISCOUNT_TIERS = [[12, 0.20], [6, 0.10]];
 export function termDiscount(months) {
   const m = Number(months) || 0;
   for (const [from, off] of TERM_DISCOUNT_TIERS) if (m >= from) return off;
@@ -638,15 +645,43 @@ export default async function hostingRoutes(app) {
 
   app.get('/hosting/plans', async () => {
     const p = await db();
-    const bounds = termBounds(await settings(p));
+    const s = await settings(p);
+    const bounds = termBounds(s);
     return {
       // Storage plans only: bot plans are listed by GET /hosting/bot-plans (M-plans). A bundle
       // (a hosting plan with `bot`) stays here, its card says what it adds on Discord.
       plans: await p.hostingPlan.findMany({ where: { active: true, kind: 'hosting' }, orderBy: { storageGB: 'asc' } }),
       // The term the page lets people pick — bounds from the admin, tiers from the code.
       term: { ...bounds, presets: termPresets(bounds), tiers: TERM_DISCOUNT_TIERS.map(([from, off]) => ({ from, off })) },
+      // N-hosting (agent-hosting-N): the loyalty tiers, so the page shows the same numbers the
+      // renewal will charge. Public: it is a price list. Tiers above the cap are sent AT the cap.
+      loyalty: (() => { const l = loyaltyFromSettings(s); return { enabled: l.enabled, maxPct: l.maxPct, tiers: l.tiers.map((x) => ({ months: x.months, pct: Math.min(x.pct, l.maxPct) })) }; })(),
+      // fin N-hosting (agent-hosting-N)
     };
   });
+
+  // N-hosting (agent-hosting-N)
+  // Loyalty (tenure) pricing policy. One site-wide setting, edited from the admin plan editor.
+  // What it means and when it applies is written down in lib/loyalty.mjs.
+  app.get('/admin/hosting/loyalty', { preHandler: requireCap('manage_hosting') }, async () => {
+    const p = await db();
+    const row = await p.adminSetting.findUnique({ where: { key: LOYALTY_KEY } }).catch(() => null);
+    return { loyalty: normaliseLoyalty(row?.value), hardMaxPct: LOYALTY_HARD_MAX_PCT };
+  });
+  app.put('/admin/hosting/loyalty', { preHandler: requireCap('manage_hosting') }, async (req, reply) => {
+    const b = z.object({
+      enabled: z.boolean(),
+      tiers: z.array(z.object({ months: z.number().int().min(1).max(120), pct: z.number().int().min(0).max(LOYALTY_HARD_MAX_PCT) })).max(12),
+      maxPct: z.number().int().min(0).max(LOYALTY_HARD_MAX_PCT),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input', details: b.error.flatten() });
+    const value = normaliseLoyalty(b.data);
+    const p = await db();
+    await p.adminSetting.upsert({ where: { key: LOYALTY_KEY }, create: { key: LOYALTY_KEY, value }, update: { value } });
+    await logAudit(p, req.user.uid, 'hosting.loyalty.update', `enabled=${value.enabled} max=${value.maxPct} tiers=${value.tiers.map((x) => `${x.months}:${x.pct}`).join(',')}`, clientIp(req)).catch(() => {});
+    return { ok: true, loyalty: value };
+  });
+  // fin N-hosting (agent-hosting-N)
 
   /**
    * "Tell me when there is room."

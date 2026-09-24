@@ -2148,6 +2148,15 @@ model Subscription {
   /// owner among the servers they manage (at most plan.bot.guilds). Empty on a plan without
   /// bot entitlements. A bot-only subscription anchors to neither a repo nor a pool.
   botGuildIds      String[]      @default([])
+  // N-hosting (agent-hosting-N)
+  /// Loyalty pricing (lib/loyalty.mjs): when this subscription's CONTINUOUS tenure started.
+  /// Null = its createdAt. Moved to the renewal date when a renewal arrives after a
+  /// cancellation or a lapse beyond the grace period; kept otherwise.
+  tenureStartAt    DateTime?
+  /// The loyalty discount (percent) currently put on its Stripe subscription as a coupon, so
+  /// the hourly sync only calls Stripe when the tier actually changes. 0 = none.
+  loyaltyPct       Int           @default(0)
+  // fin N-hosting (agent-hosting-N)
 
   @@index([hostingGroupId])
   boostCredits      BoostCredit[]

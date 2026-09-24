@@ -95,7 +95,7 @@ const settings = {
   // Prepaid hosting term: any whole number of months in [min, max], stepping by `step`.
   // routes/hosting.mjs `termBounds` falls back to these same numbers when a row is missing.
   'hosting.termMinMonths': 1,
-  'hosting.termMaxMonths': 36,
+  'hosting.termMaxMonths': 12, // N-hosting (agent-hosting-N): nothing longer than a year is prepaid
   'hosting.termStepMonths': 1,
   'features.hostingEnabled': true,
   // Seeded true so the admin screen shows a real state rather than an empty checkbox.

@@ -46,9 +46,23 @@ const CIRCLE = 'M118 7C78 1 26 6 10 24c-12 14 10 29 62 32 54 3 112-3 124-22 10-1
  *
  *   variant  'swash' (default): the highlighter stroke. 'line': a thin hand-drawn underline.
  *            'circle': a loop drawn round the word (a price, a badge, one key word).
+ *            'highlight': a highlighter band BEHIND the words, wrapping with them.
  *   delay    ms before the draw-in starts, to follow a title's own entrance animation.
  */
 export function Marker({ children, variant = 'swash', delay, className = '' }) {
+  // N-hosting (agent-hosting-N): 'highlight', a highlighter pen run BEHIND the words (the
+  // Odoo title look): a thick translucent accent band over the lower part of the letters,
+  // tilted a little. A background on an INLINE span rather than the absolutely placed SVG the
+  // other variants use, because it has to follow the words onto a second line on a phone,
+  // and `box-decoration-break: clone` gives each line its own band. See .mk-hl in marker.css.
+  if (variant === 'highlight') {
+    return (
+      <span className={`mk-hl ${className}`} style={delay != null ? { '--mk-delay': `${delay}ms` } : undefined}>
+        {children}
+      </span>
+    );
+  }
+  // fin N-hosting (agent-hosting-N)
   const mod = variant === 'line' ? 'mk--line' : variant === 'circle' ? 'mk--circle' : '';
   return (
     <span className={`mk ${mod} ${className}`}

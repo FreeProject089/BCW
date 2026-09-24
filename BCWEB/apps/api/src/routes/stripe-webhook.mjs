@@ -5,6 +5,7 @@ import { provisionHostingPool, recomputePoolBytes } from './hosting.mjs';
 import { redeemPromoAtomic } from './promo.mjs';
 import { fulfilProduct, feeForProduct, splitFee, sellerMirror, releasePoolKeys } from './marketplace.mjs';
 import { syncPendingFromEvent } from '../lib/pending-checkout.mjs';
+import { nextTenureStart, graceHoursFor, syncLoyaltyCoupon, loyaltyFromSettings } from '../lib/loyalty.mjs'; // N-hosting (agent-hosting-N)
 
 // Encapsulated plugin: a raw-body JSON parser scoped here only, so Stripe's
 // signature can be verified against the exact bytes (the rest of the API keeps
@@ -401,11 +402,16 @@ export async function dispatchStripeEvent({ p, stripe, event, log = console }) {
           const months = Number(meta.months || 1);
           const currentPeriodEnd = new Date(Date.now() + months * 30 * 864e5);
           await p.serverRepo.update({ where: { id: repo.id }, data: { deleteAt: null, status: repo.status === 'SUSPENDED' ? 'ONLINE' : repo.status } });
+          // N-hosting (agent-hosting-N): the loyalty tenure survives a renewal inside the grace,
+          // restarts after a cancellation or a longer lapse (lib/loyalty.mjs).
+          const prevSub = await p.subscription.findUnique({ where: { serverRepoId: repo.id } });
+          const tenure = prevSub ? { tenureStartAt: nextTenureStart(prevSub, new Date(), graceHoursFor(prevSub, await hostingGrace(p))), ...(s.subscription ? { loyaltyPct: Number(meta.loyaltyPct) || 0 } : {}) } : {};
+          // fin N-hosting (agent-hosting-N)
           await p.subscription.upsert({
             where: { serverRepoId: repo.id },
             // When this renewal is a real recurring subscription, persist its id so
             // invoice.paid 'subscription_cycle' events re-extend the right repo.
-            update: { status: 'active', currentPeriodEnd, ...(s.subscription ? { stripeSubId: s.subscription } : {}) },
+            update: { status: 'active', currentPeriodEnd, ...tenure, ...(s.subscription ? { stripeSubId: s.subscription } : {}) },
             create: { userId: meta.userId, serverRepoId: repo.id, status: 'active', currentPeriodEnd, stripeSubId: s.subscription || null,
               planId: (await p.hostingPlan.create({ data: { name: `Custom ${Number(repo.storageQuotaBytes) / (1024 ** 3)}GB (renewal)`, storageGB: Number(repo.storageQuotaBytes) / (1024 ** 3), uploadLimitKbps: repo.uploadLimitKbps, cpuShare: repo.cpuShare, priceMonthlyCents: 0, active: false } })).id },
           });
@@ -430,7 +436,9 @@ export async function dispatchStripeEvent({ p, stripe, event, log = console }) {
           await p.communityCatalog.updateMany({ where: { groupId: group.id, status: 'HIDDEN' }, data: { status: 'ACTIVE', deleteAt: null } });
           const existing = await p.subscription.findFirst({ where: { hostingGroupId: group.id } });
           if (existing) {
-            await p.subscription.update({ where: { id: existing.id }, data: { status: 'active', currentPeriodEnd, warnedAt: null, ...(s.subscription ? { stripeSubId: s.subscription } : {}) } });
+            // N-hosting (agent-hosting-N): loyalty tenure kept or restarted (lib/loyalty.mjs).
+            const tenure = { tenureStartAt: nextTenureStart(existing, new Date(), graceHoursFor(existing, await hostingGrace(p))), ...(s.subscription ? { loyaltyPct: Number(meta.loyaltyPct) || 0 } : {}) };
+            await p.subscription.update({ where: { id: existing.id }, data: { status: 'active', currentPeriodEnd, warnedAt: null, ...tenure, ...(s.subscription ? { stripeSubId: s.subscription } : {}) } });
           } else {
             const plan = await p.hostingPlan.create({ data: { name: `Custom ${Number(group.poolBytes) / (1024 ** 3)}GB pool (renewal)`, storageGB: Number(group.poolBytes) / (1024 ** 3), uploadLimitKbps: group.uploadLimitKbps, cpuShare: group.cpuShare, priceMonthlyCents: 0, active: false } });
             await p.subscription.create({ data: { userId: meta.userId, hostingGroupId: group.id, planId: plan.id, status: 'active', poolContribBytes: group.poolBytes, currentPeriodEnd, stripeSubId: s.subscription || null } });
@@ -725,7 +733,18 @@ export async function dispatchStripeEvent({ p, stripe, event, log = console }) {
           // Trust Stripe's own period for the new end date.
           const periodEnd = inv.lines?.data?.[0]?.period?.end ? new Date(inv.lines.data[0].period.end * 1000)
             : (inv.period_end ? new Date(inv.period_end * 1000) : new Date(Date.now() + 30 * 864e5));
-          await p.subscription.update({ where: { id: sub.id }, data: { status: 'active', currentPeriodEnd: periodEnd, warnedAt: null } });
+          // N-hosting (agent-hosting-N): keep (or, after a lapse beyond the grace, restart) the
+          // loyalty tenure, then put the coupon the NEXT renewal earns on the Stripe
+          // subscription. The sync never fails a renewal: the hourly sweep retries it.
+          const graceN = await hostingGrace(p);
+          const tenureStartAt = nextTenureStart(sub, new Date(), graceHoursFor(sub, graceN));
+          await p.subscription.update({ where: { id: sub.id }, data: { status: 'active', currentPeriodEnd: periodEnd, warnedAt: null, tenureStartAt } });
+          try {
+            const rows = await p.adminSetting.findMany({ where: { key: 'hosting.loyalty' } });
+            const policy = loyaltyFromSettings(Object.fromEntries(rows.map((r) => [r.key, r.value])));
+            await syncLoyaltyCoupon({ p, stripe, sub: { ...sub, status: 'active', currentPeriodEnd: periodEnd, tenureStartAt }, policy, grace: graceN });
+          } catch (e) { log?.warn?.({ err: e?.message }, 'loyalty coupon sync failed'); }
+          // fin N-hosting (agent-hosting-N)
           let label = 'your hosting';
           if (sub.hostingGroupId) {
             // Pool sub: un-suspend every repo in the pool AND un-hide its catalogs that a

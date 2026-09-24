@@ -891,6 +891,15 @@ export function startSweeper(app) {
       await sweepUnverifiedAccounts(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'unverified account sweep failed'));
       await sweepLoginAlerts(p, app.log);
       await sweepScheduledPrices(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'scheduled price sweep failed'));
+      // N-hosting (agent-hosting-N): loyalty (tenure) coupons on Stripe-billed hosting, hourly.
+      await (async () => {
+        const sk = await stripe();
+        if (!sk) return;
+        const { sweepLoyaltyCoupons } = await import('./loyalty.mjs');
+        const n = await sweepLoyaltyCoupons(p, { stripe: sk, grace: await hostingGrace(p), log: app.log });
+        if (n) app.log.info(`[sweeper] loyalty: ${n} subscription coupon(s) updated`);
+      })().catch((e) => app.log.warn({ e: String(e) }, 'loyalty coupon sweep failed'));
+      // fin N-hosting (agent-hosting-N)
       await sweepAccountClosures(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'account closure sweep failed'));
       await rollupAnalyticsDaily(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'analytics rollup failed'));
       await sweepHostingWaitlist(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'hosting waitlist sweep failed'));

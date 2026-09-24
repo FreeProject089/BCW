@@ -11,13 +11,13 @@ import assert from 'node:assert/strict';
 import { termBounds, termCheck, termDiscount, termPresets, termTotalCents, TERM_DEFAULTS, TERM_LIMIT_MONTHS } from '../src/routes/hosting.mjs';
 
 describe('termBounds', () => {
-  test('no settings at all → the defaults (1, 36, 1)', () => {
+  test('no settings at all → the defaults (1, 12, 1)', () => {
     assert.deepEqual(termBounds({}), TERM_DEFAULTS);
     assert.deepEqual(termBounds(undefined), TERM_DEFAULTS);
   });
 
   test('admin values are read, as numbers or numeric strings', () => {
-    assert.deepEqual(termBounds({ 'hosting.termMinMonths': 3, 'hosting.termMaxMonths': '24', 'hosting.termStepMonths': 3 }), { min: 3, max: 24, step: 3 });
+    assert.deepEqual(termBounds({ 'hosting.termMinMonths': 3, 'hosting.termMaxMonths': '12', 'hosting.termStepMonths': 3 }), { min: 3, max: 12, step: 3 });
   });
 
   test('nonsense falls back per key, never to "nothing is valid"', () => {
@@ -33,23 +33,33 @@ describe('termBounds', () => {
   test('nothing sells past the hard ceiling', () => {
     assert.equal(termBounds({ 'hosting.termMaxMonths': 999 }).max, TERM_LIMIT_MONTHS);
   });
+
+  // N-hosting (agent-hosting-N): no multi-year prepayment. A stored 36 (the old default) is
+  // read as 12, so a database that still holds it cannot sell three years.
+  test('the ceiling is one year: a stored 24 or 36 is read as 12', () => {
+    assert.equal(TERM_LIMIT_MONTHS, 12);
+    assert.equal(termBounds({ 'hosting.termMaxMonths': 36 }).max, 12);
+    assert.equal(termBounds({ 'hosting.termMaxMonths': 24 }).max, 12);
+    assert.equal(termCheck(termBounds({ 'hosting.termMaxMonths': 36 }), 24)?.reason, 'above_max');
+  });
 });
 
 describe('termCheck', () => {
-  const b = { min: 1, max: 36, step: 1 };
+  const b = { min: 1, max: 12, step: 1 };
 
   test('inside the bounds → allowed', () => {
-    for (const m of [1, 2, 7, 12, 24, 36]) assert.equal(termCheck(b, m), null, `${m} months`);
+    for (const m of [1, 2, 6, 7, 12]) assert.equal(termCheck(b, m), null, `${m} months`);
   });
 
   test('below the minimum → refused, and the bounds ride along', () => {
-    assert.deepEqual(termCheck(b, 0), { error: 'invalid_term', reason: 'below_min', min: 1, max: 36, step: 1 });
+    assert.deepEqual(termCheck(b, 0), { error: 'invalid_term', reason: 'below_min', min: 1, max: 12, step: 1 });
     assert.equal(termCheck({ ...b, min: 3 }, 2)?.reason, 'below_min');
   });
 
   test('above the maximum → refused', () => {
-    assert.equal(termCheck(b, 37)?.reason, 'above_max');
-    assert.equal(termCheck(b, 200)?.reason, 'above_max');
+    assert.equal(termCheck(b, 13)?.reason, 'above_max');
+    assert.equal(termCheck(b, 24)?.reason, 'above_max');
+    assert.equal(termCheck(b, 36)?.reason, 'above_max');
   });
 
   test('off the step grid → refused; the grid counts from the minimum', () => {
@@ -73,21 +83,19 @@ describe('termCheck', () => {
 });
 
 describe('termDiscount', () => {
-  test('the five terms that used to exist keep their exact discounts', () => {
+  // N-hosting (agent-hosting-N): the offer is monthly, 6 months or 12 months.
+  test('monthly, 6 months and 12 months keep their exact discounts', () => {
     assert.equal(termDiscount(1), 0);
-    assert.equal(termDiscount(3), 0.05);
     assert.equal(termDiscount(6), 0.10);
     assert.equal(termDiscount(12), 0.20);
-    assert.equal(termDiscount(24), 0.35);
   });
 
   test('a term between two tiers gets the tier below it, never worse', () => {
     assert.equal(termDiscount(2), 0);
-    assert.equal(termDiscount(5), 0.05);
+    assert.equal(termDiscount(3), 0);
+    assert.equal(termDiscount(5), 0);
     assert.equal(termDiscount(7), 0.10);
     assert.equal(termDiscount(11), 0.10);
-    assert.equal(termDiscount(18), 0.20);
-    assert.equal(termDiscount(36), 0.35);
   });
 
   test('is monotonic over the whole sellable range', () => {
@@ -106,28 +114,28 @@ describe('termTotalCents', () => {
   test('applies the tier discount to the whole term', () => {
     assert.equal(termTotalCents(1000, 12, 1), 9600); // 12 000 − 20 %
     assert.equal(termTotalCents(1000, 7, 1), 6300);  // 7 000 − 10 % (the 6-month tier)
-    assert.equal(termTotalCents(1000, 24, 1), 15600); // 24 000 − 35 %
+    assert.equal(termTotalCents(1000, 6, 1), 5400);  // 6 000 − 10 %
   });
 
   test('then the scarcity multiplier, rounded to the cent once', () => {
     assert.equal(termTotalCents(1000, 12, 1.1), 10560);
-    assert.equal(termTotalCents(333, 3, 1.05), Math.round(333 * 3 * 0.95 * 1.05));
+    assert.equal(termTotalCents(333, 6, 1.05), Math.round(333 * 6 * 0.90 * 1.05));
   });
 });
 
 describe('termPresets', () => {
-  test('the minimum, every tier inside the bounds, and the maximum', () => {
-    assert.deepEqual(termPresets({ min: 1, max: 36, step: 1 }), [1, 3, 6, 12, 24, 36]);
+  test('the default offer: monthly, 6 months, 12 months', () => {
+    assert.deepEqual(termPresets({ min: 1, max: 12, step: 1 }), [1, 6, 12]);
   });
 
   test('tiers off the step grid are not offered', () => {
-    // With min 1 / step 3 the sellable terms are 1, 4, 7, …; none of 3/6/12/24 land on
-    // that grid, and 36 does not either, so only the minimum survives.
-    assert.deepEqual(termPresets({ min: 1, max: 36, step: 3 }), [1]);
-    assert.deepEqual(termPresets({ min: 3, max: 24, step: 3 }), [3, 6, 12, 24]);
+    // With min 1 / step 3 the sellable terms are 1, 4, 7, 10; neither 6 nor 12 lands on
+    // that grid, so only the minimum survives.
+    assert.deepEqual(termPresets({ min: 1, max: 12, step: 3 }), [1]);
+    assert.deepEqual(termPresets({ min: 3, max: 12, step: 3 }), [3, 6, 12]);
   });
 
   test('a range that ends before a tier simply omits it', () => {
-    assert.deepEqual(termPresets({ min: 1, max: 6, step: 1 }), [1, 3, 6]);
+    assert.deepEqual(termPresets({ min: 1, max: 6, step: 1 }), [1, 6]);
   });
 });

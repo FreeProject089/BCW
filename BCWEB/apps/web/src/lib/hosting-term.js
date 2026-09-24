@@ -7,7 +7,9 @@
 // table that used to live in this file (1/3/6/12/24 → 0/5/10/20/35 %) was the second copy of
 // the server's, and a second copy is a rule that drifts.
 
-export const TERM_FALLBACK = Object.freeze({ min: 1, max: 36, step: 1, presets: [1, 3, 6, 12, 24, 36], tiers: [{ from: 24, off: 0.35 }, { from: 12, off: 0.20 }, { from: 6, off: 0.10 }, { from: 3, off: 0.05 }] });
+// N-hosting (agent-hosting-N): the server's defaults since the offer became monthly / 6 / 12
+// months (nothing longer is prepaid; see TERM_LIMIT_MONTHS in routes/hosting.mjs).
+export const TERM_FALLBACK = Object.freeze({ min: 1, max: 12, step: 1, presets: [1, 6, 12], tiers: [{ from: 12, off: 0.20 }, { from: 6, off: 0.10 }] });
 
 /** The bounds as the server sent them, or the fallback when the request has not answered yet
  *  (the page must still render a control). Always integers, always min ≤ max, step ≥ 1. */

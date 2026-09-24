@@ -45,10 +45,9 @@ test('termTotalCents: a 1-month term has no discount', () => {
 });
 
 test('termTotalCents: each prepaid tier applies its exact discount', () => {
-  assert.equal(termTotalCents(1000, 3, 1), 2850);   // 3 * 1000 * (1 - 0.05)
+  // N-hosting (agent-hosting-N): the offer is monthly, 6 and 12 months (no 3, no 24).
   assert.equal(termTotalCents(1000, 6, 1), 5400);   // 6 * 1000 * (1 - 0.10)
   assert.equal(termTotalCents(1000, 12, 1), 9600);  // 12 * 1000 * (1 - 0.20)
-  assert.equal(termTotalCents(1000, 24, 1), 15600); // 24 * 1000 * (1 - 0.35)
 });
 
 // The term is any number of months now (admin-bounded), so 7 is not "unknown": it earns the
@@ -60,13 +59,13 @@ test('termTotalCents: a term between two tiers takes the tier below it, never wo
 });
 
 test('termTotalCents: the scarcity price multiplier scales the whole total', () => {
-  assert.equal(termTotalCents(1000, 3, 1.1), 3135); // round(3 * 1000 * 0.95 * 1.1)
+  assert.equal(termTotalCents(1000, 6, 1.1), 5940); // round(6 * 1000 * 0.90 * 1.1)
 });
 
 test('INVARIANT: a longer prepaid term never costs MORE per month', () => {
   const monthly = 1234;
   const perMonth = (m) => termTotalCents(monthly, m, 1) / m;
-  const terms = [1, 3, 6, 12, 24];
+  const terms = [1, 3, 6, 7, 12];
   for (let i = 1; i < terms.length; i++) {
     assert.ok(perMonth(terms[i]) <= perMonth(terms[i - 1]) + 1e-9,
       `${terms[i]}mo per-month (${perMonth(terms[i])}) should be <= ${terms[i - 1]}mo (${perMonth(terms[i - 1])})`);

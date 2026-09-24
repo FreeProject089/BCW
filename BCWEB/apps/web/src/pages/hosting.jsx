@@ -1,7 +1,8 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Upload, CheckCircle2, XCircle, HardDrive, Gauge, Sliders, Receipt, Plus, Mail, RefreshCw, X, ChevronDown, AlertTriangle, Ticket, CreditCard, Gift, Layers, ShoppingCart, Save, MessageSquare, Server, Boxes, Check, Globe, Star, CalendarClock, Anchor, AppWindow, ChevronsUp, Bot
+import { Upload, CheckCircle2, XCircle, HardDrive, Gauge, Sliders, Receipt, Plus, Mail, RefreshCw, X, ChevronDown, AlertTriangle, Ticket, CreditCard, Gift, Layers, ShoppingCart, Save, MessageSquare, Server, Boxes, Check, Globe, Star, CalendarClock, Anchor, AppWindow, ChevronsUp, Bot,
+  TrendingDown, Hourglass // N-hosting (agent-hosting-N): loyalty row + "when it ends" row
 } from 'lucide-react';
 import { Button, Card, Badge, Input, Select, PageHeader, Spinner, Modal, bestByteUnit, bytesInUnit, useDialog, useToast, Explain } from '../ui/ui.jsx';
 import { api } from '../lib/api.js';
@@ -16,7 +17,7 @@ import { DomainGuide } from '../ui/domain-panel.jsx';
 import { useI18n } from '../i18n.jsx';
 // M21: the Discord bot plans section (#bot), and the name a bundle's bot part goes by.
 import HostingBotPlans, { useBotPlans } from './hosting-bot.jsx';
-import { HandNote } from '../ui/marker.jsx'; // M3 (agent-landing-M)
+import { HandNote, Marker } from '../ui/marker.jsx'; // M3 (agent-landing-M); Marker: N-hosting (agent-hosting-N), the highlighted title
 
 // Local helpers (small hooks duplicated across a few page modules).
 function useAsync(fn, deps = []) {
@@ -52,10 +53,10 @@ function TermControl({ months, setMonths, term, sample, t }) {
   const next = nextTier(term, months);
   const total = sample ? termTotalCents(sample.priceMonthlyCents, months, tiers) : null;
   const label = (m) => `${m} ${m === 1 ? t('hosting.month1', 'month') : t('hosting.months', 'months')}`;
-  // The chips are the choice most people make, so they come first and the slider + exact figure
-  // fold under them. Open by default when the current term is not one of the chips, so a term
-  // somebody typed is never hidden from them.
-  const offPreset = presets.length > 1 && !presets.includes(months);
+  // N-hosting (agent-hosting-N): the chips ARE the choice now (monthly, 6 months, 12 months).
+  // The "another length" fold with its slider and typed figure is gone: three honest options
+  // read at a glance, and a term nobody can buy is not a thing to offer. The slider is kept
+  // only for a site whose admin settings leave a single preset (then it is the only control).
   const fine = (
       <div className="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
         <div className="min-w-0">
@@ -102,18 +103,13 @@ function TermControl({ months, setMonths, term, sample, t }) {
             return (
               <button key={m} type="button" aria-pressed={active} onClick={() => pick(m)}
                 className={`tap-44 min-w-[4.5rem] rounded-lg px-3.5 py-1.5 text-[13px] leading-tight transition-colors tabular-nums flex flex-col items-center ${active ? 'bg-[var(--bg-solid)] shadow-sm font-semibold text-[var(--text)]' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>
-                <span>{m === 1 ? t('hosting.term.monthly', 'Monthly') : m === 12 ? t('hosting.term.yearly', 'Yearly') : `${m} ${t('hosting.mo', 'mo')}`}</span>
+                <span>{m === 1 ? t('hosting.term.monthly', 'Monthly') : m === 12 ? t('hosting.term.12mo', '12 months') : `${m} ${t('hosting.months', 'months')}`}</span>
                 <span className={`text-[11px] font-semibold ${d > 0 ? 'text-success' : 'invisible'}`}>{d > 0 ? `−${d}%` : '·'}</span>
               </button>
             );
           })}
         </div>
       ) : fine}
-      {presets.length > 1 && (
-        <Explain className="text-[12.5px] mt-3" open={offPreset} label={t('hosting.term.other', 'Another length')}>
-          <div className="pt-2">{fine}</div>
-        </Explain>
-      )}
       {/* Live, against a real plan. `sample` is the recommended plan (or the cheapest paid
           one), so the sentence is the same one the card under it will show. */}
       <div className="mt-3 text-[13px] flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -431,6 +427,9 @@ export function Hosting() {
   const soldOut = !!c && (c.enabled === false || c.freeGB <= 0.01);
   const freeOffered = !!freePlan && !soldOut && !freeTierSoldOut
     && !(!!c && freePlan.storageGB > c.freeGB);
+  // N-hosting (agent-hosting-N): the loyalty policy the server prices renewals with.
+  const loyalty = plans.data?.loyalty?.enabled && (plans.data.loyalty.tiers || []).some((x) => x.pct > 0) ? plans.data.loyalty : null;
+  const loyaltyMax = loyalty ? Math.max(0, ...loyalty.tiers.map((x) => x.pct)) : 0;
   return (
     <div>
       {/* The page used to open on the configurator — two sliders and a total, for somebody
@@ -438,7 +437,9 @@ export function Hosting() {
           the question it answers. The button goes to the plans, which is where the price
           lives now. */}
       <HostingHero freePlan={freePlan} freeOffered={freeOffered} />
-      <HostingNav hasBot={!!(botPlans && (botPlans.plans?.length || botPlans.bundles?.length))} />
+      {/* N-hosting (agent-hosting-N): the row of links under the hero (Plans and prices / Your
+          own domain / What changes / Questions / Talk to us) is gone, the owner's call: it read
+          as a row of badges. The anchors still work from links elsewhere (HOSTING_ANCHORS). */}
 
       {soldOut && (
         <div className="rounded-xl border border-error-border bg-error-bg p-4 mb-6 flex items-start gap-3">
@@ -468,6 +469,8 @@ export function Hosting() {
           cards: changing it repriced four cards nobody was looking at. A control belongs
           above the numbers it moves. */}
       <TermBar months={months} setMonths={setMonths} term={term} sample={samplePlan} />
+      {/* N-hosting (agent-hosting-N): loyalty tiers, when the site runs them. */}
+      <LoyaltyStrip loyalty={loyalty} />
 
       {/* One column on a phone, two from sm, three from lg, four from xl. It was a
           scroll-snap row at 78 % of the viewport below sm; a thumb found the next card, but
@@ -496,28 +499,33 @@ export function Hosting() {
           // so it carries a second line saying what a boost DOES — then the custom domain, then
           // the free tier, because "is there a free one" is the question the grid was missing
           // an answer to. Each row is [icon, label, included, note].
-          const boosts = pl.boostsPerPeriod > 0
+          // N-hosting (agent-hosting-N): "1 featured boosts" read as a typo; one boost is said once.
+          const boosts = pl.boostsPerPeriod === 1
+            ? (pl.boostPeriodMonths > 1
+              ? t('hosting.card.boost1p', 'One featured boost ({d} days) every {m} months').replace('{d}', pl.boostDays ?? 7).replace('{m}', pl.boostPeriodMonths)
+              : t('hosting.card.boost1m', 'One featured boost ({d} days) every month').replace('{d}', pl.boostDays ?? 7))
+            : pl.boostsPerPeriod > 0
             ? (pl.boostPeriodMonths > 1
               ? t('hosting.card.boosts', '{n} featured boosts ({d} days each) every {m} months').replace('{n}', pl.boostsPerPeriod).replace('{d}', pl.boostDays ?? 7).replace('{m}', pl.boostPeriodMonths)
               : t('hosting.card.boosts1', '{n} featured boosts ({d} days each) every month').replace('{n}', pl.boostsPerPeriod).replace('{d}', pl.boostDays ?? 7))
             : null;
-          const freeLine = freePlan
-            ? (freeOffered
-              ? [t('hosting.card.free', 'Free {s} plan available, no card').replace('{s}', `${freePlan.storageGB} GB`), true]
-              : [t('hosting.card.freeout', 'The free plan is sold out right now'), false])
-            : [t('hosting.card.nofree', 'No free plan at the moment'), false];
+          // N-hosting (agent-hosting-N): every row says what you GET, in plain words, with the
+          // detail as a second line. The "free offer, no card" row is gone from the paid cards
+          // (the owner's call: the free plan has its own card below, and a line about a
+          // different plan on every paid card read as part of what the paid plan gives).
           const features = [
-            [HardDrive, t('hosting.card.storage', '{s} of storage, split how you like').replace('{s}', storageLabel), true],
-            [Gauge, t('hosting.card.upload', '{m} Mbps of download bandwidth').replace('{m}', mbps), true],
+            [HardDrive, t('hosting.card.space', '{s} of space for your files').replace('{s}', storageLabel), true, t('hosting.card.space.n', 'Repos, catalogues or both, as many as fit, split however you like')],
+            [Gauge, t('hosting.card.speed', 'Downloads served at up to {m} Mbps').replace('{m}', mbps), true, t('hosting.card.speed.n', 'A ceiling per download, not a promised average')],
             // The note stays one line: this card is a price comparison, and what a boost IS
             // belongs in the questions below, which is a disclosure and is read by somebody
             // who wants the answer rather than by everybody comparing four prices.
             [Star, boosts || t('hosting.card.noboosts', 'Boosts bought separately'), !!boosts, t('hosting.card.boostis', 'At the top of the public lists, for as long as it lasts')],
-            [Globe, t('hosting.card.domain', 'Your own domain, per repo or catalogue'), true],
-            [Gift, freeLine[0], freeLine[1]],
             // A bundle: this storage plan also carries a Discord bot plan (M21).
             ...(pl.bot && ((pl.bot.features || []).length || Object.values(pl.bot.limits || {}).some((n) => n > 0))
               ? [[Bot, t('hosting.card.bot', 'A Discord bot plan included'), true, t('hosting.card.bot.n', 'On {n} of your servers, see the bot plans below').replace('{n}', pl.bot.guilds || 1)]] : []),
+            [Globe, t('hosting.card.domain', 'Your own domain, per repo or catalogue'), true],
+            ...(loyalty ? [[TrendingDown, t('hosting.card.loyal', 'Cheaper the longer you stay, up to {pct}% off renewals').replace('{pct}', loyaltyMax), true, t('hosting.card.loyal.n', 'Counted while your subscription runs without a break')]] : []),
+            [Hourglass, t('hosting.card.end', 'When the term ends, it renews only if auto-renew is on'), true, t('hosting.card.end.n', 'Otherwise the pool is paused, then deleted after a grace period unless you renew')],
           ];
           // The recommended card stands FORWARD (PlanCard: a ring, a lift and a shadow, from lg
           // only and never on a card that cannot be bought): four cards where one is tinted is
@@ -537,9 +545,10 @@ export function Hosting() {
               }}
               // Prepaid, so "$X /mo" is the effective rate and this line is what is actually
               // charged, once, for the term chosen above.
+              // N-hosting (agent-hosting-N): what leaves your account today, said as such.
               priceNote={months > 1
-                ? t('hosting.card.period', '{total} for {n} months, paid up front').replace('{total}', `$${(total / 100).toFixed(2)}`).replace('{n}', months)
-                : t('hosting.card.period1', '{total} for one month, paid up front').replace('{total}', `$${(total / 100).toFixed(2)}`)}
+                ? t('hosting.card.today', 'You pay {total} today for {n} months').replace('{total}', `$${(total / 100).toFixed(2)}`).replace('{n}', months)
+                : t('hosting.card.today1', 'You pay {total} today for one month').replace('{total}', `$${(total / 100).toFixed(2)}`)}
               features={features.map(([icon, label, yes, note]) => ({ icon, label, yes, note }))}
               action={(
                 <Button variant={recommended && !planDisabled ? 'primary' : 'default'} disabled={planDisabled} className="w-full !whitespace-normal" onClick={() => addHosting({ planId: pl.id })}>
@@ -975,43 +984,8 @@ const HOSTING_ANCHORS = ['plans', 'custom', 'bot', 'domains', 'compare', 'faq', 
 /** The coloured band on the plan cards that are not the recommended one, smallest first. */
 const PLAN_ACCENTS = ['var(--info)', 'var(--success)', 'color-mix(in srgb, var(--info) 55%, var(--primary))', 'var(--warning)'];
 
-/**
- * Where things are on this page, as a row of links under the hero.
- *
- * The page answers five different questions and a reader usually has one of them. A contents
- * row lets them go straight to it rather than scrolling past four price cards to reach "can I
- * use my own domain". Plain anchors: they work without script, with the middle button, and
- * the effect in Hosting() re-scrolls once the plans have arrived.
- */
-function HostingNav({ hasBot = false }) {
-  const { t } = useI18n();
-  // Objects, not `['plans', Icon, …]` rows: this file also builds /contact?topic= links from
-  // rows of that shape, and check-contact-topics reads every such row as a topic.
-  const links = [
-    { id: 'plans', Icon: Layers, label: t('hosting.nav.plans', 'Plans and prices') },
-    { id: 'domains', Icon: Globe, label: t('hosting.nav.domains', 'Your own domain') },
-    ...(hasBot ? [{ id: 'bot', Icon: Bot, label: t('hosting.nav.bot', 'Discord bot') }] : []),
-    { id: 'compare', Icon: CheckCircle2, label: t('hosting.nav.compare', 'What changes') },
-    { id: 'faq', Icon: MessageSquare, label: t('hosting.nav.faq', 'Questions') },
-    { id: 'talk', Icon: Mail, label: t('hosting.nav.talk', 'Talk to us') },
-  ];
-  // One quiet strip with hairline separators, not a row of pill cards: five bordered pills
-  // under the hero were read as badges, and a contents row should be the calmest thing on the
-  // page, not a second set of buttons competing with the hero's.
-  return (
-    <nav aria-label={t('hosting.nav.l', 'On this page')} className="-mt-4 mb-4">
-      <ul className="card flex flex-wrap justify-center w-fit max-w-full mx-auto rounded-xl px-1.5 lg:divide-x divide-[var(--line)]">
-        {links.map(({ id, Icon, label }) => (
-          <li key={id} className="min-w-0">
-            <a href={`#${id}`} className="inline-flex items-center gap-1.5 px-3.5 py-2.5 min-h-[40px] max-lg:min-h-[44px] text-[13px] font-medium text-[var(--muted)] hover:text-[var(--text)] transition-colors">
-              <Icon size={14} className="shrink-0 text-[var(--accent-ink)]" aria-hidden /> {label}
-            </a>
-          </li>
-        ))}
-      </ul>
-    </nav>
-  );
-}
+// N-hosting (agent-hosting-N): HostingNav (the row of links under the hero) was removed at
+// the owner's request; HOSTING_ANCHORS above still makes /hosting#plans and the rest land.
 
 /**
  * The billing term, chosen once for the whole section.
@@ -1033,17 +1007,58 @@ function TermBar({ months, setMonths, term, sample }) {
             Nothing is cut: both sentences are true to the code, which is worth saying because
             an earlier version of them was not (auto-renew is ON by default in the cart, and
             the pool is suspended at once rather than at the end of the grace). */}
+        {/* N-hosting (agent-hosting-N): three terms, and what paying ahead actually commits
+            each side to. Nothing longer than 12 months is sold (see the Terms). */}
         <p className="text-[12.5px] text-[var(--muted)] mt-1 leading-relaxed max-w-3xl">
-          {t('hosting.termbar.s5', 'Every price below is for this many months, paid once at checkout. The longer the term, the less each month costs.')}
+          {t('hosting.termbar.s6', 'Monthly, 6 months or 12 months. Each card below shows the price for the length you pick, paid once today; 6 and 12 months cost less per month.')}
         </p>
-        <Explain className="text-[12.5px] mt-1.5 max-w-3xl">
-          {t('hosting.termbar.s4b', 'In the cart you choose whether it auto-renews. On, the same term is billed again when it ends, and you can cancel any time from Billing; a term over 12 months never auto-renews. Off, nothing is charged again: the pool is suspended the day the term ends, and deleted after a grace period (72 hours by default, a week after a failed payment) unless you renew it.')}
+        <Explain className="text-[12.5px] mt-1.5 max-w-3xl" label={t('hosting.termbar.what', 'What paying ahead means')}>
+          <span className="block">{t('hosting.termbar.s7', 'You pay the whole term today, and the pool is yours until its last day: we commit to running it for exactly the term you paid, never less. We sell nothing longer than 12 months because we do not promise the service years ahead. If we ever had to stop it before your term ends, the part you have not used is refunded, to the day.')}</span>
+          <span className="block mt-2">{t('hosting.termbar.s8', 'In the cart you choose whether it auto-renews. On, the same term is billed again when it ends, and you can cancel any time from Billing. Off, nothing is charged again: the pool is suspended the day the term ends, and deleted after a grace period (72 hours by default, a week after a failed payment) unless you renew.')}</span>
         </Explain>
       </div>
       <TermControl months={months} setMonths={setMonths} term={term} sample={sample} t={t} />
     </Card>
   );
 }
+
+// N-hosting (agent-hosting-N)
+/**
+ * Loyalty (tenure) pricing, as the page shows it: the tiers the server renews with, and the
+ * one sentence that says exactly what "staying" means (lib/loyalty.mjs on the API is the rule).
+ * Nothing when the site does not run it: a promise the renewal would not keep is worse than none.
+ */
+function LoyaltyStrip({ loyalty }) {
+  const { t } = useI18n();
+  if (!loyalty) return null;
+  const tiers = (loyalty.tiers || []).filter((x) => x.pct > 0);
+  const label = (m) => (m === 1 ? t('hosting.loyal.after1', 'After 1 month') : t('hosting.loyal.after', 'After {n} months').replace('{n}', m));
+  return (
+    <Card className="p-4 sm:p-5 mb-7">
+      <div className="flex items-start gap-2.5">
+        <TrendingDown size={17} className="text-[var(--accent-ink)] shrink-0 mt-[2px]" aria-hidden />
+        <div className="min-w-0 flex-1">
+          <div className="font-semibold text-[14.5px]">{t('hosting.loyal.t', 'The longer you stay, the less it costs')}</div>
+          <p className="text-[12.5px] text-[var(--muted)] mt-1 leading-relaxed max-w-3xl">
+            {t('hosting.loyal.s', 'Each renewal is cheaper once your subscription has run without a break for long enough. The discount comes on top of the term price, from the renewal after you reach a step, and never changes a term you have already paid.')}
+          </p>
+          <ul className="mt-3 grid gap-2 sm:grid-cols-3" aria-label={t('hosting.loyal.t', 'The longer you stay, the less it costs')}>
+            {tiers.map((x) => (
+              <li key={x.months} className="rounded-lg border border-[var(--line)] px-3 py-2 flex items-baseline justify-between gap-3 text-[13px]">
+                <span className="text-[var(--muted)]">{label(x.months)}</span>
+                <span className="font-semibold tabular-nums text-success">{t('hosting.loyal.off', '{pct}% off').replace('{pct}', x.pct)}</span>
+              </li>
+            ))}
+          </ul>
+          <Explain className="text-[12.5px] mt-2 max-w-3xl" label={t('hosting.loyal.how', 'What counts as staying')}>
+            {t('hosting.loyal.rule', 'The count starts on the day you first pay and keeps running as long as the subscription is renewed without a break. It starts again from zero if you cancel, or if a renewal comes later than the grace period after the paid-up date (by default 72 hours for a term renewed by hand, a week after a failed card payment). A new pool is a new subscription, so it starts at zero. The discount never goes past {max}%.').replace('{max}', loyalty.maxPct)}
+          </Explain>
+        </div>
+      </div>
+    </Card>
+  );
+}
+// fin N-hosting (agent-hosting-N)
 
 /**
  * The opener: what this is, what you get, and the thing itself.
@@ -1076,8 +1091,11 @@ function HostingHero({ freePlan, freeOffered }) {
         <div className="plate">
           {/* No badge over the title. It said HOSTING, on the hosting page, above a heading
               about hosting — a third naming of the same thing before a word of substance. */}
+          {/* N-hosting (agent-hosting-N): the key words run over with a highlighter (the Odoo
+              title look the owner asked for), the shared Marker in its "highlight" variant. */}
           <h1 className="text-3xl sm:text-[2.75rem] font-extrabold tracking-tight leading-[1.06] text-balance">
-            {t('hosting.hero.h', 'Somewhere to put your repos and catalogues')}
+            {t('hosting.hero.h1', 'Somewhere to put your')}{' '}
+            <Marker variant="highlight" delay={250}>{t('hosting.hero.h2', 'repos and catalogues')}</Marker>
           </h1>
           <p className="text-[var(--muted)] mt-4 text-[15.5px] leading-relaxed max-w-xl">
             {t('hosting.hero.sub', 'You buy a space. You fill it with whatever you like, we keep it up, you decide what goes in it.')}

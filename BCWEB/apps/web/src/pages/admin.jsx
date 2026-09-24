@@ -8381,6 +8381,9 @@ function AdminTransfers() {
   );
 }
 
+// N-hosting (agent-hosting-N): the loyalty (tenure) pricing editor, rendered under the plans.
+import HostingLoyaltyEditor from './admin-loyalty.jsx';
+// fin N-hosting (agent-hosting-N)
 function AdminHostingPlans() {
   const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
   const data = useAsync(() => api.get('/admin/hosting/plans'), []);
@@ -8705,6 +8708,9 @@ function AdminHostingPlans() {
         </Card>
       )}
       <BotFreeTier />
+      {/* N-hosting (agent-hosting-N) */}
+      <HostingLoyaltyEditor />
+      {/* fin N-hosting (agent-hosting-N) */}
     </div>
   );
 }

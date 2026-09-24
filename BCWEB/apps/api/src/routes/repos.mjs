@@ -15,6 +15,9 @@ import { capacityStatus, capacityFactors, priceCents, termTotalCents, termBounds
 import { findBlock } from '../lib/urlblock.mjs';
 import { loadTraffic, namePools } from '../lib/access-traffic.mjs';
 import { reservedTermIn } from '../lib/reserved-names.mjs';
+// N-hosting (agent-hosting-N): loyalty (tenure) pricing on renewals paid by hand.
+import { hostingGrace } from '../lib/lib.mjs';
+import { loyaltyFromSettings, pctForRenewalNow, applyLoyalty, ensureLoyaltyCoupon } from '../lib/loyalty.mjs';
 
 // A listed repo is a link like any other, so the blocklist reaches it too. Same shape of
 // refusal as the catalog, so a client handles one error and not two.
@@ -650,6 +653,11 @@ export default async function repoRoutes(app) {
     const monthly = priceCents(s, storageGB, uploadMbps, repo.cpuShare || 0);
     const total = termTotalCents(monthly, months, cf.priceMult);
     const siteUrl = process.env.SITE_URL || 'http://localhost';
+    // N-hosting (agent-hosting-N): the loyalty tier this subscription's continuous tenure has
+    // reached today (0 after a cancellation or a lapse beyond the grace). lib/loyalty.mjs.
+    const loyalPct = pctForRenewalNow(loyaltyFromSettings(s), await p.subscription.findUnique({ where: { serverRepoId: repo.id } }), new Date(), await hostingGrace(p));
+    const loyalLabel = loyalPct ? ` · loyalty −${loyalPct}%` : '';
+    // fin N-hosting (agent-hosting-N)
 
     const applyRenewal = async () => {
       await p.serverRepo.update({ where: { id: repo.id }, data: { deleteAt: null, status: repo.status === 'SUSPENDED' ? 'ONLINE' : repo.status } });
@@ -671,24 +679,27 @@ export default async function repoRoutes(app) {
     const sk = await stripe({ forPurchase: true });
     if (!sk) return reply.code(503).send({ error: 'stripe_not_configured' });
     const customer = await ensureCustomer(p, sk, req.user.uid);
-    const md = { type: 'repo_renew', kind: 'hosting', userId: req.user.uid, repoId: repo.id, months: String(months) };
+    const md = { type: 'repo_renew', kind: 'hosting', userId: req.user.uid, repoId: repo.id, months: String(months), loyaltyPct: String(loyalPct) };
     // A campaign discount is time-boxed, so it must never become a recurring price. Same
     // rule the pool-purchase checkout already applies: when one is live, auto-renew falls
     // back to a single payment for this term rather than locking the sale price in
     // forever. The user still gets the discount; they just re-arm auto-renew afterwards.
-    const camp = await applyCampaign(p, total, 'hosting');
+    // N-hosting: on a one-time payment the loyalty discount is priced in; on a subscription it
+    // is a coupon (below), so the hourly sync can move it to the next tier later.
+    const camp = await applyCampaign(p, applyLoyalty(total, loyalPct), 'hosting');
     const autoRenew = b.data.autoRenew && !camp.campaign;
     // Auto-renew → a real recurring Stripe subscription (charges again each term).
     // One-time → a single payment that also mints a genuine Stripe invoice/receipt.
     const session = await sk.checkout.sessions.create(autoRenew ? {
       mode: 'subscription', customer,
+      ...(loyalPct ? { discounts: [{ coupon: await ensureLoyaltyCoupon(sk, loyalPct) }] } : {}), // N-hosting (agent-hosting-N)
       line_items: [{ quantity: 1, price_data: { currency: 'usd', unit_amount: total, recurring: { interval: 'month', interval_count: months }, product_data: { name: `"${repo.name}" hosting — auto-renews every ${months} month${months > 1 ? 's' : ''}` } } }],
       subscription_data: { metadata: md },
       metadata: md,
       success_url: `${siteUrl}/dashboard?hosting=ok`, cancel_url: `${siteUrl}/dashboard?hosting=cancel`,
     } : {
       mode: 'payment', customer,
-      line_items: [{ quantity: 1, price_data: { currency: 'usd', unit_amount: camp.amount, product_data: { name: `"${repo.name}" renewal — ${months} month${months > 1 ? 's' : ''}${camp.label}` } } }],
+      line_items: [{ quantity: 1, price_data: { currency: 'usd', unit_amount: camp.amount, product_data: { name: `"${repo.name}" renewal — ${months} month${months > 1 ? 's' : ''}${loyalLabel}${camp.label}` } } }],
       invoice_creation: { enabled: true },
       metadata: md,
       success_url: `${siteUrl}/dashboard?hosting=ok`, cancel_url: `${siteUrl}/dashboard?hosting=cancel`,
@@ -720,6 +731,10 @@ export default async function repoRoutes(app) {
     const monthly = priceCents(s, storageGB, uploadMbps, group.cpuShare || 0);
     const total = termTotalCents(monthly, months, cf.priceMult);
     const siteUrl = process.env.SITE_URL || 'http://localhost';
+    // N-hosting (agent-hosting-N): loyalty tier reached today by the pool's subscription.
+    const loyalPct = pctForRenewalNow(loyaltyFromSettings(s), await p.subscription.findFirst({ where: { hostingGroupId: group.id } }), new Date(), await hostingGrace(p));
+    const loyalLabel = loyalPct ? ` · loyalty −${loyalPct}%` : '';
+    // fin N-hosting (agent-hosting-N)
 
     const applyRenewal = async () => {
       const currentPeriodEnd = new Date(Date.now() + months * 30 * 864e5);
@@ -744,21 +759,22 @@ export default async function repoRoutes(app) {
     const sk = await stripe({ forPurchase: true });
     if (!sk) return reply.code(503).send({ error: 'stripe_not_configured' });
     const customer = await ensureCustomer(p, sk, req.user.uid);
-    const md = { type: 'pool_renew', kind: 'hosting', userId: req.user.uid, groupId: group.id, months: String(months) };
+    const md = { type: 'pool_renew', kind: 'hosting', userId: req.user.uid, groupId: group.id, months: String(months), loyaltyPct: String(loyalPct) };
     // A campaign discount is time-boxed, so it must never become a recurring price. Same
     // rule the pool-purchase checkout already applies: when one is live, auto-renew falls
     // back to a single payment for this term rather than locking the sale price in
     // forever. The user still gets the discount; they just re-arm auto-renew afterwards.
-    const camp = await applyCampaign(p, total, 'hosting');
+    const camp = await applyCampaign(p, applyLoyalty(total, loyalPct), 'hosting'); // N-hosting: loyalty priced in (one-time)
     const autoRenew = b.data.autoRenew && !camp.campaign;
     const session = await sk.checkout.sessions.create(autoRenew ? {
       mode: 'subscription', customer,
+      ...(loyalPct ? { discounts: [{ coupon: await ensureLoyaltyCoupon(sk, loyalPct) }] } : {}), // N-hosting (agent-hosting-N)
       line_items: [{ quantity: 1, price_data: { currency: 'usd', unit_amount: total, recurring: { interval: 'month', interval_count: months }, product_data: { name: `Pool "${group.name}" — auto-renews every ${months} month${months > 1 ? 's' : ''}` } } }],
       subscription_data: { metadata: md }, metadata: md,
       success_url: `${siteUrl}/dashboard?hosting=ok`, cancel_url: `${siteUrl}/dashboard?hosting=cancel`,
     } : {
       mode: 'payment', customer,
-      line_items: [{ quantity: 1, price_data: { currency: 'usd', unit_amount: camp.amount, product_data: { name: `Pool "${group.name}" renewal — ${months} month${months > 1 ? 's' : ''}${camp.label}` } } }],
+      line_items: [{ quantity: 1, price_data: { currency: 'usd', unit_amount: camp.amount, product_data: { name: `Pool "${group.name}" renewal — ${months} month${months > 1 ? 's' : ''}${loyalLabel}${camp.label}` } } }],
       invoice_creation: { enabled: true }, metadata: md,
       success_url: `${siteUrl}/dashboard?hosting=ok`, cancel_url: `${siteUrl}/dashboard?hosting=cancel`,
     });
