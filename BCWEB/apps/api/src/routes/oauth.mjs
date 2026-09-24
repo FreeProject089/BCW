@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { JWT_SECRET } from '../lib/jwt-secret.mjs';
 import argon2 from 'argon2';
 import { db, issueSession, requireRole, optionalAuth, safeEqual, notify } from '../lib/lib.mjs';
 import { priorLoginContext, maybeAlertLogin } from '../lib/login-alert.mjs';
@@ -12,7 +13,6 @@ import { markNewAccount } from '../lib/onboarding.mjs';
 // GitHub/Discord "Continue with…" login + signup. No library — both providers'
 // authorization-code flow is a handful of fetches, and pulling in a whole OAuth
 // framework for two providers would be more code than this file.
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-insecure-secret';
 const SITE_URL = process.env.SITE_URL || 'http://localhost';
 const STATE_TTL_MS = 10 * 60 * 1000;
 /** How long a "link this provider to your existing account?" proposal stays answerable. */

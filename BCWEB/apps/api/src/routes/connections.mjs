@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { JWT_SECRET } from '../lib/jwt-secret.mjs';
 import { z } from 'zod';
 import { db, requireRole, safeEqual } from '../lib/lib.mjs';
 
@@ -7,7 +8,6 @@ import { db, requireRole, safeEqual } from '../lib/lib.mjs';
 // (github / twitch / youtube-via-google) share one authorization-code flow; Steam uses
 // OpenID 2.0. The signed `state`/`return_to` carries the linking user's id so the callback
 // attaches the connection to the right account.
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-insecure-secret';
 const SITE_URL = (process.env.SITE_URL || 'http://localhost').replace(/\/+$/, '');
 const STATE_TTL_MS = 10 * 60 * 1000;
 const env = (k) => process.env[k];

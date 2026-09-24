@@ -7,6 +7,7 @@
 // too many, and the dev-machine geo fallback in particular is subtle enough that a
 // re-derivation would get it wrong. Moved here VERBATIM and imported by both.
 import { createHash } from 'node:crypto';
+import { JWT_SECRET } from './jwt-secret.mjs';
 
 // Real client IP as seen by our trusted proxy (Caddy appends it last on X-Forwarded-For).
 export function clientIp(req) {
@@ -18,7 +19,7 @@ export function clientIp(req) {
 export function visitorHash(req) {
   const day = new Date().toISOString().slice(0, 10);
   const ua = req.headers['user-agent'] || '';
-  return createHash('sha256').update(`${clientIp(req)}|${ua}|${day}|${process.env.JWT_SECRET || 'salt'}`).digest('hex').slice(0, 24);
+  return createHash('sha256').update(`${clientIp(req)}|${ua}|${day}|${JWT_SECRET}`).digest('hex').slice(0, 24);
 }
 // Country resolution: CDN/proxy header first (Cloudflare / Vercel / custom), then a
 // LOCAL geoip lookup on the real client IP (geoip-lite, offline MaxMind-lite DB) —

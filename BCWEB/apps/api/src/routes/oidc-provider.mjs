@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { JWT_SECRET } from '../lib/jwt-secret.mjs';
 import crypto from 'node:crypto';
 import querystring from 'node:querystring';
 import jwt from 'jsonwebtoken';
@@ -6,7 +7,6 @@ import { db, requireRole, optionalAuth, clearSession, logAudit, clientIp, notify
 import { jwks, issuer, signRs256, verifyRs256, verifyPkce, validateAuthorizeRequest } from '../lib/oidc.mjs';
 import { flagEnabled } from '../lib/flags.mjs';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-insecure-secret';
 const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
 // Every scope here unlocks a resource below. A scope with nothing behind it is a promise
 // the provider does not keep, and it survives review because it reads perfectly well in a

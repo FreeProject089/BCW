@@ -1,11 +1,11 @@
 import { z } from 'zod';
+import { JWT_SECRET } from '../lib/jwt-secret.mjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'node:crypto';
 import { db, requireRole, logAudit, safeEqual, clientIp, sessionUser } from '../lib/lib.mjs';
 import { boundedSet } from '../lib/boundedmap.mjs';
 import { sendMail, mailShell, emailEnabled, escapeHtml } from '../lib/mail.mjs';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-insecure-secret';
 const ADMIN_TIER = ['MOD', 'ADMIN', 'SUPERADMIN'];
 // Same scheme-derived Secure flag as the main session cookie (lib.mjs).
 const COOKIE_SECURE = /^https:/i.test(process.env.SITE_URL || process.env.SITE_DOMAIN || '');

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { JWT_SECRET } from '../lib/jwt-secret.mjs';
 import jwt from 'jsonwebtoken';
 import argon2 from 'argon2';
 import crypto from 'node:crypto';
@@ -10,7 +11,6 @@ import { presignRepoFile, registerRepoFile, removeRepoFile, publishRepo, unpubli
 import { getObject } from '../lib/storage.mjs';
 import { zipEntryName } from '../lib/zip-path.mjs';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-insecure-secret';
 
 // The sandbox-settings shape, imported rather than restated — this file used to carry its
 // own identical copy, and a field added to one would have been stripped by the other.

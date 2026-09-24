@@ -60,7 +60,8 @@ export const accountEntrySchema = z.object({
   label: z.string().max(120).default(''),
 });
 
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-insecure-secret';
+import { JWT_SECRET } from './jwt-secret.mjs';
+export { JWT_SECRET };
 
 let _prisma = null;
 export async function db() {
@@ -228,7 +229,7 @@ export function requireCanControlServer() {
 // Server-side secret the audit HMAC is keyed with. An attacker who can write to the
 // DB but doesn't hold this secret cannot forge a valid chain (edits/inserts are
 // detectable). Dedicated env, falls back to JWT_SECRET.
-const AUDIT_SECRET = process.env.AUDIT_SECRET || process.env.JWT_SECRET || 'dev-only-insecure-secret';
+const AUDIT_SECRET = process.env.AUDIT_SECRET || JWT_SECRET;
 export function auditHash(prevHash, e) {
   const payload = `${prevHash}|${e.id}|${e.actorId}|${e.action}|${e.detail}|${new Date(e.createdAt).toISOString()}`;
   return crypto.createHmac('sha256', AUDIT_SECRET).update(payload).digest('hex');

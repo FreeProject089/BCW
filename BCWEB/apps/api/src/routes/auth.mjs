@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { JWT_SECRET } from '../lib/jwt-secret.mjs';
 import { safeAvatarImage } from '../lib/avatar-url.mjs';
 import jwt from 'jsonwebtoken';
 import argon2 from 'argon2';
@@ -68,7 +69,6 @@ export async function resendWaitMs(p, userId, now = Date.now()) {
   return 0;
 }
 
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-insecure-secret';
 // The real client IP as observed by our trusted proxy (Caddy appends it last).
 function clientIp(req) {
   const xff = req.headers['x-forwarded-for'];
@@ -158,7 +158,7 @@ const authLimit = { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }
 const POW_BITS = Number(process.env.POW_BITS || 18);
 const POW_TTL_MS = 5 * 60 * 1000;
 const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
-const hmac = (s) => crypto.createHmac('sha256', process.env.JWT_SECRET || 'dev').update(s).digest('hex').slice(0, 32);
+const hmac = (s) => crypto.createHmac('sha256', JWT_SECRET).update(s).digest('hex').slice(0, 32);
 function powChallenge() {
   const base = `${Date.now()}.${crypto.randomBytes(12).toString('hex')}`;
   return { challenge: `${base}.${hmac(base)}`, difficulty: POW_BITS };

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { JWT_SECRET } from '../lib/jwt-secret.mjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'node:crypto';
 import { signBytes, publicVerifyInfo } from '../lib/signing.mjs';
@@ -59,7 +60,6 @@ async function backupCfg(p) {
  *  SNAPSHOT_ROOT is appended by the store itself and does not need to be here. */
 const searchDirs = (cfg) => [cfg.dir, ...cfg.pastDirs].filter(Boolean);
 
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-insecure-secret';
 const DANGEROUS = [requireRole('ADMIN'), requireCanControlServer(), requireElevated()];
 
 // Lazily-opened READ-ONLY connection to the BMM telemetry Postgres (a separate DB),

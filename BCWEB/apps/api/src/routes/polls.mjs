@@ -7,6 +7,7 @@
 // separately from signed-in ones, everywhere, all the way to the admin screen — a merged
 // total would look precise and be wrong, and it is the merged number that gets quoted.
 import { z } from 'zod';
+import { JWT_SECRET } from '../lib/jwt-secret.mjs';
 import { viewQuestions, viewMyAnswers } from '../lib/poll-view.mjs';
 import crypto from 'node:crypto';
 import { db, requireRole, requireCap, optionalAuth, logAudit } from '../lib/lib.mjs';
@@ -25,7 +26,7 @@ import { grantAutoBadges } from './social.mjs';
  *  Salted per poll so the same value cannot be correlated across polls.
  */
 const voterKeyFor = (req, pollId) => crypto.createHash('sha256')
-  .update(`${clientIp(req)}|${req.headers['user-agent'] || ''}|${pollId}|${process.env.JWT_SECRET || 'salt'}`)
+  .update(`${clientIp(req)}|${req.headers['user-agent'] || ''}|${pollId}|${JWT_SECRET}`)
   .digest('hex').slice(0, 32);
 
 /** Is this poll answerable right now? Schedule beats status: a poll whose window closed is

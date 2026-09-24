@@ -2,6 +2,7 @@
 // registers the feature routes. See ARCHITECTURE.md for the design.
 
 import Fastify from 'fastify';
+import { JWT_SECRET } from './lib/jwt-secret.mjs';
 import cors from '@fastify/cors';
 import cookie from '@fastify/cookie';
 import rateLimit from '@fastify/rate-limit';
@@ -254,7 +255,7 @@ rlTimer.unref?.();   // never hold the process open on this
 // (AdminSetting hosting.apiRateLimitPerAccount, requests per minute; 0 = off). Reads the
 // session cookie without touching the database — a limiter that costs a query per request
 // would be the load it exists to prevent.
-const ACCT_JWT_SECRET = process.env.JWT_SECRET || 'dev-only-insecure-secret';
+const ACCT_JWT_SECRET = JWT_SECRET;
 let rlAcct = 0;
 async function refreshAcctLimit() {
   try {

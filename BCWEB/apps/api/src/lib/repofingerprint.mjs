@@ -5,8 +5,9 @@
 // per repo; folding in the identities means the admin "identify" lookup can map
 // the code straight back to the full owner picture.
 import crypto from 'node:crypto';
+import { JWT_SECRET } from './jwt-secret.mjs';
 
-const SECRET = () => process.env.JWT_SECRET || 'dev-only-insecure-secret';
+const SECRET = () => JWT_SECRET;
 // Crockford-ish base32 minus vowels/ambiguous chars → codes are easy to read
 // aloud and hard to typo (no O/0, I/1, etc.).
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTVWXYZ23456789';
