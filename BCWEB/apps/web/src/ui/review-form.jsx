@@ -15,13 +15,14 @@ export function MyReviewCard() {
   const { t, lang } = useI18n();
   const toast = useToast(); const dialog = useDialog();
   const [state, setState] = useState(null); // { review, sectionOn } once loaded
-  const [f, setF] = useState({ body: '', rating: 0, role: '', lang: lang === 'fr' ? 'fr' : 'en' });
+  const blank = { body: '', rating: 0, role: '', lang: lang === 'fr' ? 'fr' : 'en', visibility: 'public', anonymous: false };
+  const [f, setF] = useState(blank);
   const [busy, setBusy] = useState(false);
   const [hidden, setHidden] = useState(false); // removed, inside the undo window
 
   const load = () => api.get('/me/review').then((r) => {
     setState(r);
-    if (r.review) setF({ body: r.review.body || '', rating: r.review.rating || 0, role: r.review.role || '', lang: r.review.lang || 'en' });
+    if (r.review) setF({ body: r.review.body || '', rating: r.review.rating || 0, role: r.review.role || '', lang: r.review.lang || 'en', visibility: r.review.visibility || 'public', anonymous: !!r.review.anonymous });
   }).catch(() => setState({ review: null, sectionOn: false }));
   useEffect(() => { load(); }, []);
 
@@ -42,9 +43,9 @@ export function MyReviewCard() {
     if (tooShort || tooLong) return;
     setBusy(true);
     try {
-      const r = await api.put('/me/review', { body: f.body.trim(), rating: f.rating || null, role: f.role.trim(), lang: f.lang });
+      const r = await api.put('/me/review', { body: f.body.trim(), rating: f.rating || null, role: f.role.trim(), lang: f.lang, visibility: f.visibility, anonymous: f.anonymous });
       setState((s) => ({ ...s, review: r.review }));
-      toast.success(t('rvf.sent', 'Thank you. A moderator will read it before it appears.'));
+      toast.success(f.visibility === 'private' ? t('rvf.sentPrivate', 'Thank you. It goes to the team only and is never published.') : t('rvf.sent', 'Thank you. A moderator will read it before it appears.'));
     } catch (x) { toast.error(errText(x.data?.error)); }
     finally { setBusy(false); }
   };
@@ -56,7 +57,7 @@ export function MyReviewCard() {
       tone: 'success', duration: 6000, cancelLabel: t('common.undo', 'Undo'),
       msg: t('rvf.deleted', 'Review deleted.'),
       onCommit: async () => {
-        try { await api.del('/me/review'); setState((s) => ({ ...s, review: null })); setF({ body: '', rating: 0, role: '', lang: lang === 'fr' ? 'fr' : 'en' }); }
+        try { await api.del('/me/review'); setState((s) => ({ ...s, review: null })); setF(blank); }
         catch { toast.error(t('common.failed', 'Failed.')); }
         finally { setHidden(false); }
       },
@@ -65,7 +66,9 @@ export function MyReviewCard() {
   };
 
   const status = review?.status;
-  const statusBadge = status === 'pending' ? <Badge tone="amber"><Clock size={11} /> {t('rvf.st.pending', 'Waiting for a moderator')}</Badge>
+  const isPrivate = review?.visibility === 'private';
+  const statusBadge = isPrivate ? <Badge tone="blue">{t('rvf.st.private', 'Private: for the team only')}</Badge>
+    : status === 'pending' ? <Badge tone="amber"><Clock size={11} /> {t('rvf.st.pending', 'Waiting for a moderator')}</Badge>
     : status === 'approved' ? <Badge tone="green"><CheckCircle2 size={11} /> {t('rvf.st.approved', 'Shown on the home page')}</Badge>
     : status === 'rejected' ? <Badge tone="red"><XCircle size={11} /> {t('rvf.st.rejected', 'Not published')}</Badge> : null;
 
@@ -77,7 +80,8 @@ export function MyReviewCard() {
       </div>
       <p className="text-sm text-[var(--muted)] mb-3">
         {review
-          ? (status === 'rejected' ? t('rvf.desc.rejected', 'A moderator did not publish this one. You can change it and send it again.')
+          ? (isPrivate ? t('rvf.desc.private', 'Only the team reads this one; it is never shown on the site. You can change it or make it public.')
+            : status === 'rejected' ? t('rvf.desc.rejected', 'A moderator did not publish this one. You can change it and send it again.')
             : status === 'approved' ? t('rvf.desc.approved', 'Changing it sends it back to a moderator; until then the home page stops showing it.')
             : t('rvf.desc.pending', 'A moderator reads every review before it appears. You can still change it.'))
           : t('rvf.desc', 'A few words on what you use and what it changed for you. A moderator reads it before it appears on the home page, with your display name.')}
@@ -115,9 +119,36 @@ export function MyReviewCard() {
         </Field>
       </div>
 
+      {/* N10: who reads it, and under which name. */}
+      <div className="grid sm:grid-cols-2 gap-3 mt-4">
+        <fieldset className="min-w-0">
+          <legend className="text-xs font-medium text-[var(--muted)] mb-1.5">{t('rvf.vis', 'Who can read it')}</legend>
+          <div className="flex flex-col gap-1.5">
+            {[['public', t('rvf.vis.public', 'Public: on the home page, after a moderator approves it')], ['private', t('rvf.vis.private', 'Private: only the team, never published')]].map(([v, label]) => (
+              <label key={v} className="flex items-start gap-2 text-sm cursor-pointer">
+                <input type="radio" name="rvf-vis" className="mt-1" checked={f.visibility === v} onChange={() => setF({ ...f, visibility: v })} />
+                <span>{label}</span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+        <fieldset className="min-w-0" disabled={f.visibility === 'private'}>
+          <legend className="text-xs font-medium text-[var(--muted)] mb-1.5">{t('rvf.name', 'Under which name')}</legend>
+          <div className="flex flex-col gap-1.5">
+            {[[false, t('rvf.name.signed', 'My display name and avatar')], [true, t('rvf.name.anon', 'Anonymous: "a member", no avatar')]].map(([v, label]) => (
+              <label key={String(v)} className={`flex items-start gap-2 text-sm cursor-pointer ${f.visibility === 'private' ? 'opacity-60' : ''}`}>
+                <input type="radio" name="rvf-anon" className="mt-1" checked={f.anonymous === v} onChange={() => setF({ ...f, anonymous: v })} />
+                <span>{label}</span>
+              </label>
+            ))}
+          </div>
+          <p className="text-[11px] text-[var(--faint)] mt-1">{t('rvf.name.note', 'Moderators always see who wrote it.')}</p>
+        </fieldset>
+      </div>
+
       <div className="flex items-center gap-2 mt-4 flex-wrap">
         <Button variant="primary" disabled={busy || tooShort || tooLong} onClick={send}>
-          {busy ? <Spinner /> : review ? t('rvf.resend', 'Send the new version') : t('rvf.send', 'Send for review')}
+          {busy ? <Spinner /> : review ? t('rvf.resend', 'Send the new version') : f.visibility === 'private' ? t('rvf.sendPrivate', 'Send to the team') : t('rvf.send', 'Send for review')}
         </Button>
         {review && <Button variant="ghost" onClick={remove}><Trash2 size={14} /> {t('common.delete', 'Delete')}</Button>}
       </div>

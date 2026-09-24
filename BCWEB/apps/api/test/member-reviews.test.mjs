@@ -152,3 +152,29 @@ describe('closing an account takes its review off the home page', { skip }, () =
     assert.ok(!(await publicIds()).includes(id), "the closed account's review stayed on the landing");
   });
 });
+
+describe('N10: private and anonymous reviews', { skip }, () => {
+  test('a private review is never published, whatever the moderator presses', async () => {
+    const r = await put(cMember, { body: BODY, visibility: 'private' });
+    assert.equal(r.statusCode, 200, r.body);
+    assert.equal(r.json().review.visibility, 'private');
+    const id = r.json().review.id;
+    const a = await app.inject({ method: 'PATCH', url: `/admin/reviews/${id}`, headers: { cookie: cAdmin }, payload: { status: 'approved' } });
+    assert.equal(a.json().review.enabled, false, 'approving a private review showed it');
+    await app.inject({ method: 'PATCH', url: `/admin/reviews/${id}`, headers: { cookie: cAdmin }, payload: { enabled: true } });
+    assert.ok(!(await publicIds()).includes(id), 'the eye toggle published a private review');
+  });
+
+  test('an anonymous public review leaves with no name and a neutral avatar', async () => {
+    const r = await put(cMember, { body: BODY, visibility: 'public', anonymous: true });
+    const id = r.json().review.id;
+    await app.inject({ method: 'PATCH', url: `/admin/reviews/${id}`, headers: { cookie: cAdmin }, payload: { status: 'approved' } });
+    const row = (await app.inject({ method: 'GET', url: '/reviews' })).json().reviews.find((x) => x.id === id);
+    assert.ok(row, 'the approved anonymous review is not on the landing');
+    assert.equal(row.author, '');
+    assert.equal(row.anonymous, true);
+    assert.ok(!JSON.stringify(row.avatar).includes(member.id), 'the avatar seed still carries the member id');
+    const staff = (await app.inject({ method: 'GET', url: '/admin/reviews', headers: { cookie: cAdmin } })).json().reviews.find((x) => x.id === id);
+    assert.equal(staff.author, 'Review Member', 'moderators must still see who wrote it');
+  });
+});

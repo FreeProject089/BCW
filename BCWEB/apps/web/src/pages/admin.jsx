@@ -5406,7 +5406,7 @@ function AdminReviews() {
   const toggleEnabled = (rv) => utog.act(rv.id, { enabled: !rv.enabled }, () => api.patch(`/admin/reviews/${rv.id}`, { enabled: !rv.enabled }), !rv.enabled ? t('arv.shown2', 'Review shown.') : t('arv.hidden2', 'Review hidden.'));
   // M11: approving shows the review on the landing, rejecting keeps it off (the API sets
   // `enabled` to match). Both go through the same undo window as the show/hide toggle.
-  const moderate = (rv, status) => utog.act(rv.id, { status, enabled: status === 'approved' }, () => api.patch(`/admin/reviews/${rv.id}`, { status }),
+  const moderate = (rv, status) => utog.act(rv.id, { status, enabled: status === 'approved' && rv.visibility !== 'private' }, () => api.patch(`/admin/reviews/${rv.id}`, { status }),
     status === 'approved' ? t('arv.approved', 'Review approved and shown.') : t('arv.rejected', 'Review rejected.'));
   const del = async (rv) => {
     if (!(await dialog.confirm({ title: t('arv.del', 'Delete review?'), message: rv.author, okLabel: t('common.delete', 'Delete'), danger: true }))) return;
@@ -5468,11 +5468,11 @@ function AdminReviews() {
           <Card key={rv.id} className="p-4 flex items-start gap-3">
             <Avatar variant={rv.avatar?.variant || 'beam'} seed={rv.avatar?.seed || rv.author} image={rv.avatar?.image} colors={rv.avatar?.colors} size={36} />
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap"><span className="font-medium">{rv.author}</span>{rv.role && <span className="text-xs text-[var(--faint)]">{rv.role}</span>}{rv.rating > 0 && <span className="text-xs text-warning flex items-center gap-0.5"><Star size={11} fill="currentColor" /> {rv.rating}</span>}{!rv.enabled && <Badge>{t('arv.hiddenb', 'hidden')}</Badge>}{rv.bodyFr && <Badge tone="primary">FR</Badge>}{rv.userId && <Badge>{t('arv.memberb', 'member')}</Badge>}{rv.status === 'pending' && <Badge tone="amber">{t('arv.pendingb', 'to review')}</Badge>}{rv.status === 'rejected' && <Badge tone="red">{t('arv.rejectedb', 'rejected')}</Badge>}</div>
+              <div className="flex items-center gap-2 flex-wrap"><span className="font-medium">{rv.author}</span>{rv.role && <span className="text-xs text-[var(--faint)]">{rv.role}</span>}{rv.rating > 0 && <span className="text-xs text-warning flex items-center gap-0.5"><Star size={11} fill="currentColor" /> {rv.rating}</span>}{!rv.enabled && <Badge>{t('arv.hiddenb', 'hidden')}</Badge>}{rv.bodyFr && <Badge tone="primary">FR</Badge>}{rv.userId && <Badge>{t('arv.memberb', 'member')}</Badge>}{rv.visibility === 'private' && <Badge tone="blue">{t('arv.privateb', 'private: never published')}</Badge>}{rv.anonymous && <Badge>{t('arv.anonb', 'anonymous to visitors')}</Badge>}{rv.status === 'pending' && <Badge tone="amber">{t('arv.pendingb', 'to review')}</Badge>}{rv.status === 'rejected' && <Badge tone="red">{t('arv.rejectedb', 'rejected')}</Badge>}</div>
               {/* A member's review is read in full before a decision: no clamp while it waits. */}
               <p className={`text-sm text-[var(--muted)] mt-1 whitespace-pre-line break-words ${rv.status === 'pending' ? '' : 'line-clamp-2'}`}>{rv.lang === 'fr' ? (rv.bodyFr || rv.body) : rv.body}</p>
               {rv.status !== 'approved' && rv.status && <div className="flex gap-2 mt-2 flex-wrap">
-                <Button variant="primary" onClick={() => moderate(rv, 'approved')}><Check size={14} /> {t('arv.approve', 'Approve')}</Button>
+                <Button variant="primary" onClick={() => moderate(rv, 'approved')}><Check size={14} /> {rv.visibility === 'private' ? t('arv.markRead', 'Mark as read') : t('arv.approve', 'Approve')}</Button>
                 {rv.status !== 'rejected' && <Button variant="ghost" onClick={() => moderate(rv, 'rejected')}><Ban size={14} /> {t('arv.reject', 'Reject')}</Button>}
               </div>}
             </div>

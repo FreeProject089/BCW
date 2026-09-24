@@ -1151,6 +1151,11 @@ model Review {
   status    String   @default("approved")
   /// The language the member wrote in; the admin can add the other translation on approval.
   lang      String   @default("en")
+  /// N10: "public" (may reach the landing after approval) | "private" (feedback for the
+  /// team only, never published whatever its status).
+  visibility String  @default("public")
+  /// N10: shown as "a member" with a neutral avatar instead of the display name.
+  anonymous Boolean  @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

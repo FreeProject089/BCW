@@ -1289,11 +1289,13 @@ export default async function miscRoutes(app) {
     const p = await db();
     const [rows, setting] = await Promise.all([
       // Only approved rows: a member's review waits for a moderator (M11), whatever `enabled` says.
-      p.review.findMany({ where: { enabled: true, status: 'approved' }, orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] }),
+      p.review.findMany({ where: { enabled: true, status: 'approved', visibility: 'public' }, orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] }),
       p.adminSetting.findUnique({ where: { key: 'reviews.enabled' } }),
     ]);
     const enabled = setting?.value?.on !== false; // default ON
-    return { enabled, reviews: rows.map((r) => ({ id: r.id, author: r.author, role: r.role, body: r.body, bodyFr: r.bodyFr || r.body, rating: r.rating, avatar: r.avatar })) };
+    // N10: an anonymous review leaves with no name and a neutral avatar (the member's own seed
+    // would tie it to their profile); the client shows "a member" in the reader's language.
+    return { enabled, reviews: rows.map((r) => ({ id: r.id, author: r.anonymous ? '' : r.author, anonymous: !!r.anonymous, role: r.role, body: r.body, bodyFr: r.bodyFr || r.body, rating: r.rating, avatar: r.anonymous ? { variant: 'beam', seed: 'bc-anonymous-member' } : r.avatar })) };
   });
 
   const reviewSchema = z.object({
@@ -1325,10 +1327,13 @@ export default async function miscRoutes(app) {
     rating: z.number().int().min(1).max(5).nullish(),
     role: z.string().trim().max(60).optional(),
     lang: z.enum(['en', 'fr']).optional(),
+    // N10: public = may reach the landing after approval; private = for the team only.
+    visibility: z.enum(['public', 'private']).default('public'),
+    anonymous: z.boolean().default(false),
   });
   const HAS_LINK = /(https?:\/\/|www\.|\b[a-z0-9-]+\.(com|net|org|io|gg|xyz|ru|cn|ch|fr|de|me|app|dev)\b)/i;
   const REVIEW_MIN_ACCOUNT_AGE_MS = 24 * 60 * 60 * 1000;
-  const ownView = (r) => r && ({ id: r.id, body: r.lang === 'fr' ? (r.bodyFr || r.body) : r.body, rating: r.rating, role: r.role, lang: r.lang, status: r.status, updatedAt: r.updatedAt });
+  const ownView = (r) => r && ({ id: r.id, body: r.lang === 'fr' ? (r.bodyFr || r.body) : r.body, rating: r.rating, role: r.role, lang: r.lang, status: r.status, visibility: r.visibility, anonymous: !!r.anonymous, updatedAt: r.updatedAt });
 
   app.get('/me/review', { preHandler: requireRole() }, async (req) => {
     const p = await db();
@@ -1355,6 +1360,7 @@ export default async function miscRoutes(app) {
       // Written once, in the member's language; the other side is filled on approval by staff.
       body: b.data.body, bodyFr: lang === 'fr' ? b.data.body : '', lang,
       rating: b.data.rating ?? null, status: 'pending', enabled: false,
+      visibility: b.data.visibility, anonymous: b.data.anonymous,
       avatar: { variant: 'beam', seed: req.user.uid },
     };
     const r = await p.review.upsert({ where: { userId: req.user.uid }, create: { ...data, userId: req.user.uid, order: 100000 }, update: data });
@@ -1397,6 +1403,9 @@ export default async function miscRoutes(app) {
     const data = {};
     for (const k of ['author', 'role', 'body', 'bodyFr', 'rating', 'avatar', 'enabled', 'order', 'status']) if (b.data[k] !== undefined) data[k] = b.data[k];
     if (b.data.status === 'approved' && b.data.enabled === undefined) data.enabled = true;
+    // N10: a private review is feedback for the team; no status or toggle can publish it.
+    const cur = await p.review.findUnique({ where: { id: req.params.id }, select: { visibility: true } });
+    if (cur?.visibility === 'private') data.enabled = false;
     if (b.data.status === 'rejected') data.enabled = false;
     const review = await p.review.update({ where: { id: req.params.id }, data }).catch(() => null);
     if (!review) return reply.code(404).send({ error: 'not_found' });
