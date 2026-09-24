@@ -16,7 +16,7 @@ import {
   ArrowLeft, Save, Tablet, FileText, RotateCcw, Blocks, Puzzle, SlidersHorizontal, LayoutTemplate,
   Plus, RefreshCw, Unlink, ZoomIn, ZoomOut, Maximize,
   BringToFront, SendToBack, StretchHorizontal, StretchVertical, MoreHorizontal, Keyboard, PanelsTopLeft, X,
-  Hand, MonitorSmartphone, GraduationCap, Expand, FoldVertical,
+  Hand, MonitorSmartphone, GraduationCap, Expand, FoldVertical, Group, Ungroup, PanelTop, AppWindow,
 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { Button, Field, Input, Textarea, Select, Modal, useToast } from '../ui/ui.jsx';
@@ -37,7 +37,9 @@ import { sanitizeSvg, svgRefusals } from '../lib/svg-safe.js';
 import { scopeCss } from '../lib/css-scope.js';
 // The full B.MD editor is heavy and most sessions never open it: loaded on first use.
 const LazyMarkdownEditor = lazy(() => import('./markdown-editor.jsx').then((m) => ({ default: m.MarkdownEditor })));
-import CanvasView, { CanvasBlock } from '../ui/canvas-view.jsx';
+import CanvasView, { CanvasBlock, CanvasTree } from '../ui/canvas-view.jsx';
+// Containers (studio phase 7a): the Layers tree, the scope bar, the inspector's section.
+import { LayersTree, ScopeBar, ContainerFields } from './studio-containers.jsx';
 import ActionFields from './studio-actions.jsx'; // studio phase 5: the "On click" section
 import {
   DOCK_ZONES, DockZone, DockResizer, DockGhost, PanelsMenu, useDockLayout, useDockDrag, zoneOf, movePanel,
@@ -54,6 +56,8 @@ import {
   ANIM_KINDS, ANIM_TRIGGERS, ANIM_EASINGS, STAGGER_STEPS, BUTTON_VARIANTS, menuItemHref, SHADOWS, HOVER_EFFECTS, GRID_SIZES, TEXT_ALIGNS, SHAPES,
   BACKGROUND_TYPES, BG_TOKENS, BG_IMAGE_FITS, BG_POSITIONS, SCENE3D_POSITIONS, BOARD_GRIDS, GRADIENT_STOPS, bgColor, patternColor, bgImagePath,
   SCENE_SHAPES, SCENE_SURFACES, SCENE_BOUNDS, detailMaxFor,
+  isContainer, isPageRoot, toStored, dropTarget, reparentBlocks, groupBlocks, ungroupBlocks, pullChildrenInside,
+  descendantIds, subtreeHeight, treeIndex, innerBox, tabLabels, MAX_DEPTH, TAB_STRIP_H,
 } from '../lib/canvas.js';
 import CanvasBackground from '../ui/canvas-background.jsx';
 import StudioTour, { TourButton, useStudioTour } from './studio-tour.jsx';
@@ -84,6 +88,9 @@ const NEW_BLOCK = {
   button: { kind: 'button', w: 240, h: 56, props: { label: 'Discover', variant: 'button', size: 'md' }, action: [{ type: 'navigate', to: '/' }] },
   shape: { kind: 'shape', w: 200, h: 200, props: { shape: 'rounded', fill: 'var(--primary)', corner: 16 } },
   svg: { kind: 'svg', w: 240, h: 240, props: { svg: '' } },
+  // Containers (phase 7a). A group is made from a selection (Ctrl+G); these two are added whole.
+  tabs: { kind: 'tabs', w: 640, h: 360, props: { bg: 'var(--surface)', border: 'var(--line)', radius: 16 } },
+  modal: { kind: 'modal', w: 520, h: 320, props: { bg: 'var(--bg-solid)' } },
 };
 
 /**
@@ -109,6 +116,11 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
   // selection when there is exactly one — and the group operations read the whole set.
   const [selIds, setSelIds] = useState([]);
   const selId = selIds.length === 1 ? selIds[0] : null;
+  // Containers (phase 7a). `scope` is the container being edited ('' = the page): a press
+  // selects the block at that level, a double-click on a container goes into it, Escape comes
+  // back out. `editSlots` is the tab each tab card shows on the board (visitors open the first).
+  const [scope, setScope] = useState('');
+  const [editSlots, setEditSlots] = useState({});
   const setSelId = (id) => setSelIds(id == null ? [] : [id]);
   // A marquee in flight, in DESIGN coordinates. In state because it has to draw.
   const [marquee, setMarquee] = useState(null);
@@ -352,6 +364,49 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
   // cannot drift from what is served. On the phone board every block has a place, hand-placed
   // or laid in reading order under the placed ones.
   const view = useMemo(() => ({ ...canvas, blocks: boardBlocks(canvas, editTheme) }), [canvas, editTheme]);
+  // Containers (phase 7a). The board's blocks by id (children in board coordinates, tree.js).
+  const viewById = useMemo(() => new Map(view.blocks.map((b) => [b.id, b])), [view]);
+  /** The container a drawn block is in ('' = the page; a broken link counts as the page). */
+  const parentIdOf = (b) => (b && b.parent && !b.treeError ? b.parent : '');
+  /** A block and the containers above it, nearest first. */
+  const chainOf = (id) => {
+    const out = []; let cur = viewById.get(id); let guard = 0;
+    while (cur && guard++ <= MAX_DEPTH + 1) { out.push(cur); const p = parentIdOf(cur); cur = p ? viewById.get(p) : null; }
+    return out;
+  };
+  /** What a press on block `id` selects: the block on its chain at the level being edited, or
+   *  (outside the container being edited) its top-level block, back on the page. */
+  const pickAt = (id) => {
+    const chain = chainOf(id);
+    const at = chain.find((x) => parentIdOf(x) === scope);
+    return at ? { id: at.id, scope } : { id: chain[chain.length - 1]?.id || id, scope: '' };
+  };
+  // What the board draws: everything except the blocks in a tab the board is not showing. And
+  // in which order: a container's blocks right after it, over it, whatever their own z says.
+  const { drawn, stackAt } = useMemo(() => {
+    const byId = viewById;
+    const off = new Set();
+    for (const b of view.blocks) {
+      const p = b.parent && !b.treeError ? byId.get(b.parent) : null;
+      if (p?.kind === 'tabs' && (b.slot || 0) !== (editSlots[p.id] || 0)) off.add(b.id);
+    }
+    const kids = new Map();
+    const roots = [];
+    for (const b of view.blocks) {
+      const p = b.parent && !b.treeError && byId.has(b.parent) ? b.parent : '';
+      if (!p) roots.push(b); else { if (!kids.has(p)) kids.set(p, []); kids.get(p).push(b); }
+    }
+    const order = [];
+    const walk = (list, guard) => {
+      for (const b of paintOrder(list)) {
+        if (off.has(b.id)) continue;
+        order.push(b);
+        if (guard <= MAX_DEPTH) walk(kids.get(b.id) || [], guard + 1);
+      }
+    };
+    walk(roots, 0);
+    return { drawn: order, stackAt: new Map(order.map((b, i) => [b.id, i])) };
+  }, [view, viewById, editSlots]);
   /** Blocks a reader would not see on this board: entirely outside its frame. */
   const offIds = useMemo(() => offFrameIds(canvas, editTheme), [canvas, editTheme]);
   const sel = view.blocks.find((b) => b.id === selId) || null;
@@ -381,7 +436,10 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
    * `props` merge rather than replace for the same reason — a dark overlay that set the
    * background must not take the alt text and the fit mode with it.
    */
-  const patch = useCallback((id, next, key = null) => {
+  const patch = useCallback((id, drawnNext, key = null) => {
+    // The board works in board coordinates; a block in a container stores its place relative
+    // to it (phase 7a, tree.js). The phone board has no children of its own to convert.
+    const next = editTheme === 'phone' ? drawnNext : toStored(viewById, id, drawnNext);
     if (editTheme === 'light') {
       emit(canvas.blocks.map((b) => (b.id === id ? { ...b, ...next } : b)), {}, key);
       return;
@@ -407,7 +465,7 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
         },
       };
     }), {}, key);
-  }, [canvas.blocks, emit, editTheme]);
+  }, [canvas.blocks, emit, editTheme, viewById]);
 
   /**
    * Commit a whole-canvas move (group drag, keyboard nudge) under the theme being authored.
@@ -421,8 +479,17 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
    * five blocks where two were clamped against the edge must not pin the other three.
    */
   const commitMoved = useCallback((nextBlocks, key) => {
-    if (editTheme === 'light') { emit(nextBlocks, {}, key); return; }
     const by = new Map(nextBlocks.map((b) => [b.id, b]));
+    if (editTheme === 'light') {
+      // `nextBlocks` are the board's blocks (a child in board coordinates): only what moved is
+      // written, back in its container's coordinates (phase 7a).
+      emit(canvas.blocks.map((b) => {
+        const n = by.get(b.id); const v = viewById.get(b.id);
+        if (!n || !v || (n.x === v.x && n.y === v.y)) return b;
+        return { ...b, ...toStored(viewById, b.id, { x: n.x, y: n.y }) };
+      }), {}, key);
+      return;
+    }
     if (editTheme === 'phone') {
       // A group drag on the phone board pins every moved block's phone place — including one
       // that was only laid there by reading order, which is now a decision of the author's.
@@ -435,11 +502,12 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
     }
     emit(canvas.blocks.map((b) => {
       const n = by.get(b.id);
-      const cur = resolveBlock(b, 'dark');
-      if (!n || (n.x === cur.x && n.y === cur.y)) return b;
-      return { ...b, themes: { ...(b.themes || {}), dark: { ...(b.themes?.dark || {}), x: n.x, y: n.y } } };
+      const v = viewById.get(b.id);
+      if (!n || !v || (n.x === v.x && n.y === v.y)) return b;
+      const st = toStored(viewById, b.id, { x: n.x, y: n.y });
+      return { ...b, themes: { ...(b.themes || {}), dark: { ...(b.themes?.dark || {}), x: st.x, y: st.y } } };
     }), {}, key);
-  }, [canvas.blocks, emit, editTheme]);
+  }, [canvas.blocks, emit, editTheme, viewById]);
 
   const doUndo = useCallback(() => {
     const r = undoHist(hist, canvas);
@@ -452,7 +520,7 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
 
   // Where a new thing lands: below everything already there, so it never arrives hidden
   // under a block.
-  const nextY = () => canvas.blocks.filter((b) => inFrame(b, { w: DESIGN_WIDTH, h: Infinity })).reduce((m, b) => Math.max(m, b.y + b.h), 0) + 24;
+  const nextY = () => canvas.blocks.filter((b) => isPageRoot(b) && inFrame(b, { w: DESIGN_WIDTH, h: Infinity })).reduce((m, b) => Math.max(m, b.y + b.h), 0) + 24;
   // A block that was just added, to bring into view once it is drawn.
   const [revealId, setRevealId] = useState(null);
   // Brought into view once drawn: a block added at the bottom of a long page used to arrive
@@ -481,14 +549,51 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
     if (!fresh.length) return;
     const out = placeOnBoard(canvas, fresh, editTheme);
     emit(out.blocks, out.extra);
-    setSelIds(fresh.map((b) => b.id));
-    setRevealId(fresh[0].id);
+    // What was added at the top of what was added (a container's own blocks come with it).
+    const freshIds = new Set(fresh.map((b) => b.id));
+    const tops = fresh.filter((b) => !b.parent || !freshIds.has(b.parent));
+    setScope(tops[0]?.parent || '');
+    setSelIds(tops.map((b) => b.id));
+    setRevealId(tops[0].id);
     if (!wide) setPane('canvas');
   };
+  /**
+   * Add a block. Inside a container being edited (phase 7a) it lands in that container (in the
+   * tab the board shows), when the container can take one more level; otherwise on the page. A
+   * tab card arrives with a text block in each of its tabs, a dialog with one text block, placed
+   * beside the page: a dialog is never part of the page's flow.
+   */
   const add = (kind, over = {}) => {
     const base = NEW_BLOCK[kind];
     const spec = { ...base, ...over, props: { ...(base.props || {}), ...(over.props || {}) } };
-    addBlocks([{ id: uid(), x: 64, y: nextY(), z: canvas.blocks.length, ...spec }]);
+    const host = scope && !phoneBoard ? canvas.blocks.find((b) => b.id === scope) : null;
+    const hostBox = host ? innerBox(host) : null;
+    const levels = isContainer(kind) ? 1 : 0;
+    const inside = host && kind !== 'modal' && treeIndex(canvas.blocks).depthOf(host.id) + 1 + levels <= MAX_DEPTH;
+    const id = uid();
+    let block;
+    if (inside) {
+      const w = Math.min(spec.w, hostBox.w); const h = Math.min(spec.h, hostBox.h);
+      block = { id, x: Math.min(16, hostBox.w - w), y: Math.min(16, hostBox.h - h), z: canvas.blocks.length, ...spec, w, h, parent: host.id,
+        ...(host.kind === 'tabs' && (editSlots[host.id] || 0) > 0 ? { slot: editSlots[host.id] } : {}) };
+    } else if (kind === 'modal') {
+      const n = canvas.blocks.filter((b) => b.kind === 'modal').length;
+      block = { id, x: DESIGN_WIDTH + 80, y: 40 + n * (spec.h + 40), z: canvas.blocks.length, ...spec };
+    } else {
+      block = { id, x: 64, y: nextY(), z: canvas.blocks.length, ...spec };
+    }
+    const kids = [];
+    if (kind === 'tabs') {
+      const labels = [t('cst.tabs.label', 'Tab {n}').replace('{n}', '1'), t('cst.tabs.label', 'Tab {n}').replace('{n}', '2')];
+      block.props = { ...block.props, tabs: labels };
+      labels.forEach((l, i) => kids.push({ id: uid(), kind: 'text', x: 16, y: 16, w: Math.max(40, block.w - 32), h: Math.max(40, Math.min(120, block.h - TAB_STRIP_H - 32)), z: i,
+        parent: id, ...(i > 0 ? { slot: i } : {}), props: { md: `## ${l}` } }));
+    } else if (kind === 'modal') {
+      block.props = { ...block.props, title: t('cst.modal.new', 'A dialog') };
+      kids.push({ id: uid(), kind: 'text', x: 24, y: 24, w: Math.max(40, block.w - 48), h: Math.max(40, block.h - 48), z: 0, parent: id,
+        props: { md: t('cst.modal.body', 'What the dialog says. Open it from a button, with the step “Open a dialog”.') } });
+    }
+    addBlocks([block, ...kids]);
   };
   const addShape = (shape) => add('shape', { props: { shape, fill: 'var(--primary)', corner: 16 } });
 
@@ -508,8 +613,17 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
   // or the wrong block (bug A.4).
   const removeIds = (ids) => {
     if (!ids.length) return;
-    emit(canvas.blocks.filter((b) => !ids.includes(b.id) || b.locked));
-    setSelIds((cur) => cur.filter((x) => !ids.includes(x)));
+    // A container goes with everything in it (phase 7a): a block left pointing at a container
+    // that is gone would be a broken link, invisible to every visitor.
+    const gone = new Set();
+    for (const id of ids) {
+      if (canvas.blocks.find((b) => b.id === id)?.locked) continue;
+      gone.add(id);
+      for (const d of descendantIds(canvas.blocks, id)) gone.add(d);
+    }
+    emit(canvas.blocks.filter((b) => !gone.has(b.id)));
+    setSelIds((cur) => cur.filter((x) => !gone.has(x)));
+    if (gone.has(scope)) setScope('');
   };
   const remove = () => removeIds(chosen.map((b) => b.id));
   const setGrid = (n) => emit(canvas.blocks, { grid: n });
@@ -580,8 +694,18 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
   // ── Components ────────────────────────────────────────────────────────────
   // The selection, kept under a name; a copy of a kept one; the link forgotten; every copy
   // rebuilt from the definition. The arithmetic is lib/studio-components.js, tested there.
+  // A component or a section preset is a set of PAGE blocks (phase 7b brings containers to
+  // them): a block picked inside a container is kept where it is drawn, as a page block, and
+  // a selection holding a container is refused with the reason rather than saved half.
+  const chosenFlat = chosen.map((b) => {
+    const v = viewById.get(b.id) || b;
+    const { parent: _p, slot: _s, treeError: _e, ...rest } = b;
+    return { ...rest, x: v.x, y: v.y };
+  });
+  const chosenHasBox = chosen.some((b) => isContainer(b.kind));
   const saveComponent = (name) => {
-    const comp = componentFromBlocks(name, chosen, uid);
+    if (chosenHasBox) { toast.error(t('cst.cmp.nobox', 'A container cannot be kept as a component yet: select the blocks inside it instead.')); return; }
+    const comp = componentFromBlocks(name, chosenFlat, uid);
     if (!comp) return;
     if (components.length >= COMPONENT_LIMITS.count) { toast.error(t('cst.cmp.full', 'You have reached the limit of saved components, delete one first.')); return; }
     persistComponents([comp, ...components]);
@@ -610,7 +734,11 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
     addBlocks(blocksFromPreset(entry, { x: 64, y: nextY() }, canvas.blocks.length, uid));
   };
   const saveAsPreset = async (name, sort, scope) => {
-    const entry = presetEntry({ name, sort, canvas: serializeDoc(canvas), blocks: chosen, background: canvas.background });
+    if (chosenHasBox && (sort === 'section' || sort === 'component')) {
+      toast.error(t('cst.cmp.nobox', 'A container cannot be kept as a component yet: select the blocks inside it instead.'));
+      return false;
+    }
+    const entry = presetEntry({ name, sort, canvas: serializeDoc(canvas), blocks: chosenFlat, background: canvas.background });
     if (!entry || !pages?.library) return false;
     return pages.library.save(entry, scope);
   };
@@ -642,14 +770,27 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
     // the Hand tool. Left to bubble to the board, which starts it.
     if (e.button === 1 || spaceRef.current || panMode || pinchRef.current) return;
     e.preventDefault(); e.stopPropagation();
+    // The block at the level being edited (phase 7a): a press on a block inside a container
+    // takes the container, until the author goes into it (double-click). A press outside the
+    // container being edited comes back out to the page. A resize handle is on the selection
+    // itself, which is always at the level being edited.
+    // A press on the empty area of the container being edited is a press on the board inside
+    // it: left to bubble to the board, which starts a rubber band there.
+    if (!handle && b.id === scope) return;
+    if (!handle) {
+      const picked = pickAt(b.id);
+      if (picked.scope !== scope) { setScope(picked.scope); setSelIds([picked.id]); }
+      b = viewById.get(picked.id) || b;
+    }
     const additive = e.shiftKey || e.ctrlKey || e.metaKey;
+    const sameLevel = pickAt(b.id).scope === scope;
     let ids;
-    if (additive) ids = selIds.includes(b.id) ? selIds.filter((x) => x !== b.id) : [...selIds, b.id];
+    if (additive && sameLevel) ids = selIds.includes(b.id) ? selIds.filter((x) => x !== b.id) : [...selIds, b.id];
     // A plain press on a block that is ALREADY part of the selection keeps the group. Without
     // this, grabbing a selected block to drag the group instead collapses the selection to
     // that one block and only it moves — which is the single most annoying way to get
     // multi-select wrong.
-    else ids = selIds.includes(b.id) ? selIds : [b.id];
+    else ids = selIds.includes(b.id) && sameLevel ? selIds : [b.id];
     setSelIds(ids);
     // Locked: selectable (the panel still edits it), never dragged or resized.
     if (b.locked) return;
@@ -660,6 +801,7 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
   const onMove = (e) => {
     const d = drag.current; if (!d) return;
     const dx = e.clientX - d.sx; const dy = e.clientY - d.sy;
+    d.moved = true;
     // The guides compare with the blocks AS DRAWN on this board, not the desktop base.
     const others = view.blocks.filter((b) => b.id !== d.id);
     if (d.handle) {
@@ -685,12 +827,98 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
     // is drawn at (bug A.3).
     patch(d.id, dragPatch(d.start, next, editTheme), `drag:${d.id}`);
   };
-  const onUp = () => { drag.current = null; setGuides({ v: null, h: null }); };
+  const onUp = (e) => {
+    const d = drag.current;
+    drag.current = null; setGuides({ v: null, h: null });
+    if (!d || !d.moved || !e) return;
+    // Containers (phase 7a), once the gesture is over. Same undo key as the gesture, so one
+    // Ctrl+Z takes back the drag and what the drop did.
+    if (d.handle) {
+      // A container resized over its own blocks: the ones now entirely outside come back in
+      // (the save would refuse them, tree.js `outside_parent`).
+      if (editTheme === 'light' && isContainer(viewById.get(d.id)?.kind)) {
+        const next = pullChildrenInside(canvas.blocks, d.id);
+        if (next.some((b, i) => b !== canvas.blocks[i])) emit(next, {}, `resize:${d.id}:${d.handle}`);
+      }
+      return;
+    }
+    // A drop: into the deepest container under the pointer that can take the blocks, or out of
+    // the one they were in, onto the page. On the light board only: the dark board moves the
+    // dark variant, which has no container of its own, and the phone board has no children.
+    if (editTheme !== 'light') return;
+    const ids = (d.ids && d.ids.length ? d.ids : [d.id]).filter((id) => viewById.has(id) && !viewById.get(id).locked);
+    if (!ids.length) return;
+    const pt = toBoard(camView, hostPoint(e).x, hostPoint(e).y);
+    const exclude = new Set(ids.flatMap((id) => [id, ...descendantIds(canvas.blocks, id)]));
+    const extra = Math.max(0, ...ids.map((id) => subtreeHeight(canvas.blocks, id)));
+    const moving = ids.map((id) => viewById.get(id));
+    const target = dropTarget(drawn, pt, { exclude, extra, movingModal: moving.some((b) => b.kind === 'modal'), visible: new Set(drawn.map((b) => b.id)) });
+    if (target === parentIdOf(moving[0])) return;
+    const tb = target ? viewById.get(target) : null;
+    emit(reparentBlocks(canvas.blocks, view.blocks, ids, target, tb?.kind === 'tabs' ? (editSlots[target] || 0) : 0), {},
+      ids.length > 1 ? `drag:${d.ids.join(',')}` : `drag:${d.id}`);
+    setScope(target);
+  };
   // The handler the memoised blocks hold never changes; it reads the current one through a
   // ref. Without this every block re-rendered on every pointer move, because the closure
   // over `selIds` and `canvas` was new each time.
   const onDownRef = useRef(onDown); onDownRef.current = onDown;
   const stableDown = useCallback((e, b, h) => onDownRef.current(e, b, h), []);
+
+  // ── Containers (phase 7a) ─────────────────────────────────────────────────────────
+  /** Double-click: into the container at the level being edited, selecting what is under the
+   *  pointer inside it. Escape comes back out (the keyboard handler below). */
+  const enterAt = (e, b) => {
+    if (phoneBoard || b.id === scope) return;
+    const chain = chainOf(b.id);
+    const i = chain.findIndex((x) => parentIdOf(x) === scope);
+    const at = i >= 0 ? chain[i] : null;
+    if (!at || !isContainer(at.kind) || at.treeError) return;
+    e.stopPropagation();
+    setScope(at.id);
+    setSelIds(i > 0 ? [chain[i - 1].id] : []);
+  };
+  const enterRef = useRef(enterAt); enterRef.current = enterAt;
+  const stableEnter = useCallback((e, b) => enterRef.current(e, b), []);
+  /** Which tab of a tab card the board shows (and where added or dropped blocks go). */
+  const setSlot = useCallback((id, i) => setEditSlots((cur) => ({ ...cur, [id]: i })), []);
+  /** Ctrl+G: the selection (blocks of one container) into a new group drawn around them. */
+  const groupSel = () => {
+    if (!selIds.length || phoneBoard) return;
+    const gid = uid();
+    const next = groupBlocks(canvas.blocks, selIds, gid);
+    if (!next) { toast.error(t('cst.group.no', 'These blocks cannot be grouped: pick blocks of the same container, no dialog, at most three containers deep.')); return; }
+    emit(next);
+    setSelIds([gid]);
+  };
+  /** Ctrl+Shift+G: a group's blocks go up to its container, where they are; the group goes. */
+  const ungroupSel = () => {
+    const g = selIds.length === 1 ? canvas.blocks.find((b) => b.id === selIds[0]) : null;
+    if (!g || g.kind !== 'group') return;
+    const kidsIds = canvas.blocks.filter((b) => b.parent === g.id && !b.treeError).map((b) => b.id);
+    const next = ungroupBlocks(canvas.blocks, g.id);
+    if (!next) return;
+    emit(next);
+    setSelIds(kidsIds);
+  };
+  /** The inspector's "container" field: block `id` into `target` ('' = the page), where it is. */
+  const moveTo = (id, target, slot = 0) => {
+    emit(reparentBlocks(canvas.blocks, boardBlocks(canvas, 'light'), [id], target, slot));
+    setScope(target);
+    setSelIds([id]);
+    if (target && canvas.blocks.find((b) => b.id === target)?.kind === 'tabs') setSlot(target, slot);
+  };
+  /** A block chosen in the Layers tree: selected where it lives, its tab shown. */
+  const selectFromTree = (id, additive) => {
+    const b = canvas.blocks.find((x) => x.id === id);
+    if (!b) return;
+    const p = b.parent && !b.treeError ? b.parent : '';
+    if (additive && p === scope) setSelIds((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
+    else { setScope(p); setSelIds([id]); }
+    if (p && canvas.blocks.find((x) => x.id === p)?.kind === 'tabs') setSlot(p, b.slot || 0);
+  };
+  const canGroup = !phoneBoard && selIds.length > 0 && !!groupBlocks(canvas.blocks, selIds, 'probe');
+  const canUngroup = selIds.length === 1 && canvas.blocks.find((b) => b.id === selIds[0])?.kind === 'group';
 
   // ── Marquee ────────────────────────────────────────────────────────────────
   // Pressing empty canvas starts a rubber band; releasing selects everything it TOUCHED.
@@ -724,6 +952,9 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
     const p = toBoard(camView, hostPoint(e).x, hostPoint(e).y);
     marqueeRef.current = { x: p.x, y: p.y, additive: e.shiftKey || e.ctrlKey || e.metaKey, base: selIds };
     if (!marqueeRef.current.additive) setSelIds([]);
+    // A press on the empty board, outside the container being edited, comes back to the page.
+    const sc = scope ? viewById.get(scope) : null;
+    if (sc && !(p.x >= sc.x && p.x <= sc.x + sc.w && p.y >= sc.y && p.y <= sc.y + sc.h)) { setScope(''); marqueeRef.current.base = []; }
   };
   const onMarqueeMove = (e) => {
     const p = panRef.current;
@@ -737,8 +968,9 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
     const rect = { x: m.x, y: m.y, w: q.x - m.x, h: q.y - m.y };
     if (Math.abs(rect.w) * scale < 4 && Math.abs(rect.h) * scale < 4) return;   // a click, not a drag
     setMarquee(rect);
-    // The rubber band tests the blocks as DRAWN on this board (bug A.2).
-    const hit = blocksInRect(view.blocks, rect).map((b) => b.id);
+    // The rubber band tests the blocks as DRAWN on this board (bug A.2), at the level being
+    // edited: the blocks of the container the author is in, or the page's own (phase 7a).
+    const hit = blocksInRect(drawn.filter((b) => parentIdOf(b) === scope), rect).map((b) => b.id);
     setSelIds(m.additive ? [...new Set([...m.base, ...hit])] : hit);
   };
   const onMarqueeUp = () => { marqueeRef.current = null; panRef.current = null; setMarquee(null); };
@@ -845,7 +1077,28 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
         e.preventDefault(); if (chrome.canSave !== false) chrome.onSave(); return;
       }
       if (mod && e.key.toLowerCase() === 'a' && !typing) {
-        e.preventDefault(); setSelIds(canvas.blocks.map((b) => b.id)); return;
+        // Everything at the level being edited: the page's blocks, or the container's (phase 7a).
+        e.preventDefault(); setSelIds(drawn.filter((b) => parentIdOf(b) === scope).map((b) => b.id)); return;
+      }
+      if (mod && e.key.toLowerCase() === 'g' && !typing) {
+        e.preventDefault(); if (e.shiftKey) ungroupSel(); else groupSel(); return;
+      }
+      // Out of the container being edited, one level at a time (phase 7a); its container is
+      // then the selection, so a second Escape goes up again or clears it.
+      if (e.key === 'Escape' && !typing && scope) {
+        e.preventDefault();
+        const sc = canvas.blocks.find((b) => b.id === scope);
+        setSelIds([scope]);
+        setScope(sc && sc.parent && !sc.treeError ? sc.parent : '');
+        return;
+      }
+      // Enter on a selected container goes into it, the keyboard's double-click. Only while the
+      // focus is on the board or nowhere: Enter on a focused control is that control's.
+      if (e.key === 'Enter' && !typing && !mod && selIds.length === 1) {
+        const ae = document.activeElement;
+        const onBoard = !ae || ae === document.body || !!hostRef.current?.contains(ae);
+        const b = viewById.get(selIds[0]);
+        if (onBoard && b && isContainer(b.kind) && !b.treeError && !phoneBoard) { e.preventDefault(); setScope(b.id); setSelIds([]); return; }
       }
       if (mod && e.key.toLowerCase() === 'd' && !typing) {
         e.preventDefault(); duplicate(); return;
@@ -876,7 +1129,15 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
       // Copy / paste: the selection as JSON, kept in a ref and offered to the clipboard so a
       // page can be assembled from another one open in a second tab.
       if (mod && e.key.toLowerCase() === 'c' && !typing && selIds.length) {
-        const picked = canvas.blocks.filter((b) => selIds.includes(b.id));
+        // The selection at the board place it is drawn at, with everything inside a container
+        // (phase 7a): pasted, the copies are page blocks, their own blocks inside them.
+        const under = new Set(selIds.flatMap((id) => descendantIds(canvas.blocks, id)));
+        const picked = canvas.blocks.filter((b) => selIds.includes(b.id) || under.has(b.id)).map((b) => {
+          if (!selIds.includes(b.id)) return b;
+          const v = viewById.get(b.id) || b;
+          const { parent: _p, slot: _s, treeError: _e, ...rest } = b;
+          return { ...rest, x: v.x, y: v.y };
+        });
         clip.current = picked;
         try { navigator.clipboard?.writeText(JSON.stringify({ bcwBlocks: picked })); } catch { /* no clipboard: the ref still works */ }
         return;
@@ -888,8 +1149,17 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
           // used to keep every field it came with until the next save (S8). Offset on the
           // desktop plane, then placed on the board being edited.
           const clean = normalizeCanvas({ blocks: list.slice(0, 200) }).blocks;
+          // Fresh ids, and a container's blocks pointed at the copy of their container (phase
+          // 7a); a block whose container was not copied lands on the page.
+          const idMap = new Map(clean.map((b) => [b.id, uid()]));
           // Offset, not clamped (v2): a block copied from beside the page lands beside it.
-          addBlocks(clean.map((b) => ({ ...b, id: uid(), x: b.x + GRID * 3, y: b.y + GRID * 3, component: null })));
+          addBlocks(clean.map((b) => {
+            const { parent: p, slot, treeError: _e, ...rest } = b;
+            const np = p && !b.treeError && idMap.has(p) ? idMap.get(p) : '';
+            return np
+              ? { ...rest, id: idMap.get(b.id), parent: np, ...(slot ? { slot } : {}), component: null }
+              : { ...rest, id: idMap.get(b.id), x: b.x + GRID * 3, y: b.y + GRID * 3, component: null };
+          }));
         };
         e.preventDefault();
         navigator.clipboard?.readText?.().then((txt) => { try { const j = JSON.parse(txt); if (Array.isArray(j?.bcwBlocks)) return paste(j.bcwBlocks); } catch { /* not ours */ } paste(clip.current); }).catch(() => paste(clip.current));
@@ -927,7 +1197,7 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
     // `zoom` and `fitScale` are here because the bare +/- keys step FROM the current zoom:
     // without them the handler kept the zoom it was created with and every press walked from
     // the same place.
-  }, [selIds, canvas.blocks, emit, patch, doUndo, doRedo, chrome, pageMode, zoom, fitScale, cam, vw, vh]);
+  }, [selIds, canvas.blocks, emit, patch, doUndo, doRedo, chrome, pageMode, zoom, fitScale, cam, vw, vh, scope, viewById, drawn, phoneBoard]);
 
   // ── The pieces, assembled differently by the two layouts ─────────────────
   const toolbarProps = {
@@ -937,6 +1207,7 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
     pageOpen: pageMode ? !!zoneOf(dock, 'page') : pageOpen, setPageOpen: pageMode ? () => showPanel('page') : setPageOpen,
     pageMode, showGrid, setShowGrid, zoomBy, fitScale, onSaveComponent: () => setCompOpen(true),
     doZ, matchSize, toggleFlag, stagger, selBlocks: chosen, onKeys: () => setKeysOpen(true),
+    onGroup: canGroup ? groupSel : null, onUngroup: canUngroup ? ungroupSel : null,
     panMode, setPanMode, onShowAll: showAll, frameFit: frame.fit, onFitContent: fitFrameToContent,
   };
   const modals = (<>
@@ -959,7 +1230,12 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
     {compOpen && <SaveComponentModal t={t} blocks={chosen} onSave={saveComponent} onClose={() => setCompOpen(false)} />}
   </>);
   const inspector = (<>
-    <Inspector {...{ t, sel, patch, canvas, emit, setSelId, hasDark, onOpenMd: setMdFor, pageList: pages ? pages.list.filter((x) => x.id !== pages.currentId) : null }} />
+    <Inspector {...{ t, sel, patch, canvas, emit, setSelId, hasDark, onOpenMd: setMdFor, pageList: pages ? pages.list.filter((x) => x.id !== pages.currentId) : null }}
+      containerFields={sel ? (
+        <ContainerFields t={t} sel={sel} canvas={canvas} patch={patch} emit={emit}
+          editSlot={editSlots[sel.id] || 0} setEditSlot={(i) => setSlot(sel.id, i)}
+          onMoveTo={(target, slot) => moveTo(sel.id, target, slot)} onUngroup={canUngroup ? ungroupSel : null} />
+      ) : null} />
     {selComponentIds.length > 0 && (
       <ComponentSection t={t} ids={selComponentIds} components={components} onDetach={detach} onRefresh={refreshInstances} onRedefine={redefine} />
     )}
@@ -1031,10 +1307,19 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
             backgroundSize: `${Math.max(32, grid * 4)}px ${Math.max(32, grid * 4)}px`,
           }} />}
         </div>
-        {paintOrder(view.blocks).map((b) => (
-          <BoardBlock key={b.id} b={b} on={selIds.includes(b.id)} only={selIds.length === 1 && selIds[0] === b.id} down={stableDown}
-            off={offIds.has(b.id)} offLabel={t('cst.frame.off', 'Off frame')} />
-        ))}
+        {/* In the tree's order (phase 7a): a container, then its blocks over it. On the phone
+            board a container draws its own blocks (they are placed on the desktop board), so
+            the board gets the page's tree, as the public page does. */}
+        {(() => {
+          const els = drawn.map((b) => (
+            <BoardBlock key={b.id} b={b} on={selIds.includes(b.id)} only={selIds.length === 1 && selIds[0] === b.id} down={stableDown}
+              off={offIds.has(b.id)} offLabel={t('cst.frame.off', 'Off frame')} z={stackAt.get(b.id)} dbl={stableEnter}
+              slot={editSlots[b.id] || 0} onSlot={b.kind === 'tabs' && !phoneBoard ? setSlot : null} scopeOn={scope === b.id}
+              tag={b.kind === 'modal' ? `${t('cst.kind.modal', 'Dialog')}${b.props?.title ? ` · ${String(b.props.title).slice(0, 40)}` : ''}` : ''}
+              brokenLabel={b.treeError ? t('cst.tree.broken', 'Broken link') : ''} />
+          ));
+          return phoneBoard ? <CanvasTree doc={canvas} theme="light">{els}</CanvasTree> : els;
+        })()}
         {/* Guides, drawn only while a drag is snapping to something. Long, because the board
             has no edges for them to stop at. */}
         {guides.v && <div aria-hidden style={{ position: 'absolute', left: guides.v.at, top: -BOARD_REACH, height: BOARD_REACH * 2, width: 1 / scale, background: 'var(--primary)', pointerEvents: 'none' }} />}
@@ -1119,7 +1404,7 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
     // written once here rather than at each of the four places that name a panel.
     const panels = {
       blocks: { title: t('cst.pane.blocks', 'Blocks'), icon: Blocks, render: () => <BlocksPanel {...{ t, add, addShape }} /> },
-      layers: { title: t('cst.layers', 'Layers'), icon: LayoutList, render: () => <LayersPanel {...{ t, canvas, view, selIds, setSelIds, patch, emit, add, offIds }} bare /> },
+      layers: { title: t('cst.layers', 'Layers'), icon: LayoutList, render: () => <LayersTree {...{ t, canvas, selIds, patch, emit, add, offIds, editSlots }} onSelect={selectFromTree} bare /> },
       components: { title: t('cst.cmp', 'Components'), icon: Puzzle, render: () => <ComponentsPanel {...{ t, components, insertComponent, deleteComponent }} /> },
       // Phase 6: the target's pages, and the preset gallery.
       pages: { title: t('cst.pages', 'Pages'), icon: FileText, render: () => <PagesPanel t={t} lang={lang} pages={pages} /> },
@@ -1164,6 +1449,7 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
       <section className="cst-center">
         <Toolbar {...toolbarProps} narrow={!wide} />
         <div className="flex items-center gap-2 mb-2 flex-wrap">{themeHints}</div>
+        <ScopeBar t={t} canvas={canvas} scope={scope} onScope={(id) => { setScope(id); setSelIds(id ? [] : selIds.filter((x) => !canvas.blocks.find((b) => b.id === x)?.parent)); }} />
         {narrow && (
           <div className="text-[11px] text-[var(--muted)] mb-2 flex items-center gap-2">
             <span className="flex-1 min-w-0">{stacked
@@ -1301,6 +1587,7 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
         {themeSwitch}
         {themeHints}
       </div>
+      <ScopeBar t={t} canvas={canvas} scope={scope} onScope={(id) => { setScope(id); setSelIds([]); }} />
       {narrow && !preview && (
         <div className="text-[11px] text-[var(--muted)] mb-2 flex items-center gap-2">
           <span className="flex-1 min-w-0">{t('cst.board.h', 'The board is 1200px wide, scaled to fit. A phone reader gets the list order instead.')}</span>
@@ -1318,7 +1605,7 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
             canvas would just be a smaller canvas. */}
         <div className={`lg:static lg:mt-0 ${sel ? 'sticky bottom-0 z-20 mt-2 max-h-[46vh] overflow-auto rounded-t-2xl border-t lg:border-t-0 border-[var(--line-strong)] lg:rounded-t-none lg:max-h-none lg:overflow-visible lg:shadow-none shadow-[0_-10px_30px_-12px_rgba(0,0,0,0.35)]' : 'mt-2'}`}
           style={sel ? { background: 'var(--bg-solid)' } : undefined}>
-          {layersOpen && <LayersPanel {...{ t, canvas, view, selIds, setSelIds, patch, emit, add, offIds }} />}
+          {layersOpen && <LayersTree {...{ t, canvas, selIds, patch, emit, add, offIds, editSlots }} onSelect={selectFromTree} />}
           {inspector}
         </div>
       </div>
@@ -1331,7 +1618,8 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
  * component the public page uses, with move / hide / delete controls sized for a thumb.
  */
 function StackList({ t, canvas, emit, selIds, setSelId, setSelIds, removeIds, add }) {
-  const order = phoneOrder(canvas.blocks);
+  // The page's own flow (phase 7a): a container is one row, drawn with its blocks.
+  const order = phoneOrder(canvas.blocks.filter(isPageRoot));
   /**
    * Reorder the PHONE stack, and nothing else.
    *
@@ -1378,7 +1666,7 @@ function StackList({ t, canvas, emit, selIds, setSelId, setSelIds, removeIds, ad
             {/* The block exactly as the reader gets it, stacked — the same component the
                 public page paints with, so this is not a second opinion about how it looks.
                 Not interactive: a tap anywhere on the row selects it. */}
-            <div className="rounded-lg overflow-hidden pointer-events-none"><CanvasBlock b={b} stacked /></div>
+            <div className="rounded-lg overflow-hidden pointer-events-none"><CanvasTree doc={canvas}><CanvasBlock b={b} stacked /></CanvasTree></div>
           </div>
         ))}
         {/* "add a block above" pointed at a toolbar that is not always on screen in this
@@ -1638,6 +1926,13 @@ function BlocksPanel({ t, add, addShape }) {
           <Button key={k} size="sm" variant="ghost" className="justify-start" onClick={() => add(k)}><Icon size={14} /> {t(`cst.add.${k}`, k)}</Button>
         ))}
       </div>
+      {/* Containers (phase 7a). A group is made from a selection, so it is not in this list. */}
+      <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] pt-1">{t('cst.pane.boxes', 'Containers')}</div>
+      <div className="grid grid-cols-2 gap-1.5">
+        <Button size="sm" variant="ghost" className="justify-start" onClick={() => add('tabs')} data-add-kind="tabs"><PanelTop size={14} /> {t('cst.add.tabs', 'Tab card')}</Button>
+        <Button size="sm" variant="ghost" className="justify-start" onClick={() => add('modal')} data-add-kind="modal"><AppWindow size={14} /> {t('cst.add.modal', 'Dialog')}</Button>
+      </div>
+      <p className="text-[11px] text-[var(--muted)]">{t('cst.pane.boxes.h', 'To group blocks, select them and press Group (Ctrl+G). Double-click a container to edit what is inside.')}</p>
       <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] pt-1">{t('cst.shape', 'Shape')}</div>
       <div className="grid grid-cols-3 gap-1">
         {SHAPES.map((s) => (
@@ -1735,61 +2030,6 @@ function EmptyBoard({ t, onAdd, onOpenBlocks }) {
   );
 }
 
-
-/**
- * The Layers panel: every block, top of the paint order first, with its name, a lock, an eye
- * and the two arrows. The one place a hidden block can be found again, and the one place a
- * block under three others can be selected without moving them.
- */
-function LayersPanel({ t, canvas, view, selIds, setSelIds, patch, emit, add, bare = false, offIds = null }) {
-  const rows = paintOrder(view.blocks).slice().reverse();
-  return (
-    // `bare` is the dock's form: the panel already has a title bar and a border of its own, and
-    // a second one inside it reads as a box in a box.
-    <div className={bare ? '' : 'mb-3 rounded-xl border border-[var(--line)] p-2'}>
-      {!bare && (
-        <div className="flex items-center gap-1.5 mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)]">
-          <LayoutList size={12} /> {t('cst.layers', 'Layers')}
-          <span className="ms-auto tabular-nums font-normal">{rows.length}</span>
-        </div>
-      )}
-      {!rows.length && (
-        <div className="py-3 text-center">
-          <div className="text-xs text-[var(--muted)]">{t('cst.layers.empty', 'No blocks yet, so there is no paint order to show.')}</div>
-          {add && <div className="mt-2 flex justify-center">
-            <Button size="sm" variant="primary" onClick={() => add('text')}><Type size={14} /> {t('cst.empty.add', 'Add a text block')}</Button>
-          </div>}
-        </div>
-      )}
-      <div className={`${bare ? '' : 'max-h-56 overflow-auto '}space-y-0.5`}>
-        {rows.map((b, i) => {
-          const on = selIds.includes(b.id);
-          return (
-            <div key={b.id}
-              className={`flex items-center gap-1 rounded-lg px-1.5 py-1 text-xs cursor-pointer ${on ? 'tint-primary' : 'hover:bg-[var(--surface-2)]'}`}
-              onClick={(e) => setSelIds(e.shiftKey || e.ctrlKey || e.metaKey ? (on ? selIds.filter((x) => x !== b.id) : [...selIds, b.id]) : [b.id])}>
-              <span className={`flex-1 min-w-0 truncate ${b.hidden ? 'text-[var(--faint)] line-through' : ''}`}>
-                {b.name || t(`cst.kind.${b.kind}`, b.kind)}
-                {!b.name && <span className="text-[var(--faint)] ms-1">#{b.id.slice(-3)}</span>}
-              </span>
-              {/* Outside the page frame: kept on the board, never shown to a reader. Said here
-                  because the board itself may be zoomed so the block is nowhere on screen. */}
-              {offIds?.has(b.id) && (
-                <span className="cst-offframe" data-off-frame title={t('cst.frame.off.h', 'Outside the page frame: it stays on the board, and visitors never see it')}>
-                  {t('cst.frame.off', 'Off frame')}
-                </span>
-              )}
-              <button type="button" className="p-0.5 rounded hover:bg-[var(--surface-2)] disabled:opacity-30" disabled={i === 0} onClick={(e) => { e.stopPropagation(); emit(reorder(canvas.blocks, b.id, 'up')); }} title={t('cst.layer.up', 'Move up')} aria-label={t('cst.layer.up', 'Move up')}><ChevronUp size={12} /></button>
-              <button type="button" className="p-0.5 rounded hover:bg-[var(--surface-2)] disabled:opacity-30" disabled={i === rows.length - 1} onClick={(e) => { e.stopPropagation(); emit(reorder(canvas.blocks, b.id, 'down')); }} title={t('cst.layer.down', 'Move down')} aria-label={t('cst.layer.down', 'Move down')}><ChevronDown size={12} /></button>
-              <button type="button" className={`p-0.5 rounded hover:bg-[var(--surface-2)] ${b.locked ? 'text-[var(--accent-ink)]' : 'text-[var(--faint)]'}`} onClick={(e) => { e.stopPropagation(); patch(b.id, { locked: !b.locked }); }} title={b.locked ? t('cst.layer.unlock', 'Unlock') : t('cst.layer.lock', 'Lock')} aria-label={b.locked ? t('cst.layer.unlock', 'Unlock') : t('cst.layer.lock', 'Lock')}>{b.locked ? <Lock size={12} /> : <LockOpen size={12} />}</button>
-              <button type="button" className={`p-0.5 rounded hover:bg-[var(--surface-2)] ${b.hidden ? 'text-[var(--accent-ink)]' : 'text-[var(--faint)]'}`} onClick={(e) => { e.stopPropagation(); patch(b.id, { hidden: !b.hidden }); }} title={b.hidden ? t('cst.layer.show', 'Show') : t('cst.layer.hide', 'Hide')} aria-label={b.hidden ? t('cst.layer.show', 'Show') : t('cst.layer.hide', 'Hide')}>{b.hidden ? <EyeOff size={12} /> : <Eye size={12} />}</button>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
 
 /** The button block's own fields: its look. What it DOES is the "On click" section, which every
  *  block has (editor/studio-actions.jsx, phase 5). */
@@ -1920,13 +2160,13 @@ function handlePos(hk) {
 }
 
 /** One block as the editor shows it: the public painting, plus a warning when it overruns. */
-function BlockBody({ b }) {
+function BlockBody({ b, slot = 0 }) {
   const ref = useRef(null);
   const over = useOverflow(ref, [b.w, b.h, b.kind, JSON.stringify(b.props)]);
   return (
     <>
       <div ref={ref} style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none' }}>
-        <CanvasBlock b={b} />
+        <CanvasBlock b={b} slot={slot} />
       </div>
       {over > 2 && (
         <span title={`${over}px hidden — the public page clips this`}
@@ -1941,23 +2181,48 @@ function BlockBody({ b }) {
 
 // (the block painter is imported from canvas-view.jsx — see CanvasBlock there)
 
-/** One block on the board. Memoised: only the block whose props changed re-renders. */
-const BoardBlock = memo(function BoardBlock({ b, on, only, down, off = false, offLabel = '' }) {
+/** One block on the board. Memoised: only the block whose props changed re-renders.
+ *  Phase 7a: `z` is its place in the board's tree order (a container's blocks over it), `dbl`
+ *  goes into a container, `onSlot` picks the tab a tab card shows, `scopeOn` marks the
+ *  container being edited, `tag` names a dialog, `brokenLabel` a block whose container link is
+ *  broken. */
+const BoardBlock = memo(function BoardBlock({ b, on, only, down, off = false, offLabel = '', z = null, dbl = null, slot = 0, onSlot = null,
+  scopeOn = false, tag = '', brokenLabel = '' }) {
+  const box = isContainer(b.kind);
+  // A selected block is lifted over its neighbours, except a container: lifted, it would cover
+  // the very blocks it holds.
+  const zIndex = z != null ? z + (on && !box ? 100000 : 0) : (b.z || 0) + (on ? 1000 : 0);
   return (
     <div
       data-cst-block={b.id}
       data-off-frame={off ? '1' : undefined}
+      data-cst-container={box ? b.kind : undefined}
+      data-cst-depth={b.depth || undefined}
+      data-cst-scope={scopeOn ? '1' : undefined}
       onPointerDown={(e) => down(e, b, null)}
+      onDoubleClick={dbl ? (e) => dbl(e, b) : undefined}
       // Off the frame: drawn and grabbable like any block (it is on the board), dimmed, because
       // a reader will never see it.
-      style={{ position: 'absolute', left: b.x, top: b.y, width: b.w, height: b.h, zIndex: (b.z || 0) + (on ? 1000 : 0), cursor: b.locked ? 'default' : 'move', touchAction: 'none', opacity: b.hidden ? 0.3 : off ? 0.55 : undefined, transform: b.rotate ? `rotate(${b.rotate}deg)` : undefined }}>
-      <BlockBody b={b} />
-      <div style={{ position: 'absolute', inset: 0, outline: on ? '2px solid var(--primary)' : off ? '1px dashed var(--warning)' : '1px dashed var(--line-strong)', outlineOffset: 0, pointerEvents: 'none' }} />
+      style={{ position: 'absolute', left: b.x, top: b.y, width: b.w, height: b.h, zIndex, cursor: b.locked ? 'default' : 'move', touchAction: 'none', opacity: b.hidden ? 0.3 : off ? 0.55 : undefined, transform: b.rotate ? `rotate(${b.rotate}deg)` : undefined }}>
+      <BlockBody b={b} slot={slot} />
+      <div style={{ position: 'absolute', inset: 0, outline: on ? '2px solid var(--primary)' : scopeOn ? '2px dashed var(--primary)' : off || brokenLabel ? '1px dashed var(--warning)' : '1px dashed var(--line-strong)', outlineOffset: 0, pointerEvents: 'none' }} />
       {off && <span aria-hidden className="cst-offframe cst-offframe-board">{offLabel}</span>}
+      {(tag || brokenLabel) && <span aria-hidden className="cst-offframe cst-offframe-board" data-cst-tag>{brokenLabel || tag}</span>}
       {(b.locked || b.hidden || b.component) && (
         <span aria-hidden data-component={b.component ? b.component.id : undefined} style={{ position: 'absolute', left: 2, top: 2, display: 'inline-flex', gap: 2, background: 'var(--bg-solid)', borderRadius: 6, padding: '1px 4px', pointerEvents: 'none' }}>
           {b.locked && <Lock size={10} />}{b.hidden && <EyeOff size={10} />}{b.component && <Puzzle size={10} />}
         </span>
+      )}
+      {/* The tab card's tabs, pressable on the board once it is selected or being edited: which
+          one the board shows, and so where added or dropped blocks go. */}
+      {onSlot && (on || scopeOn) && (
+        <div className="cv-tabs" data-cst-tabpick style={{ position: 'absolute', left: 0, top: 0, width: '100%', height: TAB_STRIP_H }}
+          onPointerDown={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
+          {tabLabels(b.props).map((label, i) => (
+            <button key={i} type="button" className="cv-tab" data-on={i === slot ? '1' : undefined} aria-pressed={i === slot}
+              onClick={() => onSlot(b.id, i)}>{label || `${i + 1}`}</button>
+          ))}
+        </div>
       )}
       {only && !b.locked && Object.keys(HANDLES).map((hk) => (
         <span key={hk} onPointerDown={(e) => down(e, b, hk)}
@@ -2309,7 +2574,8 @@ function CssFields({ t, p, setProp }) {
 
 function Toolbar({ t, preview, setPreview, snapOn, setSnapOn, add, addShape, sel, duplicate, remove, doUndo, doRedo, hist, selCount, doAlign, doDistribute, stagger, grid, setGrid, layersOpen, setLayersOpen, zoom, setZoom, pageOpen, setPageOpen,
   pageMode = false, showGrid = true, setShowGrid, zoomBy, fitScale = 1, onSaveComponent,
-  doZ, matchSize, toggleFlag, selBlocks = [], narrow = false, onKeys, panMode = false, setPanMode, onShowAll, frameFit = 'content', onFitContent }) {
+  doZ, matchSize, toggleFlag, selBlocks = [], narrow = false, onKeys, panMode = false, setPanMode, onShowAll, frameFit = 'content', onFitContent,
+  onGroup = null, onUngroup = null }) {
   const zoomPct = Math.round((zoom === 'fit' ? fitScale : Number(zoom)) * 100);
   const anyLocked = selBlocks.some((b) => b.locked);
   const anyHidden = selBlocks.some((b) => b.hidden);
@@ -2326,6 +2592,8 @@ function Toolbar({ t, preview, setPreview, snapOn, setSnapOn, add, addShape, sel
         <Button size="sm" variant="ghost" onClick={() => add('video')} title={t('cst.add.video', 'video')}><Film size={14} /></Button>
         <Button size="sm" variant="ghost" onClick={() => add('embed')} title={t('cst.add.embed', 'embed')}><Globe size={14} /></Button>
         <Button size="sm" variant="ghost" onClick={() => add('replay')} title={t('cst.add.replay', 'replay')}><PlayCircle size={14} /></Button>
+        <Button size="sm" variant="ghost" onClick={() => add('tabs')} title={t('cst.add.tabs', 'Tab card')} aria-label={t('cst.add.tabs', 'Tab card')}><PanelTop size={14} /></Button>
+        <Button size="sm" variant="ghost" onClick={() => add('modal')} title={t('cst.add.modal', 'Dialog')} aria-label={t('cst.add.modal', 'Dialog')}><AppWindow size={14} /></Button>
         <label className="inline-flex items-center gap-1 text-[11px]" title={t('cst.add.shape', 'Add a shape')}>
           <Sparkles size={13} className="text-[var(--muted)]" />
           <select className="bg-transparent text-[var(--text)] text-xs" value="" onChange={(e) => { if (e.target.value) addShape(e.target.value); }} aria-label={t('cst.add.shape', 'Add a shape')}>
@@ -2363,6 +2631,9 @@ function Toolbar({ t, preview, setPreview, snapOn, setSnapOn, add, addShape, sel
       <Button size="sm" variant="ghost" disabled={!selCount} onClick={duplicate} title="Ctrl+D"><Copy size={14} /> {t('cst.dup', 'Duplicate')}</Button>
       <Button size="sm" variant="ghost" disabled={!selCount} className="!text-error" onClick={remove} title={t('cst.del', 'Delete')} aria-label={t('cst.del', 'Delete')}><Trash2 size={14} /></Button>
       {onSaveComponent && <Button size="sm" variant="ghost" disabled={!selCount} onClick={onSaveComponent} title={t('cst.cmp.saveas.h2', 'Keep the selection as a reusable component')}><Puzzle size={14} /> {t('cst.cmp.saveas', 'Save as component')}</Button>}
+      {/* Containers (phase 7a): only when they can run, never a disabled button to decode. */}
+      {onGroup && <Button size="sm" variant="ghost" onClick={onGroup} data-cst-group title={t('cst.group.h', 'Put the selection in a group, moved and shown as one (Ctrl+G)')}><Group size={14} /> {t('cst.group', 'Group')}</Button>}
+      {onUngroup && <Button size="sm" variant="ghost" onClick={onUngroup} data-cst-ungroup title={t('cst.ungroup.h', 'Take the blocks out of this group (Ctrl+Shift+G)')}><Ungroup size={14} /> {t('cst.ungroup', 'Ungroup')}</Button>}
       {/* The paint order and the two flags, for the WHOLE selection. They existed only in the
           inspector, which has one block: with four picked they quietly moved, locked or hid
           exactly one of them. */}
@@ -2445,7 +2716,7 @@ function Toolbar({ t, preview, setPreview, snapOn, setSnapOn, add, addShape, sel
   );
 }
 
-function Inspector({ t, sel, patch, canvas, emit, setSelId, hasDark = false, onOpenMd, pageList = null }) {
+function Inspector({ t, sel, patch, canvas, emit, setSelId, hasDark = false, onOpenMd, pageList = null, containerFields = null }) {
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   if (!sel) {
@@ -2488,6 +2759,7 @@ function Inspector({ t, sel, patch, canvas, emit, setSelId, hasDark = false, onO
       <div className="grid grid-cols-2 gap-2">
         {numField('X', 'x')}{numField('Y', 'y')}{numField(t('cst.w', 'Width'), 'w')}{numField(t('cst.h', 'Height'), 'h')}
       </div>
+      {containerFields}
       {sel.kind === 'text' && (
         <Field label={t('cst.md', 'Content (B.MD)')}>
           <Textarea rows={8} value={p.md || ''} onChange={(e) => setProp('md', e.target.value)} />

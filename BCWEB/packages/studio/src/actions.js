@@ -14,7 +14,11 @@
 //                                   with rel="noopener noreferrer", behind a "leaving" screen
 //   mailto    { address }           an address and nothing else (no subject, no body, no cc)
 //   scroll    { target }            a block id of this page, or `#top`. Never a CSS selector
-//   reveal    { target, mode }      show / hide / toggle a block of this page
+//   reveal    { target, mode }      show / hide / toggle a block of this page, a group included
+//                                   (never a dialog: that is what `modal` is for)
+//   modal     { target }            open a dialog of this page: a top-level `modal` container
+//                                   (phase 7a, tree.js), over the page, focus inside it
+//   tab       { target, index }     select tab `index` (0 = the first) of a tab card of this page
 //   copy      { text }              up to 2 000 characters to the clipboard, with visible feedback
 //   download  { file } | { asset }  a same-site upload (/uploads/..., /api/media/...) or a platform
 //                                   asset key (/api/assets/<key>), never a URL from elsewhere
@@ -23,10 +27,11 @@
 //                                   author may only fill the fields the entry lets them fix
 //   theme     { mode }              light / dark / toggle, the reader's theme
 //
-// Reserved, NOT live: `modal` and `tab` belong to phase 7 (containers). A page that carries one
-// is refused at save (`reserved_action`) and rendered inert, so nobody ships a button that
-// silently waits for a feature. The old `api` action (S2, decision D5) stays removed: read,
-// shown in red in the editor, inert for visitors, refused if newly written.
+// `modal` and `tab` were reserved until phase 7a (refused at save as `reserved_action`); they are
+// live now that containers exist, and checked like every other step: the target must be a
+// container of the right kind on the same page (`bad_target`), a tab index one of its tabs
+// (`bad_value`). The old `api` action (S2, decision D5) stays removed: read, shown in red in the
+// editor, inert for visitors, refused if newly written.
 //
 // Composition rule: at most ONE step that leaves the block's hands (navigate, page, external,
 // mailto, download, submit) and it must be the LAST step. Anything after a navigation would never
@@ -42,9 +47,10 @@
 // the page would have rendered inert.
 
 /** The live step types, in the order the editor offers them. */
-export const ACTION_TYPES = ['navigate', 'page', 'external', 'mailto', 'scroll', 'reveal', 'copy', 'download', 'submit', 'theme'];
-/** Named by the plan for phase 7, reserved now: refused at save, inert on the page. */
-export const RESERVED_ACTIONS = ['modal', 'tab'];
+export const ACTION_TYPES = ['navigate', 'page', 'external', 'mailto', 'scroll', 'reveal', 'modal', 'tab', 'copy', 'download', 'submit', 'theme'];
+/** Types named for a later phase, refused at save and inert on the page. None since phase 7a
+ *  (`modal` and `tab` went live with containers); kept so a future reservation has its place. */
+export const RESERVED_ACTIONS = [];
 /** Types a stored page may carry that are no longer honoured, and why. */
 export const REMOVED_ACTIONS = { api: 'api_removed' };
 /** A block does at most this many things in a row. */
@@ -56,7 +62,8 @@ export const TERMINAL_TYPES = [...NAV_TYPES, 'submit'];
 /** The fields each step type may carry, besides `type`. */
 export const STEP_FIELDS = {
   navigate: ['to'], page: ['canvasId'], external: ['url'], mailto: ['address'],
-  scroll: ['target'], reveal: ['target', 'mode'], copy: ['text'], download: ['file', 'asset'],
+  scroll: ['target'], reveal: ['target', 'mode'], modal: ['target'], tab: ['target', 'index'],
+  copy: ['text'], download: ['file', 'asset'],
   submit: ['endpoint', 'fields'], theme: ['mode'],
 };
 export const REVEAL_MODES = ['toggle', 'show', 'hide'];
@@ -351,7 +358,9 @@ export function submitRequest(key, authorFields, visitorFields, ctx = {}) {
 /**
  * Every problem of ONE step, through `push(field, reason, value)` (`field` '' = the step itself).
  * `ctx.links` is the link policy; `ctx.blockIds`, when given, the ids of the page's blocks, which
- * a scroll or reveal must name. Used by the strict validator AND by the renderer's plan.
+ * a scroll or reveal must name; `ctx.containers`, when given, the page's containers
+ * (tree.js containerInfo: id → { kind, tabs }), which a modal or tab step must name. Used by the
+ * strict validator AND by the renderer's plan.
  */
 export function stepProblems(step, ctx, push) {
   if (!isObj(step)) { push('', 'bad_type', null); return; }
@@ -362,6 +371,9 @@ export function stepProblems(step, ctx, push) {
   if (!ACTION_TYPES.includes(type)) { push('type', 'unknown_action', type); return; }
   for (const k of Object.keys(step)) if (k !== 'type' && !STEP_FIELDS[type].includes(k)) push(k, 'unknown_field', k);
   const ids = ctx?.blockIds || null;
+  const boxes = ctx?.containers || null;
+  /** A block id of this page (and, when the page's containers are known, of this kind). */
+  const names = (target, kind) => ID.test(target) && (!ids || ids.has(target)) && (!boxes || !kind || boxes.get(target)?.kind === kind);
   const needStr = (k) => {
     if (step[k] == null || step[k] === '') { push(k, 'bad_value', step[k] ?? null); return false; }
     if (typeof step[k] !== 'string') { push(k, 'bad_type', step[k]); return false; }
@@ -384,9 +396,20 @@ export function stepProblems(step, ctx, push) {
       if (needStr('target') && step.target !== '#top' && !(ID.test(step.target) && (!ids || ids.has(step.target)))) push('target', 'bad_scroll_target', step.target);
       break;
     case 'reveal':
-      if (needStr('target') && !(ID.test(step.target) && (!ids || ids.has(step.target)))) push('target', 'bad_target', step.target);
+      // A group is revealed with everything in it; a dialog is opened by `modal`, never shown in
+      // the page's flow by a reveal.
+      if (needStr('target') && !(names(step.target) && !(boxes && boxes.get(step.target)?.kind === 'modal'))) push('target', 'bad_target', step.target);
       if (step.mode != null && !REVEAL_MODES.includes(step.mode)) push('mode', 'bad_value', step.mode);
       break;
+    case 'modal':
+      if (needStr('target') && !names(step.target, 'modal')) push('target', 'bad_target', step.target);
+      break;
+    case 'tab': {
+      if (needStr('target') && !names(step.target, 'tabs')) push('target', 'bad_target', step.target);
+      const n = boxes && typeof step.target === 'string' ? boxes.get(step.target)?.tabs : null;
+      if (!(Number.isInteger(step.index) && step.index >= 0 && (n == null || step.index < n))) push('index', 'bad_value', step.index ?? null);
+      break;
+    }
     case 'copy':
       if (needStr('text') && step.text.length > COPY_MAX) push('text', 'too_long', step.text.length);
       break;
@@ -446,6 +469,7 @@ function cleanStep(raw) {
   for (const k of fields) {
     if (raw[k] == null) continue;
     if (k === 'fields') { if (isObj(raw.fields)) out.fields = { ...raw.fields }; continue; }
+    if (k === 'index') { if (typeof raw.index === 'number') out.index = raw.index; continue; }
     if (typeof raw[k] === 'string') out[k] = raw[k].slice(0, k === 'text' ? COPY_MAX + 1 : URL_MAX + 1);
   }
   return out;
@@ -563,7 +587,8 @@ export function migrateDocActions(doc) {
  *   kind 'inert'   something is wrong: NOTHING runs, and `reason` says what (the editor shows it
  *                  in red; the page renders `aria-disabled` and `data-inert=<reason>`)
  *
- * `ctx` = { links: policy, blockIds: Set of the page's block ids }.
+ * `ctx` = { links: policy, blockIds: Set of the page's block ids, containers: tree.js
+ * containerInfo of the page (what a modal or tab step may name) }.
  */
 export function planAction(stepsRaw, ctx = {}) {
   const steps = Array.isArray(stepsRaw) ? stepsRaw : normalizeAction(stepsRaw);
@@ -573,7 +598,7 @@ export function planAction(stepsRaw, ctx = {}) {
   const links = ctx.links ? normalizeLinkPolicy(ctx.links) : DEFAULT_LINK_POLICY;
   for (let i = 0; i < steps.length; i++) {
     let first = '';
-    stepProblems(steps[i], { links, blockIds: ctx.blockIds || null }, (_f, reason) => { if (!first) first = reason; });
+    stepProblems(steps[i], { links, blockIds: ctx.blockIds || null, containers: ctx.containers || null }, (_f, reason) => { if (!first) first = reason; });
     if (first) return inert(first, i);
     if (TERMINAL_TYPES.includes(steps[i].type) && i !== steps.length - 1) return inert('terminal_not_last', i);
   }

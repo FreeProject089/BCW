@@ -12,3 +12,4 @@ export * from './background.js';
 export * from './actions.js';
 export * from './patterns.js';
 export * from './scene.js';
+export * from './tree.js';

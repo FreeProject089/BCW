@@ -14,3 +14,5 @@ export * from '../../../../packages/studio/src/background.js';
 export * from '../../../../packages/studio/src/actions.js';
 // The scene vocabulary (shapes, bounds) a 3D page background is edited with; no three.js in it.
 export * from '../../../../packages/studio/src/scene.js';
+// Containers (phase 7a): group, tab card, dialog; the tree rules and the editor's tree operations.
+export * from '../../../../packages/studio/src/tree.js';

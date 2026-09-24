@@ -795,6 +795,15 @@ button.cv-btn-card { text-align: start; }
 .cv-dd-item { display: block; padding: 7px 10px; border-radius: 8px; font-size: 13px; color: var(--text); text-decoration: none; }
 .cv-dd-item:hover { background: var(--surface-2); }
 .cv-dd-empty { color: var(--faint); }
+/* Containers (studio phase 7a, ui/canvas-view.jsx). A tab card: a strip of real tabs over one
+   panel. The selected tab is marked by weight and an underline in the ink colour, not by a
+   fill alone, so it reads in both themes and without colour. */
+.cv-tabs { display: flex; align-items: stretch; gap: 2px; overflow-x: auto; border-bottom: 1px solid var(--line); scrollbar-width: none; }
+.cv-tab { flex: 0 0 auto; padding: 0 14px; min-height: 44px; font: inherit; font-size: 14px; color: var(--muted); background: transparent; border: 0; border-bottom: 2px solid transparent; cursor: pointer; }
+.cv-tab:hover { color: var(--text); }
+.cv-tab[aria-selected="true"], .cv-tab[data-on] { color: var(--text); font-weight: 600; border-bottom-color: var(--accent-ink); }
+.cv-tab:focus-visible, .cv-tabpanel:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: -2px; }
+.cv-tabpanel[hidden] { display: none; }
 
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 /* Home "get started" steps: a glowing pulse travels the wave left→right. */

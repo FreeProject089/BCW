@@ -39,7 +39,9 @@ const HOSTILE = [
   [[{ type: 'submit', endpoint: 'admin.users.delete' }], 'action[0].endpoint', 'unknown_endpoint'],
   [[{ type: 'download', file: 'https://evil.example/x.exe' }], 'action[0].file', 'unsafe_url'],
   [[{ type: 'scroll', target: 'body > div' }], 'action[0].target', 'bad_scroll_target'],
-  [[{ type: 'modal', target: 'b0' }], 'action[0].type', 'reserved_action'],
+  // CHANGED in studio phase 7a: `modal` was reserved (`reserved_action`); it is live now, and a
+  // step naming a block that is not a dialog is refused on its target instead.
+  [[{ type: 'modal', target: 'b0' }], 'action[0].target', 'bad_target'],
   [[{ type: 'api', path: '/admin/users', method: 'POST' }], 'action[0].type', 'api_removed'],
   [[1, 2, 3, 4, 5, 6].map(() => ({ type: 'copy', text: 'x' })), 'action', 'too_many'],
 ];

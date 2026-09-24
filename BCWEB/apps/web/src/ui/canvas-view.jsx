@@ -7,9 +7,15 @@
 // Content is B.MD, not a private format. A text block is a document, so it already has
 // callouts, cards, tabs, buttons, the icon set and the spacing scale, and anything added to
 // B.MD later shows up here without this file changing.
-import { useEffect, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import Markdown from './md.jsx';
 import { normalizeDoc, layoutFor, frameBlocks, menuItemHref, safeLink, backgroundStyle, planAction, EASING_CURVES, DESIGN_WIDTH, PHONE_WIDTH } from '../lib/canvas.js';
+// Containers (studio phase 7a): a group, a tab card, a dialog. The rules are the package's.
+import {
+  isContainer, innerBox, insideParent, tabLabels, treeIndex, modalBlocks, revealTargets, resolveBlock, paintOrder, readingOrder,
+  TAB_STRIP_H,
+} from '../lib/canvas.js';
+import { Modal } from './ui.jsx';
 import { CanvasActions, ActionCover, useCanvasActions, planAttrs, useFeedback, feedbackText } from './canvas-actions.jsx';
 import CanvasBackground from './canvas-background.jsx';
 import { markdownConfig } from '@bettercommunity/bmd/config';
@@ -245,8 +251,11 @@ export function ScopedCss({ canvas }) {
   return css ? <style>{css}</style> : null;
 }
 
-export function CanvasBlock({ b, stacked }) {
+export function CanvasBlock({ b, stacked, slot = 0 }) {
   const p = b.props || {};
+  // A container draws its own box and, where the page's tree is known (CanvasTree), its
+  // children; the editor's board draws only the box and places the children itself.
+  if (isContainer(b.kind)) return <ContainerBody b={b} stacked={stacked} slot={slot} />;
   if (b.kind === 'button') {
     // Centred in its box on the board; a natural inline element in a stack.
     return <div className="cv-btn-wrap" style={stacked ? undefined : { display: 'flex', alignItems: 'center', justifyContent: p.align === 'left' ? 'flex-start' : p.align === 'right' ? 'flex-end' : 'center', height: '100%' }}><CanvasButton p={p} b={b} /></div>;
@@ -349,6 +358,205 @@ export function CanvasBlock({ b, stacked }) {
   );
 }
 
+// ── Containers (studio phase 7a) ─────────────────────────────────────────────────────────
+// A container is drawn by the SAME pieces as any block (Shown, Animated, BlockShell,
+// CanvasBlock), recursively: a child is one more block, placed in its container's inner area
+// instead of on the page. What decides which children exist and where is the package's
+// (tree.js): a broken chain is never drawn, a child entirely outside its container is not
+// mounted (like a block off the frame), one crossing the edge is clipped.
+
+/** The page's tree, for the containers drawn inside it. Absent on the editor's own board. */
+const TreeCtx = createContext(null);
+
+/**
+ * The tree of a normalised document, for the containers drawn under it. The public page wraps
+ * itself in one; the editor wraps a phone board or a list with one, where a container shows
+ * its children as a reader gets them.
+ */
+export function CanvasTree({ doc, theme = 'light', children }) {
+  const blocks = doc?.blocks;
+  const id = doc?.id;
+  const value = useMemo(() => {
+    const idx = treeIndex(blocks);
+    return { childrenOf: idx.childrenOf, theme, cid: String(id || 'cv').replace(/[^\w-]/g, ''), revealable: revealTargets(blocks) };
+  }, [blocks, theme, id]);
+  return <TreeCtx.Provider value={value}>{children}</TreeCtx.Provider>;
+}
+
+/** A container's own box: its colours, border and corners (the fields every block has). */
+function ownStyle(p) {
+  const bg = safeCssValue(p.bg);
+  const border = safeCssValue(p.border);
+  const color = safeCssValue(p.color);
+  const pat = p.pattern?.id ? patternStyle({ ...p.pattern, color: safeCssValue(p.pattern.color) || undefined }) : null;
+  const gradient = /gradient\(/i.test(bg);
+  return {
+    ...(pat && !gradient ? { backgroundColor: bg || undefined, ...pat } : { background: bg || undefined }),
+    border: border ? `1px solid ${border}` : undefined,
+    borderRadius: p.radius != null ? `${p.radius}px` : undefined,
+    color: color || undefined,
+  };
+}
+
+/** The children a reader gets in container `b`: shown or revealable, of the open tab, resolved. */
+function useKids(b, slot) {
+  const tree = useContext(TreeCtx);
+  if (!tree) return null;
+  return tree.childrenOf(b.id)
+    .filter((c) => b.kind !== 'tabs' || (c.slot || 0) === slot)
+    .map((c) => resolveBlock(c, tree.theme))
+    .filter((c) => !c.hidden || tree.revealable.has(c.id));
+}
+
+/** One child, drawn like a block of the page: visibility, animation, shell, painting. */
+function Child({ c, stacked, style }) {
+  return (
+    <Shown b={c}>{(shown) => (
+      <Animated id={c.id} anim={c.anim} shown={shown} className={stacked ? 'min-w-0' : undefined}
+        style={stacked ? (c.opacity < 1 ? { opacity: c.opacity } : undefined) : style}>
+        <BlockShell b={c}><CanvasBlock b={c} stacked={stacked} /></BlockShell>
+      </Animated>
+    )}</Shown>
+  );
+}
+
+/**
+ * The children of a container, laid out: on a plane of the container's own size (scaled when the
+ * container is drawn at another size, the phone board), each where the author put it; or, in a
+ * stack, in reading order.
+ */
+function Kids({ b, kids, stacked }) {
+  // Drawn at another width than it was placed at (the phone board): the plane keeps the size
+  // the children were placed in (`baseW`, `baseH`) and scales, so the arrangement stays.
+  const base = { ...b, w: b.baseW || b.w, h: b.baseH || b.h };
+  // A child entirely outside its container is not in it for a reader, in a stack either.
+  if (stacked) {
+    return <div className="cv-kids space-y-3">{readingOrder(kids.filter((c) => insideParent(c, base))).map((c) => <Child key={c.id} c={c} stacked />)}</div>;
+  }
+  const box = innerBox(base);
+  const k = base.w !== b.w ? b.w / base.w : 1;
+  const placed = paintOrder(kids.filter((c) => insideParent(c, base)));
+  return (
+    <div className="cv-kids" style={{ position: 'absolute', left: 0, top: box.y * k, width: box.w, height: box.h, pointerEvents: 'none',
+      ...(k !== 1 ? { transform: `scale(${k})`, transformOrigin: '0 0' } : null) }}>
+      {placed.map((c) => (
+        <Child key={c.id} c={c} style={{ position: 'absolute', left: c.x, top: c.y, width: c.w, height: c.h, zIndex: c.z, pointerEvents: 'auto',
+          overflow: spills(c) ? 'visible' : 'hidden', opacity: c.opacity < 1 ? c.opacity : undefined }} />
+      ))}
+    </div>
+  );
+}
+
+/** A container's body: its box, then what it holds. */
+function ContainerBody({ b, stacked, slot }) {
+  if (b.kind === 'tabs') return <TabsBody b={b} stacked={stacked} editSlot={slot} />;
+  return <GroupBody b={b} stacked={stacked} />;
+}
+
+function GroupBody({ b, stacked }) {
+  const kids = useKids(b, 0);
+  const style = { ...ownStyle(b.props || {}), position: 'relative', width: '100%', ...(stacked ? { padding: kids?.length ? 12 : 0 } : { height: '100%' }) };
+  return (
+    <div data-cv-container={b.kind} style={style}>
+      {kids ? <Kids b={b} kids={kids} stacked={stacked} /> : null}
+    </div>
+  );
+}
+
+/**
+ * A tab card: a strip of real tabs over one panel (WAI-ARIA tabs pattern). The strip is a
+ * `tablist`; each label a `tab` with `aria-selected` and `aria-controls`; one tab is in the Tab
+ * order at a time (roving tabindex), the arrows move between them and select as they go, Home
+ * and End go to the first and the last. Every panel exists (so every `aria-controls` names an
+ * element), only the open one is mounted with its blocks. Which tab is open lives in the page's
+ * executor, so a `tab` step on a button of the page can open one (canvas-actions.jsx).
+ *
+ * On the editor's board (no tree), the strip is drawn inert with the tab being edited open.
+ */
+function TabsBody({ b, stacked, editSlot = 0 }) {
+  const tree = useContext(TreeCtx);
+  const ex = useCanvasActions();
+  const labels = tabLabels(b.props);
+  const n = labels.length;
+  const [local, setLocal] = useState(0);
+  const raw = tree ? (ex ? ex.tabOf(b.id) : local) : editSlot;
+  const active = Math.max(0, Math.min(n - 1, Number(raw) || 0));
+  const kids = useKids(b, active);
+  const refs = useRef([]);
+  const select = (i) => { if (ex) ex.setTab(b.id, i); else setLocal(i); };
+  const onKey = (e, i) => {
+    const to = { ArrowRight: (i + 1) % n, ArrowDown: (i + 1) % n, ArrowLeft: (i - 1 + n) % n, ArrowUp: (i - 1 + n) % n, Home: 0, End: n - 1 }[e.key];
+    if (to == null) return;
+    e.preventDefault();
+    select(to);
+    refs.current[to]?.focus();
+  };
+  const base = `cv-${tree?.cid || 'x'}-${String(b.id).replace(/[^\w-]/g, '')}`;
+  const live = !!tree;
+  const t = ex?.t || ((_k, f) => f);
+  // The panel's own plane: the card below its strip, as a plain box for Kids.
+  const panel = { ...b, kind: 'group', h: Math.max(1, b.h - TAB_STRIP_H), ...(b.baseH ? { baseH: Math.max(1, b.baseH - TAB_STRIP_H) } : {}) };
+  const strip = (
+    <div role={live ? 'tablist' : undefined} aria-hidden={live ? undefined : true} aria-label={live ? (b.name || t('cv.tabs', 'Tabs')) : undefined}
+      aria-orientation={live ? 'horizontal' : undefined} className="cv-tabs"
+      style={stacked ? undefined : { position: 'absolute', left: 0, top: 0, width: '100%', height: TAB_STRIP_H }}>
+      {labels.map((label, i) => (
+        <button key={i} type="button" ref={(el) => { refs.current[i] = el; }}
+          role={live ? 'tab' : undefined} id={live ? `${base}-t${i}` : undefined}
+          aria-selected={live ? i === active : undefined} aria-controls={live ? `${base}-p${i}` : undefined}
+          tabIndex={live ? (i === active ? 0 : -1) : -1} data-on={i === active ? '1' : undefined}
+          className="cv-tab" onClick={live ? () => select(i) : undefined} onKeyDown={live ? (e) => onKey(e, i) : undefined}>
+          {label || `${i + 1}`}
+        </button>
+      ))}
+    </div>
+  );
+  return (
+    <div data-cv-container="tabs" className="cv-tabcard" style={{ ...ownStyle(b.props || {}), position: 'relative', width: '100%', ...(stacked ? {} : { height: '100%' }) }}>
+      {strip}
+      {live && labels.map((_l, i) => (
+        <div key={i} role="tabpanel" id={`${base}-p${i}`} aria-labelledby={`${base}-t${i}`} hidden={i !== active} tabIndex={i === active ? 0 : undefined}
+          className="cv-tabpanel" style={stacked || i !== active ? undefined : { position: 'absolute', left: 0, top: TAB_STRIP_H, right: 0, bottom: 0 }}>
+          {i === active && kids ? <Kids b={panel} kids={kids} stacked={stacked} /> : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * The page's dialogs: top-level `modal` containers, never in the flow. One is open at a time,
+ * opened by a `modal` step; the site's own Modal traps the focus inside it, closes on Escape
+ * and gives the focus back to what opened it. Its blocks are drawn on a plane of the dialog's
+ * size, scaled down to the window when it is narrower, or stacked on a phone.
+ */
+function CanvasModals({ doc, stacked }) {
+  const ex = useCanvasActions();
+  const tree = useContext(TreeCtx);
+  const open = ex?.openModal || '';
+  const m = open ? modalBlocks(doc.blocks).find((b) => b.id === open) : null;
+  if (!m || !tree) return null;
+  const b = resolveBlock(m, tree.theme);
+  const kids = tree.childrenOf(b.id).map((c) => resolveBlock(c, tree.theme)).filter((c) => !c.hidden || tree.revealable.has(c.id));
+  const vw = typeof window !== 'undefined' ? window.innerWidth || DESIGN_WIDTH : DESIGN_WIDTH;
+  const k = Math.min(1, Math.max(0.3, (vw - 88) / Math.max(1, b.w)));
+  const title = String(b.props?.title || b.name || '').slice(0, 200) || ex.t('cv.modal', 'Dialog');
+  return (
+    <Modal open onClose={() => ex.closeModal()} title={title} width="max-w-fit">
+      <div data-cv={tree.cid} data-cv-modal={b.id} className="cv-modal-body"
+        style={stacked
+          ? { ...ownStyle(b.props || {}), width: 'min(100%, 520px)', padding: 12, ...CONFINE }
+          : { position: 'relative', width: b.w * k, height: b.h * k, ...CONFINE }}>
+        {stacked ? <Kids b={b} kids={kids} stacked /> : (
+          <div style={{ ...ownStyle(b.props || {}), position: 'absolute', left: 0, top: 0, width: b.w, height: b.h, transform: k !== 1 ? `scale(${k})` : undefined, transformOrigin: '0 0' }}>
+            <Kids b={b} kids={kids} />
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
 /**
  * The canvas root is a CONTAINING BLOCK for everything inside it, in every mode (S5).
  *
@@ -428,7 +636,16 @@ export default function CanvasView({ canvas: raw, stackPreview = false, themePre
   // Only what is ON the desktop page reaches the column: the stack is that page, read in order.
   // Every block that says what it does is run by the executor (canvas-actions.jsx), which also
   // owns the runtime state a reveal step changes (see Shown).
-  const wrap = (node) => <CanvasActions blocks={canvas.blocks} rootRef={hostRef} preview={actionsPreview}>{node}</CanvasActions>;
+  // The tree (phase 7a): the containers drawn below read their children from it, and the page's
+  // dialogs are drawn next to the page, closed until a `modal` step opens one.
+  const wrap = (node) => (
+    <CanvasActions blocks={canvas.blocks} rootRef={hostRef} preview={actionsPreview}>
+      <CanvasTree doc={canvas} theme={mode}>
+        {node}
+        <CanvasModals doc={canvas} stacked={L.mode === 'stack'} />
+      </CanvasTree>
+    </CanvasActions>
+  );
   if (L.mode === 'stack') {
     return wrap(
       <div ref={hostRef} className="space-y-4" data-cv={canvas.id} data-cv-background={bg.type} style={{ ...rootBg, position: 'relative', ...CONFINE }}>

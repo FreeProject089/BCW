@@ -55,6 +55,10 @@
 
 import { normalizeBackground, backgroundFromLegacy, serializeBackground } from './background.js';
 import { blockSteps, revealTargets } from './actions.js';
+// Containers (phase 7a): the tree rules, the absolute board view, reparenting.
+import {
+  annotateTree, isPageRoot, parentOf, absoluteBlocks, toStored, descendantIds, modalBlocks,
+} from './tree.js';
 
 /** The document version this code writes. */
 export const DOC_VERSION = 2;
@@ -84,7 +88,8 @@ export const GRID = 8;
  * inherits the page's colours — is not worth an injection point on a platform that meters and
  * gates everything else. It can come back behind a real sanitiser.
  */
-export const BLOCK_KINDS = ['text', 'image', 'box', 'video', 'embed', 'replay', 'button', 'shape', 'svg'];
+// `group`, `tabs` and `modal` are CONTAINERS (phase 7a, tree.js): blocks that hold other blocks.
+export const BLOCK_KINDS = ['text', 'image', 'box', 'video', 'embed', 'replay', 'button', 'shape', 'svg', 'group', 'tabs', 'modal'];
 /** The shapes a `shape` block can be. Drawn as inline SVG scaled to the block (ui/canvas-view.jsx). */
 export const SHAPES = ['rect', 'rounded', 'ellipse', 'triangle', 'diamond', 'hexagon', 'star', 'arrow', 'chevron', 'blob', 'line', 'ring'];
 
@@ -257,6 +262,10 @@ export const KIND_PROPS = {
   button: ['label', 'variant', 'size', 'outline', 'action', 'items', 'desc', 'doneLabel'],
   shape: ['shape', 'fill', 'fill2', 'stroke', 'strokeWidth', 'dash', 'corner', 'keepRatio', 'text', 'textColor', 'textSize', 'opacity'],
   svg: ['svg'],
+  // Containers (phase 7a). A tab card's labels; a dialog's title (its accessible name too).
+  group: [],
+  tabs: ['tabs'],
+  modal: ['title'],
 };
 /** Is `key` a prop this kind may carry? */
 export const propAllowed = (kind, key) => COMMON_PROPS.includes(key) || (KIND_PROPS[kind] || []).includes(key);
@@ -352,6 +361,11 @@ function normalizeBlock(b, i, taken) {
     // "detach" can forget one. Absent on a block placed by hand. Kept here because this
     // function is an allow-list: a field it does not name is a field the first save drops.
     component: componentTag(b.component),
+    // The container it sits in (phase 7a, tree.js): its x, y are then relative to that
+    // container. A NAME, like every id. Whether the chain holds is decided for the whole page
+    // (annotateTree, in normalizeDoc), and `slot` is the tab of a tab card it belongs to.
+    ...(parentOf(b) ? { parent: parentOf(b) } : {}),
+    ...(parentOf(b) && Number.isInteger(Number(b.slot)) && Number(b.slot) > 0 ? { slot: Math.min(Number(b.slot), 99) } : {}),
   };
 }
 
@@ -454,14 +468,18 @@ function frameOf(raw, w, contentH) {
 export function normalizeDoc(raw) {
   const c = migrate(raw);
   const taken = new Set();
-  const blocks = (Array.isArray(c.blocks) ? c.blocks : []).slice(0, LIMITS.blocks)
+  // The tree (phase 7a): a block whose chain of containers breaks a rule is flagged
+  // `treeError` and never drawn for a reader (tree.js). Bounded, whatever is stored.
+  const blocks = annotateTree((Array.isArray(c.blocks) ? c.blocks : []).slice(0, LIMITS.blocks)
     .map((b, i) => normalizeBlock(b, i, taken))
-    .filter(Boolean);
+    .filter(Boolean));
+  // The page's own flow: top-level blocks, not dialogs. A child is inside its container's box.
+  const flow = blocks.filter(isPageRoot);
   const fr = c.frames && typeof c.frames === 'object' ? c.frames : {};
   // The desktop frame first: which blocks the phone lays out depends on what is ON the page.
-  const desktop = frameOf(fr.desktop, DESIGN_WIDTH, frameContentHeight(blocks, DESIGN_WIDTH));
+  const desktop = frameOf(fr.desktop, DESIGN_WIDTH, frameContentHeight(flow, DESIGN_WIDTH));
   const mode = fr.phone?.mode === 'board' ? 'board' : 'stack';
-  const phone = { ...frameOf(fr.phone, PHONE_WIDTH, phoneContentHeight(blocks, desktop)), mode };
+  const phone = { ...frameOf(fr.phone, PHONE_WIDTH, phoneContentHeight(flow, desktop)), mode };
   return {
     v: DOC_VERSION,
     id: safeId(c.id == null || c.id === '' ? 'canvas' : String(c.id), 'canvas'),
@@ -533,6 +551,12 @@ function serializeBlock(b) {
   if (out.props && 'action' in out.props) out.props = withoutAction(out.props);
   if (out.props && !Object.keys(out.props).length) delete out.props;
   if (b.component) out.component = b.component;
+  // The container (phase 7a). A chain the normaliser found broken is NOT written back: the block
+  // is saved at the top level, which is where the studio showed it (tree.js).
+  if (parentOf(b) && !b.treeError) {
+    out.parent = parentOf(b);
+    if (Number.isInteger(b.slot) && b.slot > 0) out.slot = b.slot;
+  }
   return out;
 }
 
@@ -671,7 +695,7 @@ export function phoneBoardBlocks(blocks, band = 40, desk = null) {
   const shown = (blocks || []).filter((b) => !b.phone?.hidden);
   const isPlaced = (b) => b.phone?.x != null && b.phone?.y != null;
   const placed = shown.filter(isPlaced)
-    .map((b) => ({ ...b, x: b.phone.x, y: b.phone.y, w: b.phone.w ?? Math.min(snap(PHONE_WIDTH - 32), num(b.w)), h: b.phone.h ?? num(b.h), placed: true }));
+    .map((b) => ({ ...b, x: b.phone.x, y: b.phone.y, w: b.phone.w ?? Math.min(snap(PHONE_WIDTH - 32), num(b.w)), h: b.phone.h ?? num(b.h), baseW: num(b.w), baseH: num(b.h), placed: true }));
   let bottom = placed.filter((b) => inFrame(b, { w: PHONE_WIDTH, h: Infinity }))
     .reduce((m, b) => Math.max(m, num(b.y) + num(b.h)), 0);
   const loose = shown.filter((b) => !isPlaced(b));
@@ -681,7 +705,7 @@ export function phoneBoardBlocks(blocks, band = 40, desk = null) {
     const h = b.phone?.h ?? num(b.h);
     const y = bottom ? bottom + 16 : 16;
     bottom = y + h;
-    return { ...b, x: 16, y, w: b.phone?.w ?? snap(PHONE_WIDTH - 32), h, placed: false };
+    return { ...b, x: 16, y, w: b.phone?.w ?? snap(PHONE_WIDTH - 32), h, baseW: num(b.w), baseH: num(b.h), placed: false };
   });
   return [...placed, ...rest, ...parked];
 }
@@ -796,12 +820,15 @@ export function frameBlocks(doc, mode = 'scale', theme = 'light') {
   // block stays unmounted, as before.
   const revealable = revealTargets(blocks);
   const keep = (b) => !b.hidden || revealable.has(b.id);
-  if (mode === 'stack') return phoneOrder(blocks).map(show).filter((b) => keep(b) && inFrame(b, desk));
+  // The page's own flow only (phase 7a): a child is drawn by its container, a dialog when it is
+  // opened, and a block with a broken chain not at all (tree.js).
+  const flow = blocks.filter(isPageRoot);
+  if (mode === 'stack') return phoneOrder(flow).map(show).filter((b) => keep(b) && inFrame(b, desk));
   if (mode === 'phone') {
     const pf = doc?.frames?.phone || { w: PHONE_WIDTH, h: Infinity };
-    return phoneBoardBlocks(blocks.map(show).filter(keep), 40, desk).filter((b) => !b.parked && inFrame(b, pf));
+    return phoneBoardBlocks(flow.map(show).filter(keep), 40, desk).filter((b) => !b.parked && inFrame(b, pf));
   }
-  return paintOrder(blocks).map(show).filter((b) => keep(b) && inFrame(b, desk));
+  return paintOrder(flow).map(show).filter((b) => keep(b) && inFrame(b, desk));
 }
 
 /**
@@ -1053,7 +1080,10 @@ export function boardFrame(canvas, board = 'light') {
 /** The ids of the blocks a reader would NOT see on this board: entirely outside its frame. */
 export function offFrameIds(canvas, board = 'light') {
   const frame = boardFrame(canvas, board);
-  return new Set(boardBlocks(canvas, board).filter((b) => b.parked || !inFrame(b, frame)).map((b) => b.id));
+  // A dialog and what is in it are never on the page's frame: they open over it (phase 7a).
+  const blocks = Array.isArray(canvas?.blocks) ? canvas.blocks : [];
+  const dialog = new Set(modalBlocks(blocks).flatMap((m) => [m.id, ...descendantIds(blocks, m.id)]));
+  return new Set(boardBlocks(canvas, board).filter((b) => !dialog.has(b.id) && (b.parked || !inFrame(b, frame))).map((b) => b.id));
 }
 
 // ── Undo ─────────────────────────────────────────────────────────────────────
@@ -1243,8 +1273,12 @@ export function serializeCanvas(canvas, raw, extra = {}) {
 /** The blocks as the editor draws them on `board`: the same functions the public page uses. */
 export function boardBlocks(canvas, board = 'light') {
   const blocks = Array.isArray(canvas?.blocks) ? canvas.blocks : [];
-  if (board === 'phone') return phoneBoardBlocks(blocks.map((b) => resolveBlock(b, 'light')), 40, canvas?.frames?.desktop || null);
-  return blocks.map((b) => resolveBlock(b, board === 'dark' ? 'dark' : 'light'));
+  // The phone board lays out the page's own flow; a container carries its children inside it
+  // (they are placed on the desktop board, phase 7a).
+  if (board === 'phone') return phoneBoardBlocks(blocks.filter(isPageRoot).map((b) => resolveBlock(b, 'light')), 40, canvas?.frames?.desktop || null);
+  // Children in BOARD coordinates (their container's place plus their own), so a drag, a guide
+  // or a marquee reads every block where it is drawn. Written back relative (commitGeometry).
+  return absoluteBlocks(blocks.map((b) => resolveBlock(b, board === 'dark' ? 'dark' : 'light')));
 }
 const boardWidth = (board) => (board === 'phone' ? PHONE_WIDTH : DESIGN_WIDTH);
 const geometry = (b) => ({ x: num(b.x), y: num(b.y), w: num(b.w), h: num(b.h) });
@@ -1263,7 +1297,8 @@ export function commitGeometry(blocks, before, after, board = 'light') {
     const p = prev.get(b.id); if (!p) continue;
     const d = {};
     for (const k of ['x', 'y', 'w', 'h']) if (num(b[k]) !== num(p[k])) d[k] = num(b[k]);
-    if (Object.keys(d).length) changed.set(b.id, { d, full: geometry(b) });
+    // A child is drawn in board coordinates and stored relative to its container (phase 7a).
+    if (Object.keys(d).length) changed.set(b.id, { d: board === 'phone' ? d : toStored(prev, b.id, d), full: geometry(b) });
   }
   const extra = {};
   const out = (blocks || []).map((b) => {
@@ -1313,9 +1348,18 @@ export function duplicateOnBoard(canvas, ids, board, newId) {
   const OFF = GRID * 3;
   const view = new Map(boardBlocks(canvas, board).map((b) => [b.id, b]));
   const out = []; const made = [];
-  for (const b of canvas.blocks || []) {
+  // A container is copied with everything in it (phase 7a): the copies get new ids and point at
+  // the copy of their container; their own coordinates, relative, do not move.
+  const all = canvas.blocks || [];
+  const idMap = new Map();
+  for (const b of all) if (ids.includes(b.id)) idMap.set(b.id, newId());
+  for (const id of ids) for (const d of descendantIds(all, id)) if (!idMap.has(d)) idMap.set(d, newId());
+  for (const b of all) {
+    if (!ids.includes(b.id) && idMap.has(b.id)) out.push({ ...b, id: idMap.get(b.id), parent: idMap.get(parentOf(b)) || parentOf(b) });
+  }
+  for (const b of all) {
     if (!ids.includes(b.id)) continue;
-    const id = newId();
+    const id = idMap.get(b.id);
     const copy = { ...b, id, x: coord(num(b.x) + OFF), y: coord(num(b.y) + OFF) };
     if (b.themes?.dark && (b.themes.dark.x != null || b.themes.dark.y != null)) {
       const d = b.themes.dark;
@@ -1338,7 +1382,7 @@ export function duplicateOnBoard(canvas, ids, board, newId) {
 export function placeOnBoard(canvas, fresh, board = 'light') {
   const list = Array.isArray(fresh) ? fresh : [];
   if (board !== 'phone' || !list.length) return { blocks: [...(canvas.blocks || []), ...list], extra: {} };
-  const bottom = phoneBoardBlocks(canvas.blocks || []).reduce((m, b) => Math.max(m, num(b.y) + num(b.h)), 0);
+  const bottom = phoneBoardBlocks((canvas.blocks || []).filter(isPageRoot)).reduce((m, b) => Math.max(m, num(b.y) + num(b.h)), 0);
   const top = bottom ? bottom + 16 : 16;
   const bb = boundsOf(list);
   const placed = list.map((b) => {

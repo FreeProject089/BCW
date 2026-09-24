@@ -30,7 +30,7 @@ import { ExternalLink, Send, Vote } from 'lucide-react';
 import { Modal, Button, Input, Textarea, Field, copyText } from './ui.jsx';
 import { useTheme } from './theme.jsx';
 import { useI18n } from '../i18n.jsx';
-import { SUBMIT_REGISTRY, hostAllowed, planAction } from '../lib/canvas.js';
+import { SUBMIT_REGISTRY, hostAllowed, planAction, containerInfo } from '../lib/canvas.js';
 // Sending a submit, and the confirmation a vote needs first: lib/studio-submit.js (pure, tested).
 import { sendSubmit, runSubmit, loadVoteSummary } from '../lib/studio-submit.js';
 import { useStudioLinks, loadStudioLinks } from '../lib/studio-links.js';
@@ -63,11 +63,16 @@ export function CanvasActions({ blocks, rootRef, preview = false, children }) {
   const theme = useTheme();
   const nav = useContext(UNSAFE_NavigationContext)?.navigator || null;
   const [shown, setShown] = useState({});
+  // Containers (phase 7a): the tab each tab card shows, and the one dialog that is open.
+  const [tabs, setTabs] = useState({});
+  const [openModal, setOpenModal] = useState('');
   const [leaving, setLeaving] = useState(null);
   const [form, setForm] = useState(null);
   // A vote waiting for the visitor's yes: `{ step, answer(yes), returnTo }` (runSubmit's `ask`).
   const [vote, setVote] = useState(null);
   const blockIds = useMemo(() => new Set((blocks || []).map((b) => b.id)), [blocks]);
+  // What a `modal` or `tab` step may name: the page's containers and their kind (tree.js).
+  const containers = useMemo(() => containerInfo(blocks), [blocks]);
   const hiddenAtLoad = useMemo(() => new Map((blocks || []).map((b) => [b.id, !!b.hidden])), [blocks]);
 
   // Visible NOW: what a reveal step set, else what the block says at load (`hidden`, which a
@@ -93,6 +98,12 @@ export function CanvasActions({ blocks, rootRef, preview = false, children }) {
           const next = s.mode === 'show' ? true : s.mode === 'hide' ? false : !now;
           return { ...cur, [s.target]: next };
         });
+      } else if (s.type === 'modal') {
+        // The site's Modal takes the focus in and gives it back to the element that had it
+        // (the button pressed), which is exactly the return a dialog owes.
+        setOpenModal(s.target);
+      } else if (s.type === 'tab') {
+        setTabs((cur) => ({ ...cur, [s.target]: s.index }));
       } else if (s.type === 'theme') {
         if (theme && (s.mode === 'toggle' || theme.theme !== s.mode)) theme.toggle();
       } else if (s.type === 'copy') {
@@ -134,9 +145,13 @@ export function CanvasActions({ blocks, rootRef, preview = false, children }) {
     }
   }, [runLocal, preview, nav, lang]);
 
-  const plan = useCallback((steps) => planAction(steps, { links, blockIds }), [links, blockIds]);
+  const plan = useCallback((steps) => planAction(steps, { links, blockIds, containers }), [links, blockIds, containers]);
+  const tabOf = useCallback((id) => tabs[id] || 0, [tabs]);
+  const setTab = useCallback((id, i) => setTabs((cur) => ({ ...cur, [id]: i })), []);
+  const closeModal = useCallback(() => setOpenModal(''), []);
 
-  const value = useMemo(() => ({ activate, plan, isShown, t }), [activate, plan, isShown, t]);
+  const value = useMemo(() => ({ activate, plan, isShown, t, tabOf, setTab, openModal, closeModal }),
+    [activate, plan, isShown, t, tabOf, setTab, openModal, closeModal]);
   return (
     <Ctx.Provider value={value}>
       {children}

@@ -1,6 +1,8 @@
 // Types for @bettercommunity/studio. The runtime is plain ESM (src/*.js); these describe it.
 
-export type BlockKind = 'text' | 'image' | 'box' | 'video' | 'embed' | 'replay' | 'button' | 'shape' | 'svg';
+export type BlockKind = 'text' | 'image' | 'box' | 'video' | 'embed' | 'replay' | 'button' | 'shape' | 'svg' | ContainerKind;
+/** Blocks that hold other blocks (tree.js, phase 7a). */
+export type ContainerKind = 'group' | 'tabs' | 'modal';
 export type FrameFit = 'fixed' | 'content';
 export type PhoneMode = 'stack' | 'board';
 export type Board = 'light' | 'dark' | 'phone';
@@ -30,6 +32,12 @@ export interface Block {
   /** What pressing it does (actions.js, phase 5). A legacy `link` / `props.action` is read into it. */
   action: ActionStep[];
   component: { id: string; inst: string } | null;
+  /** The container it sits in (phase 7a): x, y are then relative to that container's inner area. */
+  parent?: string;
+  /** Its tab, when its container is a tab card (0 = the first tab, left out). */
+  slot?: number;
+  /** Set by normalizeDoc when its chain of containers is broken: never drawn for a reader. */
+  treeError?: string;
 }
 
 /** A document as `normalizeDoc` returns it: v2, every field present. */
@@ -230,12 +238,17 @@ export function detailMaxFor(shape: string): number;
 export function clampSceneNumber(key: string, value: unknown, shape: string, fallback?: number): number;
 
 // ── Actions (actions.js, phase 5) ──────────────────────────────────────────────────────
-export type ActionType = 'navigate' | 'page' | 'external' | 'mailto' | 'scroll' | 'reveal' | 'copy' | 'download' | 'submit' | 'theme';
+export type ActionType = 'navigate' | 'page' | 'external' | 'mailto' | 'scroll' | 'reveal' | 'modal' | 'tab' | 'copy' | 'download' | 'submit' | 'theme';
 export interface ActionStep {
   type: ActionType | string;
   to?: string; canvasId?: string; url?: string; address?: string; target?: string; mode?: string;
   text?: string; file?: string; asset?: string; endpoint?: string; fields?: Record<string, unknown>;
+  /** `tab`: which tab of the card (0 = the first). */
+  index?: number;
 }
+/** What an action step may know of the page's containers: id -> kind and number of tabs. */
+export type ContainerInfo = Map<string, { kind: ContainerKind; tabs: number }>;
+export interface StepContext { links?: LinkPolicy; blockIds?: Set<string> | null; containers?: ContainerInfo | null }
 export interface LinkPolicy { mode: 'block' | 'allow'; hosts: string[] }
 export interface SubmitField { kind: 'email' | 'id' | 'ids' | 'ref' | 'slug' | 'text'; required?: boolean; min?: number; max?: number; multiline?: boolean }
 export interface SubmitEntry {
@@ -280,11 +293,43 @@ export function downloadPath(raw: unknown): string;
 export function submitFieldProblem(spec: SubmitField, value: unknown): string;
 export function submitRequest(key: string, author: unknown, visitor: unknown, ctx?: { lang?: string; pow?: unknown }):
   { ok: true; method: string; url: string; body: Record<string, unknown>; pow: string | null } | { ok: false; field: string; reason: string };
-export function stepProblems(step: unknown, ctx: { links?: LinkPolicy; blockIds?: Set<string> | null } | null, push: (field: string, reason: string, value: unknown) => void): void;
-export function actionProblems(raw: unknown, ctx: { links?: LinkPolicy; blockIds?: Set<string> | null } | null, push: (path: string, reason: string, value: unknown) => void, at?: string): void;
+export function stepProblems(step: unknown, ctx: StepContext | null, push: (field: string, reason: string, value: unknown) => void): void;
+export function actionProblems(raw: unknown, ctx: StepContext | null, push: (path: string, reason: string, value: unknown) => void, at?: string): void;
 export function normalizeAction(raw: unknown): ActionStep[];
 export function legacyAction(block: unknown): ActionStep[];
 export function blockSteps(block: unknown): ActionStep[];
 export function migrateDocActions<T>(doc: T): T;
-export function planAction(steps: unknown, ctx?: { links?: unknown; blockIds?: Set<string> | null }): ActionPlan;
+export function planAction(steps: unknown, ctx?: { links?: unknown; blockIds?: Set<string> | null; containers?: ContainerInfo | null }): ActionPlan;
 export function revealTargets(blocks: unknown): Set<string>;
+
+// ── Containers (tree.js, phase 7a) ─────────────────────────────────────────────────────
+export const CONTAINER_KINDS: readonly ContainerKind[];
+export const MAX_DEPTH: number;
+export const MAX_CHILDREN: number;
+export const MAX_TABS: number;
+export const TAB_LABEL_MAX: number;
+export const TAB_STRIP_H: number;
+export function isContainer(kind: unknown): boolean;
+export function parentOf(block: unknown): string;
+export function tabLabels(props: unknown): string[];
+export function innerBox(container: Partial<Block>): Rect;
+export function insideParent(child: Partial<Rect>, container: Partial<Block>): boolean;
+/** Strict: `field` is 'parent', 'slot' or '' (the block, for `outside_parent`). */
+export function treeProblems(blocks: unknown): Array<{ index: number; field: '' | 'parent' | 'slot'; reason: string }>;
+export function annotateTree<T extends { id: string }>(blocks: T[]): Array<T & { treeError?: string; slot?: number }>;
+export function isPageRoot(block: unknown): boolean;
+export function modalBlocks(blocks: Block[]): Block[];
+export function treeIndex(blocks: Block[]): { byId: Map<string, Block>; kids: Map<string, Block[]>; depthOf(id: string): number; childrenOf(id: string): Block[] };
+export function descendantIds(blocks: Array<Partial<Block>>, id: string): string[];
+export function subtreeHeight(blocks: Array<Partial<Block>>, id: string): number;
+export function containerInfo(blocks: unknown): ContainerInfo;
+export function childOrigin(viewById: Map<string, Block>, parentId: string): { x: number; y: number } | null;
+export function absoluteBlocks(blocks: Block[]): Array<Block & { depth: number; rel?: { x: number; y: number } }>;
+export function toStored<T extends Partial<Rect>>(viewById: Map<string, Block>, id: string, geo: T): T;
+export function dropTarget(view: Block[], pt: { x: number; y: number }, opts?: { exclude?: Set<string>; slots?: Record<string, number>; extra?: number; movingModal?: boolean; visible?: Set<string> | null }): string;
+export function reparentBlocks<T>(blocks: T[], view: Block[], ids: string[], target: string, slot?: number): T[];
+export function groupBlocks<T>(blocks: T[], ids: string[], gid: string): T[] | null;
+export function ungroupBlocks<T>(blocks: T[], gid: string): T[] | null;
+export function pullChildrenInside<T>(blocks: T[], containerId: string): T[];
+export function reorderSiblings<T>(blocks: T[], id: string, dir: 'up' | 'down'): T[];
+export function removeTab<T>(blocks: T[], containerId: string, index: number): T[];

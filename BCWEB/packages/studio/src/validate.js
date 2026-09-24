@@ -27,6 +27,7 @@ import {
 import { safeCssValue, decodeCssEscapes } from './css-scope.js';
 import { backgroundProblems } from './background.js';
 import { actionProblems, normalizeLinkPolicy, DEFAULT_LINK_POLICY } from './actions.js';
+import { treeProblems, containerInfo, MAX_TABS, TAB_LABEL_MAX } from './tree.js';
 
 /** A page, serialised, may not be larger than this. */
 export const MAX_DOC_BYTES = LIMITS.bytes;
@@ -39,7 +40,9 @@ const DOC_KEYS_V1 = ['id', 'title', 'hidden', 'height', 'phoneHeight', 'phoneBoa
 const DOC_KEYS_V2 = ['v', 'id', 'title', 'hidden', 'frames', 'background', 'bg', 'grid', 'css', 'blocks'];
 /** The fields a block may have. */
 export const BLOCK_KEYS = ['id', 'kind', 'x', 'y', 'w', 'h', 'z', 'props', 'opacity', 'themes', 'phone', 'anim',
-  'name', 'locked', 'hidden', 'rotate', 'shadow', 'hover', 'link', 'component', 'action'];
+  'name', 'locked', 'hidden', 'rotate', 'shadow', 'hover', 'link', 'component', 'action',
+  // Containers (phase 7a, tree.js): the container a block sits in, and its tab on a tab card.
+  'parent', 'slot'];
 const OVERLAY_KEYS = ['x', 'y', 'w', 'h', 'opacity', 'hidden', 'props'];
 const PHONE_KEYS = ['order', 'hidden', 'h', 'x', 'y', 'w'];
 const ANIM_KEYS = ['kind', 'trigger', 'delay', 'duration', 'easing', 'loop', 'custom'];
@@ -85,7 +88,8 @@ export function pinsToViewport(css) {
  * `unsafe_url`, `unsafe_css`, `position_fixed`, `api_removed`, `unknown_action`,
  * `bad_scroll_target`, and for a block's `action` (actions.js, phase 5): `reserved_action`,
  * `https_only`, `host_not_allowed`, `bad_target`, `unknown_endpoint`, `terminal_not_last`,
- * `too_short`.
+ * `too_short`, and for the tree of containers (tree.js, phase 7a): `unknown_parent`,
+ * `self_parent`, `not_container`, `cycle`, `too_deep`, `modal_nested`, `outside_parent`.
  *
  * @param {unknown} doc
  * @param {string} [prefix]  prepended to every path, e.g. `canvases[2]`
@@ -140,8 +144,17 @@ export function validateDoc(doc, prefix = '', opts = {}) {
   const actx = {
     links: opts && opts.links ? normalizeLinkPolicy(opts.links) : DEFAULT_LINK_POLICY,
     blockIds: new Set(blocks.map((b) => (isObj(b) && typeof b.id === 'string' ? b.id : '')).filter(Boolean)),
+    // What a `modal`, `tab` or `reveal` step may name (phase 7a): the kind of each container.
+    containers: containerInfo(blocks),
   };
   blocks.forEach((b, i) => blockProblems(b, i, add, actx));
+  // The tree of containers (tree.js): every broken link with the path of the block's field.
+  for (const p of treeProblems(blocks)) {
+    const b = blocks[p.index];
+    const bid = isObj(b) && typeof b.id === 'string' ? b.id : '';
+    const value = p.field === 'slot' ? b.slot : p.field === 'parent' ? b.parent : null;
+    add(`blocks[${p.index}]${p.field ? `.${p.field}` : ''}`, p.reason, value, bid);
+  }
   return out;
 }
 
@@ -223,6 +236,15 @@ function propsProblems(kind, props, at, push) {
         if (t.reason === 'bad_scroll_target') push(`${at}.action.target`, 'bad_scroll_target', act.target);
         text(act.text, LIMITS.text, `${at}.action.text`, push);
       }
+    }
+  }
+  // A tab card's labels (phase 7a): 1 to MAX_TABS short strings.
+  if (p.tabs != null) {
+    if (!Array.isArray(p.tabs)) push(`${at}.tabs`, 'bad_type', null);
+    else {
+      if (!p.tabs.length) push(`${at}.tabs`, 'bad_value', 0);
+      if (p.tabs.length > MAX_TABS) push(`${at}.tabs`, 'too_many', p.tabs.length);
+      p.tabs.slice(0, MAX_TABS + 1).forEach((l, j) => text(l, TAB_LABEL_MAX, `${at}.tabs[${j}]`, push));
     }
   }
   if (p.items != null) {

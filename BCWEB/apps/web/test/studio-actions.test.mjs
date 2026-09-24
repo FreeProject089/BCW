@@ -160,12 +160,23 @@ describe('composition', () => {
     assert.deepEqual(p.steps.map((s) => s.type), ['copy', 'reveal'], 'the steps before the link run first');
     assert.equal(plan([{ type: 'copy', text: 'x' }, { type: 'theme', mode: 'dark' }]).kind, 'button');
   });
-  test('unknown, reserved (phase 7) and removed types: refused and inert, each with its reason', () => {
+  test('unknown, reserved and removed types: refused and inert, each with its reason', () => {
     refused([{ type: 'eval', code: 'x' }], 'blocks[0].action[0].type', 'unknown_action');
     for (const type of RESERVED_ACTIONS) refused([{ type, target: 'faq' }], 'blocks[0].action[0].type', 'reserved_action');
     refused([{ type: 'api', path: '/admin/users', method: 'POST' }], 'blocks[0].action[0].type', 'api_removed');
     assert.equal(plan([{ type: 'api', path: '/admin/users' }]).reason, 'api_removed');
-    assert.ok(!ACTION_TYPES.includes('modal') && !ACTION_TYPES.includes('tab') && !ACTION_TYPES.includes('api'));
+    assert.ok(!ACTION_TYPES.includes('api'));
+  });
+  // CHANGED in studio phase 7a: `modal` and `tab` were reserved (refused, `reserved_action`) until
+  // containers existed. They are live now, and refused like any other step when they name the
+  // wrong thing: here `faq` is a text block, neither a dialog nor a tab card (bad_target). The
+  // positive cases are in studio-containers.test.mjs.
+  test('modal and tab, live since phase 7a, refused when they name something that is not a dialog or a tab card', () => {
+    assert.deepEqual(RESERVED_ACTIONS, []);
+    assert.ok(ACTION_TYPES.includes('modal') && ACTION_TYPES.includes('tab'));
+    const got = (action) => validateDoc(doc(action), '').map((p) => `${p.path}:${p.reason}`);
+    assert.ok(got([{ type: 'modal', target: 'faq' }]).includes('blocks[0].action[0].target:bad_target'));
+    assert.ok(got([{ type: 'tab', target: 'faq', index: 0 }]).includes('blocks[0].action[0].target:bad_target'));
   });
   test('an unknown field on a step is refused with its path', () => {
     refused([{ type: 'navigate', to: '/', onclick: 'x' }], 'blocks[0].action[0].onclick', 'unknown_field');

@@ -544,7 +544,8 @@ const ACT_EVIL = [
   [{ type: 'download', file: 'https://evil.example/x.exe' }, 'unsafe_url'],
   [{ type: 'scroll', target: 'body > div' }, 'bad_scroll_target'],
   [{ type: 'submit', endpoint: 'admin.users' }, 'unknown_endpoint'],
-  [{ type: 'modal', target: 'e0' }, 'reserved_action'],
+  // CHANGED in studio phase 7a: `modal` is live now; naming a block that is not a dialog is inert.
+  [{ type: 'modal', target: 'e0' }, 'bad_target'],
   [{ type: 'api', path: '/admin/users', method: 'POST' }, 'api_removed'],
 ];
 const evilDoc = (withSixth) => ({
@@ -656,6 +657,108 @@ try {
   const appSrc = (await import('node:fs')).readFileSync('src/App.jsx', 'utf8');
   must(/path="\/studio\/:kind\/:id\/:page\?"/.test(appSrc), 'the studio route does not carry the page segment');
 } catch (e) { problems.push(`the phase 6 render threw: ${e?.message || e}`); }
+
+// ── Containers (PLAN-STUDIO-2026, phase 7a). ─────────────────────────────────────────
+// A tab card is the WAI-ARIA tabs pattern, in both layouts: one tablist with a name, a tab per
+// label, exactly one selected and only that one in the Tab order (roving tabindex), every
+// aria-controls naming a real tabpanel labelled by its tab, and only the open tab's blocks
+// mounted. A group hidden at load that a reveal names is mounted out of sight, with its blocks;
+// a child entirely outside its container is not mounted; a dialog is not mounted until a
+// `modal` step opens it, and the steps that open one or pick a tab are real buttons. Then a
+// hostile tree (a cycle, a self-parent, an unknown parent, depth 4, ten thousand children)
+// renders without throwing and mounts none of its broken blocks. The editor: a container's
+// blocks are drawn in board coordinates, over it, and the Layers panel is a tree.
+// Each assertion was checked by breaking what it guards (recorded in the phase 7a report).
+try {
+  const TREE = {
+    v: 2, id: 'tr1', frames: { desktop: { w: 1200, h: 900, fit: 'fixed' }, phone: { w: 390, fit: 'content', mode: 'stack' } },
+    blocks: [
+      { id: 'card', kind: 'tabs', x: 40, y: 40, w: 600, h: 320, z: 0, name: 'Plans', props: { tabs: ['Free', 'Pro', 'Team'] } },
+      { id: 'free', kind: 'text', x: 16, y: 16, w: 300, h: 80, z: 0, parent: 'card', props: { md: 'Free tier text' } },
+      { id: 'pro', kind: 'text', x: 16, y: 16, w: 300, h: 80, z: 0, parent: 'card', slot: 1, props: { md: 'Pro tier text' } },
+      { id: 'grp', kind: 'group', x: 700, y: 40, w: 400, h: 200, z: 1, hidden: true, props: { bg: '#eeeeee' } },
+      { id: 'ing', kind: 'text', x: 10, y: 10, w: 200, h: 60, z: 0, parent: 'grp', props: { md: 'Inside the group' } },
+      { id: 'far', kind: 'text', x: 5000, y: 10, w: 200, h: 60, z: 1, parent: 'grp', props: { md: 'Far outside its group' } },
+      { id: 'dlg', kind: 'modal', x: 1400, y: 0, w: 480, h: 300, z: 2, props: { title: 'Details' } },
+      { id: 'ind', kind: 'text', x: 16, y: 16, w: 300, h: 80, z: 0, parent: 'dlg', props: { md: 'Dialog body' } },
+      { id: 'open', kind: 'button', x: 40, y: 400, w: 200, h: 56, z: 3, props: { label: 'Open' }, action: [{ type: 'modal', target: 'dlg' }] },
+      { id: 'show', kind: 'button', x: 260, y: 400, w: 200, h: 56, z: 4, props: { label: 'Show the group' }, action: [{ type: 'reveal', target: 'grp' }] },
+      { id: 'gopro', kind: 'button', x: 480, y: 400, w: 200, h: 56, z: 5, props: { label: 'See Pro' }, action: [{ type: 'tab', target: 'card', index: 1 }] },
+      { id: 'wrong', kind: 'button', x: 700, y: 400, w: 200, h: 56, z: 6, props: { label: 'Wrong' }, action: [{ type: 'tab', target: 'grp', index: 0 }] },
+    ],
+  };
+  const attr = (tag, name) => (new RegExp(`\\s${name}="([^"]*)"`).exec(tag) || [])[1];
+  for (const [name, out] of [['scaled', page(TREE, 'light')], ['stacked', stack(TREE)]]) {
+    const lists = tagWith(out, 'role="tablist"');
+    must(lists.length === 1 && attr(lists[0], 'aria-label') === 'Plans', `${name}: the tab card is not one tablist named after its block: ${lists.join(' | ').slice(0, 200)}`);
+    const tabs = tagWith(out, 'role="tab"');
+    must(tabs.length === 3, `${name}: ${tabs.length} tab(s) for 3 labels`);
+    const selected = tabs.filter((tag) => attr(tag, 'aria-selected') === 'true');
+    must(selected.length === 1, `${name}: ${selected.length} tab(s) selected instead of exactly one`);
+    // Roving tabindex: the selected tab alone is in the Tab order.
+    must(tabs.every((tag) => attr(tag, 'tabindex') === (attr(tag, 'aria-selected') === 'true' ? '0' : '-1')),
+      `${name}: the tabs are not a roving tabindex (the selected one 0, every other -1): ${tabs.map((tag) => attr(tag, 'tabindex')).join(',')}`);
+    must(tabs.every((tag) => /^<button\b/.test(tag) && attr(tag, 'type') === 'button'), `${name}: a tab is not a <button type="button">`);
+    const panels = tagWith(out, 'role="tabpanel"');
+    for (const tab of tabs) {
+      const panel = panels.find((pn) => attr(pn, 'id') === attr(tab, 'aria-controls'));
+      must(!!panel && attr(panel, 'aria-labelledby') === attr(tab, 'id'), `${name}: tab ${attr(tab, 'id')} controls no tabpanel labelled by it`);
+    }
+    must(/Free tier text/.test(out) && !/Pro tier text/.test(out), `${name}: the open tab's blocks are not the only ones mounted`);
+    const grp = tagWith(out, 'data-cvb="grp"')[0] || '';
+    must(!!grp && /display:\s*none/.test(grp) && /Inside the group/.test(out), `${name}: a hidden group named by a reveal is not mounted out of sight with its blocks: ${grp.slice(0, 160) || 'absent'}`);
+    must(!/Far outside its group/.test(out), `${name}: a block entirely outside its container was mounted`);
+    must(!/Dialog body/.test(out), `${name}: a dialog was mounted before any step opened it`);
+    for (const act of ['modal', 'tab', 'reveal']) {
+      const el = tagWith(out, `data-act="${act}"`)[0] || '';
+      must(/^<button\b[^>]*type="button"/.test(el), `${name}: a ${act} step is not a <button>: ${el.slice(0, 160) || 'absent'}`);
+    }
+    must(tagWith(out, 'data-inert="bad_target"').length === 1, `${name}: a tab step naming a group is not inert with bad_target`);
+  }
+  // A hostile tree: every broken link unmounted, the sound part drawn, nothing thrown.
+  const T0 = (id, extra) => ({ id, kind: 'group', x: 0, y: 0, w: 400, h: 400, ...extra });
+  const text = (id, parent, md) => ({ id, kind: 'text', x: 8, y: 8, w: 100, h: 40, parent, props: { md } });
+  const EVIL_TREE = {
+    v: 2, id: 'evt', frames: { desktop: { w: 1200, h: 900, fit: 'fixed' }, phone: { w: 390, fit: 'content', mode: 'stack' } },
+    blocks: [
+      T0('c1', { parent: 'c2' }), T0('c2', { parent: 'c1' }), text('cyc', 'c1', 'CYCLE-CHILD'),
+      T0('self', { parent: 'self' }), text('selfk', 'self', 'SELF-CHILD'),
+      text('orph', 'nowhere', 'ORPHAN'),
+      T0('d1'), T0('d2', { parent: 'd1' }), T0('d3', { parent: 'd2' }), T0('d4', { parent: 'd3' }), text('d5', 'd4', 'TOO-DEEP'),
+      text('d3ok', 'd3', 'DEPTH-THREE-OK'),
+      T0('fan', { x: 500 }),
+      ...Array.from({ length: 10_000 }, (_v, i) => text(`k${i}`, 'fan', `KID-${i}-`)),
+    ],
+  };
+  for (const [name, renderIt] of [['scaled', () => page(EVIL_TREE, 'light')], ['stacked', () => stack(EVIL_TREE)]]) {
+    let out = '';
+    try { out = renderIt(); } catch (e) { problems.push(`${name}: a hostile tree threw: ${e?.message || e}`); continue; }
+    for (const marker of ['CYCLE-CHILD', 'SELF-CHILD', 'ORPHAN', 'TOO-DEEP']) must(!out.includes(marker), `${name}: a block with a broken chain (${marker}) was mounted`);
+    must(out.includes('DEPTH-THREE-OK'), `${name}: a block three containers deep, which is allowed, was not mounted`);
+    const kids = (out.match(/KID-\d+-/g) || []).length;
+    must(kids > 0 && kids <= 100, `${name}: ${kids} children of one container mounted (at most 100, and the page keeps 500 blocks)`);
+  }
+  // The editor: a container's blocks over it in board coordinates, the Layers panel a tree.
+  const ed = withWindow(mq(true, false), () => renderPage(TREE));
+  const free = /<div[^>]*data-cst-block="free"[^>]*>/.exec(ed)?.[0] || '';
+  must(/left:\s*56px/.test(free) && /top:\s*104px/.test(free), `the board does not draw a tab card's block at its place on the board (40+16, 40+48+16): ${free.slice(0, 200)}`);
+  const card = /<div[^>]*data-cst-block="card"[^>]*>/.exec(ed)?.[0] || '';
+  const zOf = (tag) => Number((/z-index:\s*(\d+)/.exec(tag) || [])[1]);
+  must(/data-cst-container="tabs"/.test(card) && zOf(free) > zOf(card), `a container's block is not drawn over its container: ${zOf(free)} vs ${zOf(card)}`);
+  must(!/data-cst-block="pro"/.test(ed), 'the board draws the blocks of a tab it is not showing');
+  must(/data-cst-block="ind"/.test(ed), 'the board does not draw the blocks of a dialog (it is edited on the board)');
+  const tree = /<div[^>]*role="tree"[^>]*>/.exec(ed)?.[0] || '';
+  must(!!tree, 'the Layers panel is not a tree');
+  const lvl = (id) => attr(tagWith(ed, `data-layer-row="${id}"`)[0] || '', 'aria-level');
+  must(lvl('card') === '1' && lvl('free') === '2' && lvl('pro') === '2' && lvl('ing') === '2' && lvl('open') === '1',
+    `the Layers tree does not reflect the nesting: card ${lvl('card')}, free ${lvl('free')}, ing ${lvl('ing')}, open ${lvl('open')}`);
+  must(attr(tagWith(ed, 'data-layer-row="card"')[0] || '', 'aria-expanded') === 'true', 'a container row does not say it is expanded');
+  const rowsAt = [...ed.matchAll(/data-layer-row="([^"]+)"/g)].map((m) => m[1]);
+  must(rowsAt.indexOf('free') === rowsAt.indexOf('card') + 1 || rowsAt.indexOf('pro') === rowsAt.indexOf('card') + 1, 'a container\'s blocks are not listed right under it');
+  // A broken block is listed and flagged, where the board draws it (the top level).
+  const edEvil = withWindow(mq(true, false), () => renderPage({ ...EVIL_TREE, blocks: EVIL_TREE.blocks.slice(0, 12) }));
+  must(tagWith(edEvil, 'data-tree-error=').length >= 5, 'the Layers tree does not flag the blocks whose container link is broken');
+} catch (e) { problems.push(`the phase 7a render threw: ${e?.message || e}`); }
 
 cleanup();
 

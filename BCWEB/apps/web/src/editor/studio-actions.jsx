@@ -9,7 +9,7 @@ import { ArrowUp, ArrowDown, Trash2, Plus, MousePointerClick } from 'lucide-reac
 import { Field, Input, Select, Textarea } from '../ui/ui.jsx';
 import {
   ACTION_TYPES, MAX_STEPS, REVEAL_MODES, THEME_MODES, COPY_MAX, SUBMIT_REGISTRY, SUBMIT_KEYS,
-  REMOVED_ACTIONS, RESERVED_ACTIONS, actionProblems,
+  REMOVED_ACTIONS, RESERVED_ACTIONS, actionProblems, containerInfo, tabLabels,
 } from '../lib/canvas.js';
 import { useStudioLinks } from '../lib/studio-links.js';
 
@@ -22,6 +22,8 @@ export function stepTypeLabel(t, type) {
     case 'mailto': return t('cst.act.t.mailto', 'Write an e-mail');
     case 'scroll': return t('cst.act.t.scroll', 'Scroll to a block');
     case 'reveal': return t('cst.act.t.reveal', 'Show or hide a block');
+    case 'modal': return t('cst.act.t.modal', 'Open a dialog');
+    case 'tab': return t('cst.act.t.tab', 'Open a tab of a tab card');
     case 'copy': return t('cst.act.t.copy', 'Copy a text');
     case 'download': return t('cst.act.t.download', 'Download a file');
     case 'submit': return t('cst.act.t.submit', 'Send a form');
@@ -57,6 +59,8 @@ function freshStep(type) {
     case 'navigate': return { type, to: '/' };
     case 'scroll': return { type, target: '#top' };
     case 'reveal': return { type, target: '', mode: 'toggle' };
+    case 'modal': return { type, target: '' };
+    case 'tab': return { type, target: '', index: 0 };
     case 'theme': return { type, mode: 'toggle' };
     case 'submit': return { type, endpoint: 'newsletter.subscribe' };
     default: return { type, ...(type === 'download' ? { file: '' } : {}) };
@@ -85,12 +89,15 @@ export default function ActionFields({ t, sel, blocks, onChange, pages = null })
   const remove = (i) => onChange(steps.filter((_s, j) => j !== i));
   // The shared, strict validator: the problems the API would answer with, by step.
   const problems = {};
-  actionProblems(steps, { links, blockIds: new Set((blocks || []).map((b) => b.id)) }, (path, reason) => {
+  actionProblems(steps, { links, blockIds: new Set((blocks || []).map((b) => b.id)), containers: containerInfo(blocks) }, (path, reason) => {
     const m = /^action\[(\d+)\](?:\.(.+))?$/.exec(path);
     const at = m ? Number(m[1]) : -1;
     (problems[at] ||= []).push({ field: m?.[2] || '', reason });
   });
   const others = (blocks || []).filter((b) => b.id !== sel.id);
+  // Phase 7a: a dialog is opened by `modal`, never revealed; a `tab` step names a tab card.
+  const dialogs = (blocks || []).filter((b) => b.kind === 'modal');
+  const cards = (blocks || []).filter((b) => b.kind === 'tabs');
   const blockName = (b) => `${b.name || b.kind} · ${b.id}`;
   const isDropdown = sel.kind === 'button' && String(sel.props?.variant || '').startsWith('dropdown');
 
@@ -158,7 +165,7 @@ export default function ActionFields({ t, sel, blocks, onChange, pages = null })
                 <Field label={s.type === 'scroll' ? t('cst.act.f.scroll', 'Scroll to') : t('cst.act.f.reveal', 'Block')}>
                   <Select value={s.target || ''} onChange={(e) => set(i, { target: e.target.value })}>
                     {s.type === 'scroll' ? <option value="#top">{t('cst.act.f.top', 'The top of the page')}</option> : <option value="">{t('cst.act.f.pickblock', 'Choose a block')}</option>}
-                    {others.map((b) => <option key={b.id} value={b.id}>{blockName(b)}</option>)}
+                    {others.filter((b) => s.type === 'scroll' || b.kind !== 'modal').map((b) => <option key={b.id} value={b.id}>{blockName(b)}</option>)}
                     {s.target && s.target !== '#top' && !others.some((b) => b.id === s.target) && <option value={s.target}>{s.target}</option>}
                   </Select>
                 </Field>
@@ -170,6 +177,34 @@ export default function ActionFields({ t, sel, blocks, onChange, pages = null })
                     </Select>
                   </Field>
                 )}
+              </>)}
+              {s.type === 'modal' && (<>
+                <Field label={t('cst.act.f.modal', 'Dialog')} hint={t('cst.act.f.modal.h', 'A dialog of this page (add one from the Blocks panel). Escape or its close button closes it.')}>
+                  <Select value={s.target || ''} onChange={(e) => set(i, { target: e.target.value })} data-pick-modal>
+                    <option value="">{t('cst.act.f.pickmodal', 'Choose a dialog')}</option>
+                    {dialogs.map((b) => <option key={b.id} value={b.id}>{b.props?.title || blockName(b)}</option>)}
+                    {s.target && !dialogs.some((b) => b.id === s.target) && <option value={s.target}>{s.target}</option>}
+                  </Select>
+                </Field>
+                {msg('target')}
+              </>)}
+              {s.type === 'tab' && (<>
+                <Field label={t('cst.act.f.card', 'Tab card')}>
+                  <Select value={s.target || ''} onChange={(e) => set(i, { target: e.target.value, index: 0 })} data-pick-card>
+                    <option value="">{t('cst.act.f.pickcard', 'Choose a tab card')}</option>
+                    {cards.map((b) => <option key={b.id} value={b.id}>{blockName(b)}</option>)}
+                    {s.target && !cards.some((b) => b.id === s.target) && <option value={s.target}>{s.target}</option>}
+                  </Select>
+                </Field>
+                {msg('target')}
+                {cards.some((b) => b.id === s.target) && (
+                  <Field label={t('cst.act.f.tab', 'Tab')}>
+                    <Select value={String(s.index ?? 0)} onChange={(e) => set(i, { index: Number(e.target.value) })} data-pick-tab>
+                      {tabLabels(cards.find((b) => b.id === s.target)?.props).map((l, j) => <option key={j} value={j}>{l || String(j + 1)}</option>)}
+                    </Select>
+                  </Field>
+                )}
+                {msg('index')}
               </>)}
               {s.type === 'copy' && (<>
                 <Field label={`${t('cst.act.f.text', 'Text to copy')} · ${String(s.text || '').length}/${COPY_MAX}`}>
