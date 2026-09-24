@@ -2,7 +2,7 @@ import { safeHref } from '../lib/safe-href.js';
 import { useEffect, useState, useRef } from 'react';
 import BoringAvatar from 'boring-avatars';
 import QRCode from 'qrcode';
-import { User, Shield, ShieldCheck, Mail, CalendarDays, Shuffle, KeyRound, Check, Palette, Sparkles, ImagePlus, Trash2, FileArchive, Link2, BadgeCheck, Lock, Download, Eye, EyeOff, Settings as SettingsIcon, ArrowRight, Plus, MessageSquare } from 'lucide-react';
+import { User, Shield, ShieldCheck, Mail, CalendarDays, Shuffle, KeyRound, Check, Palette, Sparkles, ImagePlus, Trash2, FileArchive, Link2, BadgeCheck, Lock, Download, Eye, EyeOff, Settings as SettingsIcon, ArrowRight, Plus, MessageSquare, RotateCcw } from 'lucide-react';
 import { api, uploadImage } from '../lib/api.js';
 import { useAuth } from './auth.jsx';
 import { useI18n } from '../i18n.jsx';
@@ -1233,6 +1233,23 @@ function CreatorLinks() {
       onCancel: () => unhide(l.id),
     });
   };
+  // Ids whose key-pin reset is inside its undo window: the button hides at once, and the
+  // DELETE only goes out when the toast expires. Cancel means the server was never asked.
+  const [pinReset, setPinReset] = useState(() => new Set());
+  const unpin = (id) => setPinReset((s) => { const n = new Set(s); n.delete(id); return n; });
+  const resetPin = (l) => {
+    setPinReset((s) => new Set(s).add(l.id));
+    toast.action({
+      tone: 'info', duration: 6000, cancelLabel: t('common.undo', 'Undo'),
+      msg: t('kp.pending', 'Key pin reset. The next BMM that proves this id sets a new one.'),
+      onCommit: async () => {
+        try { await api.del(`/me/creator-links/${l.id}/key-pin`); }
+        catch { toast.error(t('kp.failed', 'Could not reset the key pin.')); }
+        finally { unpin(l.id); load(); }
+      },
+      onCancel: () => unpin(l.id),
+    });
+  };
   const fdate = (d) => new Date(d).toLocaleDateString();
   // A row whose undo window is open is gone from the list already — that IS the undo
   // affordance. Showing it until the DELETE lands would make Undo look like it did nothing.
@@ -1250,6 +1267,10 @@ function CreatorLinks() {
           <div key={l.id} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--surface-2)] text-sm">
             <BadgeCheck size={15} className="text-success shrink-0" />
             <div className="flex-1 min-w-0"><div className="font-mono text-xs truncate">{l.creatorId}{l.displayName ? ` · ${l.displayName}` : ''}</div><div className="text-[11px] text-[var(--faint)]">{t('cl.linked', 'linked')} {fdate(l.linkedAt)}{l.locked ? ` · ${t('cl.unlockable', 'unlockable')} ${fdate(l.unlinkableAt)}` : ''}</div></div>
+            {/* Only on an id that carries a v5 key pin: on any other the route has nothing to remove. */}
+            {l.keyPinned && !pinReset.has(l.id) && (
+              <Button size="sm" variant="ghost" className="shrink-0" onClick={() => resetPin(l)}><RotateCcw size={13} /> {t('kp.reset', 'Reset key pin')}</Button>
+            )}
             {l.locked
               ? <Lock size={14} className="text-[var(--faint)]" title={t('cl.locked2w', 'Locked for 2 weeks')} />
               /* Not a disabled button: a control that looks pressable and then refuses is
@@ -1261,6 +1282,9 @@ function CreatorLinks() {
           </div>
         ))}
       </div>}
+      {visible.some((l) => l.keyPinned) && (
+        <p className="text-[11px] text-[var(--faint)] mb-3">{t('kp.why', 'If BMM refuses this id with key_fork, key_retired or upgraded_key_required after you lost its key store, reset the key pin: the next BMM that proves the id pins its key again.')}</p>
+      )}
       {hosting.total > 0 && visible.length > 0 && (
         <p className="text-[11px] text-warning mb-3 flex items-start gap-1.5">
           <Lock size={12} className="mt-0.5 shrink-0" />

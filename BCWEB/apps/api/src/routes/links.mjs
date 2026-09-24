@@ -222,6 +222,12 @@ export default async function linkRoutes(app) {
     // having said it would reads as a bug, and the numbers are what makes the reason
     // actionable ("2 repos, 1 catalog") rather than a rule the user has to take on faith.
     const hosting = await publishedUnderIdentity(p, req.user.uid);
+    // Which of these ids carry a v5 key pin. The profile offers "reset the pin" only there:
+    // BMM sends users here after key_fork / key_retired / upgraded_key_required, and a
+    // button on an id with no pin would do nothing. Pins are keyed by the lower-cased id.
+    const pinned = links.length
+      ? new Set((await p.creatorKeyPin.findMany({ where: { creatorId: { in: links.map((l) => l.creatorId.toLowerCase()) } }, select: { creatorId: true } })).map((k) => k.creatorId))
+      : new Set();
     return {
       hosting,
       links: links.map((l) => ({
@@ -229,6 +235,7 @@ export default async function linkRoutes(app) {
         linkedAt: l.linkedAt, unlinkableAt: l.unlinkableAt,
         locked: new Date(l.unlinkableAt).getTime() > now,
         blockedByContent: hosting.total > 0,
+        keyPinned: pinned.has(l.creatorId.toLowerCase()),
       })),
     };
   });

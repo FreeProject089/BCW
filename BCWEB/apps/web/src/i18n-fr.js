@@ -9355,6 +9355,12 @@ const DICT = {
     'bmi.p.tasks': 'Lance ou active d’autres tâches planifiées',
     'rd.readonly': 'Lecture seule : la modération peut consulter ce tableau de bord. Changer les fichiers, publier, modifier les réglages ou la liste d’accès demande un administrateur.',
     // fin sec-api (agent-sec-api)
+    // keypin (agent-small-fixes) : le bouton « Réinitialiser l’épinglage de clé » de la section Creator IDs du profil (DELETE /me/creator-links/:id/key-pin).
+    'kp.reset': 'Réinitialiser l’épinglage de clé',
+    'kp.why': 'Si BMM refuse cet id avec key_fork, key_retired ou upgraded_key_required après que tu as perdu son magasin de clés, réinitialise l’épinglage : le prochain BMM qui prouve cet id épingle à nouveau sa clé.',
+    'kp.pending': 'Épinglage de clé réinitialisé. Le prochain BMM qui prouve cet id en fixe un nouveau.',
+    'kp.failed': 'Impossible de réinitialiser l’épinglage de clé.',
+    // fin keypin (agent-small-fixes)
   },
 };
 

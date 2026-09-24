@@ -392,3 +392,37 @@ describe('the admin fingerprint tool', { skip }, () => {
     assert.ok(audits.every((a) => a.detail.includes(c.cid)));
   });
 });
+
+// The owner's own reset of a key pin (DELETE /me/creator-links/:id/key-pin), which the profile's
+// Creator IDs section now offers. BMM sends users there after key_fork / key_retired /
+// upgraded_key_required, so the route is reachable by a click, and the pin it removes is what
+// stops somebody who re-derived the v4 key from starting a chain of their own: only the account
+// the id is linked to may remove it.
+describe('the owner resets a key pin', { skip }, () => {
+  test('owner only: anonymous 401, another account 404 with the pin intact, the owner 200; the list reports it', async () => {
+    const c = track(creator());
+    const owner = await mkUser();
+    const stranger = await mkUser();
+    const link = await p.creatorLink.create({ data: { userId: owner.id, creatorId: c.cid, linkedAt: new Date(), unlinkableAt: new Date(Date.now() + 864e5) } });
+    assert.equal((await CI.acceptCreatorProof(p, mintV5(c), AUD)).ok, true);
+    const pinOf = () => p.creatorKeyPin.findUnique({ where: { creatorId: c.cid } });
+    assert.ok(await pinOf(), 'the v5 proof pinned the key');
+
+    const ownerCookie = await cookieFor(owner);
+    const list = async () => (await appLinks.inject({ url: '/me/creator-links', headers: { cookie: ownerCookie } })).json().links.find((l) => l.id === link.id);
+    assert.equal((await list()).keyPinned, true, 'the profile is told the id has a pin, so it shows the button');
+
+    const url = `/me/creator-links/${link.id}/key-pin`;
+    assert.equal((await appLinks.inject({ method: 'DELETE', url })).statusCode, 401);
+    const other = await appLinks.inject({ method: 'DELETE', url, headers: { cookie: await cookieFor(stranger) } });
+    assert.equal(other.statusCode, 404, 'somebody else\'s link is not found, not forbidden');
+    assert.ok(await pinOf(), 'a stranger cannot remove the pin');
+
+    const mine = await appLinks.inject({ method: 'DELETE', url, headers: { cookie: ownerCookie } });
+    assert.equal(mine.statusCode, 200, mine.body);
+    assert.equal(mine.json().reset, true);
+    assert.equal(await pinOf(), null);
+    assert.equal((await list()).keyPinned, false, 'after the reset the button goes away');
+    assert.equal((await appLinks.inject({ method: 'DELETE', url, headers: { cookie: ownerCookie } })).json().reset, false, 'a second reset has nothing to remove');
+  });
+});
