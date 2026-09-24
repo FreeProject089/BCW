@@ -178,7 +178,7 @@ function DownloadMenu({ downloads = [], children, pkey }) {
       {children}
       {open && (
         <div role="menu"
-          className="absolute right-0 top-full mt-2 min-w-[15rem] max-w-[22rem] rounded-xl border border-[var(--line-strong)] p-1 z-[60] anim-fade"
+          className="absolute start-0 top-full mt-2 min-w-[15rem] max-w-[22rem] rounded-xl border border-[var(--line-strong)] p-1 z-[60] anim-fade"
           style={{ background: 'var(--bg-solid)', boxShadow: 'var(--shadow-lg, 0 18px 50px -12px rgba(0,0,0,0.5))' }}>
           {list.map((d) => {
             const isPrimary = d === primary;
@@ -387,15 +387,21 @@ export default function ProjectPage({ preview: previewProp = null }) {
   return (
     <div>
       {/* header */}
-      <div className="flex flex-col md:flex-row md:items-center gap-5 mb-8">
-        {APP_LOGO[key]
-          ? <img src={APP_LOGO[key]} alt="" className="logo-plate w-16 h-16 rounded-2xl object-contain shrink-0 bg-[var(--surface-2)] border border-[var(--line)] p-1.5" />
-          : <div className="grid place-items-center w-16 h-16 rounded-2xl bg-gradient-to-br from-brand to-brand-2 shrink-0"><span className="text-2xl font-extrabold text-[var(--on-primary)]">{c.name?.[0] || 'B'}</span></div>}
-        <div className="flex-1 on-backdrop">
-          <div className="flex items-center gap-3 flex-wrap"><h1 className="text-3xl font-extrabold">{c.name}</h1>{c.version && <button onClick={() => (preview ? setShowVersions(true) : setSp((p) => { const n = new URLSearchParams(p); n.set('tab', 'versions'); return n; }))} title={t('ver.open', 'Version history')} className="press-sm"><Badge tone="primary"><Clock size={11} /> v{c.version}</Badge></button>}</div>
-          <p className="text-[var(--muted)] mt-1">{c.tagline}</p>
+      {/* N8 (agent-landing-N): the actions have their own row UNDER the name. Beside it they
+          took most of the line, so a two-word project name wrapped word by word. The row starts
+          where the name starts (the logo's 64px + the 20px gap from md up) and wraps cleanly;
+          `empty:hidden` drops it when a project has no action to offer. */}
+      <div className="mb-8">
+        <div className="flex flex-col md:flex-row md:items-center gap-5">
+          {APP_LOGO[key]
+            ? <img src={APP_LOGO[key]} alt="" className="logo-plate w-16 h-16 rounded-2xl object-contain shrink-0 bg-[var(--surface-2)] border border-[var(--line)] p-1.5" />
+            : <div className="grid place-items-center w-16 h-16 rounded-2xl bg-gradient-to-br from-brand to-brand-2 shrink-0"><span className="text-2xl font-extrabold text-[var(--on-primary)]">{c.name?.[0] || 'B'}</span></div>}
+          <div className="flex-1 min-w-0 on-backdrop">
+            <div className="flex items-center gap-x-3 gap-y-1.5 flex-wrap"><h1 className="text-3xl font-extrabold min-w-0 break-words">{c.name}</h1>{c.version && <button onClick={() => (preview ? setShowVersions(true) : setSp((p) => { const n = new URLSearchParams(p); n.set('tab', 'versions'); return n; }))} title={t('ver.open', 'Version history')} className="press-sm"><Badge tone="primary"><Clock size={11} /> v{c.version}</Badge></button>}</div>
+            <p className="text-[var(--muted)] mt-1">{c.tagline}</p>
+          </div>
         </div>
-        <div className="flex flex-wrap items-start gap-2">
+        <div className="flex flex-wrap items-center gap-2 mt-4 md:ps-[84px] empty:hidden">
           <DownloadMenu downloads={c.downloads} pkey={key} />
           {hasCatalog && <Link to={`/catalog?project=${key}`}><Button><Boxes size={16} /> {t('proj.browse')}</Button></Link>}
           {/* The project's own contact: write to it, and for whoever answers, its inbox. */}
@@ -1532,12 +1538,16 @@ export function ShowcaseProjectPage({ preview: previewProp = null }) {
   const activeTab = pickTab(sp.get('tab') || preview?.tab || (inlineCountdown ? 'countdown' : 'overview'), tabs);
   return (
     <div>
-      <div className="flex flex-col md:flex-row md:items-center gap-5 mb-8">
-        {proj.icon
-          ? <div className="grid place-items-center w-16 h-16 rounded-2xl bg-[var(--surface-2)] border border-[var(--line)] shrink-0 p-2 text-[var(--accent-ink)]"><ShowcaseIcon icon={proj.icon} size={44} rounded={10} /></div>
-          : <div className="grid place-items-center w-16 h-16 rounded-2xl bg-gradient-to-br from-brand to-brand-2 shrink-0"><span className="text-xl font-extrabold text-[var(--on-primary)]">{proj.short}</span></div>}
-        <div className="flex-1 on-backdrop"><div className="flex items-center gap-3 flex-wrap"><h1 className="text-3xl font-extrabold">{proj.name}</h1>{cfg.version && <button onClick={() => (preview ? setShowVersions(true) : setSp((p) => { const n = new URLSearchParams(p); n.set('tab', 'versions'); return n; }))} title={t('ver.open', 'Version history')} className="press-sm"><Badge tone="primary"><Clock size={11} /> v{cfg.version}</Badge></button>}</div>{cfg.tagline && <p className="text-[var(--muted)] mt-1">{cfg.tagline}</p>}</div>
-        <div className="flex flex-wrap items-start gap-2">
+      {/* N8 (agent-landing-N): name and tagline get the full width, the actions a row of their
+          own under them, aligned with the name (same layout as the official project page). */}
+      <div className="mb-8">
+        <div className="flex flex-col md:flex-row md:items-center gap-5">
+          {proj.icon
+            ? <div className="grid place-items-center w-16 h-16 rounded-2xl bg-[var(--surface-2)] border border-[var(--line)] shrink-0 p-2 text-[var(--accent-ink)]"><ShowcaseIcon icon={proj.icon} size={44} rounded={10} /></div>
+            : <div className="grid place-items-center w-16 h-16 rounded-2xl bg-gradient-to-br from-brand to-brand-2 shrink-0"><span className="text-xl font-extrabold text-[var(--on-primary)]">{proj.short}</span></div>}
+          <div className="flex-1 min-w-0 on-backdrop"><div className="flex items-center gap-x-3 gap-y-1.5 flex-wrap"><h1 className="text-3xl font-extrabold min-w-0 break-words">{proj.name}</h1>{cfg.version && <button onClick={() => (preview ? setShowVersions(true) : setSp((p) => { const n = new URLSearchParams(p); n.set('tab', 'versions'); return n; }))} title={t('ver.open', 'Version history')} className="press-sm"><Badge tone="primary"><Clock size={11} /> v{cfg.version}</Badge></button>}</div>{cfg.tagline && <p className="text-[var(--muted)] mt-1">{cfg.tagline}</p>}</div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 mt-4 md:ps-[84px] empty:hidden">
           <DownloadMenu downloads={cfg.downloads} />
           {!preview && <ProjectContactBar projectRef={`sc:${slug}`} />}
         </div>

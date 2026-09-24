@@ -8,7 +8,7 @@ const CanvasView = lazy(() => import('../ui/canvas-view.jsx'));
 import { ErrorBoundary } from '../ui/ErrorBoundary.jsx';
 import { Link } from 'react-router-dom';
 import {
-  Server, ArrowRight, Upload, CheckCircle2, ShieldCheck, Inbox, Eye, Lock, Users, Newspaper, LayoutDashboard, Star, Link2, Code2, Wand2, AppWindow, Globe, Sparkles, Clock, Activity, ChevronLeft, ChevronRight, BadgeCheck, AlertTriangle, Ban, MessageSquare, Plus, KeyRound, LogIn, Webhook, FlaskConical, HeartHandshake, Cloud
+  ArrowRight, Upload, Eye, Users, Newspaper, Star, Code2, Wand2, AppWindow, Globe, Sparkles, Clock, ChevronLeft, ChevronRight, MessageSquare, Plus, KeyRound, LogIn, Webhook, FlaskConical, HeartHandshake, Cloud
 } from 'lucide-react';
 import { Button, Card, Badge, Explain } from '../ui/ui.jsx';
 import { api } from '../lib/api.js';
@@ -33,12 +33,12 @@ import { HomeV2, HomeV3 } from './home-variants.jsx';
 // page renders around. That is what keeps a built page from arriving after the default one.
 import { heroCtas, heroNote, closingCta } from '../lib/home-ctas.js';
 import { useFramedDraft } from '../lib/studio-preview.js';
-// The marker stroke under the title and the handwritten asides (ui/marker.jsx), and the product
-// demo that fills the media frame when no showcase is configured.
+// The marker stroke under the title and the handwritten asides (ui/marker.jsx).
 import { Marker, HandNote } from '../ui/marker.jsx';
-import HomeDemo from './home-demo.jsx';
 // M9 / M2: the snake path (steps joined by one swinging line) and the v4 landing built on it.
 import { SnakeSteps, HomeSnake } from './home-snake.jsx';
+// N7: "Why BetterCommunity", four pillars.
+import WhySection from './home-why.jsx';
 
 /* ─────────────────────────  Home  ───────────────────────── */
 function useScrollReveal() {
@@ -370,7 +370,7 @@ export function Home({ draft: draftProp = null }) {
   // The projects, as media. Absent or switched off leaves the hero exactly as it was — a
   // site that has never configured this must not gain an empty black rectangle the day it
   // ships.
-  const { data: showcase, loading: showcaseLoading } = useAsync(() => api.get('/site/showcase').catch(() => null), []);
+  const { data: showcase } = useAsync(() => api.get('/site/showcase').catch(() => null), []);
   // The official projects, which the suite row is built from. Same failure rule as the
   // others: a request that fails leaves the row on its written-in fallback rather than
   // emptying the section this page exists for.
@@ -504,28 +504,20 @@ export function Home({ draft: draftProp = null }) {
           {/* The projects, moving, under the one line that names the site. This is what the
               page opens with now: a paragraph is what a site says about itself, and what a
               visitor is deciding is whether the thing looks like something they want. */}
-          {/* While the config is on its way, the FRAME the showcase will draw into — same
-              width, same 16:10 aspect — so its arrival moves nothing. This block sits inside
-              the first viewport, so before this the whole visible page jumped by its height
-              on every load; that alone was most of the home page's CLS. Once loaded and
-              disabled, nothing is drawn, as before. */}
-          {showcaseLoading && (
-            <div className="mt-14 mx-auto w-full max-w-5xl" aria-hidden>
-              <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface-2)]" style={{ aspectRatio: '16 / 10' }} />
-            </div>
-          )}
-          {!showcaseLoading && showcase?.enabled && (
+          {/* N4 (agent-landing-N): the hero ends on its buttons. The fake "Catalogue" window
+              that stood here when no showcase is configured (home-demo.jsx: Find / Install /
+              Host tabs, three invented rows, handwritten notes) is gone from v1 at the owner's
+              request; v2 and v3 still draw it as their media fallback (ShowcasePanel).
+              The reserved 16:10 frame went with it: it held the place for "a showcase or the
+              demo", which was always one of the two. Now that "nothing" is the usual answer, a
+              frame drawn while /site/showcase is on its way would flash and then collapse on
+              every site that has no showcase. A configured showcase appears when it arrives,
+              below the buttons, which moves only what is under the hero. */}
+          {showcase?.enabled && (
             <div className="anim-slide mt-14" style={{ animationDelay: '320ms' }}>
               <ErrorBoundary fallback={null}>
                 <Suspense fallback={null}><ProjectShowcase config={showcase} /></Suspense>
               </ErrorBoundary>
-            </div>
-          )}
-          {/* No showcase configured: the product demo stands where the media would, rather than
-              the hero ending on its buttons with nothing to look at. */}
-          {!showcaseLoading && !showcase?.enabled && (
-            <div className="anim-slide mt-14 mx-auto w-full max-w-3xl" style={{ animationDelay: '320ms' }}>
-              <HomeDemo progress={progress} />
             </div>
           )}
           {/* The headline counts are gone. They were the two numbers a visitor cannot
@@ -624,108 +616,11 @@ export function Home({ draft: draftProp = null }) {
       )}
 
       {/* features */}
+      {/* N7 (agent-landing-N): redone as four pillars with one featured (pages/home-why.jsx). */}
       {show('why') && (
       <section>
         <SectionKicker n="02" label={t('home.k.why', 'Why BetterCommunity')} />
-        {/* M8/M3: a heading for the section, with the one word it is about circled by hand. */}
-        <h2 className="reveal-on-scroll plate text-3xl md:text-4xl font-extrabold tracking-tight text-center mb-9 max-w-2xl mx-auto">
-          {t('home.why.h.a', 'What you can')} <Marker variant="circle">{t('home.why.h.b', 'count on')}</Marker>{t('home.why.h.c', ' here')}
-        </h2>
-        {/* The featured tile spans the full width and the four promises sit UNDER it as a
-            list, not beside it as four more cards. The pipeline is the argument this section
-            exists to make; giving it the same chrome as a one-line blurb made it read as a
-            fifth blurb that happened to be wider. */}
-        <div className="reveal-stagger grid gap-4">
-          {/* The moderation promise, split the way the platform actually works.
-              It used to read "every submission is reviewed before it goes live" over a single
-              three-step pipeline. That is true of the official catalog and false of everything
-              somebody hosts themselves: a community catalog is created ACTIVE and listed by its
-              owner, and a hosted Server Repo is published by its owner's own button. Nothing was
-              stopping a reader concluding that a stranger's repo had been read by staff.
-
-              Two tracks, then, and the second one is not weaker for being honest — "anyone can
-              publish, everyone can report, we suspend" is a real answer, and it is the one the
-              code implements. */}
-          {/* No glow disc. The blurred coloured bloom that used to sit in this card's corner was
-              the "sort d'hover vrm moche" flagged again — the same complaint that killed the
-              product-card glow. The Card's own hover lift is the only affordance now. */}
-          <Card hover className="p-6 group relative overflow-hidden">
-            <div className="relative">
-              <div className="flex items-start gap-4 flex-wrap">
-                <span className="grid place-items-center w-11 h-11 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] transition-colors group-hover:b-primary shrink-0"><ShieldCheck size={20} className="text-[var(--accent-ink)]" /></span>
-                <div className="min-w-0 flex-1">
-                  <div className="font-semibold">{t('home.feat.moderated2', 'What is checked, and by whom')}</div>
-                  <div className="text-sm text-[var(--muted)] mt-1.5 leading-relaxed max-w-2xl">{t('home.feat.moderated2.d', 'The official catalogue is read by the team before it goes live. Community catalogues and repositories are published by their owners, and anyone can report them.')}</div>
-                </div>
-              </div>
-
-              <div className="grid md:grid-cols-2 gap-4 mt-5">
-                {/* Reviewed BEFORE. The badges are the real statuses a submission passes
-                    through, not an illustration of a process. */}
-                <div className="rounded-xl border border-[var(--line)] panel p-4">
-                  <div className="flex items-center gap-2 text-[13px] font-semibold">
-                    <BadgeCheck size={15} className="text-success shrink-0" />
-                    {t('home.mod.official', 'The official catalogue')}
-                  </div>
-                  <div className="flex items-center gap-1.5 mt-3 flex-wrap">
-                    <span className="badge !gap-1.5 text-[var(--muted)]"><Inbox size={12} /> {t('home.pipe.sub', 'Submitted')}</span>
-                    <ArrowRight size={12} className="text-[var(--faint)] shrink-0" />
-                    <span className="badge badge-amber !gap-1.5"><Eye size={12} /> {t('home.pipe.review', 'In review')}</span>
-                    <ArrowRight size={12} className="text-[var(--faint)] shrink-0" />
-                    <span className="badge badge-green !gap-1.5"><CheckCircle2 size={12} /> {t('home.pipe.live', 'Published')}</span>
-                  </div>
-                  <p className="text-[12px] text-[var(--muted)] mt-3 leading-relaxed">
-                    {t('home.mod.official.d', 'Checked before it appears. A submission stays out of sight until someone on the team has opened it and approved it, and a refusal comes with the reason.')}
-                  </p>
-                </div>
-
-                {/* Published FIRST. The same three badges would be a lie here, so this track
-                    draws its own — and names the thing that actually holds it: reports. */}
-                <div className="rounded-xl border border-[var(--line)] panel p-4">
-                  <div className="flex items-center gap-2 text-[13px] font-semibold">
-                    <Users size={15} className="text-[var(--accent-ink)] shrink-0" />
-                    {t('home.mod.community', 'Community catalogues and repositories')}
-                  </div>
-                  <div className="flex items-center gap-1.5 mt-3 flex-wrap">
-                    <span className="badge badge-green !gap-1.5"><CheckCircle2 size={12} /> {t('home.mod.self', 'Published by its owner')}</span>
-                    <ArrowRight size={12} className="text-[var(--faint)] shrink-0" />
-                    <span className="badge !gap-1.5 text-[var(--muted)]"><AlertTriangle size={12} /> {t('home.mod.reported', 'Reportable')}</span>
-                    <ArrowRight size={12} className="text-[var(--faint)] shrink-0" />
-                    <span className="badge badge-amber !gap-1.5"><Ban size={12} /> {t('home.mod.suspended', 'Suspended')}</span>
-                  </div>
-                  <p className="text-[12px] text-[var(--muted)] mt-3 leading-relaxed">
-                    {t('home.mod.community.d', 'Published by its author, immediately. Every one shows the account behind it, anyone can report a problem, and we suspend what breaks the rules. Checked after publication — and labelled that way wherever it appears.')}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </Card>
-          {/* M8: six promises instead of four, each one a door. A promise with nowhere to go
-              was a sentence to take on trust; every tile now opens the page that shows it is
-              true (the plans, the privacy policy, the status page, the API reference). Only
-              claims the site already makes elsewhere and keeps: nothing here is new copy about
-              features, it is the same facts, reachable. */}
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {[[LayoutDashboard, t('home.feat.accounts'), t('home.feat.accounts.d'), user ? '/dashboard' : '/auth', user ? t('home.cta.dash', 'Open your dashboard') : t('home.why.go.acc', 'Create a free account')],
-              [Cloud, t('home.feat.hosting'), t('home.feat.hosting.d'), '/hosting', t('home.demo.go3', 'See the hosting plans')],
-              [Link2, t('home.feat.install', 'One-click install'), t('home.feat.install.d', 'Catalog entries install straight into the app in one click through deeplinks, no manual downloads, no hunting for files.'), '/catalog', t('home.demo.go1', 'Open the catalogue')],
-              [Lock, t('home.feat.privacy', 'Privacy-first'), t('home.feat.privacy.d', 'No third-party trackers and no ads. Analytics are first-party and anonymous, off until you opt in, and you can turn them back off anytime.'), '/legal/privacy', t('home.why.go.priv', 'Read the privacy policy')],
-              [Activity, t('home.why.status', 'Status in the open'), t('home.why.status.d', 'Uptime and incidents are on a public status page anyone can read, not in a support ticket.'), '/status', t('home.why.go.status', 'See the status page')],
-              [Code2, t('home.why.api', 'Open to developers'), t('home.why.api.d', 'A REST API, sign-in with OpenID Connect and webhooks, documented where anyone can read it.'), '/docs/bcweb-api', t('home.dev.cta2', 'API reference')],
-            ].map(([I, title, d, to, go]) => (
-              // `.rail-tile` keeps the rule and the solid surface the cards use: muted text never
-              // sits on the backdrop.
-              <Link key={title} to={to} className="group rail-tile flex flex-col">
-                <span className="grid place-items-center w-9 h-9 rounded-lg bg-[var(--surface-2)] border border-[var(--line)]"><I size={18} className="text-[var(--accent-ink)]" aria-hidden="true" /></span>
-                <div className="font-semibold mt-3 text-[15px]">{title}</div>
-                <div className="text-sm text-[var(--muted)] mt-1 leading-relaxed flex-1">{d}</div>
-                <div className="mt-3 inline-flex items-center gap-1.5 text-[13px] font-semibold text-[var(--accent-ink)]">
-                  {go} <ArrowRight size={13} className="rtl-mirror transition-transform group-hover:translate-x-1" aria-hidden="true" />
-                </div>
-              </Link>
-            ))}
-          </div>
-        </div>
+        <WhySection />
       </section>
       )}
 
@@ -745,7 +640,8 @@ export function Home({ draft: draftProp = null }) {
             goes quiet; signed out, it is the only lit one. The other two are not claimed to be
             done, because nothing on this page can tell. */}
         {/* M9: the same three stops, now a snake (pages/home-snake.jsx): the stops swing left
-            and right from md up and one thick path joins them, straight down on a phone. The
+            and right from md up and one line joins them, straight down on a phone (N5: thin,
+            routed through the gaps so it never crosses a card, walked part solid). The
             first stop still knows whether the reader is signed in; the other two are ticked
             only on what the page can see (a catalogue opened here, something published, a
             pool owned). */}

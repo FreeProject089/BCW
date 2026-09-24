@@ -1,53 +1,66 @@
-/* The snake path (ui/snake.jsx). A solid stroke, never a gradient: an SVG gradient is sized on
-   the path's bounding box, and the phone layout's path is a straight vertical line whose box
-   has no width, so a gradient stroke there draws nothing at all. */
+/* The snake path (ui/snake.jsx). N5 (agent-landing-N): two calm strokes and no halo.
+     · the part still ahead: a thin dashed line in a light tint of the accent;
+     · the part already walked: a solid 3px line, a subtle accent gradient down the page
+       (userSpaceOnUse, so the phone layout's straight line gets it too), drawn in on reveal.
+   The line is routed round the cards (see snake.jsx), so it never needs to hide behind one. */
 .snake-svg {
   position: absolute; inset: 0; z-index: 0;
   width: 100%; height: 100%;
   overflow: visible; pointer-events: none;
 }
 .snake-svg path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
-/* A wide soft track under the line: the road the line runs along. */
-.snake-under { stroke: color-mix(in srgb, var(--primary) 16%, transparent); stroke-width: calc(var(--snake-w, 8px) * 2.6); }
-.snake-line {
-  stroke: var(--primary); stroke-width: var(--snake-w, 8px);
+.snake-stop-a { stop-color: var(--primary); }
+.snake-stop-b { stop-color: var(--primary-2); }
+.snake-ahead {
+  stroke: color-mix(in srgb, var(--primary) 42%, var(--line-strong));
+  stroke-width: 2px;
+  stroke-dasharray: 5 7;
+  animation: snakeFade .6s ease .1s both;
+}
+.snake-walked {
+  stroke: var(--primary); /* overridden inline by the gradient */
+  stroke-width: 3px;
   stroke-dasharray: 1; stroke-dashoffset: 0;
-  animation: snakeDraw 1.6s cubic-bezier(0.55, 0.05, 0.3, 1) 0.15s both;
+  animation: snakeDraw 1.2s cubic-bezier(0.45, 0, 0.25, 1) 0.2s both;
 }
-.snake-done { stroke: var(--success); stroke-width: var(--snake-w, 8px); }
 @keyframes snakeDraw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
-/* Inside a section that reveals on scroll, the line draws when the section arrives. */
-html.js-anim :where(.reveal-on-scroll, .reveal-stagger):not(.in) .snake-line { animation-play-state: paused; }
-@media (prefers-reduced-motion: reduce) { .snake-line { animation: none; } }
+@keyframes snakeFade { from { opacity: 0; } to { opacity: 1; } }
+/* The line is not one of the staggered items: it stays put and draws itself when the section
+   arrives, instead of blurring and scaling in with the cards (which also moved it off the
+   stops while they settled). */
+html.js-anim .snake-list > .snake-svg { opacity: 1; transform: none; filter: none; transition: none; }
+html.js-anim :where(.reveal-on-scroll, .reveal-stagger):not(.in) :is(.snake-walked, .snake-ahead) { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) { .snake-walked, .snake-ahead { animation: none; } }
+@media print { .snake-walked, .snake-ahead { animation: none; } }
 @media (forced-colors: active) {
-  .snake-under { display: none; }
-  .snake-line, .snake-done { stroke: CanvasText; }
+  .snake-ahead { stroke: GrayText; }
+  .snake-walked { stroke: CanvasText !important; }
 }
-@media print { .snake-line { animation: none; } }
 
 /* The stops: everything that is not the line sits above it. */
 .snake-list { position: relative; }
 .snake-list > :not(.snake-svg) { position: relative; z-index: 1; }
 
-/* A stop's marker: a filled disc with the number, ON the line. */
+/* A stop's marker, ON the line: a disc with the number. The stop you are at is the one with the
+   accent ring; the ones further on are quieter; a done one is filled and ticked. */
 .snake-dot {
   display: grid; place-items: center; flex-shrink: 0;
-  width: 3rem; height: 3rem; border-radius: 9999px;
-  font-weight: 800; font-size: 1.05rem;
-  background: var(--bg-solid); color: var(--accent-ink);
-  border: 3px solid var(--primary);
-  box-shadow: 0 0 0 6px color-mix(in srgb, var(--primary) 12%, transparent);
+  width: 2.5rem; height: 2.5rem; border-radius: 9999px;
+  font-weight: 700; font-size: .95rem; font-variant-numeric: tabular-nums;
+  background: var(--bg-solid); color: var(--muted);
+  border: 2px solid color-mix(in srgb, var(--primary) 30%, var(--line-strong));
 }
+.snake-dot.is-current { color: var(--accent-ink); border-color: var(--primary); }
 .snake-dot.is-done { background: var(--success); border-color: var(--success); color: var(--bg-solid); }
-@media (forced-colors: active) { .snake-dot { border-color: CanvasText; box-shadow: none; } }
+@media (forced-colors: active) { .snake-dot { border-color: CanvasText; } }
 
 /* The rows. Phone: every stop on the start edge, the card beside it, the line straight down.
-   From md: the stops alternate sides and the line swings between them. */
+   From md: the stops alternate sides, and the line turns across in the gap between rows. */
 .snake-row { display: flex; align-items: center; gap: 1rem; }
-.snake-row + .snake-row { margin-top: 1.75rem; }
+.snake-row + .snake-row { margin-top: 1.5rem; }
 .snake-card { min-width: 0; flex: 1 1 auto; }
 @media (min-width: 768px) {
-  .snake-row + .snake-row { margin-top: 3.5rem; }
+  .snake-row + .snake-row { margin-top: 4rem; }
   .snake-row { gap: 1.5rem; }
   .snake-card { flex: 0 1 34rem; }
   .snake-row.is-flip { flex-direction: row-reverse; }

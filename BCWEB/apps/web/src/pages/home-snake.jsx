@@ -1,5 +1,5 @@
-// The snake: numbered steps joined by one thick coloured path that swings left and right down
-// the page. Two users of it:
+// The snake: numbered steps joined by one line that winds left and right down the page (N5:
+// thin, routed round the cards, walked part solid and the rest dashed). Two users of it:
 //
 //   · `SnakeSteps`, the list itself: v1's "Get going in minutes" draws its three steps with
 //     it, and the snake landing page below draws the whole journey with it;
@@ -35,9 +35,9 @@ export function SnakeSteps({ steps, note = null, className = '' }) {
       {steps.map((s, i) => {
         const I = s.icon;
         return (
-          <li key={s.key} className={`snake-row ${i % 2 ? 'is-flip' : ''}`}>
-            <span aria-hidden="true" data-snake-dot="" className={`snake-dot ${s.done ? 'is-done' : ''}`}>
-              {s.done ? <CheckCircle2 size={20} /> : i + 1}
+          <li key={s.key} data-snake-row="" className={`snake-row ${i % 2 ? 'is-flip' : ''}`}>
+            <span aria-hidden="true" data-snake-dot="" className={`snake-dot ${s.done ? 'is-done' : i === firstOpen ? 'is-current' : ''}`}>
+              {s.done ? <CheckCircle2 size={18} /> : i + 1}
             </span>
             <div className="snake-card">
             <Link to={s.to} className="group block">
@@ -86,7 +86,7 @@ function journey({ t, user, progress, browsed, myoOn }) {
       to: '/catalog', cta: t('home.step2.cta', 'Browse the catalog'), done: !!browsed || !!progress?.published },
     { key: 'install', icon: Download, title: t('home.snake.s3', 'Install it in one click'),
       desc: t('home.snake.s3.d', 'A catalogue link opens BetterModsManager, which fetches the entry and puts it where the app expects it.'),
-      to: '/project/bmm', cta: t('home.snake.s3.cta', 'Meet BetterModsManager') },
+      to: '/p/bmm', cta: t('home.snake.s3.cta', 'Meet BetterModsManager') },
     { key: 'share', icon: Upload, title: t('home.snake.s4', 'Share your own'),
       desc: t('home.snake.s4.d', 'Submit to the official catalogue, which the team reads first, or publish a Server-Repo of your own.'),
       to: '/submit', cta: t('home.snake.s4.cta', 'Open the submit page'), done: !!progress?.published },

@@ -2415,3 +2415,20 @@ body::before {
 :root[data-intro] body::before { opacity: 0; transition: none; }
 @media (forced-colors: active) { body::before { display: none; } }
 /* END M-landing */
+
+/* N-landing (agent-landing-N) */
+/* N6: card grain, "felt, not seen". The hero carriers (.grain-hero: the home closing call and
+   build tabs, the closing band of v2/v3/v4, the charity card; .tex-surface) move from the
+   MEDIUM recipe at .05 / .075 to the FINE one (single-pixel tooth, no clumps) at .015 / .024.
+   Using the measured table at --grain-fine above (sd scales with the layer's opacity):
+     light  medium .05  = sd ~3.6/255   ->  fine .015 = sd ~1.1/255   (0.31x)
+     dark   medium .075 = sd ~4.4/255   ->  fine .024 = sd ~1.4/255   (0.32x)
+   A third of the old strength, finer, and still switched off by the same token rules
+   (Settings, forced colours, reduced transparency), because it still reads --grain-fine. */
+:root { --grain-k-hero: .015; }
+[data-theme="dark"] { --grain-k-hero: .024; }
+.grain-hero::before, .tex-surface::before {
+  background-image: var(--grain-fine);
+  opacity: var(--grain-k-hero);
+}
+/* END N-landing */
