@@ -53,7 +53,7 @@ $targets = @(
     @{ Key = 'LINK_LOOKUP_SECRET';  Gen = { New-Secret };       Boot = $true;  Why = 'Covers BOTH the bot auth and the telemetry link lookup.' }
     @{ Key = 'BOT_SHARED_SECRET';   Gen = { New-Secret };       Boot = $true;  Why = 'Authenticates the Discord bot against /bot/*.' }
     @{ Key = 'AUDIT_SECRET';        Gen = { New-Secret };       Boot = $false; Why = 'HMAC chain over the staff audit log; changing it breaks verification of old entries.' }
-    @{ Key = 'S3_SECRET_KEY';       Gen = { New-Password };     Boot = $false; Why = 'Object storage (versitygw) root secret. Not stored in the data: api, provisioner and storage just need the same value.' }
+    @{ Key = 'S3_SECRET_KEY';       Gen = { New-Password };     Boot = $true;  Why = 'Object storage (versitygw) root secret. Not stored in the data: api, provisioner and storage just need the same value.' }
     @{ Key = 'TELEMETRY_ADMIN_KEY'; Gen = { New-Secret 24 };    Boot = $false; Why = 'Admin access to the telemetry dashboard.' }
     @{ Key = 'SEED_ADMIN_PASSWORD'; Gen = { New-Password 18 };  Boot = $false; Why = 'The first admin account, IF the seed has not run yet. Set it BEFORE seeding.' }
 )

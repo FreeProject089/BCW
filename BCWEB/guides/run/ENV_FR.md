@@ -41,7 +41,7 @@ déjà.
 ## 4. Stockage objet — S3 (obligatoire)
 | Variable | Rôle |
 |---|---|
-| `S3_ACCESS_KEY` / `S3_SECRET_KEY` | identifiants du stockage objet. Le service `storage` fourni (versitygw) les prend **comme** identifiants racine : n'importe quelles valeurs conviennent, rien n'est stocké dans les données, et les changer demande de recréer `storage`, `api` et `provisioner` ensemble. |
+| `S3_ACCESS_KEY` / `S3_SECRET_KEY` | identifiants du stockage objet. Le service `storage` fourni (versitygw) les prend **comme** identifiants racine : rien n'est stocké dans les données, et les changer demande de recréer `storage`, `api` et `provisioner` ensemble. **En prod (`NODE_ENV=production`) l'API refuse de démarrer** si `S3_SECRET_KEY` est vide, vaut l'un des `change-me…` de `.env.example`, ou fait moins de 24 caractères : avec le stockage public sur `S3_DOMAIN`, la valeur d'exemple permettrait à quiconque a lu ce fichier de signer des requêtes comme la racine du stockage. `openssl rand -hex 32` ; `infra/gen-secrets.ps1`, `infra/bootstrap.sh` et `node infra/rotate-secrets.mjs` en écrivent tous une longue. Le développement (`npm run dev`, sans `NODE_ENV=production`) n'est pas vérifié. |
 | `S3_BUCKET` | nom du bucket (défaut `bcweb`). |
 | `S3_ENDPOINT` | endpoint S3 (défaut le service interne `storage`, `http://storage:9000`). Un vieux `.env` qui dit encore `http://minio:9000` vise un service qui n'existe plus : retire la ligne. |
 | `S3_REGION` | région (`us-east-1` en local, `auto` pour Cloudflare R2). Compose passe la même valeur au `storage` fourni, qui vérifie les signatures avec. |
@@ -139,4 +139,4 @@ aucune variable — la clé est auto-générée et l'issuer = `SITE_URL`.)*
 
 ### Le strict minimum pour démarrer en prod
 `POSTGRES_PASSWORD`, `JWT_SECRET`, `SITE_DOMAIN`, `SITE_URL`, `COOKIE_DOMAIN`,
-`S3_ACCESS_KEY`, `S3_SECRET_KEY`. Tout le reste est optionnel et s'active au besoin.
+`S3_ACCESS_KEY`, `S3_SECRET_KEY` (24 caractères ou plus, pas la valeur d'exemple). Tout le reste est optionnel et s'active au besoin.

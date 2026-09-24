@@ -268,7 +268,7 @@ export async function presignRepoFile(p, repo, { path: rawPath, size, contentTyp
   const used =repo.files.reduce((a, f) => a + Number(f.size), 0) - (existing ? Number(existing.size) : 0);
   if (BigInt(used + size) > repo.storageQuotaBytes) throw new RepoOpError('quota_exceeded', 413, { quota: Number(repo.storageQuotaBytes), used });
   const key = `hosting/${repo.id}/${path}`;
-  const url = await presignPut(key, contentType);
+  const url = await presignPut(key, { contentType, size });
   return { key, url, path, expiresIn: 600 };
 }
 

@@ -1109,9 +1109,15 @@ carried **nothing** although it serves user-uploaded bytes.
 
 Added: `X-Frame-Options SAMEORIGIN` + `Permissions-Policy` on customer domains;
 `nosniff` + `X-Frame-Options SAMEORIGIN` + `Referrer-Policy no-referrer` + `-Server` on the S3
-origin. `nosniff` is safe there *specifically* because `storage.mjs` signs an explicit
-`ContentType` into every presigned PUT (lines 40/45), so an object's declared type is the one the
-API chose — nosniff cannot break an asset by refusing a merely-guessed type.
+origin. `nosniff` is safe there *specifically* because every writer names an explicit
+`ContentType` (`storage.mjs` presignPut / putObject), so no asset depends on a guessed type.
+*Correction, 2026-09-24/25:* this paragraph said the type was the one the API chose. It was not:
+the presigned PUT signed `host` only, so the uploader's browser could send any type and any
+size (measured, versitygw v1.8.0: a URL approved for 1000 bytes of `image/png` stored 5000 bytes
+of `text/html`). Since 2026-09-25 presignPut signs `content-length;content-type;host`, and the
+same measurement refuses a wrong type, a bigger or smaller body, a chunked body and a missing
+type with 403 `SignatureDoesNotMatch` (`apps/api/test/presign-binding.test.mjs` pins the signed
+headers and that every caller passes the validated size).
 
 **Open, owner:** nothing sets `Content-Disposition` on the S3 origin, so an object stored as
 `text/html` **renders as a page** on a sub-domain of the brand. That is an upload-policy question

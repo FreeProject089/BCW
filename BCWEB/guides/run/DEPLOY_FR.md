@@ -37,7 +37,7 @@ cp infra/compose/.env.example infra/compose/.env
 | `BOT_SHARED_SECRET` | Longue chaîne aléatoire — le secret partagé API↔bot |
 | `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` | Depuis le dashboard Stripe (voir §6) |
 | `DISCORD_TOKEN` | Optionnel — sinon défini depuis le dashboard admin |
-| `S3_ACCESS_KEY` / `S3_SECRET_KEY` | Identifiants du stockage objet (le service `storage` fourni les prend comme les siens) |
+| `S3_ACCESS_KEY` / `S3_SECRET_KEY` | Identifiants du stockage objet (le service `storage` fourni les prend comme les siens). L'API refuse de démarrer en prod sur un `S3_SECRET_KEY` vide, `change-me…` ou de moins de 24 caractères ([ENV_FR.md](ENV_FR.md) §4) |
 
 > **Ne commit jamais `.env`.** Il contient des secrets réels et est gitignore. Seul
 > `.env.example` est versionné.

@@ -37,7 +37,7 @@ Edit `infra/compose/.env` — the important keys:
 | `BOT_SHARED_SECRET` | Long random string — the API↔bot shared secret |
 | `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` | From the Stripe dashboard (see §6) |
 | `DISCORD_TOKEN` | Optional — else set the token from the admin dashboard |
-| `S3_ACCESS_KEY` / `S3_SECRET_KEY` | Object-storage credentials (the bundled `storage` service takes them as its own) |
+| `S3_ACCESS_KEY` / `S3_SECRET_KEY` | Object-storage credentials (the bundled `storage` service takes them as its own). The API refuses to boot in production on an `S3_SECRET_KEY` that is empty, a `change-me…` placeholder or under 24 characters ([ENV_EN.md](ENV_EN.md) §4) |
 
 > **Never commit `.env`.** It holds live secrets and is gitignored. Only
 > `.env.example` is tracked.

@@ -12,6 +12,8 @@ import { sendMail, mailShell, emailEnabled } from '../lib/mail.mjs';
 import { presignPut, presignGet, deleteObject } from '../lib/storage.mjs';
 
 const SITE_URL = process.env.SITE_URL || 'http://localhost:5176';
+// The largest evidence file the presign signs and the record route accepts.
+const EVIDENCE_MAX_BYTES = 2 * 1024 ** 3;
 const escapeHtml = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 // A content sanction has to reach the content, and the content already knows how to be
@@ -431,11 +433,14 @@ export default async function sanctionRoutes(app) {
   // unsafe. None of these routes are reachable from /me/sanctions.
 
   // Presign a direct upload. The key is minted HERE, under a fixed prefix, so a client can
-  // never aim the PUT at another part of the bucket.
+  // never aim the PUT at another part of the bucket. `size` is signed into the URL with the
+  // type (storage.mjs presignPut), so the store refuses any other byte count; capped at the
+  // ceiling the record route below accepts for `bytes`.
   app.post('/admin/sanctions/:id/evidence/presign', { preHandler: requireCap('manage_users', 'MOD') }, async (req, reply) => {
     const b = z.object({
       filename: z.string().min(1).max(200),
       contentType: z.string().max(120).optional(),
+      size: z.number().int().positive().max(EVIDENCE_MAX_BYTES),
     }).safeParse(req.body || {});
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
@@ -443,7 +448,7 @@ export default async function sanctionRoutes(app) {
     if (!s) return reply.code(404).send({ error: 'not_found' });
     const safeName = b.data.filename.replace(/[^a-zA-Z0-9._-]/g, '_');
     const storageKey = `sanctions/${s.id}/${Date.now()}-${safeName}`;
-    const url = await presignPut(storageKey, b.data.contentType || 'application/octet-stream');
+    const url = await presignPut(storageKey, { contentType: b.data.contentType || 'application/octet-stream', size: b.data.size });
     return { url, storageKey };
   });
 
@@ -456,7 +461,7 @@ export default async function sanctionRoutes(app) {
       url: z.string().trim().max(2000).optional(),
       storageKey: z.string().max(300).optional(),
       mime: z.string().max(120).optional(),
-      bytes: z.number().int().nonnegative().max(2 * 1024 ** 3).optional(),
+      bytes: z.number().int().nonnegative().max(EVIDENCE_MAX_BYTES).optional(),
     }).safeParse(req.body || {});
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const d = b.data;

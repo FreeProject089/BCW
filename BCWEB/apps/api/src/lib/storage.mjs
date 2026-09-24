@@ -2,7 +2,8 @@
 // guides/reference/ADR_S3_STORAGE_EN.md). Two clients:
 //  - internal: server-side ops (ensure bucket) over the docker network.
 //  - signer:   builds pre-signed URLs against the PUBLIC endpoint, because the
-//              browser PUTs/GETs directly to that host (the signature is bound to it).
+//              browser PUTs/GETs directly to that host (the signature is bound to it,
+//              and a PUT's also to its Content-Type and Content-Length: presignPut).
 import { S3Client, CreateBucketCommand, HeadBucketCommand, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
@@ -39,9 +40,33 @@ export async function checkStorageHealth() {
   try { await internal.send(new HeadBucketCommand({ Bucket: BUCKET })); return true; } catch { return false; }
 }
 
-/** Pre-signed PUT so the client uploads the bytes directly (never through the API). */
-export async function presignPut(key, contentType, expiresIn = 600) {
-  return getSignedUrl(signer, new PutObjectCommand({ Bucket: BUCKET, Key: key, ContentType: contentType }), { expiresIn });
+// The headers a presigned PUT is bound to. The store recomputes the signature from the
+// headers the uploader ACTUALLY sends, so a PUT whose Content-Type or Content-Length differs
+// from what the API validated is refused 403 SignatureDoesNotMatch by the store itself.
+//
+// `content-type` has to be named: @aws-sdk/s3-request-presigner puts it in unsignableHeaders
+// by default, which is how every presigned PUT used to carry X-Amz-SignedHeaders=host (with
+// content-length only when a size was passed) — the browser could send any type and any
+// number of bytes to a key the API had approved for an image of N bytes. `content-length` is
+// named too, so a later SDK that stops signing it by default cannot quietly drop it again.
+export const PRESIGNED_PUT_SIGNED_HEADERS = Object.freeze(['content-length', 'content-type', 'host']);
+const SIGNABLE = new Set(['content-type', 'content-length']);
+
+/**
+ * Pre-signed PUT so the client uploads the bytes directly (never through the API).
+ *
+ * `contentType` and `size` are the values the caller VALIDATED (type allowlist, byte cap,
+ * quota), and both are signed into the URL: the uploader must send exactly that
+ * `Content-Type` and exactly `size` bytes. A browser sets Content-Length from the body on its
+ * own; a client only has to send the same Content-Type it asked for. A size that is not a
+ * positive integer throws — an unbound upload is not a fallback, it is the bug this closes.
+ */
+export async function presignPut(key, { contentType, size, expiresIn = 600 } = {}) {
+  if (typeof contentType !== 'string' || !contentType) throw new TypeError('presignPut: contentType is required');
+  const n = Number(size);
+  if (!Number.isSafeInteger(n) || n <= 0) throw new TypeError('presignPut: size must be the positive byte count the caller validated');
+  const cmd = new PutObjectCommand({ Bucket: BUCKET, Key: key, ContentType: contentType, ContentLength: n });
+  return getSignedUrl(signer, cmd, { expiresIn, signableHeaders: SIGNABLE });
 }
 
 /** Server-side PUT of bytes the API already holds (feedback attachments arrive inline). */

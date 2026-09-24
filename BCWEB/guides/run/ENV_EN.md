@@ -41,7 +41,7 @@ page is the reference for what each answer means, and for editing a .env you alr
 ## 4. Object storage — S3 (required)
 | Variable | Purpose |
 |---|---|
-| `S3_ACCESS_KEY` / `S3_SECRET_KEY` | object-storage credentials. The bundled `storage` service (versitygw) takes them **as** its root credentials: any values work, nothing is stored in the data, and changing them means recreating `storage`, `api` and `provisioner` together. |
+| `S3_ACCESS_KEY` / `S3_SECRET_KEY` | object-storage credentials. The bundled `storage` service (versitygw) takes them **as** its root credentials: nothing is stored in the data, and changing them means recreating `storage`, `api` and `provisioner` together. **In production (`NODE_ENV=production`) the API refuses to boot** when `S3_SECRET_KEY` is empty, is one of the `change-me…` placeholders of `.env.example`, or is shorter than 24 characters: with storage public on `S3_DOMAIN`, the example value would let anyone who read that file sign requests as storage's root. `openssl rand -hex 32`; `infra/gen-secrets.ps1`, `infra/bootstrap.sh` and `node infra/rotate-secrets.mjs` all write a long one. Development (`npm run dev`, no `NODE_ENV=production`) is not checked. |
 | `S3_BUCKET` | bucket name (default `bcweb`). |
 | `S3_ENDPOINT` | S3 endpoint (default the internal `storage` service, `http://storage:9000`). An old `.env` that still says `http://minio:9000` points at a service that no longer exists: remove the line. |
 | `S3_REGION` | region (`us-east-1` local, `auto` for Cloudflare R2). Compose hands the same value to the bundled `storage`, which checks signatures against it. |
@@ -138,4 +138,4 @@ variable — the key is auto-generated and the issuer = `SITE_URL`.)*
 
 ### Bare minimum to boot in production
 `POSTGRES_PASSWORD`, `JWT_SECRET`, `SITE_DOMAIN`, `SITE_URL`, `COOKIE_DOMAIN`,
-`S3_ACCESS_KEY`, `S3_SECRET_KEY`. Everything else is optional and enabled as needed.
+`S3_ACCESS_KEY`, `S3_SECRET_KEY` (24+ characters, not the example value). Everything else is optional and enabled as needed.

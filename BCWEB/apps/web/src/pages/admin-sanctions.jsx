@@ -56,7 +56,7 @@ export function Evidence({ s, onChanged }) {
     setBusy(true);
     try {
       const { url, storageKey } = await api.post(`/admin/sanctions/${s.id}/evidence/presign`, {
-        filename: file.name, contentType: file.type || 'application/octet-stream',
+        filename: file.name, contentType: file.type || 'application/octet-stream', size: file.size,
       });
       const put = await fetch(url, { method: 'PUT', body: file, headers: { 'Content-Type': file.type || 'application/octet-stream' } });
       // Recording the row only after the PUT succeeded. The other order leaves a row

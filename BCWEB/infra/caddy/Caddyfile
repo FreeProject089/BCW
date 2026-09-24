@@ -376,13 +376,15 @@
 	# This origin serves USER-UPLOADED bytes and had no headers at all. `nosniff` is safe to
 	# add here because every writer names a Content-Type (storage.mjs presignPut/putObject),
 	# so no asset depends on a type being guessed.
-	# NOT a guarantee, measured 2026-09-24 (agent-s3-replace): the presigned PUT URL signs
-	# `host` ONLY (X-Amz-SignedHeaders=host), so the uploader's browser can send ANY
-	# Content-Type with the bytes and the store keeps it — MinIO did, versitygw does. The type
-	# on an object is the uploader's claim, not the API's choice.
+	# And the type is the API's choice, not the uploader's claim: a presigned PUT is signed
+	# over Content-Type and Content-Length (X-Amz-SignedHeaders=content-length;content-type;host,
+	# storage.mjs presignPut), so the gateway refuses 403 SignatureDoesNotMatch a PUT whose type
+	# or byte count differs from what the API validated (measured against versitygw v1.8.0,
+	# 2026-09-25, agent-presign; until then it signed `host` only and any type was stored).
 	# NOT solved here: nothing sets Content-Disposition, so an object stored as text/html
-	# RENDERS as a page on this sub-domain of the brand. That is an upload-policy question
-	# (which content types may be presigned at all), not an edge one — see SECURITY_AUDIT.md.
+	# RENDERS as a page on this sub-domain of the brand. Which types the API presigns at all is
+	# therefore the policy that matters (uploads.mjs LIMITS; a hosted-repo file takes the type
+	# its uploader names), not an edge one — see SECURITY_AUDIT.md.
 	header {
 		X-Content-Type-Options nosniff
 		X-Frame-Options SAMEORIGIN

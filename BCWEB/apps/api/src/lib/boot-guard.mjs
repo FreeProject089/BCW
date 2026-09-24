@@ -45,6 +45,24 @@ export const PRODUCTION_SECRETS = [
     insecure: ['dev-link-secret'],
     consequence: 'the link lookup and server-control endpoints would accept anyone',
   },
+  {
+    // The object-storage root secret. It has no fallback in the code (storage.mjs reads it
+    // raw), so the value to refuse is not a literal in a `||` chain: it is the one an operator
+    // copied from infra/compose/.env.example, which ships `S3_SECRET_KEY=change-me-strong`.
+    // The bundled versitygw takes this as its ROOT credential, and once S3_DOMAIN makes
+    // storage public anybody who read the example file can sign requests as that root.
+    //
+    // `insecure` holds EVERY change-me placeholder of .env.example, not only this variable's:
+    // pasting the JWT placeholder into the S3 line is the same mistake. boot-guard.test.mjs
+    // reads .env.example and goes red when a placeholder there is missing here.
+    // `minLength` 24: the example value is 16 characters; every generator in infra/ writes 32+
+    // (gen-secrets.ps1, bootstrap.sh, configure-env, prod-env.sh, rotate-secrets.mjs).
+    purpose: 'object storage (root credential)',
+    vars: ['S3_SECRET_KEY'],
+    insecure: ['change-me-strong', 'change-me-32-bytes-hex', 'change-me-now', 'change-me-admin'],
+    minLength: 24,
+    consequence: 'anyone who read .env.example could sign storage requests as its root account (read, replace or delete every upload) once storage is public on S3_DOMAIN',
+  },
 ];
 
 /**
@@ -66,6 +84,12 @@ export function productionSecretProblems(env, secrets = PRODUCTION_SECRETS) {
     }
     if (s.insecure.includes(env[used])) {
       problems.push({ purpose: s.purpose, vars: [used], reason: 'insecure_default', consequence: s.consequence });
+      continue;
+    }
+    // Only where a length is declared: the older entries judge "is it the repository's
+    // value", and adding a length rule to them would refuse deploys that boot today.
+    if (s.minLength && String(env[used]).length < s.minLength) {
+      problems.push({ purpose: s.purpose, vars: [used], reason: 'too_short', minLength: s.minLength, consequence: s.consequence });
     }
   }
   return problems;
@@ -77,7 +101,9 @@ export function formatProblems(problems) {
     .map((p) => {
       const what = p.reason === 'unset'
         ? `set one of ${p.vars.join(' / ')}`
-        : `${p.vars[0]} is still the value from the repository — change it`;
+        : p.reason === 'too_short'
+          ? `${p.vars[0]} is shorter than ${p.minLength} characters — use a long random value`
+          : `${p.vars[0]} is still the value from the repository — change it`;
       return `  · ${p.purpose}: ${what} (otherwise ${p.consequence})`;
     })
     .join('\n');

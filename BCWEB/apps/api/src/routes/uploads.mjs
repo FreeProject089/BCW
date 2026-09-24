@@ -43,9 +43,12 @@ export async function tempMarginStatus(p) {
 }
 
 const IMG = ['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/svg+xml'];
-// Per-kind upload caps + allowed content types. Checked HERE and nowhere else: the presigned
-// PUT signs `host` only (X-Amz-SignedHeaders=host), so the store enforces neither the type nor
-// the size declared here — MinIO did not either (measured 2026-09-24, agent-s3-replace).
+// Per-kind upload caps + allowed content types. Checked HERE, then ENFORCED BY THE STORE: the
+// presigned PUT is signed over the validated type and exact size (storage.mjs presignPut,
+// X-Amz-SignedHeaders=content-length;content-type;host), so a PUT with another Content-Type
+// or another byte count is refused 403 SignatureDoesNotMatch by the storage server. Until
+// 2026-09-25 it signed `host` only and the store enforced neither (measured 2026-09-24,
+// agent-s3-replace; the fix measured against versitygw v1.8.0, agent-presign).
 // The MIME labels a browser actually puts on a file, which are not the ones a spec would
 // suggest. Windows reads the type from the registry, so the SAME .zip arrives as
 // application/zip on one machine and application/x-zip-compressed on another; a file with a
@@ -138,7 +141,7 @@ export default async function uploadRoutes(app) {
     const key = lim.prefix ? `${lim.prefix}/${randomUUID()}-${safe}` : `uploads/${req.user.uid}/${randomUUID()}-${safe}`;
     // The picture register (lib/media-hash.mjs): the owner is known here and nowhere later.
     await recordUpload(await db(), { key, ownerId: req.user.uid, kind: 'upload', refType: kind.toLowerCase(), contentType, bytes: size });
-    const url = await presignPut(key, contentType);
+    const url = await presignPut(key, { contentType, size });
     // Prefixed kinds (blog/) return a stable public URL served by the media proxy.
     const mediaUrl = lim.prefix ? `/api/media/${key}` : null;
     return { key, url, mediaUrl, expiresIn: 600 };

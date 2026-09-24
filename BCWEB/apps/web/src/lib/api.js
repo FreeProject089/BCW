@@ -39,6 +39,12 @@ export const api = {
   del: (p, b) => req('DELETE', p, b),
 };
 
+// Every presigned PUT below is SIGNED over its Content-Type and Content-Length (api
+// storage.mjs presignPut): the PUT must send exactly the `contentType` it presigned with
+// and exactly `size` bytes, or storage answers 403 SignatureDoesNotMatch. So each helper
+// sends the same `contentType` variable to both calls and presigns with `file.size`; the
+// browser sets Content-Length from the body itself (it is not a header a page may set).
+
 // Upload a payload directly to object storage via a pre-signed PUT, then return
 // the storage key to attach to a catalog submission. Bytes never go through the API.
 export async function uploadPayload(kind, file) {
@@ -53,7 +59,7 @@ export async function uploadPayload(kind, file) {
 // Presign → direct PUT to storage → returns the meta to confirm with PUT /admin/assets/file/:key.
 export async function uploadAsset(assetKey, file) {
   const contentType = file.type || 'application/octet-stream';
-  const { url, storageKey } = await api.post('/admin/assets/presign', { key: assetKey, filename: file.name, contentType });
+  const { url, storageKey } = await api.post('/admin/assets/presign', { key: assetKey, filename: file.name, contentType, size: file.size });
   const put = await fetch(url, { method: 'PUT', headers: { 'Content-Type': contentType }, body: file });
   if (!put.ok) throw Object.assign(new Error('upload_failed'), { status: put.status });
   return { storageKey, filename: file.name, contentType, size: file.size };

@@ -6,6 +6,8 @@ import { presignPut, getObject, deleteObject } from '../lib/storage.mjs';
 // served at stable public URLs `/api/assets/<key>`. File assets live in object storage; JSON
 // assets are stored inline so admins can edit them in the dashboard. Admin-only to write.
 const KEY_RE = /^[a-zA-Z0-9._-]{1,64}$/;
+// The largest platform file (an installer) the presign and the confirm accept.
+const ASSET_MAX_BYTES = 50 * 1024 ** 3;
 
 /**
  * What may be served INLINE, by exact content type.
@@ -90,13 +92,15 @@ export default async function platformAssetRoutes(app) {
   });
 
   // Admin: presign a direct-to-storage upload. The storageKey is minted server-side (under
-  // the platform/ prefix) so a client can never target another prefix.
+  // the platform/ prefix) so a client can never target another prefix. `size` is required and
+  // signed into the URL with the type (storage.mjs presignPut): the store refuses any other
+  // byte count. Capped at the ceiling the confirm route below already accepts.
   app.post('/admin/assets/presign', { preHandler: requireCap('manage_assets') }, async (req, reply) => {
-    const b = z.object({ key: z.string(), filename: z.string().min(1).max(200), contentType: z.string().max(120).optional() }).safeParse(req.body);
+    const b = z.object({ key: z.string(), filename: z.string().min(1).max(200), contentType: z.string().max(120).optional(), size: z.number().int().positive().max(ASSET_MAX_BYTES) }).safeParse(req.body);
     if (!b.success || !KEY_RE.test(b.data.key)) return reply.code(400).send({ error: 'invalid_input' });
     const safeName = b.data.filename.replace(/[^a-zA-Z0-9._-]/g, '_');
     const storageKey = `platform/${b.data.key}/${Date.now()}-${safeName}`;
-    const url = await presignPut(storageKey, b.data.contentType || 'application/octet-stream');
+    const url = await presignPut(storageKey, { contentType: b.data.contentType || 'application/octet-stream', size: b.data.size });
     return { url, storageKey };
   });
 
@@ -106,7 +110,7 @@ export default async function platformAssetRoutes(app) {
     if (!KEY_RE.test(key)) return reply.code(400).send({ error: 'bad_key' });
     const b = z.object({
       label: z.string().max(120).optional(), filename: z.string().min(1).max(200),
-      contentType: z.string().max(120).optional(), size: z.number().int().nonnegative().max(50 * 1024 ** 3).optional(),
+      contentType: z.string().max(120).optional(), size: z.number().int().nonnegative().max(ASSET_MAX_BYTES).optional(),
       storageKey: z.string().max(300), version: z.string().max(40).optional(), channel: z.string().max(40).optional(),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
