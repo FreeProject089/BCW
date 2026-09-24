@@ -171,3 +171,39 @@ describe('the v2 document: strict on write', () => {
     assert.deepEqual(reasons(pkg.serializeDoc(pkg.normalizeDoc(v1))), []);
   });
 });
+
+// Phase 4: the page background is a CLOSED value (packages/studio/src/background.js). The
+// routes that store studio pages (PUT /studio/..., PUT /projects/:key, PUT /admin/showcase/:id,
+// PUT /admin/site/home) all go through configStudioProblems / sectionsStudioProblems / the page
+// save, so this is what each of them answers.
+describe('the page background (phase 4): closed on write', () => {
+  const v2 = (background) => ({ v: 2, id: 'c3', title: 't', frames: { desktop: { w: 1200, fit: 'content' }, phone: { w: 390, fit: 'content', mode: 'stack' } }, background, blocks: [] });
+  test('every kind the studio writes is accepted', () => {
+    for (const background of [
+      { type: 'color', color: 'var(--surface-2)' },
+      { type: 'gradient', angle: 90, stops: [{ color: '#000', at: 0 }, { color: '#ffffff80', at: 100 }] },
+      { type: 'image', src: '/api/media/pages/hero.webp', fit: 'cover', position: 'center' },
+      { type: 'pattern', id: 'dots', color: '#112233', size: 24, opacity: 0.2 },
+      pkg.normalizeBackground({ type: 'scene3d', shape: 'halo', position: 'left' }),
+      { type: 'board', color: '', grid: 24 },
+    ]) assert.deepEqual(configStudioProblems({ canvases: [v2(background)] }, {}), [], JSON.stringify(background));
+  });
+  test('a background that fetches from elsewhere, or is not in the vocabulary, is refused with its path', () => {
+    assert.deepEqual(configStudioProblems({ canvases: [v2({ type: 'image', src: 'https://evil.example/p.png' })] }, {}),
+      [{ path: 'canvases[0].background.src', reason: 'unsafe_url' }]);
+    assert.deepEqual(configStudioProblems({ canvases: [v2({ type: 'color', color: 'url(https://evil.example/p)' })] }, {}),
+      [{ path: 'canvases[0].background.color', reason: 'unsafe_css' }]);
+    assert.deepEqual(sectionsStudioProblems([{ id: 's1', canvas: v2({ type: 'webgl', src: 'x' }) }], []),
+      [{ path: 'customSections[0].canvas.background.type', reason: 'bad_value' }]);
+    assert.deepEqual(configStudioProblems({ canvases: [v2({ type: 'scene3d', shape: 'orb', fps: 240, extra: 1 })] }, {}).map((p) => p.path),
+      ['canvases[0].background.extra', 'canvases[0].background.fps']);
+  });
+  test('a page saved before phase 4 keeps loading: its stored free-text bg is tolerated, and the next save converts it', () => {
+    const old = { v: 2, id: 'c4', frames: { desktop: { w: 1200, fit: 'content' }, phone: { w: 390, fit: 'content', mode: 'stack' } }, bg: 'rgba(0,0,0,.05)', blocks: [] };
+    assert.deepEqual(configStudioProblems({ canvases: [old], tagline: 'edited' }, { canvases: [old] }), []);
+    const saved = pkg.serializeDoc(pkg.normalizeDoc(old));
+    assert.equal(saved.bg, undefined);
+    assert.deepEqual(saved.background, { type: 'color', color: '#0000000d' });
+    assert.deepEqual(configStudioProblems({ canvases: [saved] }, { canvases: [old] }), []);
+  });
+});

@@ -53,6 +53,8 @@
 // A v1 document is migrated on READ (`migrate`), written as v2 at the next save
 // (`serializeDoc`). Nothing is migrated in SQL.
 
+import { normalizeBackground, backgroundFromLegacy, serializeBackground } from './background.js';
+
 /** The document version this code writes. */
 export const DOC_VERSION = 2;
 /** The board's guard rail: no coordinate or size may pass it. Not a layout rule. */
@@ -357,8 +359,9 @@ function normalizeBlock(b, i, taken) {
  *   · `phoneBoard`, or any block placed on the phone board, = `frames.phone.mode: 'board'`.
  *   · Ids that are not names are rewritten by normalisation (S3), as they were in v1.
  *
- * `bg`, `link` and a button's `props.action` are carried unchanged: the closed background
- * type is phase 4 and the action vocabulary phase 5 (PLAN-STUDIO-2026, section 4).
+ * `link` and a button's `props.action` are carried unchanged: the action vocabulary is phase 5
+ * (PLAN-STUDIO-2026, section 4). `bg` is carried too, and turned into the closed `background`
+ * by normalizeDoc (phase 4), which has to do it anyway for the v2 pages saved before phase 4.
  */
 export function migrate(raw) {
   const c = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
@@ -457,7 +460,11 @@ export function normalizeDoc(raw) {
     height: desktop.h,
     phoneHeight: phone.h,
     phoneBoard: mode === 'board',
-    bg: typeof c.bg === 'string' ? c.bg.slice(0, LIMITS.bg) : '',
+    // The page background: a CLOSED value (background.js, PLAN-STUDIO-2026 2.4). A page saved
+    // before phase 4 has the free-text `bg` instead, read once here: what can be recognised
+    // becomes the matching kind, the rest becomes `site`, and `bgNote` tells the studio so it
+    // can say it once. `background` wins when a document somehow carries both.
+    ...pageBackground(c),
     blocks,
     // The snapping step. Stored positions are NOT re-snapped to it — a coarser grid is a
     // choice about the next drag, not a reflow of what is already placed.
@@ -469,6 +476,13 @@ export function normalizeDoc(raw) {
 }
 /** The name every caller used before documents had versions. Same function. */
 export const normalizeCanvas = normalizeDoc;
+
+/** `{ background, bgNote }` for a stored document: its `background`, else its legacy `bg`. */
+function pageBackground(c) {
+  if (c.background != null) return { background: normalizeBackground(c.background), bgNote: '' };
+  const legacy = backgroundFromLegacy(typeof c.bg === 'string' ? c.bg.slice(0, LIMITS.bg) : '');
+  return { background: normalizeBackground(legacy.background), bgNote: legacy.recognized ? '' : 'replaced' };
+}
 
 /**
  * The bottom of what a reader would see in a frame of width `frameW`: the blocks that cross
@@ -513,7 +527,8 @@ function serializeBlock(b) {
  * a height, and a `fixed` one with the height the handle gave it.
  *
  * `extra` is what this change sets besides blocks:
- *   blocks, title, bg, css, grid        replace the document's
+ *   blocks, title, css, grid            replace the document's
+ *   background                          the closed background (`bg`, the old string, is converted)
  *   height / phoneHeight (> 0)          the handle: that frame becomes fixed at that height
  *   phoneBoard (true/false)             the phone gets the board / the stack
  *   frames: { desktop|phone: {...} }    a frame's own fields, e.g. `{ fit: 'content' }`
@@ -530,7 +545,12 @@ export function serializeDoc(canvas, extra = {}) {
   else if (e.phoneBoard === false) phone.mode = 'stack';
   const frame = (f, w) => (f.fit === 'fixed' && num(f.h, 0) > 0
     ? { w, h: clamp(Math.round(num(f.h)), 40, BOUND), fit: 'fixed' } : { w, fit: 'content' });
-  const bg = e.bg !== undefined ? e.bg : n.bg;
+  // The closed background, never the old `bg` string: a legacy value is converted by
+  // normalizeDoc and written back as what it became. `extra.bg` is still understood (the same
+  // conversion), so a caller from before phase 4 cannot write a free-text background either.
+  const background = serializeBackground(e.background !== undefined ? e.background
+    : e.bg !== undefined ? backgroundFromLegacy(e.bg).background
+      : n.background !== undefined ? n.background : pageBackground(n).background);
   const css = e.css !== undefined ? e.css : n.css;
   const grid = e.grid !== undefined ? e.grid : n.grid;
   return {
@@ -541,7 +561,7 @@ export function serializeDoc(canvas, extra = {}) {
       desktop: frame(desk, DESIGN_WIDTH),
       phone: { ...frame(phone, PHONE_WIDTH), mode: phone.mode === 'board' ? 'board' : 'stack' },
     },
-    ...(bg ? { bg } : {}),
+    ...(background ? { background } : {}),
     ...(grid && grid !== GRID ? { grid } : {}),
     ...(css ? { css } : {}),
     blocks: (Array.isArray(e.blocks) ? e.blocks : n.blocks).filter((b) => b && typeof b === 'object').map(serializeBlock),

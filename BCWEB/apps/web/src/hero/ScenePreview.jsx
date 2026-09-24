@@ -14,6 +14,15 @@
 // It DOES reproduce the hover reaction, because that is a setting now and four words in a
 // menu are four words to imagine. The gesture is hovering the CANVAS rather than the shape:
 // raycasting a 200px silhouette would make it a game of aim, and aim is not the subject.
+//
+// The PUBLIC variant (PLAN-STUDIO-2026, phase 4). A studio page whose background is `scene3d`
+// is drawn by this same component, lazily (ui/canvas-background.jsx), so the page's scene and
+// the admin's preview of the site scene are one renderer too. The page form adds what a public
+// page needs and a settings card does not: the shape placed left or right, a frame budget,
+// a still frame for a reader who asked for reduced motion, a pause while it is off screen or
+// the tab is hidden, and `onFail` so the page can fall back to the CSS drawing when WebGL is
+// missing or its context is lost. Every one of those is off by default: the admin card is
+// unchanged.
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import {
@@ -22,12 +31,23 @@ import {
   buildGeometry, SCENE_DEFAULTS, glowOpacity, twinkleLook,
 } from './scene-shapes.js';
 
-export default function ScenePreview({ cfg, className = '' }) {
+/**
+ * @param {object} props
+ * @param {object} props.cfg          the scene settings (hero/scene-config.js vocabulary)
+ * @param {'center'|'left'|'right'} [props.position]  where the shape sits across the box
+ * @param {number} [props.fps]        a frame budget; 0 = every frame (the admin card)
+ * @param {boolean} [props.still]     draw one frame and hold it (reduced motion)
+ * @param {boolean} [props.pauseOffscreen]  stop drawing while scrolled away or the tab is hidden
+ * @param {Function} [props.onFail]   no WebGL here, or the context was lost
+ */
+export default function ScenePreview({ cfg, className = '', position = 'center', fps = 0, still = false, pauseOffscreen = false, onFail = null }) {
   const mount = useRef(null);
   // Read inside the frame loop rather than closed over, so moving a slider does not tear the
   // WebGL context down and build a new one sixty times on the way across.
   const live = useRef(cfg);
   live.current = { ...SCENE_DEFAULTS, ...(cfg || {}) };
+  const opts = useRef(null);
+  opts.current = { position, fps: Number(fps) || 0, still: !!still, pauseOffscreen: !!pauseOffscreen, onFail };
 
   useEffect(() => {
     const el = mount.current;
@@ -38,7 +58,8 @@ export default function ScenePreview({ cfg, className = '' }) {
       renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     } catch {
       // No WebGL2 here. The card says so in words; this just leaves the box empty rather
-      // than throwing inside a settings screen.
+      // than throwing inside a settings screen. A page asks to be told, and draws in CSS.
+      opts.current.onFail?.();
       return undefined;
     }
     const size = () => ({ w: el.clientWidth || 320, h: el.clientHeight || 180 });
@@ -225,11 +246,21 @@ export default function ScenePreview({ cfg, className = '' }) {
     let raf = 0;
     let time = 0;
     let last = 0;
+    let lastDraw = 0;
+    // Page form: drawing stops while the box is off screen or the tab is hidden.
+    let onScreen = true;
+    let lost = false;
     const themeObserver = new MutationObserver(applyPalette);
     themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
+    const running = () => !lost && !opts.current.still && (!opts.current.pauseOffscreen || (onScreen && !document.hidden));
     const frame = (now = performance.now()) => {
-      raf = requestAnimationFrame(frame);
+      raf = running() ? requestAnimationFrame(frame) : 0;
+      // The frame budget: a background drifting at 30 cannot be told from one at 60, and the
+      // GPU it costs can. Skipped frames do not advance the clock either, so speed is kept.
+      const budget = opts.current.fps;
+      if (budget && raf && lastDraw && now - lastDraw < 1000 / budget - 2) return;
+      lastDraw = now;
       // Real seconds, like the hero: the rotation used to be a fixed step per frame, so the
       // card spun 2.5 times faster than the page on a 60 Hz screen and faster still on 144 Hz.
       const dt = Math.min(0.1, Math.max(0.001, last ? (now - last) / 1000 : 1 / 60));
@@ -248,6 +279,10 @@ export default function ScenePreview({ cfg, className = '' }) {
       uniforms.uOpacity.value = palette().opacity * (c.opacity / SCENE_DEFAULTS.opacity);
       uniforms.uFracture.value = mode === 'fracture' ? hoverNow : 0;
       built.root.scale.setScalar(c.scale * (mode === 'swell' ? 1 + hoverNow * 0.13 : 1));
+      // Left or right of the box: a share of the half-width the camera sees at the shape's
+      // depth, so it stays inside the box at any aspect.
+      const side = opts.current.position === 'left' ? -1 : opts.current.position === 'right' ? 1 : 0;
+      built.root.position.x = side * Math.tan((camera.fov * Math.PI) / 360) * camera.position.z * camera.aspect * 0.45;
       built.mesh.rotation.y += 0.096 * c.speed * dt * (mode === 'spin' ? 1 + hoverNow * 3.5 : 1);
       built.mesh.rotation.x = 0.25;
       // The halo LEVEL follows the slider on every frame. It was fixed at build time and the
@@ -260,15 +295,39 @@ export default function ScenePreview({ cfg, className = '' }) {
       renderer.render(stage, camera);
     };
     raf = requestAnimationFrame(frame);
+    /** Draw again after something changed, when the loop is not running (a still or paused scene). */
+    const redraw = () => { if (!raf && !lost) frame(); };
+    /** Start the loop again, if it should be running and is not. */
+    const resume = () => { if (!raf && running()) raf = requestAnimationFrame(frame); };
 
     const onResize = () => {
       const d = size();
       renderer.setSize(d.w, d.h);
       camera.aspect = d.w / d.h;
       camera.updateProjectionMatrix();
+      redraw();
     };
     const ro = new ResizeObserver(onResize);
     ro.observe(el);
+    // A theme change repaints a still scene too (applyPalette runs from the observer above).
+    const themeRedraw = new MutationObserver(redraw);
+    themeRedraw.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    let io = null;
+    if (opts.current.pauseOffscreen && typeof IntersectionObserver !== 'undefined') {
+      io = new IntersectionObserver((es) => { onScreen = es.some((e) => e.isIntersecting); resume(); });
+      io.observe(el);
+    }
+    const onVisibility = () => resume();
+    document.addEventListener('visibilitychange', onVisibility);
+    // A lost context: stop, and let the page draw its still instead. Not restored here: the
+    // page swaps this component out for the CSS drawing, which is the honest answer.
+    const onLost = (e) => {
+      e.preventDefault();
+      lost = true;
+      cancelAnimationFrame(raf); raf = 0;
+      opts.current.onFail?.();
+    };
+    renderer.domElement.addEventListener('webglcontextlost', onLost);
 
     return () => {
       cancelAnimationFrame(raf);
@@ -276,9 +335,16 @@ export default function ScenePreview({ cfg, className = '' }) {
       el.removeEventListener('pointerleave', onLeave);
       ro.disconnect();
       themeObserver.disconnect();
+      themeRedraw.disconnect();
+      io?.disconnect();
+      document.removeEventListener('visibilitychange', onVisibility);
+      renderer.domElement.removeEventListener('webglcontextlost', onLost);
       dispose();
       try {
         renderer.dispose();
+        // The context itself, not only three's buffers: a page has ONE (hero/scene-stage.js),
+        // and the next one to be created must not find this one still alive.
+        renderer.forceContextLoss();
         if (renderer.domElement.parentNode === el) el.removeChild(renderer.domElement);
       } catch { /* the node is already gone */ }
     };

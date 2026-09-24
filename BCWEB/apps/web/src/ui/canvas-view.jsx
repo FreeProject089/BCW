@@ -9,7 +9,8 @@
 // B.MD later shows up here without this file changing.
 import { useEffect, useRef, useState } from 'react';
 import Markdown from './md.jsx';
-import { normalizeDoc, layoutFor, frameBlocks, buttonTarget, menuItemHref, safeLink, EASING_CURVES, DESIGN_WIDTH, PHONE_WIDTH } from '../lib/canvas.js';
+import { normalizeDoc, layoutFor, frameBlocks, buttonTarget, menuItemHref, safeLink, backgroundStyle, EASING_CURVES, DESIGN_WIDTH, PHONE_WIDTH } from '../lib/canvas.js';
+import CanvasBackground from './canvas-background.jsx';
 import { markdownConfig } from '@bettercommunity/bmd/config';
 import { sanitizeSvg } from '../lib/svg-safe.js';
 import { scopeCss, safeClasses, safeInlineStyle, safeCssValue } from '../lib/css-scope.js';
@@ -401,6 +402,11 @@ export default function CanvasView({ canvas: raw, stackPreview = false, themePre
   const mode = themePreview || theme;
 
   const L = stackPreview ? { mode: 'stack' } : layoutFor(vw, canvas);
+  // The page background (closed, PLAN-STUDIO-2026 2.4), painted by canvas-background.jsx. Every
+  // kind is drawn in the FRAME, under the blocks, except `board`, whose whole point is to go on
+  // past the page's edges: that one is the root's own background, the container's full width.
+  const bg = canvas.background;
+  const rootBg = bg.type === 'board' ? backgroundStyle(bg) : null;
   // The page is the FRAME (v2, PLAN-STUDIO-2026 2.2): a block entirely outside it is parked on
   // the author's board, not part of the page, and is not MOUNTED here at all: no image or
   // video request for a picture nobody can see, no iframe loading in the dark. Which blocks
@@ -412,8 +418,11 @@ export default function CanvasView({ canvas: raw, stackPreview = false, themePre
   // Only what is ON the desktop page reaches the column: the stack is that page, read in order.
   if (L.mode === 'stack') {
     return (
-      <div ref={hostRef} className="space-y-4" data-cv={canvas.id} style={{ background: safeCssValue(canvas.bg) || undefined, ...CONFINE }}>
+      <div ref={hostRef} className="space-y-4" data-cv={canvas.id} data-cv-background={bg.type} style={{ ...rootBg, position: 'relative', ...CONFINE }}>
         <ScopedCss canvas={canvas} />
+        {/* The column is the frame here. z-index -1 inside the root's own stacking context (its
+            transform makes one): under the blocks, over the root's own background. */}
+        {!rootBg && <CanvasBackground bg={bg} style={{ zIndex: -1 }} />}
         {frameBlocks(canvas, 'stack', mode).map((b) => (
           <Animated key={b.id} id={b.id} anim={b.anim} className="min-w-0" style={b.opacity < 1 ? { opacity: b.opacity } : undefined}>
             <BlockShell b={b}><CanvasBlock b={b} stacked /></BlockShell>
@@ -437,9 +446,13 @@ export default function CanvasView({ canvas: raw, stackPreview = false, themePre
   // author did not place there and that is off the DESKTOP page is parked too.
   const blocks = frameBlocks(canvas, phone ? 'phone' : 'scale', mode);
   return (
-    <div ref={hostRef} className="w-full overflow-hidden" data-cv={canvas.id} style={{ background: safeCssValue(canvas.bg) || undefined, ...CONFINE }}>
+    <div ref={hostRef} className="w-full overflow-hidden" data-cv={canvas.id} data-cv-background={bg.type} style={{ ...rootBg, ...CONFINE }}>
       <ScopedCss canvas={canvas} />
       <div style={{ height: planeH * L.scale, position: 'relative', ...(phone ? { width: planeW * L.scale, margin: '0 auto' } : {}) }}>
+        {/* The frame's box on screen, in screen pixels (not inside the scaled plane): a 3D scene
+            renders at the size it is shown, not at 1200px scaled down. Before the plane in the
+            DOM, so the blocks paint over it. */}
+        {!rootBg && <CanvasBackground bg={bg} style={{ inset: 'auto', left: 0, top: 0, width: planeW * L.scale, height: planeH * L.scale }} />}
         <div
           data-cv-frame={phone ? 'phone' : 'desktop'}
           style={{

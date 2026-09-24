@@ -221,7 +221,11 @@ try {
   const frameEl = /<div[^>]*data-cst-frame="desktop"[^>]*>/.exec(free)?.[0] || '';
   must(!!frameEl, 'the page frame is not drawn on the board');
   must(/width:\s*1200px/.test(frameEl) && /height:\s*400px/.test(frameEl), `the frame is not the page's 1200 x 400: ${frameEl.slice(0, 200)}`);
-  must(/background:\s*#123456/.test(frameEl), 'the board does not paint the page background');
+  // The page background (here the legacy `bg: '#123456'`, read as a closed `color`) is the
+  // reader's own layer, drawn INSIDE the frame (ui/canvas-background.jsx, phase 4).
+  const frameAt = free.indexOf(frameEl);
+  const frameLayer = /<div[^>]*data-cv-bg="color"[^>]*>/.exec(free.slice(frameAt, frameAt + 4000))?.[0] || '';
+  must(/background-color:\s*#123456/.test(frameLayer), `the board does not paint the page background inside the frame: ${frameLayer.slice(0, 200) || 'no layer'}`);
   must(/<style>[^<]*\[data-cv=(?:"|&quot;)fb1(?:"|&quot;)\] \.hero/.test(free), 'the board does not apply the page stylesheet, scoped');
   const parked = /<div[^>]*data-cst-block="park"[^>]*>/.exec(free)?.[0] || '';
   must(/data-off-frame="1"/.test(parked), 'a block left of the page is not marked as off the frame');
@@ -393,6 +397,65 @@ for (const [name, renderIt] of [['scaled', () => page(HOSTILE, 'light')], ['stac
   must(/contain:\s*layout paint/.test(root) && /transform:\s*translateZ\(0\)/.test(root),
     `${name}: the canvas root does not confine position:fixed (needs contain: layout paint and a transform): ${root.slice(0, 200)}`);
 }
+
+// ── Page backgrounds (PLAN-STUDIO-2026 2.4, phase 4). ────────────────────────────────
+// A closed value: every kind is rebuilt from named fields, so nothing typed reaches a style
+// attribute as text. Hostile values of every kind, through the real component in both layouts:
+// not one url() to another host, not one script scheme, and no stray declaration. Then the 3D
+// kind: the server render (and so the first paint) is the still CSS drawing, never a <canvas>,
+// and the studio's board draws it still too, so the editor opens no WebGL context.
+const BG_EVIL = [
+  { type: 'color', color: `url(${EVIL})` },
+  { type: 'color', color: 'red;background:url(https://evil.example/c)' },
+  { type: 'color', color: 'var(--x);background-image:url(https://evil.example/v)' },
+  { type: 'gradient', angle: 90, stops: [{ color: `url(${EVIL})`, at: 0 }, { color: '#fff', at: 100 }, { color: 'image-set("https://evil.example/s" 1x)' }] },
+  { type: 'image', src: EVIL },
+  { type: 'image', src: '//evil.example/p.png' },
+  { type: 'image', src: '/api/media/../../x");background:url(https://evil.example/q' },
+  { type: 'image', src: '/api/media/%2e%2e/%2fevil.example/p.png' },
+  { type: 'pattern', id: 'dots', color: '"/><image href="https://evil.example/i"/>' },
+  { type: 'pattern', id: 'x");background:url(https://evil.example/pid' },
+  { type: 'board', color: `url(${EVIL})`, grid: 24 },
+  { type: 'scene3d', shape: 'x");background:url(https://evil.example/sh', position: 'url(https://evil.example/pos)' },
+  { type: 'nope', color: `url(${EVIL})` },
+];
+for (const [i, background] of BG_EVIL.entries()) {
+  const doc = { v: 2, id: `bgx${i}`, frames: { desktop: { w: 1200, h: 400, fit: 'fixed' }, phone: { w: 390, fit: 'content', mode: 'stack' } }, background,
+    blocks: [{ id: 't1', kind: 'text', x: 0, y: 0, w: 300, h: 100, props: { md: 'x' } }] };
+  for (const [name, renderIt] of [['scaled', () => page(doc, 'light')], ['stacked', () => stack(doc)], ['board', () => withWindow(mq(true, false), () => renderPage(doc))]]) {
+    let out = '';
+    try { out = renderIt(); } catch (e) { problems.push(`background #${i} threw in the ${name} layout: ${e?.message || e}`); continue; }
+    const styles = [...out.matchAll(/\sstyle="([^"]*)"/g)].map((m) => decodeAttr(m[1]));
+    const offsite = styles.filter((st) => /evil\.example/.test(st) || /url\((?!\s*['"]?(?:\/(?!\/)|data:image\/))/i.test(st));
+    must(!offsite.length, `${name}: hostile background #${i} (${background.type}) reached a style attribute: ${offsite.join(' | ').slice(0, 200)}`);
+    must(!/evil\.example/.test(out), `${name}: hostile background #${i} (${background.type}) reached the markup at all`);
+  }
+}
+const SCENE_DOC = { v: 2, id: 'sc1', frames: { desktop: { w: 1200, h: 500, fit: 'fixed' }, phone: { w: 390, fit: 'content', mode: 'stack' } },
+  background: { type: 'scene3d', shape: 'gem', position: 'right', glow: 0.5 },
+  blocks: [{ id: 't1', kind: 'text', x: 40, y: 40, w: 400, h: 120, props: { md: '# Hi' } }] };
+try {
+  for (const [name, out] of [['scaled', page(SCENE_DOC, 'light')], ['stacked', stack(SCENE_DOC)]]) {
+    must(/data-cv-bg="scene3d"/.test(out), `${name}: a 3D background drew no layer`);
+    must(/data-scene-mode="still"/.test(out), `${name}: the first paint of a 3D background is not the still drawing`);
+    must(!/<canvas/i.test(out), `${name}: a 3D background put a <canvas> in the server render`);
+    must(/clip-path:\s*polygon/.test(out), `${name}: the still drawing of the gem is not its outline`);
+  }
+  const ed = withWindow(mq(true, false), () => renderPage(SCENE_DOC));
+  must(/data-cst-frame="desktop"[^>]*data-bg="scene3d"/.test(ed), 'the board does not know the page has a 3D background');
+  must(/data-cv-bg="scene3d"[^>]*data-scene-mode="still"/.test(ed), 'the board does not draw a 3D background as its still drawing');
+  must(!/<canvas/i.test(ed), 'the studio put a <canvas> on the page (the board must never open a WebGL context)');
+  // The Page panel is a dock panel now, with a thumbnail per kind of background.
+  must(/data-page-panel/.test(ed), 'the Page panel is not in the dock');
+  const kinds = [...ed.matchAll(/data-bg-kind="([a-z0-9]+)"/g)].map((m) => m[1]);
+  must(['site', 'color', 'gradient', 'image', 'pattern', 'scene3d', 'board'].every((k) => kinds.includes(k)), `the Page panel does not offer every kind of background: ${kinds.join(',')}`);
+  must((ed.match(/data-bg-thumb=/g) || []).length >= 7, 'the kinds of background have no thumbnails');
+} catch (e) { problems.push(`the 3D background threw: ${e?.message || e}`); }
+// An old page whose free-text background cannot be kept says so in the studio, once.
+try {
+  const legacy = withWindow(mq(true, false), () => renderPage({ id: 'lg1', title: '', bg: 'color-mix(in srgb, var(--primary) 10%, transparent)', blocks: [] }));
+  must(/data-bg-note/.test(legacy), 'an old background that was replaced is not reported in the Page panel');
+} catch (e) { problems.push(`the legacy background note threw: ${e?.message || e}`); }
 
 cleanup();
 

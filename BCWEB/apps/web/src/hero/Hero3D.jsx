@@ -10,6 +10,7 @@ import {
   buildGeometry, SCENE_DEFAULTS, readSceneConfig,
   glowOpacity, twinkleLook, restingFrame, REST_POS,
 } from './scene-shapes.js';
+import { STATIC_CLIP, RING_MASK, isRingShape } from './scene-still.js';
 
 // v4 — the intro loader and the background are now literally the same canvas:
 // the orb starts big and centered (the "loading" moment), then GSAP animates it
@@ -26,7 +27,13 @@ function webglAvailable() {
   try {
     if (!window.WebGL2RenderingContext) return false;
     const c = document.createElement('canvas');
-    return !!c.getContext('webgl2');
+    const gl = c.getContext('webgl2');
+    if (!gl) return false;
+    // A probe, not a context to keep. Released now rather than whenever the canvas happens to be
+    // collected: a page holds ONE live WebGL context (hero/scene-stage.js), and a forgotten probe
+    // was measured as a second one next to the scene.
+    gl.getExtension('WEBGL_lose_context')?.loseContext();
+    return true;
   } catch { return false; }
 }
 
@@ -44,12 +51,8 @@ const HERO_SCALE = 1.5;
 // visual simply vanished on exactly the machines and moments where it failed. This is the
 // scene's own shape at the scene's own resting place and size (restingFrame projects it
 // through the hero's camera), shaded with the palette the shader uses, with its halo. A disc
-// for the round solids, a clipped polygon for the flat ones, a ring for the two tori.
-const STATIC_CLIP = {
-  prism: 'polygon(50% 4%, 96% 86%, 4% 86%)',
-  crystal: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)',
-  gem: 'polygon(50% 2%, 97% 36%, 79% 94%, 21% 94%, 3% 36%)',
-};
+// for the round solids, a clipped polygon for the flat ones, a ring for the two tori. The
+// outlines are in scene-still.js (no three.js), shared with a studio page's 3D background.
 const hex6 = (n) => `#${Number(n).toString(16).padStart(6, '0')}`;
 export function paintStaticScene(el, cfg) {
   if (!el) return;
@@ -65,9 +68,9 @@ export function paintStaticScene(el, cfg) {
   const f = restingFrame(c.scale);
   const d = Math.max(40, f.radiusPx * 2);
   const at = `left:${f.xPct}%;top:${f.yPct}%;transform:translate(-50%,-50%);position:absolute;`;
-  const ring = c.shape === 'ring' || c.shape === 'halo';
+  const ring = isRingShape(c.shape);
   const body = `radial-gradient(circle at 34% 30%, ${hex6(q.rim)} 0%, ${hex6(q.colorA)} 30%, ${hex6(q.colorB)} 78%, color-mix(in srgb, ${hex6(q.colorB)} 60%, transparent) 100%)`;
-  const ringMask = 'radial-gradient(circle, transparent 0 38%, #000 40% 69%, transparent 71%)';
+  const ringMask = RING_MASK;
   const glow = Math.max(0, Number(c.glow) || 0);
   layer.innerHTML = '';
   if (glow > 0) {
@@ -128,6 +131,22 @@ export default function Hero3D() {
 function Hero3DScene() {
   const { t } = useI18n();
   const { active, finish } = useIntro();
+  // Unmounted while the intro still holds the site (a first page that brings its own 3D
+  // background takes the stage from this component, hero/scene-stage.js): the overlay goes with
+  // this component, so the site it was holding back must be revealed on the way out, or it
+  // would stay hidden behind nothing. `finish` is idempotent and a new function every render,
+  // hence the ref. Checked a tick later, not in the cleanup itself: StrictMode unmounts and
+  // remounts every component once in development, and finishing there would skip the intro.
+  const finishRef = useRef(finish);
+  finishRef.current = finish;
+  const alive = useRef(false);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+      setTimeout(() => { if (!alive.current) finishRef.current(); }, 0);
+    };
+  }, []);
   const mount = useRef(null);
   const logoRef = useRef(null);
   const barRef = useRef(null);
@@ -1001,6 +1020,11 @@ function Hero3DScene() {
       if (wireOverlay) wireOverlay.material.dispose();
       glowTex.dispose(); glowMat.dispose(); twinkleGeo.dispose(); twinkleMat.dispose();
       renderer.dispose();
+      // Give the context BACK, not just the buffers. dispose() frees what three allocated and
+      // leaves the context alive until the canvas is collected, whenever that is; a studio page
+      // with its own 3D background takes the stage the moment this unmounts
+      // (hero/scene-stage.js), and "one WebGL context per page" has to be true then, not later.
+      try { renderer.forceContextLoss(); } catch { /* already lost */ }
       if (renderer.domElement.parentNode === el) el.removeChild(renderer.domElement);
       clearStaticScene(el);
     };

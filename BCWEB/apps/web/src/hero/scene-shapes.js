@@ -206,18 +206,9 @@ void main() {
  * were already exposed and already applied to every shape. A shape that is not a shape is
  * worse than no entry — it is the one a reader picks when they want the sliders to work.
  */
-export const SCENE_SHAPES = [
-  // The six platonic/torus silhouettes the scene shipped with.
-  'orb', 'prism', 'crystal', 'gem', 'ring', 'halo',
-  // Five that are not a subdivided ball. Each was chosen for a silhouette the first six cannot
-  // reach at any slider setting, not for a different number of faces on the same ball:
-  //   cube     right angles and flat squares — the only shape here with a corner you can name
-  //   spire    one point and a wide base; the only vertically asymmetric solid
-  //   capsule  tall, round-ended; the only one whose height is twice its width
-  //   spiral   a coil — more negative space than solid, and it reads as motion when still
-  //   vase     a revolved profile with a waist; a curve that goes in and back out
-  'cube', 'spire', 'capsule', 'spiral', 'vase',
-];
+// The list itself is in the studio package (packages/studio/src/scene.js), so a studio page's
+// 3D background is validated against the shapes this file can actually build.
+export { SCENE_SHAPES } from '../../../../packages/studio/src/scene.js';
 
 /**
  * The path the `spiral` shape is swept along: a helix whose radius swells in the middle, so

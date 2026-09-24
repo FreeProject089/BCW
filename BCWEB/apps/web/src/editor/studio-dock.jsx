@@ -39,7 +39,9 @@ export function defaultDockLayout() {
   return {
     zones: {
       left: { panels: ['blocks', 'layers', 'components'], size: 280, collapsed: false },
-      right: { panels: ['props'], size: 320, collapsed: false },
+      // `page` (background, stylesheet) under the inspector: both describe what is selected, the
+      // block or, with nothing selected, the page. A layout saved before it existed gets it here.
+      right: { panels: ['props', 'page'], size: 320, collapsed: false },
       bottom: { panels: [], size: 200, collapsed: false },
     },
     // A panel closed from its × is remembered as closed; it comes back from the Panels menu.

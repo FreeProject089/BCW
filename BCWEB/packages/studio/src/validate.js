@@ -25,13 +25,16 @@ import {
   PHONE_MODES, DOC_VERSION, propAllowed, safeLink, buttonTarget,
 } from './canvas.js';
 import { safeCssValue, decodeCssEscapes } from './css-scope.js';
+import { backgroundProblems } from './background.js';
 
 /** A page, serialised, may not be larger than this. */
 export const MAX_DOC_BYTES = LIMITS.bytes;
 
 /** The fields a document may have at the top, by version. */
 const DOC_KEYS_V1 = ['id', 'title', 'height', 'phoneHeight', 'phoneBoard', 'bg', 'grid', 'css', 'blocks'];
-const DOC_KEYS_V2 = ['v', 'id', 'title', 'frames', 'bg', 'grid', 'css', 'blocks'];
+// `background` is the closed value (background.js, phase 4). `bg` stays readable on a v2 page
+// saved before phase 4 (the API tolerates what is already stored); the studio never writes it.
+const DOC_KEYS_V2 = ['v', 'id', 'title', 'frames', 'background', 'bg', 'grid', 'css', 'blocks'];
 /** The fields a block may have. */
 export const BLOCK_KEYS = ['id', 'kind', 'x', 'y', 'w', 'h', 'z', 'props', 'opacity', 'themes', 'phone', 'anim',
   'name', 'locked', 'hidden', 'rotate', 'shadow', 'hover', 'link', 'component'];
@@ -108,6 +111,8 @@ export function validateDoc(doc, prefix = '') {
   text(c.title, LIMITS.title, 'title', add);
   if (c.bg != null && typeof c.bg !== 'string') add('bg', 'bad_type', c.bg);
   else if (!cssValueOk(c.bg)) add('bg', 'unsafe_css', c.bg);
+  // Closed: every field named, every value one of the kinds' own (background.js).
+  if (v2) backgroundProblems(c.background, (path, reason, value) => add(path, reason, value));
   if (c.grid != null && !GRID_SIZES.includes(c.grid)) add('grid', 'bad_value', c.grid);
   if (c.css != null && typeof c.css !== 'string') add('css', 'bad_type', '');
   else if (typeof c.css === 'string') {

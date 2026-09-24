@@ -20,7 +20,7 @@
 //
 // The dist directory can be overridden (`--dist <dir>` or BUDGET_DIST), so a build written
 // elsewhere (`vite build --outDir <dir>`) can be measured without touching ./dist.
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -70,18 +70,23 @@ const name = (href) => href.split('/').pop();
 // `import("./x.js")` has a parenthesis and is not matched.
 const STATIC_IMPORT = /(?:^|[;}\s])import\s*(?:[\w$*{}\s,]+?\s*from\s*)?["'](\.\/[^"']+\.js)["']/g;
 const hrefDir = (href) => href.slice(0, href.lastIndexOf('/') + 1);
-const closure = new Set([entrySrc, ...preloads]);
-const queue = [...closure];
-const viaImport = new Set();
-while (queue.length) {
-  const h = queue.shift();
-  const p = join(DIST, h.replace(/^\//, ''));
-  if (!existsSync(p)) continue;
-  for (const m of readFileSync(p, 'utf8').matchAll(STATIC_IMPORT)) {
-    const dep = hrefDir(h) + m[1].slice(2);
-    if (!closure.has(dep)) { closure.add(dep); viaImport.add(dep); queue.push(dep); }
+/** Everything `roots` import statically, recursively (the roots included). */
+function staticClosure(roots, viaImport = null) {
+  const seen = new Set(roots);
+  const queue = [...seen];
+  while (queue.length) {
+    const h = queue.shift();
+    const p = join(DIST, h.replace(/^\//, ''));
+    if (!existsSync(p)) continue;
+    for (const m of readFileSync(p, 'utf8').matchAll(STATIC_IMPORT)) {
+      const dep = hrefDir(h) + m[1].slice(2);
+      if (!seen.has(dep)) { seen.add(dep); viaImport?.add(dep); queue.push(dep); }
+    }
   }
+  return seen;
 }
+const viaImport = new Set();
+const closure = staticClosure([entrySrc, ...preloads], viaImport);
 
 const entryKB = gzKB(entrySrc);
 const uniq = [...closure].filter((h) => h !== entrySrc);
@@ -107,6 +112,39 @@ if (totalKB > PRELOAD_BUDGET_KB) {
   console.error('  The entry, every <link rel="modulepreload"> in index.html and every chunk they import statically is what a first visit downloads.');
   console.error('  Check which file grew (listed above). A manual chunk takes its static dependencies with it, and an eager import of it drags the lot in.');
   fail = true;
+}
+// three.js stays LAZY (PLAN-STUDIO-2026, phase 4). A studio page can have a 3D background, drawn
+// by hero/ScenePreview.jsx through a dynamic import in ui/canvas-background.jsx, and the studio
+// itself shows every background. One static import of the scene from either (the entry-chunk
+// hoist trap: a chunk imported eagerly anywhere is dragged up) and ~120 KB gzip ride along with every studio page and
+// every visit. So: vendor-three must not be in the first load, nor in what the studio route or
+// the page renderer load before a 3D background is actually drawn. And the check proves it can
+// see three at all: the scene chunk must reach it, or the answer "absent" means nothing.
+const ASSETS = join(DIST, 'assets');
+const assetJs = existsSync(ASSETS) ? readdirSync(ASSETS).filter((f) => f.endsWith('.js')) : [];
+const threeChunks = assetJs.filter((f) => /^vendor-three-[\w-]+\.js$/.test(f)).map((f) => `/assets/${f}`);
+const lazyRoots = assetJs.filter((f) => /^(?:studio|canvas-view|canvas-studio|canvas-background)-[\w-]+\.js$/.test(f)).map((f) => `/assets/${f}`);
+const sceneChunks = assetJs.filter((f) => /^ScenePreview-[\w-]+\.js$/.test(f)).map((f) => `/assets/${f}`);
+const hasThree = (set) => threeChunks.some((h) => set.has(h));
+if (!threeChunks.length || !sceneChunks.length || !lazyRoots.some((h) => /\/studio-(?!page-)/.test(h)) || !lazyRoots.some((h) => h.includes('/canvas-view-'))) {
+  console.error(`\n✖ three.js check: could not find the chunks it measures (vendor-three: ${threeChunks.length}, ScenePreview: ${sceneChunks.length}, studio/canvas-view: ${lazyRoots.map(name).join(', ') || 'none'}). Refusing to report success.`);
+  fail = true;
+} else {
+  if (!sceneChunks.some((h) => hasThree(staticClosure([h])))) {
+    console.error('\n✖ three.js check: the 3D scene chunk does not import vendor-three, so this check cannot see three at all.');
+    fail = true;
+  }
+  if (hasThree(closure)) {
+    console.error('\n✖ three.js is in the first load (the entry, a modulepreload or one of their static imports). It must arrive only with the 3D scene.');
+    fail = true;
+  }
+  for (const root of lazyRoots) {
+    if (hasThree(staticClosure([root]))) {
+      console.error(`\n✖ ${name(root)} imports three.js statically: the studio and a studio page must not load it until a 3D background is drawn (ui/canvas-background.jsx loads it lazily).`);
+      fail = true;
+    }
+  }
+  if (!fail) console.log(`three.js: absent from the first load and from ${lazyRoots.map(name).join(', ')}; reached only through the 3D scene chunk.`);
 }
 if (fail) process.exit(1);
 console.log('bundle-budget OK');

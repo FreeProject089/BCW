@@ -38,14 +38,17 @@ export interface StudioDoc {
   frames: { desktop: Required<Frame>; phone: Required<PhoneFrame> };
   /** Read-only conveniences derived from `frames`; never stored. */
   height: number; phoneHeight: number; phoneBoard: boolean;
-  bg: string; grid: number; css: string;
+  /** The closed background (phase 4). `bgNote` is 'replaced' when a legacy `bg` could not be kept. */
+  background: Background; bgNote: '' | 'replaced';
+  grid: number; css: string;
   blocks: Block[];
 }
 
 /** A document as it is STORED (serializeDoc): defaults left out, derived values never written. */
 export interface StoredDoc {
   v: 2; id: string; title: string; frames: Frames;
-  bg?: string; grid?: number; css?: string;
+  /** Absent = `site`. `bg` is only ever READ (a page saved before phase 4). */
+  background?: Background; bg?: string; grid?: number; css?: string;
   blocks: Array<Partial<Block> & Pick<Block, 'id' | 'kind' | 'x' | 'y' | 'w' | 'h' | 'z'>>;
 }
 
@@ -177,3 +180,47 @@ export function safeClasses(input: unknown): string;
 export function safeInlineStyle(input: unknown): Record<string, string>;
 export function sanitizeSvg(input: unknown): string;
 export function svgRefusals(input: unknown): string[];
+
+// ── Backgrounds (background.js, phase 4) ───────────────────────────────────────────────
+export type BackgroundType = 'site' | 'color' | 'gradient' | 'image' | 'pattern' | 'scene3d' | 'board';
+export interface GradientStop { color: string; at: number }
+export type Background =
+  | { type: 'site' }
+  | { type: 'color'; color: string }
+  | { type: 'gradient'; angle: number; stops: GradientStop[] }
+  | { type: 'image'; src: string; fit: 'cover' | 'contain' | 'tile'; position: 'center' | 'top' | 'bottom' | 'left' | 'right' }
+  | { type: 'pattern'; id: string; color: string; size: number; opacity: number }
+  | { type: 'scene3d'; shape: string; surface: 'solid' | 'wire' | 'both'; position: 'center' | 'left' | 'right';
+      detail: number; noise: number; speed: number; opacity: number; scale: number; glow: number; twinkles: number; fps: number }
+  | { type: 'board'; color: string; grid: number };
+export const BACKGROUND_TYPES: readonly BackgroundType[];
+export const BACKGROUND_FIELDS: Readonly<Record<BackgroundType, readonly string[]>>;
+export const BG_TOKENS: readonly string[];
+export const BG_IMAGE_PREFIXES: readonly string[];
+export const BG_IMAGE_FITS: readonly string[];
+export const BG_POSITIONS: readonly string[];
+export const SCENE3D_POSITIONS: readonly string[];
+export const BOARD_GRIDS: readonly number[];
+export const GRADIENT_STOPS: Readonly<{ min: number; max: number }>;
+export function bgColor(raw: unknown): string;
+export function patternColor(raw: unknown): string;
+export function bgImagePath(raw: unknown): string;
+export function normalizeBackground(raw: unknown): Background;
+export function serializeBackground(raw: unknown): Background | null;
+export function backgroundFromLegacy(raw: unknown): { background: Background; recognized: boolean };
+export function gradientCss(b: { angle: number; stops: GradientStop[] }): string;
+export function backgroundStyle(raw: unknown): Record<string, string>;
+export function backgroundProblems(raw: unknown, push: (path: string, reason: string, value: unknown) => void, at?: string): void;
+
+// ── Patterns (patterns.js) and the scene vocabulary (scene.js) ─────────────────────────
+export const PATTERNS: ReadonlyArray<{ id: string; name: string; nameFr: string; draw: (size: number, color: string) => string }>;
+export const PATTERN_IDS: readonly string[];
+export function patternImage(id: string, opts?: { color?: string; size?: number }): string;
+export function patternStyle(cfg: { id?: string; color?: string; size?: number; opacity?: number } | null): Record<string, string>;
+export const SCENE_SHAPES: readonly string[];
+export const SCENE_SURFACES: readonly string[];
+export const SCENE_BOUNDS: Readonly<Record<string, { min: number; max: number; step: number; unit: string }>>;
+export const SHAPE_DETAIL_MAX: Readonly<Record<string, number>>;
+export const SCENE_LOOK_DEFAULTS: Readonly<Record<string, string | number>>;
+export function detailMaxFor(shape: string): number;
+export function clampSceneNumber(key: string, value: unknown, shape: string, fallback?: number): number;

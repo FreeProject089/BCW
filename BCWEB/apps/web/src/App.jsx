@@ -1,4 +1,5 @@
-import { useEffect, useState, useRef, useLayoutEffect } from 'react';
+import { useEffect, useState, useRef, useLayoutEffect, useSyncExternalStore } from 'react';
+import { stageClaimed, subscribeStage } from './hero/scene-stage.js';
 import { createPortal } from 'react-dom';
 import { Routes, Route, Link, NavLink, Navigate, useLocation, useNavigate, useNavigationType } from 'react-router-dom';
 import { Code2, Boxes, Orbit, Music2, Newspaper, Server, Rocket, LayoutDashboard, Shield, LogOut, Download, Menu, X, Sparkles, Bell, Mail, Home as HomeIcon, ChevronDown, MoreHorizontal, LayoutGrid, ShieldCheck, ArrowUpRight, Info, AlertTriangle, CheckCircle2, Settings as SettingsIcon, BookOpen, Search, Languages, LogIn, Cloud, HelpCircle, UserRound } from 'lucide-react';
@@ -1685,6 +1686,9 @@ export default function App() {
   const { t, lang } = useI18n();
   // See BOOTED_OFFLINE above. One-way: it can only be cleared, by the network coming back.
   const [offline, setOffline] = useState(BOOTED_OFFLINE);
+  // A studio page with its own 3D background takes the stage (hero/scene-stage.js): one scene,
+  // one WebGL context per page, so the backdrop below steps down while it is shown.
+  const pageScene = useSyncExternalStore(subscribeStage, stageClaimed, () => false);
   useEffect(() => {
     if (!offline) return undefined;
     const back = () => setOffline(false);
@@ -1790,7 +1794,9 @@ export default function App() {
             reload), the throw used to reach the ROOT boundary and replace the whole site with the
             error card, for a decorative backdrop. Contained here, the page renders without it;
             every other failure mode is handled inside Hero3D with a still drawing of the scene. */}
-        {!getHero3dDisabled() && <ErrorBoundary fallback={null}><Suspense fallback={null}><Hero3D /></Suspense></ErrorBoundary>}
+        {/* A page that brings its own 3D background (a studio page, PLAN-STUDIO-2026 2.4) takes
+            the backdrop's place while it is shown: a page has one scene and one WebGL context. */}
+        {!getHero3dDisabled() && !pageScene && <ErrorBoundary fallback={null}><Suspense fallback={null}><Hero3D /></Suspense></ErrorBoundary>}
         <AppReveal>
           <PromoBadge />
           <EventEffect />

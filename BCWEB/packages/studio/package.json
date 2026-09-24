@@ -12,6 +12,9 @@
     "./validate": "./src/validate.js",
     "./css-scope": "./src/css-scope.js",
     "./svg-safe": "./src/svg-safe.js",
+    "./background": "./src/background.js",
+    "./patterns": "./src/patterns.js",
+    "./scene": "./src/scene.js",
     "./package.json": "./package.json"
   },
   "files": [
