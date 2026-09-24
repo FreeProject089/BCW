@@ -1,0 +1,23 @@
+{
+  "$comment": "Advisories judged unreachable, read by .github/scripts/dep-audit.mjs. One entry per advisory and folder; every entry needs a reason. Anything not listed here fails CI. Remove an entry the day the dependency is fixed (the audit prints a warning when an entry is no longer reported). Decision: BCWEB/guides/SECURITY_SUMMARY_EN.md section 9, 'No dependency audit in CI'.",
+  "ignore": [
+    {
+      "id": "GHSA-jrc7-96c5-q579",
+      "tool": "npm",
+      "package": "maplibre-gl <=6.4.0",
+      "paths": ["BCWEB/apps/web", "BCWEB/bmm/telemetry-dashboard/web"],
+      "reason": "XSS sanitizer bypass in DOM.sanitize(), which maplibre applies to attribution HTML and popup content only. Both maps feed it string literals (apps/web/src/pages/admin.jsx attribution constant with attributionControl:false; telemetry-dashboard MapPage.tsx two literal attributions), neither uses Popup/setHTML/innerHTML, markers are built from numbers, and both surfaces are admin-only. The fix is a semver-major bump (5.x -> 6.10), scheduled separately.",
+      "ref": "BCWEB/SECURITY_AUDIT.md F10-14",
+      "reviewed": "2026-09-24"
+    },
+    {
+      "id": "RUSTSEC-2023-0071",
+      "tool": "cargo",
+      "package": "rsa 0.9.10",
+      "paths": ["BCWEB/bmm/telemetry-dashboard/server"],
+      "reason": "Marvin timing attack on RSA PKCS#1 v1.5 decryption. rsa is in Cargo.lock only through sqlx-mysql; the server enables sqlx's postgres feature alone, so rsa is never compiled (`cargo tree -i rsa --target all -e all` prints nothing). No fixed version exists upstream.",
+      "ref": ".Assets/.md/CWE_REMEDIATION_PLAN.md C10-F (BMM repo, accepted for rsa 0.10.0-rc.18 / 0.9.10)",
+      "reviewed": "2026-09-24"
+    }
+  ]
+}
