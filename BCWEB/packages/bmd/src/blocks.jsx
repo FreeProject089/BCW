@@ -126,7 +126,9 @@ export function DocReplay({ node }) {
   if (!Replay) return <MissingBlock name="replay" />;
   return (
     <Replay
-      src={p.dataSrc || p['data-src'] || ''}
+      // The same URL policy as every other block that loads something (apiUrl, below): the
+      // host's player fetches this, so it gets a vetted URL or nothing.
+      src={apiUrl(p.dataSrc || p['data-src'] || '')}
       title={p.dataTitle || p['data-title'] || ''}
       autoplay={(p.dataAutoplay || p['data-autoplay']) === 'true'}
       loop={(p.dataLoop || p['data-loop']) === 'true'}

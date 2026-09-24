@@ -262,8 +262,16 @@ export async function presignRepoFile(p, repo, { path: rawPath, size, contentTyp
   return { key, url, path, expiresIn: 600 };
 }
 
-export async function registerRepoFile(p, repo, { path: rawPath, key, size, contentType = 'application/octet-stream', sha256: fileSha }, actor) {
+export async function registerRepoFile(p, repo, { path: rawPath, key: _clientKey, size, contentType = 'application/octet-stream', sha256: fileSha }, actor) {
   const path = norm(rawPath);
+  // The object key is DERIVED, never taken from the caller (full audit, Sept 24 2026). The
+  // presign step returns exactly this key and a well-behaved client echoes it back — but the
+  // register route trusted whatever `key` it was handed and later `getObject(file.key)` streams
+  // it, so a caller could register a row pointing at ANOTHER repo's object (or any key in the
+  // one shared bucket) and have it served through its own repo's public URL — past the victim's
+  // sync password, whitelist and take-down status (CWE-639/CWE-284). One repo can only ever name
+  // its own namespace now, which is the same key the presigned PUT wrote to.
+  const key = `hosting/${repo.id}/${path}`;
   // Read BEFORE the upsert: this is the only moment the previous size and checksum still
   // exist, and they are what turn a history entry from "somebody touched a file" into
   // something you can compare a local copy against.

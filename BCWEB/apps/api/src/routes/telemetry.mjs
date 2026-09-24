@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import jwt from 'jsonwebtoken';
 import crypto from 'node:crypto';
-import { db, requireRole, logAudit, safeEqual, clientIp } from '../lib/lib.mjs';
+import { db, requireRole, logAudit, safeEqual, clientIp, sessionUser } from '../lib/lib.mjs';
 import { boundedSet } from '../lib/boundedmap.mjs';
 import { sendMail, mailShell, emailEnabled, escapeHtml } from '../lib/mail.mjs';
 
@@ -112,12 +112,18 @@ export default async function telemetryRoutes(app) {
 
     // 3. Fall back to the BCWEB session cookie + canViewTelemetry (direct navigation,
     //    only works when the cross-subdomain cookie actually reaches this host).
-    let claims;
-    try { claims = jwt.verify(req.cookies?.bcw_session, JWT_SECRET); } catch { return deny(); }
+    //
+    //    Asked through `sessionUser`, the guards' own question. It was `jwt.verify` alone, so
+    //    the `2fa-pending` half-token /auth/login returns after the PASSWORD opened telemetry
+    //    for a SUPERADMIN, and a revoked device or a banned account got back in. 2FA is required
+    //    like on every staff door (the SSO button's route is requireRole('ADMIN'), which asks
+    //    for it). Full audit, Sept 24 2026; test/session-side-doors.test.mjs.
+    const claims = await sessionUser(req);
+    if (!claims) return deny();
     const p = await db();
-    const u = await p.user.findUnique({ where: { id: claims.uid }, select: { role: true, canViewTelemetry: true, telemetryEpoch: true } }).catch(() => null);
+    const u = await p.user.findUnique({ where: { id: claims.uid }, select: { role: true, canViewTelemetry: true, telemetryEpoch: true, totpEnabled: true } }).catch(() => null);
     if (!u) return deny();
-    const allowed = u.role === 'SUPERADMIN' || (u.canViewTelemetry && ADMIN_TIER.includes(u.role));
+    const allowed = u.totpEnabled && (u.role === 'SUPERADMIN' || (u.canViewTelemetry && ADMIN_TIER.includes(u.role)));
     if (!allowed) return reply.code(403).header('Cache-Control', 'no-store').type('text/plain').send('Forbidden — you do not have BMM telemetry access. Ask a SUPERADMIN to grant it.');
     // Establish the telemetry-host session cookie here too, so cookie-based direct nav
     // also loads assets/API cleanly.

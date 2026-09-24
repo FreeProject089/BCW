@@ -2117,6 +2117,7 @@ const DICT = {
     'auth.err.fail': 'Une erreur est survenue.', 'auth.err.match': 'Les mots de passe ne correspondent pas.', 'auth.err.short': 'Le mot de passe doit faire au moins 8 caractères.',
     'auth.2fa.title': 'Code à deux facteurs', 'auth.2fa.sub': 'Entre le code à 6 chiffres de ton application d’authentification.',
     'auth.2fa.code': 'Code', 'auth.2fa.verify': 'Vérifier', 'auth.2fa.back': 'Retour à la connexion', 'auth.2fa.bad': 'Code invalide.',
+    'auth.2faLocked': 'Trop de codes erronés pour ce compte. Attends {m} minutes puis réessaie. Si ces tentatives ne venaient pas de toi, change ton mot de passe une fois connecté.',
 
     'proj.overview': 'Aperçu', 'proj.releases': 'Notes de version', 'proj.community': 'Communauté', 'proj.legal': 'Légal', 'proj.countdown': 'Compte à rebours', 'proj.market': 'Boutique',
     'mk.buy': 'Acheter', 'mk.get': 'Obtenir', 'mk.free': 'Gratuit', 'mk.done': 'C’est à toi.', 'mk.oos': 'Épuisé', 'mk.checkout': 'Paiement requis.', 'mk.login': 'Connecte-toi pour acheter.', 'mk.yours': 'À toi', 'mk.role': 'Un rôle Discord sera attribué sous peu.', 'mk.derr': 'Souci de livraison, contacte le projet.', 'mk.empty.t': 'Rien en vente pour l’instant', 'mk.empty.s': 'Ce projet n’a aucun article en boutique pour le moment.',

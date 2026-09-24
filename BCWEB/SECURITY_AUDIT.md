@@ -3287,3 +3287,424 @@ only `admin|member`, never `owner`, and only the owner transfers.
 - Fixtures tagged `capmx-*`, `cgacc-*`, `hisdr-*`, `cfgln-*`; checked removed (0 users, 0 roles,
   0 settings left). The `bcweb-db-1` container was stopped mid-run and was started again
   (`docker start`), nothing else. Nothing committed.
+
+# Full audit, Sept 24 2026 (API, bot, infra)
+
+One agent, `apps/api` + `apps/bot` + `packages/db` + `infra/`, after the three round-2 agents
+above. Aimed at what the earlier rounds had not read: the doors that do NOT go through the four
+guards in `lib.mjs`, the storage key a client hands back after an upload, and the second step of
+a 2FA sign-in. Local only: a throwaway database `bcweb_audit` in the `bcweb-db-1` container,
+migrated with `migrate deploy`, dropped and re-created before the final runs. Every fix below
+has a test that was run red on the unfixed code and green after, and each was mutation-checked
+(the bug put back, the test seen red again).
+
+## Findings, most severe first
+
+### S-1: two doors read the session cookie with `jwt.verify` alone; the password without the second factor opened them (FIXED)
+
+**CWE-287 / CWE-308 / CWE-613.** CVSS 3.1 **8.1 high**, `AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N`
+(`PR:L`: it needs the account's password, which is exactly what 2FA exists to make insufficient).
+
+The Aug 22 audit proved that no other JWT this API signs can stand in for a session, and wrote
+the table down: a `2fa-pending` token presented as `bcw_session` → 401. That is true of the four
+guards, because they all go through `authenticated()` (account lock, the `Session` row,
+`tokenAcceptable`, the live role). Two routes never call them and decided on
+`jwt.verify(req.cookies.bcw_session)` alone, and every JWT here verifies with the one secret:
+
+- **The repo dashboard** (`routes/repo-dashboard.mjs`, `accessLevel`), login-optional, which
+  makes the owner, a collaborator or staff out of whatever verifies.
+- **The telemetry forward-auth gate** (`routes/telemetry.mjs`, `/telemetry/authorize`, its third
+  path: the session cookie on the telemetry host).
+
+Trigger, with the password of a 2FA-protected account and not its phone:
+`POST /auth/login` → `{ twoFactorRequired: true, tempToken }`; send `tempToken` as the cookie
+`bcw_session`. `GET /repos/<own repo>/dashboard` → **200**, `level: "owner"`: private files,
+download-zip, upload, publish, the access list. For a SUPERADMIN, `GET /telemetry/authorize` →
+**204** and a `tele_session` cookie. Through the same two doors: a device signed out in the
+sessions panel kept working, a **banned** account kept managing its repos, a moderator
+**demoted** to USER kept the role baked into his seven-day token (and staff are the owner of
+EVERY repo here), and a MOD with **no 2FA** at all was the owner of every repo on the site —
+the one staff surface with no 2FA wall. Measured, all of it, before the fix.
+
+**Fix.** `sessionUser(req)` in `lib/lib.mjs`: the guards' own question (lock, session row,
+`tokenAcceptable`, live role and perms) as one function for any door that is not a guard.
+`accessLevel` and the telemetry gate call it. The repo dashboard's staff branch now asks what the
+staff doors ask: live role, `totpEnabled`, and `accountLock(uid, 'service')` (A-1 above). The
+telemetry gate requires `totpEnabled`, like the `requireRole('ADMIN')` route that mints its SSO
+token. `optionalAuth()` is now `sessionUser` too (S-5).
+**Why it holds:** `tokenAcceptable` refuses anything without a `sid`, and only a session carries
+one, so no other token kind reaches past `sessionUser`; the revoked/banned/demoted cases are the
+same checks every guard makes, read from the same caches. A gate in the test (below) fails if any
+file under `src/` other than `lib.mjs` (and the two refuse-only hooks, `verify-gate.mjs` and the
+per-account limiter in `server.mjs`) both names `bcw_session` and calls `verify(`, so a third
+side door is caught the day it is written.
+
+**Measured.** `apps/api/test/session-side-doors.test.mjs`: 7 of 9 red before (the controls, owner
+and SUPERADMIN-with-2FA, green), 11/11 after including the soft-auth test and the gate.
+Mutations: telemetry back to `jwt.verify` → 2 red + the gate; repo dashboard back → 2 red + the
+gate. (The gate's first pattern, `jwt\.verify\(`, missed a mutation spelled
+`(await import('jsonwebtoken')).default.verify(`; it now matches any `verify(`.)
+
+### S-2: a repo file's storage key was the client's; any object in the bucket could be served through one's own repo (FIXED)
+
+**CWE-639 / CWE-284.** CVSS 3.1 **6.5 medium**, `AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N`.
+
+`presignRepoFile` returns `hosting/<repoId>/<path>` and the browser PUTs the bytes there; then
+`POST /repos/:id/dashboard/files` (and `POST /me/repos/:id/files`) call `registerRepoFile`, which
+stored whatever `key` the client sent back. Every serving path streams `getObject(file.key)`:
+`/hosting/<owner>/<repo>/files/*`, the custom-domain rewrite, the dashboard zip. So an owner, a
+collaborator or a dashboard-password holder could register `{ path: "loot.zip", key:
+"hosting/<victim repo id>/<file>" }` on their own repo, publish it, and serve another repo's
+object — past its sync password, its whitelist and its take-down (a repo SUSPENDED for malware
+or a DMCA notice keeps its objects, and its id and file names were public while it was listed).
+There is one bucket, so the same goes for any key that can be learnt. The catalogue path had
+already refused this (`payloadKey` must start `uploads/<uid>/`, `routes/catalog.mjs:470,756`);
+repo files were the one that did not.
+
+**Fix.** `registerRepoFile` derives the key, `hosting/${repo.id}/${norm(path)}` — exactly the key
+the presigned PUT wrote to — and ignores the one it is handed. **Why it holds:** a row can now
+only ever name its own repo's namespace, whatever the body says; honest clients already echo
+this very key, so nothing they do changes.
+**Measured.** `apps/api/test/repo-file-key-confinement.test.mjs`: a key aimed at another repo and
+an arbitrary bucket key were stored verbatim before (2 red, the honest-key control green), and are
+confined after (3/3). Mutation (`_clientKey || derived`) → 2 red.
+**Owner action:** rows written before this fix keep their key. One query finds any:
+`SELECT id, "serverRepoId", key FROM "RepoFile" WHERE key NOT LIKE 'hosting/' || "serverRepoId" || '/%';`
+(0 on the audit database and 0 on the dev database `bcweb`, read-only; run it on production).
+
+### S-3: `/auth/login/2fa` had no ceiling per account (FIXED, hardening)
+
+**CWE-307.** CVSS 3.1 **7.1 high** as a vector, `AV:N/AC:H/PR:L/UI:N/S:U/C:H/I:H/A:N`; in
+practice a hardening: it needs the password, and many source addresses.
+
+The only bound on the second step was the per-IP limit (10/min). Failures were logged
+(`LoginAttempt`, reason `2fa_invalid`) and never read back at this step, a fresh `tempToken` is
+one password away, and every wrong code also ran the argon2 loop over the recovery codes. Across
+many addresses nothing capped the guesses against one account.
+
+**Fix.** Before any code is checked, the account's `2fa_invalid` rows in `FAIL_WINDOW_MS`
+(15 min) are counted; at `TWOFA_MAX_FAILS` (10) the step answers `429 2fa_locked` and checks
+nothing, not even a right code. **Why it holds:** the count is per account and read from the
+database, so neither new IPs nor new half-tokens reset it. Unlike the password step (which
+deliberately never locks), refusing the owner here for fifteen minutes is acceptable: only
+somebody holding the password reaches this line. **Measured:**
+`apps/api/test/login-2fa-ceiling.test.mjs`, the at-ceiling case red before, 2/2 after; mutation
+(`if (false && …)`) → red. **Web card:** `pages/signin.jsx:238` shows the generic failure for
+`2fa_locked`; a sentence saying "too many wrong codes, wait 15 minutes" belongs there (another
+agent's files this run, not changed).
+
+### S-4: the dashboard's own two rules (FIXED)
+
+- **The password cookie outlived the password** (CWE-613, CVSS 3.1 **5.4 medium**,
+  `AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:L/A:N`). `bcw_rd_<id>` (12 h) carried only `{ rid, scope }`, so
+  changing or removing the dashboard password — the thing an owner does after sharing it with
+  the wrong person — left every issued cookie working. It now carries `pv`, a 16-character digest
+  of the stored argon2 hash (the hash never leaves the server; a new password has a new salt),
+  and is honoured only while `dashPassword` exists and matches.
+- **A collaborator's address was never required to be confirmed** (CWE-287/CWE-345, CVSS 3.1
+  **5.9 medium**, `AV:N/AC:H/PR:L/UI:N/S:U/C:H/I:L/A:N`). The owner lists `alice@example.com`;
+  anybody who registers that address first, or registers `ALICE@example.com` (sign-up stores the
+  address as typed, `accessLevel` compared lower-cased), became the collaborator without ever
+  receiving a mail there. `emailVerified` is now required.
+
+Both in `session-side-doors.test.mjs`, red before, green after.
+
+### S-5: soft auth and the e-mail gate served the role baked into the token (FIXED)
+
+**CWE-613.** CVSS 3.1 **3.1 low**, `AV:N/AC:H/PR:L/UI:N/S:U/C:L/I:N/A:N`.
+`optionalAuth()` set `req.user = claims`: the seven-day token's role and no `perms`, while the
+strict guards read the live row. On the 78 routes that use it, a demoted moderator kept the staff
+view (unlisted polls, other owners' catalogue share keys through `routes/catalog.mjs:278`) until
+the token expired. It is `sessionUser` now. `verify-gate.mjs` let any token claiming a staff role
+skip the e-mail check before reading the row; the shortcut is gone (the cached live row decides).
+
+## Attacked and found to hold (stated so it is not re-attacked blind)
+
+- **OIDC token endpoint** (`routes/oidc-provider.mjs`): PKCE S256 when committed, the code claimed
+  atomically (`updateMany … usedAt: null`), `redirect_uri` compared exactly, client secret by
+  `safeEqual` over a hash, refresh tokens rotated with whole-family revocation on reuse, the
+  account re-checked (closed/suspended/banned) on every refresh, and a refresh may narrow the
+  scope, never widen it. The consent POST is bound to the session that started it (`c.uid`), and
+  now reads that session through `sessionUser`.
+- **Raw SQL.** `analytics.mjs` interpolates only `COLS[col]` (a fixed map fed by literal calls),
+  metric names from a fixed list, and `'hour'|'day'` from a boolean; every value is a parameter.
+  `goal-stats.mjs`: `Object.hasOwn` in front of the one interpolated column, values parameterised,
+  exact matches escaped (C-1). The server-control DB viewer validates the table and every column
+  against the catalogue before quoting them, sits behind ADMIN + `canControlServer` + a TOTP
+  step-up cookie, refuses the three audit tables and any column matching
+  `hash|secret|token|password|totp`, and logs every read.
+- **Command execution.** `lib/gitbackup.mjs` runs `git` through `execFile` with argument arrays
+  (no shell), `--` before paths, `safeJoin` on every path, a hex pattern on every commit hash.
+- **Serving user bytes.** Hosted repo files are forced to `application/json`, `text/plain` or
+  `application/octet-stream` (inline only for the first two), with `nosniff` at the edge; the
+  autoindex escapes names and percent-encodes hrefs. Catalogue payload keys are confined to
+  `uploads/<uid>/` at create and at update.
+- **Client IP.** The `X-Forwarded-For` rule exists in **12 copies** (see the code audit); all
+  twelve take the LAST entry, the one Caddy appends. None can be spoofed by a client-sent header.
+- **Bot.** 50 of the 51 `/bot/*` routes call `botAuth` as their first statement; the 51st is
+  `/bot/invite`, public by design. `/bot/economy/casino` still trusts the bot's `multiplier`
+  (recorded open item, server-to-server trust, unchanged).
+- **Loyalty pricing** (new today, `lib/loyalty.mjs`): the percentage is computed on the server
+  from the subscription's own tenure at checkout, travels in metadata the server wrote, is capped
+  at 90 % whatever is stored, and the coupon id is derived from the integer. Nothing a buyer sends
+  moves it.
+- **Dependencies.** `npm audit --omit=dev`: 0 vulnerabilities in `apps/api` and `apps/bot`.
+
+## Open, owner decision (unchanged unless noted)
+
+- The round-1 owner cards stand as agent C recorded them above: bot shared secret (one unscoped
+  credential, `GET /bot/token` behind it alone), CSP `'unsafe-inline'`, containers as root,
+  anonymous conversation link without expiry.
+- **Existing `RepoFile` rows** with a foreign key: the query under S-2, once, on production.
+- **`2fa_locked` wording** on the sign-in page (S-3), a web change.
+- **Staff read every repo dashboard** as its owner (upload, publish, the access list). S-1 put the
+  staff doors' own conditions on it (2FA, live role, not suspended); whether a MOD should hold
+  that power at all rather than a capability was already a design question in Aug 22's IDOR note,
+  and still is.
+
+## Not run / not checked
+
+- **No browser.** Everything above is a request answered by the real handlers (`app.inject`) or a
+  row read back from the database.
+- **Nothing went through Caddy**: the edge was not running. The telemetry gate was exercised as
+  the handler Caddy's `forward_auth` calls, not behind `forward_auth`.
+- **No brute force was run against a real account** for S-3; the ceiling is proven by seeding the
+  failure rows and asserting the eleventh attempt is not checked.
+- **The bot was not started**; its 212 tests ran.
+- Infra (Caddyfile, Dockerfiles) was read only for what the findings needed; the round-1 infra
+  cards (CSP, root containers) were not re-measured.
+
+## Verification run
+
+- `apps/api`, `npm test` exactly as CI runs it (Postgres, no `REDIS_URL`), on a fresh
+  `bcweb_audit` migrated with `deploy`: **2245 tests, 2245 pass, 0 fail, 0 skipped**.
+  The same with `--test-concurrency=1` (one file at a time): **2245/2245, 0 skipped** (124 s).
+- A first full run was red on 3 files (`economy-history-admin`, `project-catalogs`,
+  `project-content`: `user.deleteMany` → `Notification_userId_fkey`), green alone (48/48). The
+  cause was this audit's own new test, not contention: `ServerRepo.listed` defaults to `true`, and
+  registering a file on a listed repo notifies every MOD/ADMIN on the database; with files running
+  in parallel, that fan-out landed on the other files' staff fixtures, whose cleanup does not
+  delete notifications. **Proved, not assumed:** with `listed` back to its default in the fixture,
+  those four files run together fail 3 with that exact foreign key, twice in a row; with
+  `listed: false`, 0 fail. The fixture now creates unlisted repos (the key rule is the same).
+  Worth knowing for the next test author: any test that creates a listed repo and registers a
+  file is a bad neighbour to every file whose cleanup deletes staff users without their
+  notifications.
+- `apps/bot`, `npm test`: **212/212**.
+- `npx prisma migrate diff --from-url <bcweb_audit> --to-schema-datamodel … --exit-code`: no
+  difference. No schema change in this audit.
+- `node --check` on every changed module.
+- Fixtures tagged `@sidedoor.test`, `@twofaceil.test`, `@repokey.test`, removed by each file's
+  `after`; the audit database was dropped at the end. The dev database `bcweb` was not written to.
+  Nothing committed.
+
+# Full audit, Sept 24 2026 (web)
+
+One agent, `apps/web` + `packages/bmd`, `packages/bmd-editor`, `packages/studio`, after the
+round-2 agents and beside the API/bot/infra audit above. Aimed at what renders: every
+`dangerouslySetInnerHTML`, every string that reaches one, the SVG, math and replay paths, and the
+`?next=` of the sign-in page. Local only (vite on :5206 against a dead API port, stopped after).
+Every fix has a test that was run red on the unfixed code and green after; W1 and W4 were also
+mutation-checked (the bug put back, the test seen red again). Nothing committed.
+
+## Findings, most severe first
+
+### W1: a studio SVG block ran script: removing an unknown tag joined its neighbours into a new one (FIXED)
+
+**CWE-79 (stored) / CWE-184.** CVSS 3.1 **8.7 high**, `AV:N/AC:L/PR:L/UI:R/S:C/C:H/I:H/A:N`
+(`PR:L`: a per-project grantee with the studio right; the victim is every visitor of the page,
+an admin included).
+
+The `svg` block is drawn with `dangerouslySetInnerHTML` (`ui/canvas-view.jsx`) after
+`sanitizeSvg` (`packages/studio/src/svg-safe.js`), and the API stores the markup as typed (only
+its length is checked), so that function is the only boundary. It was a regex pass that replaced
+every tag not on the allow-list by `''`. Removing `<x>` from `<<x>img …>` leaves `<` and `img …>`
+side by side, and nothing reads the result again:
+
+```
+in : <svg><<x>img src=x onerror=alert(1)></svg>
+out: <svg><img src=x onerror=alert(1)></svg>
+```
+
+`<img>` is one of the tags that break out of foreign content, so the HTML parser builds a real
+HTML `img` with its handler, measured with parse5 (the parser rehype-raw already ships): the tree
+holds `xhtml:img onerror=alert(1)`. The same join rebuilt `<style>@import …</style>`, and three
+attribute spellings reached the CSS machinery undecoded: `u&#x72;l(https://…)` in `style` /
+`fill`, `\75 rl(`, `image-set("https://…")`, plus `style="position:fixed;inset:0"` on the root,
+which pins a pasted drawing over the whole page.
+
+**Fix.** One pass that rebuilds the markup: an allow-listed tag is written back from its parts and
+every other `<` or `>` becomes `&lt;` / `&gt;`, so the only `<` in the output is one the function
+wrote. Attribute values are decoded (numeric references and the five named ones; any other named
+reference drops the attribute), judged decoded, and emitted re-encoded from the decoded value. A
+backslash (a CSS escape), `image-set(`, `src(` and `position: fixed|sticky` refuse the attribute.
+**Why it holds:** the output can no longer contain markup the function did not write, and what an
+attribute check reads is byte for byte what the parser will hand to CSS and URL resolution.
+**Test:** `apps/web/test/svg-safe-reparse.test.mjs` parses the OUTPUT with parse5 and asserts that
+every element is an allow-listed SVG element with no handler, no external href and no fetching
+value. 4 of 5 red before (the control, which also proves the harness sees an unsanitised
+`xhtml:img`, green), 5/5 after. Mutations: dropping the rebuild, the backslash rule, or the
+`position` rule each turn it red again. `canvas-shapes.test.mjs` unchanged and green.
+
+### W2: a translator's wording was HTML on the hosting checkout and in admin screens (FIXED)
+
+**CWE-79 (stored) / CWE-269.** CVSS 3.1 **8.1 high**, `AV:N/AC:L/PR:H/UI:R/S:C/C:H/I:H/A:N`
+(`PR:H`: the `translate_site` capability, which exists so that a translator who is NOT an admin can
+reword the site, `lib.mjs:406`).
+
+`translate_site` writes the en/fr override layer (`PUT /admin/locales/base/:code`, any key, any
+string; `sanitizeStrings` checks only that it is a string) and every page reads it through `t()`
+(`GET /api/site/i18n/:code`). Five `t()` strings went into `dangerouslySetInnerHTML`:
+`cart.agree` on the public hosting checkout (`pages/hosting.jsx`), `cc.sub`, `cc.pluginnote` and
+`kf.sub` in the admin catalogue and Ko-fi screens, `radm.paste` in the repos admin. Trigger:
+`PUT /admin/locales/base/en {"patch":{"kf.sub":"<img src=x onerror=…>"}}` as the translator; the
+next admin who opens the Ko-fi card runs it with an admin session. The capability is a grant for
+wording; it became a way to act as whoever reads that wording.
+
+**Fix.** `apps/web/src/lib/rich-text.js`, `<RichText text={t(…)} />`: the markup these sentences
+actually need (`b strong i em code span a br`) is built with `React.createElement`, every other
+character is text, classes are an allow-list of four, and a link goes to a path on this site
+(`/x`, never `//x` or `/\x`) or has no `href`. The five sinks use it; the shipped strings render
+identically. **Why it holds:** there is no innerHTML left on that path; a translator can change
+words and the five inline tags, not attributes this file does not set itself. **Test:**
+`apps/web/test/rich-text.test.mjs`, which also sweeps `src` and the three packages: every
+`dangerouslySetInnerHTML` must be fed by a named escaping producer (`highlightCode`,
+`highlightJson`, `thumbnailSvg`, the sanitised SVG, mermaid's `strict` output) and never by `t()`.
+The sweep was red with exactly the five sites, green after. It reads the rest of the line rather
+than `[^}]*`, because `kf.sub` holds `{off}` and a `[^}]*` pattern did not see it at all (the
+first draft of this test missed that sink; the probe was wrong before the code was).
+
+### W3: `::replay` fetched an author's URL with the reader's session (FIXED, round-1 open card)
+
+**CWE-441 / CWE-359.** CVSS 3.1 **3.5 low**, `AV:N/AC:L/PR:L/UI:R/S:U/C:L/I:N/A:N`.
+
+Round 1 left it open: `DocReplay` passed `data-src` to the host's player unfiltered, and the
+host's `ui/ReplayPlayer.jsx` called `fetch(src)` (default `same-origin` credentials), the shape
+F6-5 fixed for `:::roadmap`. **Fix:** `src={apiUrl(…)}` in `packages/bmd/src/blocks.jsx` (the
+policy its four siblings use) and `fetch(src, { credentials: 'omit' })` in the player.
+Recordings are public files (`/api/assets/:key` is public), so nothing legitimate needed the
+cookie. **Test:** three cases added to `apps/web/test/bmd-action.test.mjs` (same esbuild harness,
+the stub React's `useContext` now takes an override): `javascript:`, `data:`, `//host`, `/\host`
+reach the player as `''`; a site path and an https file still play; every `fetch(` in the player
+carries `credentials: 'omit'`. 2 red before, green after.
+
+### W4: `/auth?next=` left the site through an API route that redirects (FIXED web side; API card below)
+
+**CWE-601.** CVSS 3.1 **5.4 medium**, `AV:N/AC:L/PR:L/UI:R/S:C/C:L/I:L/A:N` (`PR:L`: the
+attacker needs an account to set its avatar).
+
+`pages/signin.jsx` accepted any `next` starting with `/`, and followed one under `/api/` or
+`/oauth2/` with a REAL navigation ("same origin either way", said the comment). Same origin is not
+the same as staying on the site: `GET /api/avatar/:id` answers `302 Location: <avatar.image>`, and
+`PATCH /me` stores `avatar.image` as any string up to 500 characters (`routes/auth.mjs`, the
+`/me` schema). So `https://<site>/auth?next=/api/avatar/<attacker>` sent a visitor to the
+attacker's page the moment they had typed their password (and at once, for a visitor already
+signed in): the textbook post-login phishing redirect.
+
+**Fix.** `apps/web/src/lib/next-path.js` `nextTarget()`: `next` is resolved with `URL` (dot
+segments, `%2e%2e`, backslashes), must stay on this origin, and a real navigation is allowed only
+for `/oauth2/authorize` and `/api/telemetry/authorize`, the two server routes that send people
+here; any other `/api` or `/oauth2` path is refused. The sign-in page, its OAuth buttons and the
+link-proposal panel all ask it. **Test:** `apps/web/test/next-path.test.mjs`: pages and the two
+server routes pass (controls); `/api/avatar/u1`, `/oauth2/logout`, dot-segment and `%2e%2e`
+routes back into `/api`, `//host`, `/\host`, `/\t/host` are refused; and `signin.jsx` has no
+hand-rolled `startsWith` rule left. Red on the committed `signin.jsx`, green after; checking the
+allow-list against the raw string instead of the resolved path turns 2 cases red.
+
+**API card (not changed here, another agent's files):** `/api/avatar/:id` is an open redirect on
+its own (`https://<site>/api/avatar/<id>` → anywhere), and `routes/oauth.mjs` `safeNext` accepts
+`/api/avatar/<id>` as a `next` (it lands on `${SITE_URL}${back}`). Validate `avatar.image` at
+write (`httpUrl()` or a site media path; the avatar hosts are listed in `lib/media-hash.mjs`
+`AVATAR_HOSTS`) and redirect only to such a value at read, so a row stored before the fix is not
+served. `check-url-schemas.mjs` should then list the field.
+
+### W5: a formula drew over the page around it (FIXED)
+
+**CWE-1021 (UI redressing) / CWE-451.** CVSS 3.1 **4.1 medium**, `AV:N/AC:L/PR:L/UI:R/S:C/C:N/I:L/A:N`.
+
+Every B.MD surface renders `$$…$$` with KaTeX, comments included. KaTeX takes sizes from the
+author, caps none by default (`maxSize: Infinity`) and never caps a negative one (measured:
+`maxSize: 10` turns `\rule{900em}` into 10em and leaves `\kern{-900em}` at `margin-right:-900em`).
+So `$$\kern{-5em}\colorbox{red}{\text{…}}$$` painted a filled box over the words before it, and
+`\smash{\raisebox{…}}` over the paragraph above: the defacement F6-3 closed for `style=`, through
+the math door. Measured in Chromium on `/dev/editor`: `elementFromPoint` at the box's centre
+returned KaTeX's `mord` (the box sat at x 135–189 while its formula's box sat at x 221).
+
+**Fix.** `packages/bmd/src/markdown.css`: `.md-body .katex .base { contain: paint;
+overflow-clip-margin: .35em }` (each `.base` is KaTeX's own inline-block around a run of the
+formula, sized by its strut; paint containment clips what escapes it and changes no layout), and
+`maxSize: 20` for rehype-katex (`index.jsx`). **Why it holds:** whatever an author moves with a
+negative size stays inside the formula's own box. After the fix the same probe hit the paragraph.
+Ten ordinary formulas (integral with limits, sums, accents, matrix, cancel, underbrace) keep every
+glyph within 3.2 px of their `.base`, under the 6.3 px clip margin, and their size is unchanged
+(129×21 px either way). **Test:** `apps/web/test/katex-contain.test.mjs` (the rule and the option
+where they live, and KaTeX run with the option): 2 of 3 red on the committed kit, green after.
+Paint itself cannot be observed in node; the browser measurement above is the evidence.
+
+## Also done in this pass
+
+- **The 2FA lock message** (asked by the API audit): `429 2fa_locked` now reads "Too many wrong
+  codes for this account. Wait {m} minutes…" (`auth.2faLocked`, FR entry), `{m}` from
+  `retryAfterSec`. It does NOT offer a backup code: the API's ceiling is checked before the
+  recovery-code loop, so a backup code is refused too while it holds. Test
+  `signin-2fa-locked.test.mjs` (2 red before).
+- **Every member who opened "My catalogs" or "Reports" in the dashboard downloaded the whole admin
+  screen** (performance, but also exposure: the admin bundle is the map of every staff route):
+  `dashboard.jsx` loaded both with `lazyNamed(() => import('./admin.jsx'))`. They now live in
+  `pages/owner-catalogs.jsx` and `pages/my-reports.jsx` (moved unchanged); the tabs fetch 5.8 KB
+  and 4.3 KB gzip instead of 559 KB. Details in `guides/audits/CODE_AUDIT_2026-09-24_WEB_EN.md`.
+
+## Attacked and found to hold (stated so it is not re-attacked blind)
+
+- **The other innerHTML sinks.** `highlightCode` / `highlightJson` escape (Prism encodes its
+  tokens; the fallback escapes); a language name from an uploaded file (`constructor`) falls to
+  a grammar with no tokens, still encoded. `thumbnailSvg` writes numbers only. Mermaid runs under
+  `securityLevel: 'strict'`, and `securityLevel` is one of mermaid's secure keys, so an author's
+  own `%%{init}%%` cannot lower it. `post-bits.jsx` writes a count.
+- **KaTeX markup:** `trust` is off (`\href`, `\url`, `\html*` refused), `\color` values are
+  validated by KaTeX's own pattern.
+- **postMessage:** the studio preview frame and the framed page both pin
+  `window.location.origin` and the counterpart window; drafts render through the same sanitised
+  renderer.
+- **The embed block and the refused-embed link** (`embedAllowed`, `safeLink`), the B.MD sanitiser
+  schema, `scopeCss`: re-read, no new spelling found beyond round 1's.
+- **Tokens in the browser:** the session is an httpOnly cookie; nothing auth-bearing is written
+  to localStorage (the /2fa authenticator's secrets are the documented local feature).
+- **Other `window.location` / `window.open` targets:** checkout URLs come from the API's own
+  Stripe calls; `os-shell` and the palette open `https?:` only; `navigate()` with a `replace`
+  cannot leave the origin (react-router's `replaceState` throws on a cross-origin URL, unlike
+  `pushState`, whose catch falls back to `location.assign`: worth knowing before anyone writes
+  `nav(userValue)` without `replace`).
+- **Dependencies:** `npm audit --omit=dev`: `maplibre-gl` only, already judged unreachable
+  (F10-14). Dev-only: `browserslist`, `js-yaml`, `baseline-browser-mapping` advisories (build
+  time, trusted input); `npm audit fix` without `--force` clears them when convenient.
+
+## Open (owner decision or another agent's files)
+
+- **API: `avatar.image`** (W4 above), the root of the redirect.
+- **The render side trusts the write side for ~70 `href={value}` sinks.** The API refuses
+  `javascript:` at write (`httpUrl`, `configLinkProblems`, `check-url-schemas.mjs`), React 18 only
+  warns, and the edge CSP still allows `'unsafe-inline'` (F10-9), which is also what turned W1 and
+  W2 into script. A render-side `safeHref()` at the shared `<a>` components, or React 19 (which
+  refuses `javascript:` URLs), would make one missed field a dead link instead of an XSS.
+- **`apiUrl()` still calls `safeUrl` with `kind: 'api'`** (round 1's note): with no `allowHosts`,
+  live blocks may fetch any https host, cookieless.
+- **The studio `replay` block draws nothing.** `canvas-view.jsx` renders
+  `<div data-replay=…>` and no code reads that attribute, while its comment says the docs' player
+  plays it. A functional choice (wire `ReplayPlayer` in, with W3's policy, or drop the block).
+
+## Not run / not checked
+
+- No live API: nothing here needed one, and the redirect chain's API half (`/api/avatar/:id` →
+  302) was read in `routes/avatar.mjs`, not requested.
+- W1 and W2 were proved by parse5 and by `renderToStaticMarkup`, not by an alert in a browser; W5
+  was measured in Chromium (hit-testing, geometry), with the tab hidden, so paint was not seen.
+- BMM's `rich-markdown.ts` / `md-lite.ts` (the other renderers of B.MD) were not read: another
+  repo. If BMM renders the studio SVG or KaTeX, the same two fixes apply there.
+
+## Verification run (web)
+
+`apps/web`: `npm run lint` exit 0 (544/544 tests, all gates in the chain), `npm run --silent
+i18n:check` exit 0, `npm run css:check` 0, `npm run legal:check` 0, `npm run build` 0,
+`npm run budget` OK: entry 147 KB gzip (budget 190), first load 239 KB (budget 300), unchanged by
+this pass. The vite server on :5206 was stopped. Nothing committed.

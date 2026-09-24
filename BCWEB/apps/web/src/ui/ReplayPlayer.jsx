@@ -48,7 +48,9 @@ export default function ReplayPlayer({ src = '', doc = null, title = '', autopla
         // the file off the reviewer's disk; fetching it back from a URL that does not exist is
         // how "the inspector cannot play what it just parsed" would have happened.
         const source = doc || await (async () => {
-          const res = await fetch(src);
+          // Cookieless, like every B.MD block that loads something: the src is an author's,
+          // and the reader's session must not ride along to it (full audit Sept 24 2026, W3).
+          const res = await fetch(src, { credentials: 'omit' });
           if (!res.ok) throw new Error('fetch');
           return res.json();
         })();

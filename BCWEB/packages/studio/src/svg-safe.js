@@ -19,7 +19,29 @@ const TAGS = new Set([
 // around a shape should become.)
 const DROP_WITH_CONTENT = ['script', 'style', 'foreignobject', 'iframe', 'object', 'embed', 'audio', 'video', 'image', 'img', 'animate', 'set', 'animatemotion', 'animatetransform'];
 
-const BAD_VALUE = /javascript:|vbscript:|data:(?!image\/(?:png|jpeg|gif|webp|svg\+xml))|expression\s*\(|behavior\s*:|@import|url\s*\(\s*['"]?(?!#)/i;
+// `image-set()` / `src()` name a URL without writing `url(` (the same pair css-scope.js refuses).
+const BAD_VALUE = /javascript:|vbscript:|data:(?!image\/(?:png|jpeg|gif|webp|svg\+xml))|expression\s*\(|behavior\s*:|@import|url\s*\(\s*['"]?(?!#)|image-set\s*\(|(?:^|[^\w-])src\s*\(/i;
+// A pasted drawing sits in a box on somebody's page; pinned, it would sit over the page instead.
+const ESCAPES_BOX = /position\s*:\s*(?:fixed|sticky)/i;
+
+// The character references an attribute value is decoded through before anything reads it.
+// Only these five by name: any other named reference (`&colon;`, `&lpar;`, …) makes the
+// attribute unreadable here, and an attribute this cannot read is dropped, not trusted.
+const NAMED = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" };
+function decodeRefs(v) {
+  let unreadable = false;
+  const out = v.replace(/&(#[xX][0-9a-fA-F]+|#\d+|[a-zA-Z][a-zA-Z0-9]*);?/g, (all, ref) => {
+    if (ref[0] === '#') {
+      const n = ref[1] === 'x' || ref[1] === 'X' ? parseInt(ref.slice(2), 16) : parseInt(ref.slice(1), 10);
+      return n > 0 && n <= 0x10ffff ? String.fromCodePoint(n) : '�';
+    }
+    if (Object.prototype.hasOwnProperty.call(NAMED, ref) && all.endsWith(';')) return NAMED[ref];
+    unreadable = true;
+    return all;
+  });
+  return unreadable ? null : out;
+}
+const escAttr = (v) => v.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 function cleanAttrs(attrs) {
   const out = [];
@@ -28,12 +50,16 @@ function cleanAttrs(attrs) {
   while ((m = re.exec(attrs))) {
     const name = m[1]; const lname = name.toLowerCase();
     const raw = m[2] == null ? '' : m[2];
-    const val = raw.replace(/^["']|["']$/g, '');
+    // Judged as the HTML parser will hand it to the CSS / URL machinery: character references
+    // decoded. A backslash is a CSS escape (`\75 rl(`), which no drawing attribute needs.
+    const val = decodeRefs(raw.replace(/^["']|["']$/g, ''));
+    if (val == null || val.includes('\\')) continue;
     if (lname.startsWith('on')) continue;                       // every event handler
     if (lname === 'href' || lname === 'xlink:href') { if (!/^#[\w:-]+$/.test(val.trim())) continue; }
     if (BAD_VALUE.test(val)) continue;                          // scripts, external urls, imports
-    if (lname === 'style' && /url\s*\(/i.test(val) && !/url\s*\(\s*['"]?#/i.test(val)) continue;
-    out.push(m[2] == null ? name : `${name}="${val.replace(/"/g, '&quot;')}"`);
+    if (lname === 'style' && ((/url\s*\(/i.test(val) && !/url\s*\(\s*['"]?#/i.test(val)) || ESCAPES_BOX.test(val))) continue;
+    // Emitted re-encoded from the decoded value: what was checked is exactly what is parsed.
+    out.push(m[2] == null ? name : `${name}="${escAttr(val)}"`);
   }
   return out.length ? ' ' + out.join(' ') : '';
 }
@@ -48,7 +74,13 @@ export function sanitizeSvg(input) {
   for (const tag of DROP_WITH_CONTENT) {
     s = s.replace(new RegExp(`<${tag}\\b[^>]*>[\\s\\S]*?<\\/${tag}\\s*>`, 'gi'), '').replace(new RegExp(`<${tag}\\b[^>]*\\/?>`, 'gi'), '');
   }
-  s = s.replace(/<\/?([a-zA-Z_:][\w:.-]*)([^>]*)>/g, (all, tag, attrs) => {
+  // ONE pass that rebuilds the markup: an allow-listed tag is written back from its parts, and
+  // every other `<` or `>` becomes text. Removing an unknown tag used to leave its neighbours
+  // side by side, so `<<x>img src=x onerror=…>` came out as `<img src=x onerror=…>` — a real
+  // HTML element once innerHTML parses it (full audit Sept 24 2026, W1). Now the only `<` in
+  // the result is one this function wrote.
+  s = s.replace(/<\/?([a-zA-Z_:][\w:.-]*)([^<>]*)>|[<>]/g, (all, tag, attrs) => {
+    if (!tag) return all === '<' ? '&lt;' : '&gt;';
     const lname = tag.toLowerCase();
     if (!TAGS.has(lname)) return '';
     if (all.startsWith('</')) return `</${tag}>`;

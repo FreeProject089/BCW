@@ -182,7 +182,8 @@ export function registerVerifyGate(app, { db, jwtSecret }) {
     let claims;
     try { claims = jwt.verify(tok, jwtSecret); } catch { return; }
     if (!claims?.uid) return;
-    if (ADMIN_TIER_ROLES.includes(claims.role)) return;
+    // No shortcut on `claims.role`: that is the role the seven-day token was minted with, so a
+    // demoted moderator skipped the gate until it expired. The cached row below is the live one.
     const hit = verifiedCache.get(claims.uid);
     let verified;
     if (hit && Date.now() - hit.at < CACHE_TTL_MS) verified = hit.v;

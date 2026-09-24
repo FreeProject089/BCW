@@ -273,7 +273,10 @@ export default function Markdown({ children, className = '', pageMap, lang = 'en
         // source in an error span rather than throwing, and that source is escaped text too.
         // Turning `trust` on would undo this paragraph.
         rehypePlugins={[rehypeRaw, [rehypeSanitize, SANITIZE_SCHEMA], rehypeSafeUrls, rehypeSafeStyle, rehypeAnchorPrefix, rehypeIframeAllowlist,
-          ...(math ? [[math[1], { output: 'html', throwOnError: false, errorColor: 'var(--error)' }]] : []),
+          // `maxSize` (in em) caps every POSITIVE size an author writes (\rule, \raisebox, …);
+          // the default is Infinity. Negative ones are not capped by KaTeX: markdown.css keeps
+          // what they move inside the formula's own box.
+          ...(math ? [[math[1], { output: 'html', throwOnError: false, errorColor: 'var(--error)', maxSize: 20 }]] : []),
           ...(rehypeHighlight ? [[rehypeHighlight, { detect: true, ignoreMissing: true }]] : [])]}
         components={components}
       >{source}</ReactMarkdown>

@@ -15,6 +15,7 @@ import PlanCard from '../ui/plan-card.jsx';
 import Accordion from '../ui/accordion.jsx';
 import { DomainGuide } from '../ui/domain-panel.jsx';
 import { useI18n } from '../i18n.jsx';
+import { RichText } from '../lib/rich-text.js'; // W2: translated markup without innerHTML
 // M21: the Discord bot plans section (#bot), and the name a bundle's bot part goes by.
 import HostingBotPlans, { useBotPlans } from './hosting-bot.jsx';
 import { HandNote, Marker } from '../ui/marker.jsx'; // M3 (agent-landing-M); Marker: N-hosting (agent-hosting-N), the highlighted title
@@ -838,7 +839,7 @@ function CartPanel({ open, setOpen, cart, count, removeItem, setItemAutoRenew, s
         {quoteErr && !promoErr && <div className="text-[11px] text-warning">{quoteErr === 'capacity_full' ? t('hosting.err.capacity', 'No capacity available right now.') : quoteErr === 'over_limit' ? t('cart.err.overlimit', 'A custom plan exceeds the per-repo upload limit.') : t('cart.err.quote', 'Could not price the cart.')}</div>}
         <label className="flex items-start gap-2 text-[11px] text-[var(--muted)] cursor-pointer">
           <input type="checkbox" className="mt-0.5" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} />
-          <span dangerouslySetInnerHTML={{ __html: t('cart.agree', 'I accept the <a href="/legal/terms" target="_blank" class="text-[var(--accent-ink)] underline">Terms</a> and the <a href="/legal/refunds" target="_blank" class="text-[var(--accent-ink)] underline">Payments & Refunds</a> policy, and I understand that content I host is my responsibility.') }} />
+          <RichText text={t('cart.agree', 'I accept the <a href="/legal/terms" target="_blank" class="text-[var(--accent-ink)] underline">Terms</a> and the <a href="/legal/refunds" target="_blank" class="text-[var(--accent-ink)] underline">Payments & Refunds</a> policy, and I understand that content I host is my responsibility.')} />
         </label>
         <Button variant="primary" className="w-full mt-1" disabled={busy || !count || !agreed} onClick={checkout}>{busy ? <Spinner /> : <><CreditCard size={15} /> {t('cart.checkout', 'Checkout')}{quote ? ` · ${money(quote.totalCents)}` : ''}</>}</Button>
         <p className="text-[10px] text-[var(--faint)] text-center">{t('cart.note2', 'Prepaid now for the whole cart. Items marked auto-renew continue as a subscription after their term.')}</p>

@@ -115,6 +115,8 @@ import { AdminMediaFlags } from './admin-media-flags.jsx';
 import ReplayPlayer from '../ui/ReplayPlayer.jsx';
 import { useAsync, Loading, useUndoableDelete, useUndoableToggle, useUndoableSave, useElementWidth, statusTone, KIND_ICON, KIND_LABEL, kindLabel, kindsFor, CATALOG_PROJECTS, csvCell, downloadCsv, toCsv, fmtRemaining, seededAvatar, SideDash, useThreadStream } from './pages.jsx';
 import { JsonEditor, highlightJson, highlightCode } from '../ui/code-highlight.jsx'; // M18 (agent-perf-M18): moved out of pages.jsx with Prism
+import { RichText } from '../lib/rich-text.js'; // W2: translated markup without innerHTML
+import { fmtBytes, fmtAgo } from '../lib/format.js'; // moved from here, unchanged, so the owner screens can share them without admin.jsx
 
 // Deferred-commit delete with a Gmail-style undo toast. The row hides immediately and the
 // actual api.del only fires once the 6s window elapses — Undo means nothing was ever deleted,
@@ -706,7 +708,7 @@ function AdminCatalogCreator() {
   return (
     <div>
       <h2 className="font-semibold mb-1 flex items-center gap-2"><BadgeCheck size={16} className="text-[var(--accent-ink)]" /> {t('cc.title', 'Create an official catalog entry')}</h2>
-      <p className="text-sm text-[var(--muted)] mb-4" dangerouslySetInnerHTML={{ __html: t('cc.sub', 'Publishes instantly (no moderation) and is flagged <b>Official</b>. BSM offers presets; BMM offers apps, plugins and themes with a <code>bmm://</code> deeplink.') }} />
+      <RichText as="p" className="text-sm text-[var(--muted)] mb-4" text={t('cc.sub', 'Publishes instantly (no moderation) and is flagged <b>Official</b>. BSM offers presets; BMM offers apps, plugins and themes with a <code>bmm://</code> deeplink.')} />
       {/* Which catalog you are filling — chosen once, not re-answered per entry. */}
       <div className="flex flex-wrap gap-2 mb-3">
         {OFFICIAL_CATALOGS.map((c) => {
@@ -750,7 +752,7 @@ function AdminCatalogCreator() {
         </div>
         <Field label={t('cc.description', 'Description')}><Textarea value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} placeholder={t('cc.descph', 'What it does, in a sentence or two…')} /></Field>
         <Field label={t('cc.tags', 'Tags (comma-separated)')}><Input value={f.tags} onChange={(e) => setF({ ...f, tags: e.target.value })} placeholder="audio, utility, dark-theme" /></Field>
-        {kind === 'PLUGIN' && <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)] p-2.5 text-xs text-[var(--muted)]" dangerouslySetInnerHTML={{ __html: t('cc.pluginnote', "Host the <code>.bmmplug</code> yourself (URL below) or with us (upload it, priced by size). Either way it's checksum-validated on publish.") }} />}
+        {kind === 'PLUGIN' && <RichText as="div" className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)] p-2.5 text-xs text-[var(--muted)]" text={t('cc.pluginnote', "Host the <code>.bmmplug</code> yourself (URL below) or with us (upload it, priced by size). Either way it's checksum-validated on publish.")} />}
         {kind !== 'PRESET' && <Field label={kind === 'PLUGIN' ? t('cc.plugurl', '.bmmplug URL (self-hosted)') : t('cc.dlurl', 'Download URL')} hint={kind === 'PLUGIN' ? t('cc.plugurlhint', 'GitHub raw / personal server. Leave empty to host with us via upload.') : t('cc.dlurlhint', 'Where the app/theme is fetched from.')}><Input value={f.url} onChange={(e) => setF({ ...f, url: e.target.value })} placeholder={kind === 'PLUGIN' ? 'https://raw.githubusercontent.com/you/repo/main/plugin.bmmplug' : 'https://github.com/you/repo/releases/latest/download/app.zip'} /></Field>}
         <Field label={kind === 'PRESET' ? t('cc.presetfile', 'Preset .json (metadata is read from the file)') : kind === 'PLUGIN' ? t('cc.plugfile', '.bmmplug file (our-hosted, priced by size)') : t('cc.payloadfile', 'Payload file (optional, zip / wasm)')}>
           <Input type="file" accept={kind === 'PRESET' ? '.json,application/json' : kind === 'PLUGIN' ? '.bmmplug,.zip' : undefined} onChange={(e) => onFile(e.target.files?.[0] || null)} /></Field>
@@ -8384,6 +8386,7 @@ function AdminTransfers() {
 
 // N-hosting (agent-hosting-N): the loyalty (tenure) pricing editor, rendered under the plans.
 import HostingLoyaltyEditor from './admin-loyalty.jsx';
+import { ReportThreadModal, REPORT_TARGET_ICON } from './my-reports.jsx'; // moved out, unchanged (full audit Sept 24 2026, web)
 // fin N-hosting (agent-hosting-N)
 function AdminHostingPlans() {
   const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
@@ -10041,12 +10044,6 @@ function Breakdown({ title, rows, iconOf }) {
 
 const refHost = (r) => { try { return new URL(r).hostname.replace(/^www\./, ''); } catch { return r || 'direct'; } };
 
-const fmtBytes = (n) => {
-  if (!n) return '0 B';
-  const u = ['B', 'KB', 'MB', 'GB', 'TB']; let v = n, i = 0;
-  while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
-  return `${v.toFixed(v < 10 && i > 0 ? 1 : 0)} ${u[i]}`;
-};
 
 // Admin: contact-form inbox. Messages are stored server-side (and forwarded to
 // Discord if a webhook is configured).
@@ -10828,7 +10825,7 @@ function AdminKofi() {
     <>
       <Card className="p-4 mb-4">
         <div className="flex items-center gap-2 mb-1 text-sm font-semibold"><KofiIcon size={16} className="text-[var(--accent-ink)]" /> {t('kf.title', 'Ko-fi donor rewards')}</div>
-        <p className="text-xs text-[var(--muted)] mb-3" dangerouslySetInnerHTML={{ __html: t('kf.sub', "A donor whose Ko-fi email matches their BetterCommunity account automatically gets a one-time {off}% hosting discount code (valid on {min}+ month plans). Paste this webhook URL + a secret token into Ko-fi's <b>Settings → Webhooks</b>, using the same token below.").replace('{off}', data?.percentOff ?? 25).replace('{min}', data?.minMonths ?? 12) }} />
+        <RichText as="p" className="text-xs text-[var(--muted)] mb-3" text={t('kf.sub', "A donor whose Ko-fi email matches their BetterCommunity account automatically gets a one-time {off}% hosting discount code (valid on {min}+ month plans). Paste this webhook URL + a secret token into Ko-fi's <b>Settings → Webhooks</b>, using the same token below.").replace('{off}', data?.percentOff ?? 25).replace('{min}', data?.minMonths ?? 12)} />
         <div className="flex items-center gap-2 mb-3 text-xs">
           <code className="flex-1 bg-[var(--surface-2)] rounded-lg px-2.5 py-1.5 truncate" title={data?.webhookUrl}>{data?.webhookUrl}</code>
           <Button size="sm" onClick={() => { navigator.clipboard?.writeText(data?.webhookUrl || ''); toast.success(t('common.copied', 'Copied.')); }}><Copy size={12} /></Button>
@@ -17117,7 +17114,6 @@ function WebVitals() {
 // Live/recent visitor sessions (Rybbit-style). Auto-refreshes so "in progress" sessions
 // update; each row expands to its page-by-page timeline. Built from the pageview stream.
 const fmtDur = (s) => s >= 3600 ? `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m` : s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`;
-const fmtAgo = (d) => { const s = Math.round((Date.now() - new Date(d).getTime()) / 1000); return s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s / 60)}m` : s < 86400 ? `${Math.floor(s / 3600)}h` : `${Math.floor(s / 86400)}d`; };
 
 // Anonymous per-session identity (never the real account): a stable "Colour Animal"
 // nickname + a Boring-Avatar, both seeded by the daily-rotating visitor hash — the same
@@ -21242,346 +21238,6 @@ function AdminNav() {
 // here only because the old pages monolith was split this way. Exported so the dashboard
 // imports it instead of referencing a bare identifier, which crashed the tab at render.
 export /** Set or remove a catalog's download password. */
-function CatalogSyncPassword({ catalog, onChange }) {
-  const { t } = useI18n();
-  const toast = useToast();
-  const dialog = useDialog();
-  const [pw, setPw] = useState('');
-  const [busy, setBusy] = useState(false);
-  const has = !!catalog.hasPassword;
-
-  const save = async () => {
-    if (pw.length < 4) return toast.error(t('ocpw.short', 'Password too short (min 4).'));
-    setBusy(true);
-    try {
-      await api.put(`/me/catalogs/${catalog.id}/sync-password`, { password: pw });
-      setPw('');
-      toast.success(t('ocpw.set', 'Download password set.'));
-      onChange?.();
-    } catch { toast.error(t('acc.failed', 'Failed.')); } finally { setBusy(false); }
-  };
-
-  const clear = async () => {
-    // Removing a protection is not a thing to do by mis-click, and the confirm says what
-    // actually changes rather than "are you sure".
-    if (!(await dialog.confirm({
-      title: t('ocpw.clear.t', 'Remove the download password'),
-      message: t('ocpw.clear.m', 'The catalog becomes readable by anyone your access lists already allow. Continue?'),
-      okLabel: t('rd.remove', 'Remove'), danger: true,
-    }))) return;
-    setBusy(true);
-    try {
-      await api.put(`/me/catalogs/${catalog.id}/sync-password`, { password: '' });
-      toast.success(t('ocpw.cleared', 'Download password removed.'));
-      onChange?.();
-    } catch { toast.error(t('acc.failed', 'Failed.')); } finally { setBusy(false); }
-  };
-
-  return (
-    <div className="flex items-center gap-2 flex-wrap">
-      <span className="text-xs text-[var(--muted)] inline-flex items-center gap-1">
-        <Lock size={12} /> {t('ocpw.label', 'Download password')}
-      </span>
-      {has && <Badge tone="amber">{t('ocpw.on', 'Set')}</Badge>}
-      <Input
-        type="password" value={pw} onChange={(e) => setPw(e.target.value)}
-        placeholder={has ? t('ocpw.replace', 'Replace…') : t('ocpw.new', 'Set a password…')}
-        className="w-40" autoComplete="new-password"
-      />
-      <Button size="sm" variant="secondary" disabled={busy || !pw} onClick={save}>{t('ocpw.save', 'Set')}</Button>
-      {has && <Button size="sm" variant="ghost" disabled={busy} onClick={clear}>{t('rd.remove', 'Remove')}</Button>}
-    </div>
-  );
-}
-
-// Owner: who may read this catalog.
-//
-// Catalogs enforced bans and a whitelist server-side long before this screen existed — the
-// rules ran, and nobody could see or set them. The lists themselves are the same three the
-// repo dashboard edits, so the editors are imported rather than rewritten.
-//
-// The list route serialises through an allowlist that (rightly) omits `access` — a public
-// browse must not ship somebody's ban list — so the panel fetches the owner-scoped detail
-// route when it opens, exactly as the item manager does.
-function OwnerCatalogAccess({ catalog, onChange }) {
-  const { t } = useI18n(); const toast = useToast();
-  const { data, loading } = useAsync(() => api.get(`/me/catalogs/${catalog.id}`), [catalog.id]);
-  const [acc, setAcc] = useState(null);
-  const [busy, setBusy] = useState(false);
-  useEffect(() => { if (data?.catalog) setAcc(data.catalog.access || {}); }, [data]);
-  if (loading || !acc) return <div className="mt-3 pt-3 border-t border-[var(--line)]"><Spinner /></div>;
-
-  const bans = acc.bans || {};
-  const setList = (field, val) => setAcc((a) => ({ ...a, [field]: val }));
-  const setBanList = (field, val) => setAcc((a) => ({ ...a, bans: { ...(a.bans || {}), [field]: val } }));
-  const addTo = (cur, v) => [...new Set([...(cur || []), v])];
-  const rmFrom = (cur, v) => (cur || []).filter((x) => x !== v);
-  const addAcct = (cur, e) => ((cur || []).some((a) => a.type === e.type && a.id === e.id) ? cur : [...(cur || []), e]);
-  const rmAcct = (cur, e) => (cur || []).filter((a) => !(a.type === e.type && a.id === e.id));
-
-  const save = async () => {
-    setBusy(true);
-    try { await api.patch(`/me/catalogs/${catalog.id}`, { access: acc }); toast.success(t('oca.saved', 'Access saved.')); onChange?.(); }
-    catch (x) {
-      // The server refuses a non-ed25519 key. Say which failure it was: "Failed." on a form
-      // holding a key someone just pasted is the least useful thing we could tell them.
-      toast.error(x.data?.error === 'unsupported_public_key'
-        ? t('oca.badkey', 'One of the public keys is not a supported type (ed25519, RSA or ECDSA).')
-        : t('acc.failed', 'Failed.'));
-    } finally { setBusy(false); }
-  };
-
-  return (
-    <div className="mt-3 pt-3 border-t border-[var(--line)] space-y-4">
-      <Card className="p-4 space-y-4">
-        <div className="text-sm font-semibold">{t('oca.allow', 'Who may download')}</div>
-        {/* Said plainly, because the rule is not obvious and a whitelist that silently does
-            nothing is worse than no whitelist: the IP/id/account lists gate a PRIVATE catalog
-            (or a site-wide whitelist mode). A public catalog ignores them — but never ignores
-            the bans, the password, or a required key. */}
-        <div className="text-xs text-[var(--muted)]">
-          {catalog.visibility === 'private'
-            ? t('oca.priv', 'This catalog is private: only the lists below (or the share link) can read it.')
-            : t('oca.pub', 'This catalog is public, so these allow lists are not applied — set it to Private for them to take effect. Bans, the password and any required key still apply.')}
-        </div>
-        <ChipList label={t('repos.allowedips', 'Allowed IPs')} items={acc.ips || []} onAdd={(v) => setList('ips', addTo(acc.ips, v))} onRemove={(v) => setList('ips', rmFrom(acc.ips, v))} placeholder="203.0.113.4" />
-        <ChipList label={t('repos.allowedkeys', 'Allowed keys')} items={acc.keys || []} onAdd={(v) => setList('keys', addTo(acc.keys, v))} onRemove={(v) => setList('keys', rmFrom(acc.keys, v))} placeholder="BMM creator id…" />
-        <AccountChipList label={t('repos.allowedaccounts', 'Allowed accounts')} items={acc.accounts || []} onAdd={(e) => setList('accounts', addAcct(acc.accounts, e))} onRemove={(e) => setList('accounts', rmAcct(acc.accounts, e))} placeholder={t('repos.acct.search', 'Search creator id / Discord / username…')} />
-        <PubkeyList items={acc.pubkeys || []} onAdd={(v) => setList('pubkeys', addTo(acc.pubkeys, v))} onRemove={(v) => setList('pubkeys', rmFrom(acc.pubkeys, v))} />
-      </Card>
-      <Card className="p-4 space-y-4">
-        <div className="text-sm font-semibold">{t('oca.ban', 'Banned')}</div>
-        <div className="text-xs text-[var(--muted)]">{t('oca.ban.note', 'Applied to every download, public catalog included — and before anything else, so a banned client is told it is banned rather than asked for a password.')}</div>
-        <ChipList label={t('repos.bannedips', 'Banned IPs')} items={bans.ips || []} onAdd={(v) => setBanList('ips', addTo(bans.ips, v))} onRemove={(v) => setBanList('ips', rmFrom(bans.ips, v))} placeholder="198.51.100.7" />
-        <ChipList label={t('rd.bannedkeys', 'Banned keys')} items={bans.keys || []} onAdd={(v) => setBanList('keys', addTo(bans.keys, v))} onRemove={(v) => setBanList('keys', rmFrom(bans.keys, v))} placeholder="BMM creator id…" />
-        <AccountChipList label={t('repos.bannedaccounts', 'Banned accounts')} items={bans.accounts || []} onAdd={(e) => setBanList('accounts', addAcct(bans.accounts, e))} onRemove={(e) => setBanList('accounts', rmAcct(bans.accounts, e))} placeholder={t('repos.acct.search', 'Search creator id / Discord / username…')} />
-      </Card>
-      <div className="flex justify-end"><Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : t('repos.savesettings', 'Save settings')}</Button></div>
-    </div>
-  );
-}
-
-// Exported because dashboard.jsx reaches it by NAME through lazyNamed. Without the keyword
-// the lazy resolves to undefined and the whole Catalogues tab renders as React error #306 —
-// which says "element type is invalid" and names nothing, so it reads like a broken component
-// rather than a missing export. CatalogSyncPassword above carries the same note; this is the
-// second time.
-export function OwnerCatalogs() {
-  const { t } = useI18n(); const toast = useToast();
-  const { data, loading, reload } = useAsync(() => api.get('/me/catalogs'), []);
-  // M19: one catalogue open at a time, on one tab, both in the URL (?cat=&ctab=). It used to
-  // be four independent toggles (items, access, traffic, domain) that stacked under the card
-  // in click order, so "Access" could open below a full traffic table, off screen, and a
-  // reload closed everything. The URL makes a link to "my catalogue's access" possible too.
-  const [sp, setSp] = useSearchParams();
-  const openCat = sp.get('cat');
-  const openTab = sp.get('ctab');
-  const setOpen = (id, tab) => {
-    const n = new URLSearchParams(sp);
-    if (id) n.set('cat', id); else n.delete('cat');
-    if (id && tab) n.set('ctab', tab); else n.delete('ctab');
-    setSp(n, { replace: true });
-  };
-  const [hidden, setHidden] = useState(() => new Set()); // optimistically-removed during the undo window
-  const cats = (data?.catalogs || []).filter((c) => !hidden.has(c.id));
-  const total = (k) => cats.reduce((n, c) => n + (Number(c[k]) || 0), 0);
-  const patch = async (c, body) => { try { await api.patch(`/me/catalogs/${c.id}`, body); reload(); } catch (x) { toast.error(x.data?.error || t('acc.failed', 'Failed.')); } };
-  const rotate = async (c) => { try { const r = await api.post(`/me/catalogs/${c.id}/rotate-key`); navigator.clipboard?.writeText(`${location.origin}/c/${c.slug}?k=${r.shareKey}`); toast.success(t('oc.keyrotated', 'New share link copied.')); reload(); } catch { toast.error(t('acc.failed', 'Failed.')); } };
-  // Optimistic delete with an undo window: hide the card now and count down; the catalog
-  // is only removed when the timer elapses (Undo restores it, nothing is deleted).
-  const del = (c) => {
-    setHidden((s) => new Set(s).add(c.id));
-    if (openCat === c.id) setOpen(null);
-    const unhide = () => setHidden((s) => { const n = new Set(s); n.delete(c.id); return n; });
-    toast.action({
-      tone: 'success', duration: 6000, cancelLabel: t('common.undo', 'Undo'),
-      msg: t('oc.deleted2', 'Catalog deleted.'),
-      onCommit: async () => { try { await api.del(`/me/catalogs/${c.id}`); reload(); } catch { toast.error(t('acc.failed', 'Failed.')); unhide(); } },
-      onCancel: unhide,
-    });
-  };
-  const copyFeed = (c) => { navigator.clipboard?.writeText(`${location.origin}/api/c/${c.slug}/catalog.json`); toast.success(t('ccp.copied', 'Copied.')); };
-  const tone = (s) => s === 'SUSPENDED' ? 'red' : s === 'HIDDEN' ? 'amber' : 'green';
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <div><h2 className="font-semibold flex items-center gap-2"><Boxes size={16} className="text-[var(--accent-ink)]" /> {t('mycat.title', 'My catalogs')}</h2>
-          <p className="text-sm text-[var(--muted)]">{t('oc.desc', 'Catalogs you host. Share the /c link or add them in BMM. Managed catalogs draw from a storage pool.')}</p></div>
-        <Link to="/submit"><Button size="sm" variant="primary"><Plus size={14} /> {t('oc.new', 'New catalog')}</Button></Link>
-      </div>
-      {/* M19: the totals first, the four numbers an owner opens this tab to see. */}
-      {cats.length > 0 && <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
-        {[[Boxes, cats.length, t('oc.k.cats', 'Catalogs')], [Package, total('itemCount'), t('oc.k.items', 'Items')],
-          [Download, total('downloads'), t('oc.k.dl', 'Downloads')], [Eye, total('views'), t('oc.k.views', 'Views')]].map(([I, n, label]) => (
-          <Card key={label} className="p-3.5 flex items-center gap-3 min-w-0">
-            <span className="w-9 h-9 rounded-xl grid place-items-center shrink-0" style={{ background: 'color-mix(in srgb, var(--primary) 14%, var(--bg-solid))', color: 'var(--accent-ink)' }}><I size={17} /></span>
-            <div className="min-w-0"><div className="text-lg font-extrabold tabular-nums leading-tight">{Number(n).toLocaleString()}</div><div className="text-[11px] text-[var(--muted)]">{label}</div></div>
-          </Card>
-        ))}
-      </div>}
-      {loading ? <Loading /> : cats.length ? <div className="space-y-2">
-        {cats.map((c) => {
-          const isOpen = openCat === c.id;
-          // Items first for a managed catalogue (that is the work); a raw one has no items
-          // here, so it opens on its settings.
-          const tabs = [
-            c.mode === 'managed' && ['items', t('oc.items', 'Items'), Package],
-            ['settings', t('oc.settings', 'Settings'), Settings2],
-            ['access', t('oc.access', 'Access'), ShieldCheck],
-            ['traffic', t('oc.traffic', 'Live traffic'), Activity],
-            ['domain', t('oc.domain', 'Custom domain'), Globe],
-          ].filter(Boolean);
-          const tab = tabs.some(([id]) => id === openTab) ? openTab : tabs[0][0];
-          const quota = c.storageQuotaBytes || 0; const used = c.storageUsedBytes || 0;
-          const pct = quota ? Math.min(100, (used / quota) * 100) : 0;
-          return (
-          <Card key={c.id} className="p-4">
-            {/* Content, then actions on their own row — the same shape as the repo cards.
-                The actions can't share a row with the title: ActionBar sizes itself from its
-                container, and next to a flex-1 sibling that container IS its content, so it
-                would measure "everything fits" at every width and never fold. */}
-            <div className="min-w-0">
-              <div className="font-medium flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0" title={c.name}>{c.name}</span> <Badge tone={tone(c.status)}>{c.status}</Badge><Badge tone={c.visibility === 'private' ? 'amber' : ''}>{c.visibility}</Badge><Badge tone="">{c.mode}</Badge></div>
-              <div className="text-xs text-[var(--faint)] flex items-center gap-2 flex-wrap mt-0.5">
-                <span>{c.itemCount} {t('cc.items', 'items')}</span>
-                <span className="flex items-center gap-1"><Download size={11} /> {c.downloads ?? 0}</span>
-                <span className="flex items-center gap-1"><Eye size={11} /> {c.views ?? 0}</span>
-                <a href={`/c/${c.slug}`} target="_blank" rel="noreferrer" className="underline truncate max-w-full">/c/{c.slug}</a>
-              </div>
-              {/* A managed catalogue draws from a pool: how much of its share is used. */}
-              {c.mode === 'managed' && quota > 0 && <div className="mt-2 max-w-sm">
-                <div className="flex items-center justify-between text-[11px] text-[var(--muted)]"><span className="flex items-center gap-1"><HardDrive size={11} /> {fmtBytes(used)} / {fmtBytes(quota)}</span><span className="tabular-nums">{Math.round(pct)}%</span></div>
-                <div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden mt-1" role="progressbar" aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100} aria-label={t('oc.k.storage', 'Storage')}>
-                  <div className="h-full rounded-full" style={{ width: `${pct}%`, background: `var(--${pct >= 97 ? 'error' : pct >= 85 ? 'warning' : 'primary'})` }} />
-                </div>
-              </div>}
-            </div>
-            <div className="mt-3">
-              <ActionBar actions={[
-                { key: 'manage', label: isOpen ? t('oc.close', 'Close') : t('oc.manage', 'Manage'), icon: isOpen ? ChevronUp : ChevronDown, onClick: () => setOpen(isOpen ? null : c.id, isOpen ? null : openTab) },
-                { key: 'feed', label: t('oc.feed', 'Feed URL'), icon: Copy, onClick: () => copyFeed(c) },
-                { key: 'open', label: t('oc.openpage', 'Open page'), icon: ExternalLink, onClick: () => window.open(`/c/${c.slug}`, '_blank', 'noopener') },
-                { key: 'del', label: t('common.delete', 'Delete'), icon: Trash2, danger: true, onClick: () => del(c) },
-              ]} />
-            </div>
-            {isOpen && <>
-            <div className="flex gap-1 mt-3 border-b border-[var(--line)] overflow-x-auto" role="tablist">
-              {tabs.map(([tid, label, I]) => (
-                <button key={tid} role="tab" aria-selected={tab === tid} onClick={() => setOpen(c.id, tid)} className={`press-sm flex items-center gap-1.5 px-3 py-2 text-sm border-b-2 -mb-px whitespace-nowrap transition-colors ${tab === tid ? 'border-[var(--primary)] text-[var(--text)]' : 'border-transparent text-[var(--muted)] hover:text-[var(--text)]'}`}><I size={14} /> {label}</button>
-              ))}
-            </div>
-            {tab === 'settings' && <div className="flex items-center gap-3 mt-3 flex-wrap text-sm">
-              <label className="flex items-center gap-1.5 text-[var(--muted)]">{t('oc.visibility', 'Visibility')}
-                <Select className="!w-auto" value={c.visibility} onChange={(e) => patch(c, { visibility: e.target.value })}><option value="public">{t('sub2.public', 'Public')}</option><option value="private">{t('sub2.private', 'Private')}</option></Select></label>
-              {c.visibility === 'public' && <label className="flex items-center gap-1.5 text-[var(--muted)] cursor-pointer"><input type="checkbox" checked={c.listed} onChange={(e) => patch(c, { listed: e.target.checked })} /> {t('oc.listed', 'Listed publicly')}</label>}
-              {/* Which app this catalog is for. Without it the catalog index cannot say,
-                  and a client filtering by app has to choose between dropping it and
-                  taking everything — so an unset catalog reaches fewer people than a
-                  labelled one, not more. "Not specified" stays selectable: a catalog set
-                  to the wrong app is worse than an unlabelled one, and would otherwise be
-                  permanently mislabelled. */}
-              <label className="flex items-center gap-1.5 text-[var(--muted)]">
-                {t('oc.forapp', 'For')}
-                <Select className="!w-auto" value={c.app || ''} onChange={(e) => patch(c, { app: e.target.value })}>
-                  <option value="">{t('oc.forapp.none', 'Not specified')}</option>
-                  {['bmm', 'bsm', 'installer'].map((k) => <option key={k} value={k}>{k.toUpperCase()}</option>)}
-                </Select>
-              </label>
-              {c.visibility === 'private' && <Button size="sm" variant="ghost" onClick={() => rotate(c)}><RefreshCw size={12} /> {t('oc.sharelink', 'Copy share link')}</Button>}
-              <CatalogSyncPassword catalog={c} onChange={reload} />
-            </div>}
-            {tab === 'items' && <OwnerCatalogItems catalog={c} onChange={reload} />}
-            {tab === 'access' && <OwnerCatalogAccess catalog={c} onChange={reload} />}
-            {/* Feed fetches and item downloads, private share-link hits included (marked with a
-                key): the owner route, never the staff one. */}
-            {tab === 'traffic' && <div className="mt-3"><LiveTraffic bare url={`/me/catalogs/${c.id}/traffic`} /></div>}
-            {/* The API always accepted `catalogs` here (routes/domains.mjs); only repos had the panel. */}
-            {tab === 'domain' && <div className="mt-3"><DomainPanel kind="catalogs" id={c.id} /></div>}
-            </>}
-          </Card>
-          );
-        })}
-      </div> : <EmptyState icon={Boxes} title={t('mycat.none.t', 'No catalogs yet')} sub={t('mycat.none.s', 'Host your own catalog of plugins, themes or apps.')}
-        action={{ label: t('oc.new', 'New catalog'), icon: Plus, to: '/submit' }} />}
-    </div>
-  );
-}
-
-// Managed-catalog item manager. Each item either points at an external download URL, or
-// hosts a file uploaded straight into the catalog's storage pool (the size limit is just
-// the pool's free space — enforced server-side on create).
-function OwnerCatalogItems({ catalog, onChange }) {
-  const { t } = useI18n(); const toast = useToast();
-  const { data, loading, reload } = useAsync(() => api.get(`/me/catalogs/${catalog.id}`), [catalog.id]);
-  const [f, setF] = useState({ name: '', url: '' });
-  const [file, setFile] = useState(null);
-  const [busy, setBusy] = useState(false);
-  const [hidden, setHidden] = useState(() => new Set());
-  const fileRef = useRef(null);
-  // The catalog's own kind — every item takes it. `kind` comes from the API; `kinds[0]` is
-  // the fallback for a catalog serialised before that field existed.
-  const itemKind = String(catalog.kind || catalog.kinds?.[0] || 'APP').toUpperCase();
-  const items = (data?.catalog?.items || []).filter((it) => !hidden.has(it.id));
-  const add = async () => {
-    if (f.name.trim().length < 1) return toast.error(t('oc.it.name', 'Name required.'));
-    setBusy(true);
-    try {
-      let payloadKey, payloadSize;
-      if (file) { payloadKey = await uploadPayload(itemKind, file); payloadSize = file.size; }
-      await api.post(`/me/catalogs/${catalog.id}/items`, {
-        kind: itemKind, name: f.name.trim(),
-        payloadKey, payloadSize,
-        meta: (!file && f.url) ? { download_url: f.url.trim() } : {},
-      });
-      setF({ ...f, name: '', url: '' }); setFile(null); if (fileRef.current) fileRef.current.value = '';
-      reload(); onChange?.();
-    } catch (x) {
-      const e = x.data?.error;
-      toast.error(e === 'too_large' ? t('sub2.toobig', 'Files over 100MB must be arranged via the contact page.') : e === 'pool_exceeded' ? t('oc.it.poolfull', 'Not enough pool space left.') : e || t('acc.failed', 'Failed.'));
-    } finally { setBusy(false); }
-  };
-  const rm = (it) => {
-    setHidden((s) => new Set(s).add(it.id));
-    const unhide = () => setHidden((s) => { const n = new Set(s); n.delete(it.id); return n; });
-    toast.action({
-      tone: 'success', duration: 6000, cancelLabel: t('common.undo', 'Undo'),
-      msg: t('oc.it.removed', 'Item removed.'),
-      onCommit: async () => { try { await api.del(`/me/catalogs/${catalog.id}/items/${it.id}`); reload(); onChange?.(); } catch { toast.error(t('acc.failed', 'Failed.')); unhide(); } },
-      onCancel: unhide,
-    });
-  };
-  return (
-    <div className="mt-3 pt-3 border-t border-[var(--line)]">
-      {loading ? <Loading /> : <>
-        {items.length > 0 && <div className="space-y-1 mb-2">
-          {items.map((it) => (
-            <div key={it.id} className="flex items-center gap-2 text-sm py-1">
-              <Badge tone="">{it.kind}</Badge><span className="flex-1 min-w-0 truncate" title={it.name}>{it.name}</span>
-              {it.payloadKey && <span className="text-[11px] text-[var(--faint)] flex items-center gap-1"><HardDrive size={11} /> {fmtBytes(it.payloadSize)}</span>}
-              <span className="text-[11px] text-[var(--faint)] flex items-center gap-1"><Download size={11} /> {it.downloads ?? 0}</span>
-              <button onClick={() => rm(it)} className="text-[var(--faint)] hover:text-error"><X size={13} /></button>
-            </div>
-          ))}
-        </div>}
-        <div className="flex flex-wrap items-end gap-2">
-          {/* Not a choice. A catalog serves one kind, so every item in it has that kind by
-              definition — offering a picker here only invited an item the feed would refuse
-              to emit (the API now answers kind_mismatch). Shown, not selectable. */}
-          <Badge tone="primary" title={t('oc.it.kindfixed', 'This catalog serves one type; every item uses it.')}>{KIND_LABEL[itemKind] || itemKind}</Badge>
-          <Input className="flex-1 min-w-[120px]" placeholder={t('sub.name', 'Name')} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
-          {!file && <Input className="flex-1 min-w-[160px]" placeholder="https://…/download" value={f.url} onChange={(e) => setF({ ...f, url: e.target.value })} />}
-          {file && <span className="text-xs text-[var(--muted)] flex items-center gap-1 min-w-0"><Upload size={12} /> <span className="truncate max-w-[160px]" title={file.name}>{file.name}</span> ({fmtBytes(file.size)}) <button onClick={() => { setFile(null); if (fileRef.current) fileRef.current.value = ''; }} className="hover:text-error"><X size={12} /></button></span>}
-          <input ref={fileRef} type="file" className="hidden" onChange={(e) => setFile(e.target.files?.[0] || null)} />
-          <Button size="sm" variant="ghost" onClick={() => fileRef.current?.click()} title={t('oc.it.upload', 'Upload a file to your pool instead of linking a URL')}><Upload size={13} /> {t('oc.it.uploadbtn', 'Upload')}</Button>
-          <Button size="sm" variant="default" onClick={add} disabled={busy}>{busy ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />} {t('oc.additem', 'Add')}</Button>
-        </div>
-        <p className="text-[11px] text-[var(--faint)] mt-1.5">{t('oc.it.hint', 'Link a download URL, or upload a file, uploads use your pool space (up to what is free).')}</p>
-      </>}
-    </div>
-  );
-}
-
 // Admin: moderate community-hosted catalogs — suspend (offline for all), unlist (out of
 // the public browser but reachable by URL), delete (purge), or examine an item's hosted
 // files. Cap: manage_catalogs.
@@ -21910,195 +21566,6 @@ function AdminBadgeHolders({ badge, onClose }) {
         ))}
       </div> : <p className="text-sm text-[var(--faint)] text-center py-6">{t('ab.noholders', 'No one has this badge yet.')}</p>}
     </Modal>
-  );
-}
-
-const REPORT_STATUS_TONE = { open: 'green', archived: 'amber', closed: '' };
-const REPORT_TARGET_ICON = { user: Users, repo: Server, catalog: Boxes, item: Package, general: MessageSquare, showcase_request: Sparkles, feedback: BugIcon };
-
-// User dashboard: the reports / support threads this user opened, GitHub-PR style.
-// Rendered by the MEMBER dashboard (pages/dashboard.jsx), never by this page — it lives
-// here only because the old pages monolith was split this way. Exported so the dashboard
-// imports it instead of referencing a bare identifier, which crashed the tab at render.
-export function MyReports() {
-  const { t } = useI18n(); const toast = useToast();
-  const { data, loading, reload } = useAsync(() => api.get('/me/reports'), []);
-  // `?r=<id>` opens that thread: it is where every report notification and mail points.
-  const [sp] = useSearchParams();
-  const [openId, setOpenId] = useState(() => sp.get('r') || null);
-  const [newOpen, setNewOpen] = useState(false);
-  const reports = data?.reports || [];
-  const unseen = reports.filter((r) => r.userUnread && !r.participant).length;
-  // "Mark as seen" without opening: the thread's unread flag and the notifications about it,
-  // in one write, and the bell and the topbar badge hear about it (lib/notifs.js).
-  const seen = async (path) => { try { await markReportsSeen(path); reload(true); } catch { toast.error(t('acc.failed', 'Failed.')); } };
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <div>
-          <h2 className="font-semibold flex items-center gap-2"><MessageSquare size={16} className="text-[var(--accent-ink)]" /> {t('mr.title', 'Messages & reports')}</h2>
-          <p className="text-sm text-[var(--muted)]">{t('mr.sub', 'Reports you filed and support conversations. Replies from the team show up here.')}</p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          {unseen > 0 && <Button size="sm" variant="ghost" onClick={() => seen('/me/reports/seen-all')}><CheckCheck size={14} /> {t('mr.seenall', 'Mark all as seen')}</Button>}
-          <Button size="sm" variant="primary" onClick={() => setNewOpen(true)}><Plus size={14} /> {t('mr.new2', 'New report / contact')}</Button>
-        </div>
-      </div>
-      {loading ? <Loading /> : reports.length ? <div className="space-y-1.5">
-        {reports.map((r) => { const Ico = REPORT_TARGET_ICON[r.targetType] || MessageSquare; return (
-          <Card key={r.id} className={`p-3 flex items-center gap-3 card-hover ${r.userUnread && !r.participant ? 'border-[var(--primary)]' : ''}`}>
-            <button onClick={() => setOpenId(r.id)} className="flex-1 min-w-0 flex items-center gap-3 text-start">
-              <span className="grid place-items-center w-9 h-9 rounded-lg bg-[var(--surface-2)] shrink-0"><Ico size={15} className="text-[var(--accent-ink)]" /></span>
-              <div className="flex-1 min-w-0">
-                <div className="font-medium flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0" title={r.targetLabel || undefined}>{r.targetLabel || t('mr.general', 'Support request')}</span> <Badge tone={REPORT_STATUS_TONE[r.status]}>{r.status}</Badge>{r.userUnread && !r.participant && <Badge tone="red">{t('mr.new', 'new reply')}</Badge>}</div>
-                <div className="text-xs text-[var(--faint)]">{t('mr.on', 'on {t}').replace('{t}', r.targetType)} · {r.messageCount} {t('mr.msgs', 'messages')} · {fmtAgo(r.lastActivityAt)}</div>
-              </div>
-            </button>
-            {r.userUnread && !r.participant && <Button size="sm" variant="ghost" onClick={() => seen(`/me/reports/${r.id}/seen`)} title={t('mr.seen', 'Mark as seen')} aria-label={t('mr.seen', 'Mark as seen')}><Eye size={14} /></Button>}
-          </Card>
-        ); })}
-      </div> : <EmptyState icon={MessageSquare} title={t('mr.none.t', 'No reports yet')} sub={t('mr.none.s', 'Use the Report button on a profile, repo or catalog, or start one here.')}
-        action={{ label: t('mr.new2', 'New report / contact'), icon: Plus, onClick: () => setNewOpen(true) }} />}
-      {openId && <ReportThreadModal id={openId} admin={false} onClose={() => { setOpenId(null); reload(); }} />}
-      {newOpen && <ReportModal targetType="general" targetId="" targetLabel="" onClose={() => { setNewOpen(false); reload(); }} />}
-    </div>
-  );
-}
-
-// Shared thread modal — user (admin=false) or staff (admin=true) view of one report.
-function ReportThreadModal({ id, admin, onClose, onDelete }) {
-  const { t } = useI18n(); const toast = useToast(); const { user } = useAuth();
-  const base = admin ? `/admin/reports/${id}` : `/me/reports/${id}`;
-  const { data, err, loading, reload } = useAsync(() => api.get(base), [id]);
-  // Opening the thread marked it seen on the server, notifications about it included; the
-  // response names those, so the bell and the topbar badge drop now rather than on their poll.
-  useEffect(() => { if (data?.seenNotifIds) notifsReadElsewhere(data.seenNotifIds); }, [data]);
-  // Live thread. The stream lives under /me/ for BOTH views: canAccessReport already covers
-  // staff, so there is no second authorisation path to keep in step with the first.
-  useThreadStream(id ? `/me/reports/${id}/stream` : null, () => reload(true));
-  const [sending, setSending] = useState(false);
-  const [people, setPeople] = useState(false);
-  const r = data?.report;
-  // A staff member can't moderate a report they opened — they reply to it as the reporter
-  // from their own dashboard instead (avoids the "answering myself as staff" confusion).
-  const own = admin && r && r.reporterId === user?.id;
-  const send = async ({ body, images }) => {
-    setSending(true);
-    try { await api.post(`${base}/messages`, { body, images }); reload(true); return true; }
-    catch (x) { toast.error(x.data?.error === 'closed' ? t('mr.closed', 'This report is closed.') : t('acc.failed', 'Failed.')); return false; }
-    finally { setSending(false); }
-  };
-  const setStatus = async (status) => { try { await api.post(`/admin/reports/${id}/status`, { status }); reload(true); } catch { toast.error(t('acc.failed', 'Failed.')); } };
-  // The reporter's own close/reopen. Separate endpoint from the staff one, and narrower:
-  // open <-> closed only. Someone who solved their own problem should be able to say so
-  // without waiting for staff to clear the thread.
-  const mine = r && r.reporterId === user?.id;
-  const setOwnStatus = async (status) => { try { await api.post(`/me/reports/${id}/status`, { status }); reload(true); } catch { toast.error(t('acc.failed', 'Failed.')); } };
-  // The delete is the LIST's (onDelete): it hides the row, holds the request for the undo
-  // window, and only then sends it. The modal closes first so nothing on screen still shows a
-  // thread that is on its way out.
-  const del = () => { onClose(); onDelete?.(r); };
-  return (
-    <Modal open onClose={onClose} icon={admin ? Inbox : MessageSquare} width="max-w-2xl"
-      title={loading ? t('common.loading', 'Loading…') : (r?.targetLabel || t('mr.general', 'Support request'))}>
-      {err && !r ? <p className="text-sm text-[var(--muted)] text-center py-6">{t('mr.gone', 'This conversation no longer exists. It may have been deleted.')}</p>
-        : loading || !r ? <Loading /> : <div className="space-y-4">
-        <div className="flex items-center gap-2 flex-wrap text-xs text-[var(--muted)]">
-          <Badge tone={REPORT_STATUS_TONE[r.status]}>{r.status}</Badge>
-          <span>{t('mr.on', 'on {t}').replace('{t}', r.targetType)}{r.reason ? ` · ${r.reason}` : ''}</span>
-          {/* Full report subject: the reported entity's id (repo id / catalog slug / user id) + when. */}
-          {admin && r.targetId && <button onClick={() => { navigator.clipboard?.writeText(r.targetId); toast.success(t('ccp.copied', 'Copied.')); }} className="font-mono hover:text-[var(--accent-ink)] inline-flex items-center gap-1" title={t('ar.targetid', 'Reported {t} id, click to copy').replace('{t}', r.targetType)}><Fingerprint size={11} /> {r.targetId} <Copy size={9} /></button>}
-          {admin && <span className="flex items-center gap-1"><Calendar size={11} /> {new Date(r.createdAt).toLocaleString()}</span>}
-          {admin && r.reporter && <span className="flex items-center gap-1"><Users size={12} /> {r.reporter} · {r.reporterEmail} {r.reporterBcId && <button onClick={() => { navigator.clipboard?.writeText(r.reporterBcId); toast.success(t('prof.bcidcopied', 'BC id copied.')); }} className="font-mono hover:text-[var(--accent-ink)] inline-flex items-center gap-1"><Fingerprint size={11} /> {r.reporterBcId} <Copy size={9} /></button>}</span>}
-        </div>
-        {own && <div className="text-xs rounded-lg px-3 py-2 bg-warning-bg border border-warning-border text-warning flex items-center gap-2"><AlertTriangle size={14} /> {t('ar.ownreport', 'You opened this report, reply to it from your dashboard (Reports & contact), not as staff here.')}</div>}
-        {admin && !own && <div className="flex flex-wrap gap-2">
-          {r.status !== 'open' && <Button size="sm" variant="ghost" onClick={() => setStatus('open')}><RotateCcw size={13} /> {t('ar.reopen', 'Reopen')}</Button>}
-          {r.status !== 'archived' && <Button size="sm" variant="ghost" onClick={() => setStatus('archived')}><Archive size={13} /> {t('ar.archive', 'Archive')}</Button>}
-          {r.status !== 'closed' && <Button size="sm" variant="ghost" onClick={() => setStatus('closed')}><CheckCircle2 size={13} /> {t('ar.close', 'Close')}</Button>}
-          <Button size="sm" variant="ghost" onClick={() => setPeople((v) => !v)}><Users size={13} /> {t('ar.people', 'People')}{r.participants?.length ? ` (${r.participants.length})` : ''}</Button>
-          <Button size="sm" variant="ghost" className="!text-error" onClick={del}><Trash2 size={13} /> {t('common.delete', 'Delete')}</Button>
-        </div>}
-        {admin && !own && people && <ReportPeoplePanel report={r} onChange={reload} />}
-        {/* The reporter's own controls — shown in the user view, and also to a staff member
-            looking at a report they opened themselves (where the staff bar is hidden). */}
-        {mine && !admin && <div className="flex flex-wrap gap-2">
-          {r.status === 'closed'
-            ? <Button size="sm" variant="ghost" onClick={() => setOwnStatus('open')}><RefreshCw size={13} /> {t('mr.reopen', 'Reopen my report')}</Button>
-            : <Button size="sm" variant="ghost" onClick={() => setOwnStatus('closed')}><CheckCircle2 size={13} /> {t('mr.close', 'Close my report')}</Button>}
-        </div>}
-        <div className="max-h-[45vh] overflow-y-auto pe-1"><ReportThread messages={r.messages} /></div>
-        {own ? null
-          : r.status === 'closed' && !admin ? <p className="text-sm text-[var(--faint)] text-center py-2">{t('mr.closednote', 'This report is closed, reopen it above if you still need help.')}</p>
-          : <ReportComposer onSend={send} sending={sending} placeholder={admin ? t('ar.reply', 'Reply as staff…') : t('rp.msgph', 'Write a message…')} />}
-      </div>}
-    </Modal>
-  );
-}
-
-// Admin: manage who's in a report thread — add participants (by id/email/BC id, as staff or
-// invited) and mint invite links (usage cap + optional lock to an account / email / creator id).
-function ReportPeoplePanel({ report, onChange }) {
-  const { t } = useI18n(); const toast = useToast();
-  const [who, setWho] = useState(''); const [role, setRole] = useState('invited');
-  const [inv, setInv] = useState({ maxUses: 1, targetType: 'any', targetValue: '', expiresInDays: '' });
-  const add = async () => {
-    if (!who.trim()) return;
-    try { const rr = await api.post(`/admin/reports/${report.id}/participants`, { who: who.trim(), role }); toast.success(t('rpp.added', 'Added {n}.').replace('{n}', rr.name || who)); setWho(''); onChange(); }
-    catch (x) { toast.error(x.data?.error === 'no_such_user' ? t('rpp.nouser', 'No user with that id/email/BC id.') : x.data?.error === 'already_reporter' ? t('rpp.isreporter', 'That’s the reporter.') : t('acc.failed', 'Failed.')); }
-  };
-  const rmPart = async (p2) => { try { await api.del(`/admin/reports/${report.id}/participants/${p2.userId}`); onChange(); } catch { toast.error(t('acc.failed', 'Failed.')); } };
-  const mkInvite = async () => {
-    try {
-      const body = { maxUses: Number(inv.maxUses) || 0, targetType: inv.targetType, targetValue: inv.targetValue.trim() };
-      if (inv.expiresInDays) body.expiresInDays = Number(inv.expiresInDays);
-      const rr = await api.post(`/admin/reports/${report.id}/invites`, body);
-      navigator.clipboard?.writeText(rr.invite.url); toast.success(t('rpp.invcopied', 'Invite link copied.')); onChange();
-    } catch (x) { toast.error(x.data?.error === 'target_value_required' ? t('rpp.needtarget', 'Fill the target (account/email/creator id).') : t('acc.failed', 'Failed.')); }
-  };
-  const rmInvite = async (iv) => { try { await api.del(`/admin/reports/${report.id}/invites/${iv.id}`); onChange(); } catch { toast.error(t('acc.failed', 'Failed.')); } };
-  return (
-    <div className="rounded-xl border border-[var(--line)] p-3 space-y-3 panel">
-      {/* Participants */}
-      <div>
-        <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] font-semibold mb-1.5">{t('rpp.participants', 'Participants')}</div>
-        {report.participants?.length > 0 && <div className="space-y-1 mb-2">
-          {report.participants.map((p2) => (
-            <div key={p2.userId} className="flex items-center gap-2 text-sm">
-              <Badge tone={p2.role === 'staff' ? 'amber' : ''}>{p2.role}</Badge>
-              <span className="flex-1 min-w-0 truncate">{p2.name} <span className="text-[var(--faint)] text-xs">· {p2.email}</span></span>
-              <button onClick={() => rmPart(p2)} className="text-[var(--faint)] hover:text-error"><X size={13} /></button>
-            </div>
-          ))}
-        </div>}
-        <div className="flex flex-wrap items-end gap-2">
-          <Input className="flex-1 min-w-[160px]" placeholder={t('rpp.who', 'User id, email or BC id')} value={who} onChange={(e) => setWho(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} />
-          <Select className="!w-auto" value={role} onChange={(e) => setRole(e.target.value)}><option value="invited">{t('rpp.invited', 'Invited user')}</option><option value="staff">{t('rpp.staff', 'Staff')}</option></Select>
-          <Button size="sm" variant="default" onClick={add}><Plus size={13} /> {t('rpp.add', 'Add')}</Button>
-        </div>
-      </div>
-      {/* Invite links */}
-      <div className="pt-2 border-t border-[var(--line)]">
-        <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] font-semibold mb-1.5">{t('rpp.invites', 'Invite links')}</div>
-        {report.invites?.length > 0 && <div className="space-y-1 mb-2">
-          {report.invites.map((iv) => (
-            <div key={iv.id} className="flex items-center gap-2 text-xs">
-              <span className="flex-1 min-w-0 truncate font-mono" title={iv.url}>{iv.url}</span>
-              <span className="text-[var(--faint)] shrink-0">{iv.maxUses === 0 ? '∞' : `${iv.uses}/${iv.maxUses}`}{iv.targetType !== 'any' ? ` · ${iv.targetType}` : ''}</span>
-              <button onClick={() => { navigator.clipboard?.writeText(iv.url); toast.success(t('ccp.copied', 'Copied.')); }} className="text-[var(--faint)] hover:text-[var(--accent-ink)]"><Copy size={12} /></button>
-              <button onClick={() => rmInvite(iv)} className="text-[var(--faint)] hover:text-error"><X size={12} /></button>
-            </div>
-          ))}
-        </div>}
-        <div className="grid sm:grid-cols-2 gap-2">
-          <label className="text-xs text-[var(--muted)]">{t('rpp.maxuses', 'Max uses (0 = unlimited)')}<Input type="number" min="0" value={inv.maxUses} onChange={(e) => setInv({ ...inv, maxUses: e.target.value })} /></label>
-          <label className="text-xs text-[var(--muted)]">{t('rpp.expires', 'Expires in days (blank = never)')}<Input type="number" min="1" value={inv.expiresInDays} onChange={(e) => setInv({ ...inv, expiresInDays: e.target.value })} /></label>
-          <label className="text-xs text-[var(--muted)]">{t('rpp.lockto', 'Lock to')}<Select value={inv.targetType} onChange={(e) => setInv({ ...inv, targetType: e.target.value })}><option value="any">{t('rpp.anyone', 'Anyone with the link')}</option><option value="user">{t('rpp.anuser', 'A specific account (id)')}</option><option value="email">{t('rpp.anemail', 'An email')}</option><option value="creator">{t('rpp.acreator', 'A BMM creator id')}</option></Select></label>
-          {inv.targetType !== 'any' && <label className="text-xs text-[var(--muted)]">{t('rpp.target', 'Target value')}<Input value={inv.targetValue} onChange={(e) => setInv({ ...inv, targetValue: e.target.value })} placeholder={inv.targetType === 'email' ? 'user@example.com' : inv.targetType === 'user' ? 'account id' : 'creator id'} /></label>}
-        </div>
-        <div className="mt-2"><Button size="sm" variant="default" onClick={mkInvite}><Link2 size={13} /> {t('rpp.mkinvite', 'Create invite link')}</Button></div>
-      </div>
-    </div>
   );
 }
 

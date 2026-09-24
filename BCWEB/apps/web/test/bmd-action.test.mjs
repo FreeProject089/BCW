@@ -31,7 +31,7 @@ export const jsx = el, jsxs = el, jsxDEV = el;
 export const Fragment = 'Fragment';
 export const createElement = (type, props, ...children) => ({ type, props: { ...(props || {}), children } });
 export const createContext = (v) => ({ _v: v, Provider: 'Provider', Consumer: 'Consumer' });
-export const useContext = (c) => c._v;
+export const useContext = (c) => (globalThis.__bmdCtx ? { ...c._v, ...globalThis.__bmdCtx } : c._v);
 export const useState = (v) => [typeof v === 'function' ? v() : v, () => {}];
 export const useEffect = () => {}, useLayoutEffect = () => {};
 export const useMemo = (f) => f(), useCallback = (f) => f;
@@ -44,11 +44,12 @@ export default R;
 `;
 
 let DocAction = null;
+let DocReplay = null;
 let safeUrl = null;
 before(async () => {
   const esbuild = await import('esbuild');
   writeFileSync(entry, [
-    "export { DocAction } from '../../../packages/bmd/src/blocks.jsx';",
+    "export { DocAction, DocReplay } from '../../../packages/bmd/src/blocks.jsx';",
     "export { safeUrl } from '../../../packages/bmd/src/url.js';",
   ].join('\n'));
   await esbuild.build({
@@ -62,7 +63,7 @@ before(async () => {
       },
     }],
   });
-  ({ DocAction, safeUrl } = await import(pathToFileURL(bundle).href));
+  ({ DocAction, DocReplay, safeUrl } = await import(pathToFileURL(bundle).href));
 });
 after(() => { for (const f of [entry, bundle]) rmSync(f, { force: true }); });
 
@@ -158,5 +159,30 @@ describe('B.MD safeUrl: a backslash path is another host', () => {
     for (const raw of ['/docs', '/docs/a\\b', '/', '#x', '?q=1', 'guide.md', 'https://example.com/a']) {
       assert.equal(safeUrl(raw, { kind: 'link' }).ok, true, JSON.stringify(raw));
     }
+  });
+});
+
+describe('B.MD ::replay: the host player gets a vetted URL and fetches it without cookies', () => {
+  // Round 1 left this open ("DocReplay passes data-src to the host application's replay player
+  // unfiltered, unlike its four siblings"). Full audit Sept 24 2026 (web), W3.
+  const srcFor = (raw) => {
+    globalThis.__bmdCtx = { Replay: 'Replay' };
+    try { return DocReplay({ node: { properties: { dataSrc: raw } } }).props.src; } finally { delete globalThis.__bmdCtx; }
+  };
+  test('javascript:, data: and protocol-relative sources reach the player as nothing', () => {
+    for (const raw of ['javascript:alert(1)', 'data:application/json,[]', '//evil.example/a.bmmreplay', '/\\evil.example/a.bmmreplay']) {
+      assert.equal(srcFor(raw), '', JSON.stringify(raw));
+    }
+  });
+  test('a site path and an https file still play (control)', () => {
+    assert.equal(srcFor('/media/docs/a.bmmreplay'), '/media/docs/a.bmmreplay');
+    assert.equal(srcFor('https://cdn.example/a.bmmreplay'), 'https://cdn.example/a.bmmreplay');
+  });
+  test('the web app\'s ReplayPlayer fetches the recording with credentials: omit', () => {
+    const src = readFileSync(join(WEB, 'src/ui/ReplayPlayer.jsx'), 'utf8').replace(/\/\/.*$/gm, '');
+    const fetches = (src.match(/\bfetch\(/g) || []).length;
+    const omits = (src.match(/credentials:\s*'omit'/g) || []).length;
+    assert.ok(fetches >= 1, 'the player no longer fetches: this check reads nothing');
+    assert.equal(omits, fetches);
   });
 });

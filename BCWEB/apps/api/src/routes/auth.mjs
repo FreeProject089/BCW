@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { safeAvatarImage } from '../lib/avatar-url.mjs';
 import jwt from 'jsonwebtoken';
 import argon2 from 'argon2';
 import crypto from 'node:crypto';
@@ -13,6 +14,9 @@ import { VERIFY_WINDOW_DAYS, RESEND_MIN_GAP_MS, RESEND_MAX_PER_DAY, RESEND_DAY_M
 import { priorLoginContext, maybeAlertLogin, FAIL_WINDOW_MS, FAIL_THRESHOLD } from '../lib/login-alert.mjs';
 
 const SITE_URL = (process.env.SITE_URL || 'http://localhost:5176').replace(/\/$/, '');
+/** Wrong second factors one account may receive in FAIL_WINDOW_MS before /auth/login/2fa
+ *  stops checking codes for it (see that route). */
+export const TWOFA_MAX_FAILS = 10;
 
 // Create + email an account-confirmation token (non-blocking; no-op if email is off).
 export async function sendVerificationEmail(p, user, opts = {}) {
@@ -419,6 +423,18 @@ export default async function authRoutes(app) {
     const ip = clientIp(req);
     const user = await p.user.findUnique({ where: { id: claims.uid } });
     if (!user || !user.totpEnabled) return reply.code(401).send({ error: 'invalid_token' });
+    // A ceiling on wrong second factors per ACCOUNT, across every IP and every half-token
+    // (full audit, Sept 24 2026). The per-IP limit was the only bound here. Unlike the password
+    // step this may refuse the real owner for a while, and that is acceptable: only somebody
+    // who already holds the password can reach this line, so a refusal here is itself the sign
+    // the password is known to someone else. It also caps the argon2 work the recovery-code
+    // loop below does per failed attempt.
+    const twofaFails = await p.loginAttempt.count({
+      where: { userId: user.id, success: false, reason: '2fa_invalid', createdAt: { gte: new Date(Date.now() - FAIL_WINDOW_MS) } },
+    }).catch(() => 0);
+    if (twofaFails >= TWOFA_MAX_FAILS) {
+      return reply.code(429).send({ error: '2fa_locked', retryAfterSec: Math.ceil(FAIL_WINDOW_MS / 1000) });
+    }
     const code = b.data.code.trim();
     let ok = verifyTotp(user.totpSecret, code);
     let usedRecovery = null;
@@ -660,7 +676,7 @@ export default async function authRoutes(app) {
     const b = z.object({
       displayName: z.string().min(2).max(40).optional(),
       bio: z.string().max(280).optional(),
-      avatar: z.object({ variant: z.string().max(20), seed: z.string().max(60), colors: z.array(z.string().max(9)).max(6).optional(), image: z.string().max(500).nullable().optional() }).nullable().optional(),
+      avatar: z.object({ variant: z.string().max(20), seed: z.string().max(60), colors: z.array(z.string().max(9)).max(6).optional(), image: z.string().max(500).nullable().optional().refine((v) => v == null || safeAvatarImage(v) !== null, { message: 'avatar_image_not_allowed' }) }).nullable().optional(),
       profilePublic: z.boolean().optional(),
       showConnections: z.array(z.enum(['github', 'discord', 'bmm', 'website', 'youtube', 'twitch', 'steam', 'kofi'])).max(8).optional(),
       // Only http(s) — zod .url() otherwise accepts javascript:/data: URIs, which would

@@ -8,6 +8,7 @@ import { api } from '../lib/api.js';
 import { GoogleIcon, GithubIcon, DiscordIcon } from '../ui/brand.jsx';
 import { SiteLogo } from '../ui/theme.jsx';
 import { TotpQuickFill } from './twofa-fill.jsx';
+import { nextTarget } from '../lib/next-path.js'; // W4: one rule for ?next=
 
 // Local async-fetch helper (same tiny hook duplicated across a few page modules).
 function useAsync(fn, deps = []) {
@@ -102,7 +103,7 @@ function AccountLockedPanel({ data, onBack }) {
    and only then is the provider attached and the session opened. */
 const PROVIDER_ICON = { google: GoogleIcon, github: GithubIcon, discord: DiscordIcon };
 const PROVIDER_LABEL = { google: 'Google', github: 'GitHub', discord: 'Discord' };
-function LinkProposalPanel({ token, provider, devcode, next, onDone, onDecline }) {
+function LinkProposalPanel({ token, provider, devcode, onDone, onDecline }) {
   const { t } = useI18n(); const toast = useToast(); const { refresh } = useAuth();
   const [info, setInfo] = useState(null); const [gone, setGone] = useState(false);
   const [method, setMethod] = useState('password'); // password | code
@@ -118,7 +119,7 @@ function LinkProposalPanel({ token, provider, devcode, next, onDone, onDecline }
       await api.post('/auth/oauth/link/confirm', { token, ...(method === 'password' ? { password } : { code: code.trim() }) });
       await refresh();
       toast.success(t('auth.link.done', '{p} is now linked to your account.').replace('{p}', label));
-      onDone(next);
+      onDone();
     } catch (x) {
       const e2 = x.data?.error;
       setErr(e2 === 'wrong_credentials' ? (method === 'password' ? t('auth.link.badpw', 'Wrong password.') : t('auth.link.badcode', 'Wrong or expired code.'))
@@ -178,9 +179,16 @@ export function Auth() {
   // going, exactly as the password path already does. The server re-validates it — this is
   // only the plumbing, never the guard.
   const oauthNext = (() => {
-    const n = params.get('next');
-    return n && n.startsWith('/') ? `?next=${encodeURIComponent(n)}` : '';
+    const n = nextTarget(params.get('next'));
+    return n ? `?next=${encodeURIComponent(n.href)}` : '';
   })();
+  // Leave for ?next= (lib/next-path.js decides what it may be): a real navigation only for the
+  // two server routes that need one, a router navigation for a page of this app, else `fallback`.
+  const goNext = (fallback) => {
+    const n = nextTarget(params.get('next'));
+    if (n?.server) { window.location.href = n.href; return; }
+    nav(n ? n.href : fallback, { replace: true });
+  };
   const [mode, setMode] = useState('login'); // login | register | forgot | reset
   const [newsletter, setNewsletter] = useState(true); // opt-in pre-checked at sign-up
   const [f, setF] = useState({ email: '', password: '', confirm: '', displayName: '', token: '' });
@@ -213,14 +221,10 @@ export function Auth() {
     // A brand-new account is sent straight to the (optional) 2FA setup; an
     // already-logged-in visitor who just hit /auth goes to their profile / ?next.
     if (justRegistered.current) { nav('/profile?setup2fa=1', { replace: true }); return; }
-    const next = params.get('next');
-    // `/oauth2/*` is served by the API (OIDC authorize), not an SPA route — do a real
-    // navigation so it hits the backend rather than the SPA's not-found.
-    // `/oauth2/*` and `/api/*` are served by the API, not by this SPA — a router navigation
-    // would land on the not-found page. Same origin either way, so the startsWith('/') guard
-    // below still covers the open-redirect case: nothing here can leave the site.
-    if (next && (next.startsWith('/oauth2/') || next.startsWith('/api/'))) { window.location.href = next; return; }
-    nav(next && next.startsWith('/') ? next : '/profile', { replace: true });
+    // `/oauth2/authorize` and `/api/telemetry/authorize` are served by the API, not by this
+    // SPA, so they get a real navigation. Nothing else under /api does: "same origin" was not
+    // enough, because an API route can redirect off the site (full audit Sept 24 2026, W4).
+    goNext('/profile');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
@@ -235,7 +239,15 @@ export function Auth() {
   const submitCode = async () => {
     setBusy(true);
     try { await loginWith2fa(twoFa.tempToken, code.trim()); toast.success(t('auth.welcome.toast')); nav('/dashboard'); }
-    catch (x) { toast.error(x.data?.error === '2fa_invalid' ? (t('auth.2fa.bad') || 'Invalid code.') : t('auth.err.fail')); }
+    catch (x) {
+      const e = x.data?.error;
+      // 429 `2fa_locked`: the API's per-account ceiling on wrong second factors. It refuses
+      // backup codes too while it holds, so the message does not offer them.
+      if (e === '2fa_locked') {
+        const m = Math.max(1, Math.ceil((Number(x.data?.retryAfterSec) || 900) / 60));
+        toast.error(t('auth.2faLocked', 'Too many wrong codes for this account. Wait {m} minutes, then try again. If those attempts were not yours, change your password once you are in.').replace('{m}', m));
+      } else toast.error(e === '2fa_invalid' ? (t('auth.2fa.bad') || 'Invalid code.') : t('auth.err.fail'));
+    }
     finally { setBusy(false); }
   };
 
@@ -316,9 +328,8 @@ export function Auth() {
   if (lock) return <AccountLockedPanel data={lock} onBack={() => setLock(null)} />;
   const linkToken = params.get('link');
   if (linkToken) {
-    const nextP = params.get('next');
-    return <LinkProposalPanel token={linkToken} provider={params.get('provider') || ''} devcode={params.get('devcode') || ''} next={nextP && nextP.startsWith('/') ? nextP : ''}
-      onDone={(n) => nav(n || '/dashboard', { replace: true })}
+    return <LinkProposalPanel token={linkToken} provider={params.get('provider') || ''} devcode={params.get('devcode') || ''}
+      onDone={() => goNext('/dashboard')}
       onDecline={() => setParams((q) => { q.delete('link'); q.delete('provider'); q.delete('devcode'); return q; }, { replace: true })} />;
   }
 

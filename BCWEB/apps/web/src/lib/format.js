@@ -23,3 +23,14 @@ export function fmtNum(n, lang = 'en', opts = {}) {
 export function fmtInt(n, lang = 'en') {
   return fmtNum(n, lang, { maximumFractionDigits: 0 });
 }
+
+/** A byte count for people: 1536 → "1.5 KB". (Was a private helper of pages/admin.jsx.) */
+export const fmtBytes = (n) => {
+  if (!n) return '0 B';
+  const u = ['B', 'KB', 'MB', 'GB', 'TB']; let v = n, i = 0;
+  while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+  return `${v.toFixed(v < 10 && i > 0 ? 1 : 0)} ${u[i]}`;
+};
+
+/** How long ago, in one unit: "42s", "7m", "3h", "12d". (Was a private helper of pages/admin.jsx.) */
+export const fmtAgo = (d) => { const s = Math.round((Date.now() - new Date(d).getTime()) / 1000); return s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s / 60)}m` : s < 86400 ? `${Math.floor(s / 3600)}h` : `${Math.floor(s / 86400)}d`; };

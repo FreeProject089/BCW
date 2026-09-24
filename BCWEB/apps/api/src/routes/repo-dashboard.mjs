@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import jwt from 'jsonwebtoken';
 import argon2 from 'argon2';
+import crypto from 'node:crypto';
 import archiver from 'archiver';
-import { db, repoLog, notify, accountEntrySchema, pubkeyErrorCode } from '../lib/lib.mjs';
+import { db, repoLog, notify, accountEntrySchema, pubkeyErrorCode, sessionUser, accountLock } from '../lib/lib.mjs';
 import { effUpload, DEFAULT_SETTINGS, SETTINGS_SCHEMA, mergeSettings } from './repos.mjs';
 import { diffFields, recordChange, summaryFor } from '../lib/changelog.mjs';
 import { presignRepoFile, registerRepoFile, removeRepoFile, publishRepo, unpublishRepo, throttle } from './hosting-content.mjs';
@@ -52,24 +53,45 @@ async function poolInfo(p, repo) {
 }
 
 
+// The unlock cookie names the password it was issued for: a short digest of the stored argon2
+// hash (never the password; the hash already never leaves the server). Changing the password
+// rewrites the hash with a fresh salt and removing it leaves nothing to match, so either one
+// ends every cookie issued before — which is what somebody changing it is trying to do.
+const pwVersion = (hash) => (hash ? crypto.createHash('sha256').update(String(hash)).digest('base64url').slice(0, 16) : null);
+
+const STAFF_ROLES = ['MOD', 'ADMIN', 'SUPERADMIN'];
+
 // Resolve the caller's access to a repo → 'owner' | 'collab' | 'password' | null.
-//  owner    = the owner, or an ADMIN/MOD (logged in)
-//  collab   = a logged-in user whose email is in accessEmails
-//  password = a valid per-repo unlock cookie (login-less)
+//  owner    = the owner, or an ADMIN/MOD (logged in, 2FA on, not suspended)
+//  collab   = a logged-in user whose CONFIRMED email is in accessEmails
+//  password = a valid per-repo unlock cookie (login-less), for the password as it is now
+//
+// The session is asked through `sessionUser`, the same question every guard asks. This used
+// to be `jwt.verify` alone, and every JWT this API signs verifies with one secret: the
+// `2fa-pending` half-token (password, no second factor) was the owner here, and so were a
+// revoked device, a banned account, and the role a seven-day token was minted with — a
+// demoted moderator stayed the owner of every repo. Staff reach every repo through this door,
+// so it asks what the staff doors ask (lib.mjs requireRole): the live role, 2FA, and the
+// service lock. Full audit, Sept 24 2026; test/session-side-doors.test.mjs.
 async function accessLevel(req, p, repo) {
-  let claims = null; try { claims = jwt.verify(req.cookies?.bcw_session, JWT_SECRET); } catch { /* not logged in */ }
-  if (claims?.uid) {
-    const u = await p.user.findUnique({ where: { id: claims.uid }, select: { email: true, displayName: true } });
-    const staff = claims.role === 'ADMIN' || claims.role === 'MOD' || claims.role === 'SUPERADMIN';
-    if (repo.ownerId === claims.uid || staff) {
-      const asAdmin = repo.ownerId !== claims.uid;
-      return { level: 'owner', uid: claims.uid, staff, actor: `${u?.displayName || 'owner'}${asAdmin ? ' (admin)' : ''}` };
-    }
+  const me = await sessionUser(req);
+  if (me?.uid) {
+    const u = await p.user.findUnique({ where: { id: me.uid }, select: { email: true, displayName: true, emailVerified: true, totpEnabled: true } });
+    if (repo.ownerId === me.uid) return { level: 'owner', uid: me.uid, staff: false, actor: u?.displayName || 'owner' };
+    const staff = STAFF_ROLES.includes(me.role) && !!u?.totpEnabled && !(await accountLock(me.uid, 'service'));
+    if (staff) return { level: 'owner', uid: me.uid, staff, actor: `${u?.displayName || 'owner'} (admin)` };
+    // The address has to be CONFIRMED: an owner lists a collaborator's address, and an account
+    // that merely typed that address at sign-up proves nothing about owning it.
     const emails = (repo.accessEmails || []).map((e) => e.toLowerCase());
-    if (u?.email && emails.includes(u.email.toLowerCase())) return { level: 'collab', uid: claims.uid, actor: u.email };
+    if (u?.email && u.emailVerified && emails.includes(u.email.toLowerCase())) return { level: 'collab', uid: me.uid, actor: u.email };
   }
   const tk = req.cookies?.[`bcw_rd_${repo.id}`];
-  if (tk) { try { const t = jwt.verify(tk, JWT_SECRET); if (t.rid === repo.id && t.scope === 'rd') return { level: 'password', actor: 'password access' }; } catch { /* bad/expired token */ } }
+  if (tk && repo.dashPassword) {
+    try {
+      const t = jwt.verify(tk, JWT_SECRET);
+      if (t.rid === repo.id && t.scope === 'rd' && t.pv && t.pv === pwVersion(repo.dashPassword)) return { level: 'password', actor: 'password access' };
+    } catch { /* bad/expired token */ }
+  }
   return { level: null };
 }
 
@@ -105,7 +127,7 @@ export default async function repoDashboardRoutes(app) {
     if (!repo || !repo.dashPassword) return reply.code(404).send({ error: 'not_found' });
     const ok = await argon2.verify(repo.dashPassword, b.data.password).catch(() => false);
     if (!ok) return reply.code(401).send({ error: 'invalid_password' });
-    const token = jwt.sign({ rid: repo.id, scope: 'rd' }, JWT_SECRET, { expiresIn: '12h' });
+    const token = jwt.sign({ rid: repo.id, scope: 'rd', pv: pwVersion(repo.dashPassword) }, JWT_SECRET, { expiresIn: '12h' });
     reply.setCookie(`bcw_rd_${repo.id}`, token, { httpOnly: true, sameSite: 'lax', path: '/', secure: process.env.NODE_ENV === 'production', maxAge: 12 * 3600 });
     return { ok: true };
   });

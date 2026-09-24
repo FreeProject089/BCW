@@ -3,6 +3,7 @@
 // which has no boring-avatars renderer) can display the exact same picture via a
 // plain <img src="/api/avatar/:id">. Uploaded photos 302-redirect to the image.
 import { createElement } from 'react';
+import { safeAvatarImage } from '../lib/avatar-url.mjs';
 import { renderToStaticMarkup } from 'react-dom/server';
 import BoringAvatarImport from 'boring-avatars';
 import { db } from '../lib/lib.mjs';
@@ -41,7 +42,10 @@ export default async function avatarRoutes(app) {
     const a = (u && u.avatar) || {};
     // Fastify 5: redirect(url, code). The old (code, url) form answers 500 with
     // Location: 302 — an uploaded avatar image never resolved.
-    if (typeof a === 'object' && a.image) return reply.redirect(a.image, 302);
+    // Only to an image the site itself produced (lib/avatar-url.mjs): a stored value that is
+    // anything else would make this an open redirect; the generated avatar is served instead.
+    const img = typeof a === 'object' ? safeAvatarImage(a.image) : null;
+    if (img) return reply.redirect(img, 302);
     // Same fallbacks as Avatar.jsx's avatarOf().
     const variant = a.variant || 'beam';
     const name = String(a.seed || u?.id || u?.displayName || 'bcw');

@@ -28,8 +28,8 @@ import { OnboardingSlot } from './onboarding.jsx';
 // ui/report.jsx and moving them naively creates an import cycle.
 // lazyNamed, not lazy: a redeploy renames admin.jsx's chunk, and a tab that has been open
 // across it would fail the import and show a crash card. See lib/lazy-chunk.js.
-const OwnerCatalogs = lazyNamed(() => import('./admin.jsx'), 'OwnerCatalogs');
-const MyReports = lazyNamed(() => import('./admin.jsx'), 'MyReports');
+const OwnerCatalogs = lazyNamed(() => import('./owner-catalogs.jsx'), 'OwnerCatalogs'); // not admin.jsx: that is the whole admin screen
+const MyReports = lazyNamed(() => import('./my-reports.jsx'), 'MyReports'); // not admin.jsx: that is the whole admin screen
 const MyThreads = lazyNamed(() => import('./threads.jsx'), 'MyThreads');
 const MyTeams = lazyNamed(() => import('./teams.jsx'), 'MyTeams');
 import { KofiIcon } from '../ui/brand.jsx';

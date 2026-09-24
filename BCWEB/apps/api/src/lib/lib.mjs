@@ -827,6 +827,29 @@ async function authenticated(req, reply) {
 }
 
 /**
+ * The signed-in account behind this request, asked exactly the way the guards ask it, or
+ * null. For the doors that are not guards: a route that reads the session cookie for itself
+ * (a login-optional page, a forward-auth gate, soft auth) calls this and nothing else.
+ *
+ * Two of them used to call `jwt.verify` alone (full audit, Sept 24 2026). Every JWT this API
+ * signs verifies with the same secret, so "it verifies" is not "it is a session": the
+ * `2fa-pending` half-token that /auth/login hands out after the PASSWORD opened the repo
+ * dashboard and the telemetry gate, and so did a revoked device, a banned account and a role
+ * the account no longer holds. One function, so there is one answer to "who is this".
+ * test/session-side-doors.test.mjs.
+ */
+export async function sessionUser(req) {
+  let claims;
+  try { claims = jwt.verify(req.cookies?.bcw_session, JWT_SECRET); } catch { return null; }
+  if (!claims?.uid) return null;
+  if (await accountLock(claims.uid, 'signin')) return null;
+  if (await sessionRevoked(claims)) return null;
+  const cur = await currentUser(claims.uid);
+  if (!tokenAcceptable(claims, cur).ok) return null;
+  return { ...claims, role: cur.role || claims.role, perms: cur.perms || [] };
+}
+
+/**
  * A SUSPENDED account keeps sign-in (accountLock 'signin' lets it through, on purpose: the
  * person has to be able to read why, appeal, and fetch their invoices) — and nothing else. Its
  * staff powers are services too. `authenticated()` asks only the sign-in question, so until
@@ -1076,21 +1099,16 @@ export function apiAuth(scope) {
  * 200 { user: null } instead of a noisy 401 in the console. */
 export function optionalAuth() {
   return async (req) => {
-    try {
-      const claims = jwt.verify(req.cookies?.bcw_session, JWT_SECRET);
-      // A suspended/banned account reads as logged-out on soft-auth endpoints, and so
-      // does a revoked device — otherwise "sign out this device" would leave it still
-      // recognised by /me, which is exactly the screen the user checks to confirm it
-      // worked. optionalUid stays a pure token read on purpose: it feeds no-auth ingest
-      // endpoints where a DB round-trip per event is not worth it.
-      // Anything the strict guards would refuse reads as logged-out here — otherwise /me would
-      // still recognise a device the sessions panel says is gone, which is the screen somebody
-      // opens to confirm it worked.
-      const dead = (await accountLock(claims.uid, 'signin'))
-          || (await sessionRevoked(claims))
-          || !tokenAcceptable(claims, await currentUser(claims.uid)).ok;
-      req.user = dead ? null : claims;
-    } catch { req.user = null; }
+    // A banned account reads as logged-out on soft-auth endpoints, and so does a revoked
+    // device — otherwise "sign out this device" would leave it still recognised by /me, which
+    // is exactly the screen the user checks to confirm it worked. optionalUid stays a pure
+    // token read on purpose: it feeds no-auth ingest endpoints where a DB round-trip per event
+    // is not worth it.
+    //
+    // The role is the LIVE one, like the strict guards (it used to be the role baked into the
+    // seven-day token, so a demoted moderator kept the staff view of every soft-auth page —
+    // unlisted polls, other people's catalogue keys — until the token expired).
+    try { req.user = await sessionUser(req); } catch { req.user = null; }
   };
 }
 
