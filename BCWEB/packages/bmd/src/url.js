@@ -56,7 +56,11 @@ export function safeUrl(raw, opt = {}) {
 
   // Protocol-relative. Refused rather than repaired: `//evil.com` in a document is either a
   // mistake or a trick, and turning it into `https://evil.com` would be helping with both.
-  if (url.startsWith('//')) return { ok: false, href: '', external: true, reason: 'protocol_relative' };
+  // A browser reads `\` as `/` in an http(s) URL, so `/\evil.com`, `\\evil.com` and `\/evil.com`
+  // are all `//evil.com`. Judged on the slash-normalised copy: the raw one has no `//` and used
+  // to be classed as a same-origin path, with no rel, no target and no `allowHosts` check
+  // (pentest R2, Sept 24 2026; the studio's safeLink refuses the same spellings).
+  if (url.replace(/\\/g, '/').startsWith('//')) return { ok: false, href: '', external: true, reason: 'protocol_relative' };
 
   // A same-origin path. The only shape that is internal by construction.
   if (url.startsWith('/')) return { ok: true, href: url, external: false };

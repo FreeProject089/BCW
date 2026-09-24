@@ -403,15 +403,22 @@ export function DocAction({ node }) {
   const [reply, setReply] = useState('');
   const run = async () => {
     if (!href || st === 'busy' || (once && st === 'done')) return;
-    // A state-changing action is never silent: an author-supplied confirm is used when present,
-    // otherwise the method + target is named. This is what stops a `:action{method=POST}` in
-    // someone else's content firing an authenticated request the reader never meant to make.
+    // A state-changing action is never silent, and the dialog always names the method and the
+    // target: an author's own `confirm=` text is shown ABOVE them, never instead of them. It used
+    // to replace them, so "Open the attachment?" could stand in front of a PATCH to an admin route.
     const mutating = method !== 'GET' && method !== 'HEAD';
-    const ask = confirmMsg || (mutating ? `${method} ${href}` : '');
+    const what = `${method} ${href}`;
+    const ask = confirmMsg ? `${confirmMsg}\n\n${what}` : (mutating ? what : '');
     if (ask && typeof window !== 'undefined' && !window.confirm(ask)) return;
     setSt('busy');
     try {
-      const init = { method, headers: { Accept: 'application/json, text/plain' } };
+      // `credentials: 'omit'`, like every other block here that fetches. The button was written
+      // by somebody else (a comment, a studio page, an ANONYMOUS contact message in the admin
+      // inbox), so it must never spend the reader's session: with the default `same-origin` a
+      // same-site href carried the session cookie and made the reader the author's deputy
+      // (pentest R2, Sept 24 2026; the studio's `api` button was removed for the same reason).
+      // Without cookies the call can do only what its author could have done alone.
+      const init = { method, credentials: 'omit', headers: { Accept: 'application/json, text/plain' } };
       if (method !== 'GET' && method !== 'HEAD' && body) { init.headers['Content-Type'] = 'application/json'; init.body = body; }
       const r = await fetch(href, init);
       const text = await r.text().catch(() => '');

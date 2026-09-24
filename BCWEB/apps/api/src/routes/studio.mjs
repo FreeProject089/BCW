@@ -17,10 +17,15 @@ export default async function studioRoutes(app) {
   // which keeps one shape for add, rename, delete and reorder — and a 512 KB body limit, so a
   // pasted SVG in a saved block cannot turn a preference into a storage bill.
   app.put('/me/studio/components', { preHandler: requireRole(), bodyLimit: 600 * 1024, config: { rateLimit: { max: 60, timeWindow: '5 minutes' } } }, async (req, reply) => {
-    const r = parseComponentList(req.body);
-    if (!r.ok) return reply.code(r.error === 'too_large' ? 413 : 400).send({ error: r.error });
     const p = await db();
     const key = storageKey(req.user.uid);
+    // What is stored already: its problems are tolerated, new ones refused (pentest R6).
+    const row = await p.adminSetting.findUnique({ where: { key } }).catch(() => null);
+    const r = parseComponentList(req.body, row?.value ?? null);
+    if (!r.ok) {
+      const { ok: _ok, ...body } = r;
+      return reply.code(r.error === 'too_large' ? 413 : 400).send(body);
+    }
     const value = { components: r.components, updatedAt: new Date().toISOString() };
     await p.adminSetting.upsert({ where: { key }, create: { key, value }, update: { value } });
     return { ok: true, components: r.components };

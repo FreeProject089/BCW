@@ -202,6 +202,10 @@ The table inside is ordinary GFM; the wrapper adds the look and the caption.
 ```
 `format`: `number`, `compact`, `text`, `json`. An action fires `bmd:action` on `window` and, with
 `counter=`, `bmd:refresh` so the named counter re-reads. Every URL goes through the policy.
+Every one of these requests is sent **without the reader's cookies** (`credentials: 'omit'`): the
+button was written by somebody else, so it can only do what its author could do alone, never act
+with the reader's session. A mutating `:action` always asks first, and the dialog names the method
+and the URL even when `confirm=` supplies its own text.
 
 ## Includes and diagrams (3.0)
 ```

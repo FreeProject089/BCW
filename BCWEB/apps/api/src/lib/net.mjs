@@ -21,6 +21,26 @@ function firstHextet(s) {
   return Number.isFinite(n) ? n : NaN;
 }
 
+/** An IPv6 address as its eight 16-bit groups, or null. A trailing dotted quad is two groups. */
+function hextets(s) {
+  let t = String(s).split('%')[0];
+  const dotted = t.match(/^(.*:)(\d{1,3}(?:\.\d{1,3}){3})$/);
+  if (dotted) {
+    if (!net.isIPv4(dotted[2])) return null;
+    const [a, b, c, d] = dotted[2].split('.').map(Number);
+    t = `${dotted[1]}${((a << 8) | b).toString(16)}:${((c << 8) | d).toString(16)}`;
+  }
+  const halves = t.split('::');
+  if (halves.length > 2) return null;
+  const part = (h) => (h ? h.split(':') : []);
+  const head = part(halves[0]), tail = halves.length === 2 ? part(halves[1]) : [];
+  const fill = halves.length === 2 ? 8 - head.length - tail.length : 0;
+  if (fill < 0 || (halves.length === 1 && head.length !== 8)) return null;
+  const groups = [...head, ...Array(fill).fill('0'), ...tail];
+  if (groups.length !== 8 || groups.some((g) => !/^[0-9a-f]{1,4}$/i.test(g))) return null;
+  return groups.map((g) => parseInt(g, 16));
+}
+
 export function isPrivateIp(ip) {
   if (net.isIPv4(ip)) {
     const [a, b] = ip.split('.').map(Number);
@@ -33,9 +53,29 @@ export function isPrivateIp(ip) {
   }
   if (net.isIPv6(ip)) {
     const s = ip.toLowerCase();
-    if (s.startsWith('::ffff:')) return isPrivateIp(s.slice(7)); // IPv4-mapped
+    // IPv6 forms that CARRY an IPv4 address are judged by that address (pentest R11, Sept 24
+    // 2026). WHATWG URL writes them in hex (`[::127.0.0.1]` → `::7f00:1`), so a dotted-quad
+    // test alone never saw them, and `::7f00:1`, `64:ff9b::a9fe:a9fe` and `2002:a9fe:a9fe::1`
+    // all passed as public.
+    const x = hextets(s);
+    if (!x) return true;                                  // unparseable → block
+    const v4 = (hi, lo) => `${x[hi] >> 8}.${x[hi] & 255}.${x[lo] >> 8}.${x[lo] & 255}`;
+    const zeros = (from, to) => x.slice(from, to).every((n) => n === 0);
+    if (zeros(0, 5) && x[5] === 0xffff) return isPrivateIp(v4(6, 7));        // ::ffff:0:0/96 mapped
+    if (zeros(0, 4) && x[4] === 0xffff && x[5] === 0) return isPrivateIp(v4(6, 7)); // ::ffff:0:0:0/96 translated
+    if (zeros(0, 6)) return isPrivateIp(v4(6, 7));                            // ::/96 compatible, incl. :: and ::1
+    if (x[0] === 0x64 && x[1] === 0xff9b) {                                   // NAT64
+      return zeros(2, 6) ? isPrivateIp(v4(6, 7)) : true;                      // 64:ff9b::/96, else 64:ff9b:1::/48 local-use
+    }
+    if (x[0] === 0x2002) return isPrivateIp(v4(1, 2));                        // 6to4 2002::/16
+    if (x[0] === 0x2001 && x[1] === 0) return true;                           // Teredo 2001::/32
+    if (x[0] === 0x2001 && x[1] === 0xdb8) return true;                       // documentation 2001:db8::/32
+    if (x[0] === 0x100 && zeros(1, 4)) return true;                           // discard-only 100::/64
     if (s === '::1' || s === '::') return true;
     const h = firstHextet(s);
+    // Global unicast is 2000::/3 and nothing else; the ranges checked below sit above it, and
+    // everything under it that is not an embedding handled above is reserved.
+    if (h < 0x2000) return true;
     if (!Number.isFinite(h)) return true;                 // unparseable → block
     if (h >= 0xfc00 && h <= 0xfdff) return true;          // unique-local  fc00::/7
     // fe80::/10 (link-local) and fec0::/10 (site-local, deprecated but still routed on

@@ -7,7 +7,7 @@
 // admin who can edit one of those strings can make run anything on the owner's PC, and a script
 // that embeds a token hands the token to whoever gets the file. So they take no data but their
 // own folder, ask for the token at run time (or read DISCORD_TOKEN), and talk to discord.com
-// only. test/emoji-kit.test.mjs pins it: the served bytes are identical whatever the database
+// only. test/emoji-sync.test.mjs (section "pentest R5") pins it: the served bytes are identical whatever the database
 // holds, and contain none of the stored strings or secrets the test plants.
 //
 // Line endings are normalised here rather than trusted to the checkout: cmd.exe misparses a

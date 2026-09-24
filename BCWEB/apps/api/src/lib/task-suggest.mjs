@@ -57,6 +57,14 @@ export function scrub(text, max = TITLE_MAX) {
   s = s.replace(/\beyJ[\w-]{4,}\.[\w-]{4,}\.[\w-]*/g, '[token]');
   s = s.replace(/[\w.%+-]+@[\w-]+(\.[\w-]+)+/g, '[email]');
   s = s.replace(/\b(bearer|basic|token)\s+\S+/gi, '$1 [redacted]');
+  // A secret-named field written `name: value` or JSON `"name":"value"` (pentest R9): a short
+  // password or key is neither a key=value below nor token-shaped, and headers, JSON and
+  // Prisma's argument dumps all use the colon form.
+  s = s.replace(/(["']?)\b([\w-]*(?:pass(?:word|wd)?|pwd|secret|token|api[_-]?key|auth(?:orization)?|cookie|session|credential)s?)\1\s*:\s*("[^"]*"|'[^']*'|[^\s,;}\]]+)/gi, '$1$2$1: [redacted]');
+  // IPv6 (pentest R9): no group of one is long enough to look like a token, and the IPv4 rule
+  // below never sees it. A run of 2-8 hex groups with `::` in it, or all 8; a zone (`%eth0`) goes
+  // with it. `12:30:45` and `16:9` have neither shape and stay.
+  s = s.replace(/(?<![\w:])(?:[0-9a-f]{0,4}:){2,7}[0-9a-f]{0,4}(?:%[\w.]+)?(?![\w:])/gi, (m) => (m.includes('::') || (m.match(/:/g) || []).length === 7 ? '[ip]' : m));
   // A path: a slash at the start of a word. `1/2` and `and/or` survive; `/r/x?k=y` does not.
   s = s.replace(/(^|[\s("'`=:,[{<])\/[^\s)"'`<>\]}]*/g, '$1[path]');
   s = s.replace(/\?[^\s?]+/g, '?[redacted]');

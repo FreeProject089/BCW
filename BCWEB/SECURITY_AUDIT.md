@@ -2744,3 +2744,196 @@ directions, plus a negative so it cannot pass by matching everything) and, throu
   test failures. Only `bcweb-db-1` was started to run this suite (no api, no bot; the compose file
   was not touched), and it was stopped again afterwards. Fixtures are removed by the suite's own
   `after()`, and the ban policy is saved and restored around the run.
+
+
+---
+
+# Round 2, Sept 24 2026
+
+Round 2 of `.Assets/.md/PLAN-PENTEST-SEPT22-2026.md` (section 6). Three agents write here, so
+each part says whose it is. Same rules as round 1: local stack only, each finding measured before
+and after with a test that fails on the unfixed code and passes on the fixed code, and each new
+test mutation-checked (the bug put back, the test seen to fail).
+
+## Agent B: cards R2, R5, R6, R9, R11
+
+### B-1: B.MD `:action` pressed with the reader's session, from an anonymous contact message (FIXED)
+
+**CWE-352 / CWE-441 (confused deputy).** CVSS 3.1 **8.0 high**, `AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:H`.
+
+The studio's own `api` button was removed in round 1 (S2) because it fired a same-site request
+with the clicking visitor's cookies. The same thing was still available through B.MD, which the
+studio's text blocks render: `:action[Label]{href= method= body= confirm=}` (`packages/bmd/src/blocks.jsx`,
+`DocAction`) called `fetch(href, init)` with no `credentials`, so a same-site href carried the
+session cookie. The confirm dialog showed the author's `confirm=` text **in place of** the method
+and target. The API has no CSRF token (cookie auth, SameSite is useless when the page is the site
+itself).
+
+The worst place this renders is not the studio. It is the admin contact inbox
+(`apps/web/src/pages/admin-messages.jsx`, `<Markdown>{m.body}</Markdown>`). The body there comes
+from `POST /contact`, open to anonymous senders (2,000 characters, proof of work). Trigger:
+
+```
+:action[Open the attachment]{href=/api/admin/users/<my-id> method=PATCH body='{"role":"ADMIN"}' confirm="Open the attachment?"}
+```
+
+An admin who presses it and answers "OK" to "Open the attachment?" sends that request with their
+own session. The same applies to comments, blog posts, polls, tasks and studio pages. The CVSS
+vector counts the required click plus confirm as `UI:R`. The impact is the capability of the
+reader who presses.
+
+Round 1's F6-5 fixed `:::roadmap` in the same file and checked "the four fetch sites" by hand.
+`:action` was the fifth site and the only one that writes.
+
+**Fix.** `credentials: 'omit'` on the request, like every other fetching block. The dialog always
+names `METHOD URL`, with the author's text shown above it and never instead of it. **Why it
+holds:** without cookies the request carries no authority the author does not already have, so
+there is no deputy left. The remaining effect is a cookieless request from the reader's IP, which
+`::fetch` and images already make. `packages/bmd/docs/blocks.md` says so.
+
+**Measured.** `apps/web/test/bmd-action.test.mjs` bundles the real `DocAction` with esbuild,
+renders it against a stub React, presses the button and records `fetch` and `confirm`. Before the
+fix: 6 of 8 red, and the two controls green, which shows the harness reaches `fetch`. After: 9/9,
+including a source count that every `fetch(` in `blocks.jsx` has a `credentials: 'omit'`, so a
+sixth site is caught the day it is written. Mutations: removing `credentials` gives 3 red (then 4
+with the count).
+
+### B-2: B.MD `safeUrl` classed `/\host` as a same-site path (FIXED)
+
+**CWE-601.** CVSS 3.1 **4.3 medium**, `AV:N/AC:L/PR:L/UI:R/S:U/C:N/I:L/A:N`.
+
+`packages/bmd/src/url.js` refused `//host` but accepted `/\evil.example`, `\\evil.example` and
+`\/evil.example`. A browser reads `\` as `/` in an http(s) URL, so all three are protocol-relative
+links to another host. They were emitted as internal: no `rel`, no `target`, and no `allowHosts`
+check for a host that sets one. The studio's `safeLink` already refused them. B.MD, which renders
+the text blocks on the same page, did not.
+
+**Fix.** The `//` test runs on a copy with backslashes turned into slashes. **Measured:** the
+`safeUrl` cases in `bmd-action.test.mjs` fail before the fix (2 red) and pass after. The control
+`/docs/a\b` is still accepted.
+
+### B-3: saved studio components kept anything they were given (FIXED, hardening)
+
+**CWE-20.** CVSS 3.1 **3.1 low**, `AV:N/AC:H/PR:L/UI:R/S:U/C:N/I:L/A:N`. Not reachable across
+accounts today.
+
+`PUT /me/studio/components` checked only the shape of each block (`blockSchema.passthrough()`).
+A component could therefore be stored with a `javascript:` button, the removed `api` action, a
+`url(https://…)` background, `position:fixed`, a selector-breaking id or any unknown field. Today
+the library is personal (only its owner reads it), and a page built from it is validated when it
+is saved. That does not hold once phase 7 lands: `.bcwstudio.json` import and project libraries
+shared by every studio holder (D9). The card asked for this property now.
+
+**Fix.** `parseComponentList(body, stored)` (`apps/api/src/lib/studio-components.mjs`) runs every
+component through `validateDoc`, the one rule all studio pages go through, as a document whose id
+is the component's id. A problem already stored under the same component and block is tolerated,
+the same rule as `lib/studio-doc.mjs`, so an old library can still be edited. The route
+(`routes/studio.mjs`) reads the stored row first and answers `invalid_studio_doc` with the path.
+**Measured:** `apps/api/test/studio-components-validate.test.mjs` failed 14 of 15 before the fix
+(the control passed) and passes 15/15 after. Disabling the check gives 14 red again.
+
+### B-4: task proposals kept IPv6 addresses and `name: value` secrets (FIXED)
+
+**CWE-532.** CVSS 3.1 **3.5 low**, `AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:N/A:N`.
+
+`lib/task-suggest.mjs` `scrub()` promises to remove "every key=value, every token-shaped run,
+every e-mail and IP" from an error or alert before it becomes a task a whole team can read. It
+missed two spellings:
+
+- IPv6 addresses. Only dotted IPv4 was matched, and no IPv6 group is long enough to look like a
+  token. Example: `rate limit for 2001:db8::7`.
+- Secrets written with a colon: JSON `{"password":"hunter2"}`, `x-bot-secret: s3cr3t`,
+  `apiKey: abc123`. A short value is neither a `key=value` pair nor token-shaped.
+
+**Fix.** Two rules. A secret-named field followed by `:` or `":"` is redacted. An IPv6 run with
+`::` in it, or all eight groups, becomes `[ip]`. **Measured:**
+`apps/api/test/task-suggest-scrub.test.mjs` failed 9 of 11 before the fix and passes 11/11 after.
+Its control keeps `12:30:45`, `16:9`, `v2.3.1` and `Note: retry later`. Disabling either rule
+gives 5 red. The existing `task-board-rules.test.mjs` is unchanged and still green.
+
+### B-5: the SSRF guard let IPv6 forms that carry a private IPv4 through (FIXED)
+
+**CWE-918.** CVSS 3.1 **4.1 medium**, `AV:N/AC:H/PR:H/UI:N/S:C/C:L/I:N/A:N`. It depends on the
+network: NAT64 or 6to4 on the host.
+
+`lib/net.mjs` `isPrivateIp` is used by `safeFetch` for the status page's admin-configured monitors,
+webhooks and plugin downloads. It knew the private IPv6 ranges and called every other IPv6
+address public. WHATWG URL rewrites embedded IPv4 in hex, so the dotted-quad rule never saw these:
+
+- `http://[::127.0.0.1]/` → `::7f00:1` (IPv4-compatible)
+- `http://[64:ff9b::169.254.169.254]/` → `64:ff9b::a9fe:a9fe` (NAT64: on an IPv6-only host with a
+  NAT64 gateway, this dials the metadata address)
+- `http://[2002:a9fe:a9fe::1]/` (6to4)
+- Teredo, documentation, discard-only and reserved space outside `2000::/3`
+
+The hex IPv4-mapped form (`::ffff:7f00:1`, which is what URL produces from `::ffff:127.0.0.1`) was
+refused only by the "unknown format" fallback. That fallback also refused every public mapped
+address.
+
+**Fix.** `isPrivateIp` parses the eight groups. It judges mapped, translated, compatible, NAT64
+`64:ff9b::/96` and 6to4 addresses by the IPv4 they carry. It refuses NAT64 local-use
+(`64:ff9b:1::/48`), Teredo, `2001:db8::/32`, `100::/64` and everything below `2000::/3`. NAT64 to a
+public IPv4 is still allowed, because an IPv6-only host reaches the web that way.
+**Measured:** `apps/api/test/ssrf-embedded-v4.test.mjs` failed 16 of 27 before the fix and passes
+27/27 after. Its controls are public addresses and the old private ranges. It includes a save-time
+refusal with a resolver that throws if it is asked, and a name that resolves to NAT64 metadata.
+Mutations on 6to4, `::/96` and `< 2000::/3` each give red. `ssrf-ranges.test.mjs` and
+`status-monitors.test.mjs` are still green.
+
+### Attacked and found to hold (agent B)
+
+- **R2, studio button actions** (`packages/studio/src/canvas.js` `buttonTarget`/`safeLink`,
+  `validate.js`, `apps/web/src/ui/canvas-view.jsx`). Tried: `javascript:`, `java\tscript:`,
+  `JaVaScRiPt:`, `data:`, `//host`, `/\host`, `/\t/host`, leading C0 controls, `mailto:` with
+  spaces, `download` pointed at `#`/`mailto:`, `scroll` to a CSS selector, unknown types, and
+  legacy `api` actions with added keys. The last one is tolerated at save by the legacy rule, but
+  `buttonTarget` renders it inert whatever it holds, so the renderer's own filter makes the
+  tolerance harmless. Also tried: menu item `href`s, the block-wide `link` (normalised through
+  `safeLink`), and `anim.custom`, which is reduced to `[\w\s%.,:;()#-]`, so it has no `{}` and no
+  way out of its `@keyframes`. Nothing gets out. Open redirects: an external `https:` link is
+  allowed by design (decision D7). The "leaving BetterCommunity" screen D7 promises is not built
+  yet (phase 5).
+- **R5, downloadable emoji script** (`apps/api/src/lib/emoji-kit/*`, `emoji-kit.mjs`,
+  `routes/bot-emoji.mjs`). The script is a fixed file read from disk, and the test pins it byte
+  for byte against stored data. It contains no token (it is typed hidden or read from
+  `DISCORD_TOKEN`) and nothing it fetches runs. The PowerShell half is read from the `.bat` itself.
+  `%~f0` is quoted in `set "…"` and passed to PowerShell as an environment variable, so a folder
+  name with `&`, `%` or `^` stays inert. Zip entry names use a strict pattern
+  (`bc_[a-z0-9_]+_[0-9a-f]{8}`), so a stored key holding `&|%^"` or a newline never reaches a file
+  name. `/emoji-kit/:file` uses `hasOwn` on a frozen map (`..%2F` and `constructor` give 404).
+  Importing `app-emojis.json` back checks names and snowflakes against a pattern. One thing
+  corrected: `emoji-kit.mjs` named a test file that does not exist (`emoji-kit.test.mjs`). The
+  test is in `emoji-sync.test.mjs`.
+- **R6, paste path.** `{ bcwBlocks }` from the clipboard goes through `normalizeCanvas` and gets
+  new ids (`editor/canvas-studio.jsx`). The component thumbnail (`thumbnailSvg`) writes only
+  numbers from `toFixed`.
+- **R9.** Proposals are shown only to people who hold the source's capability. `href` comes from a
+  fixed allowlist. A pending queue's items are never copied. Accepting a proposal scrubs it again.
+- **R11.** Redirects are re-checked on each hop (3 at most). The checked address is pinned for the
+  connection, and every DNS answer must be public. Decimal, octal, hex and short IPv4 spellings
+  are normalised to dotted form by URL before the check. Neither "Test" nor the public page ever
+  returns a body or a header. Results are cached for 60 s, so the public page cannot be used to
+  send traffic to a third party.
+
+### Open (agent B), owner decision
+
+- **Internal name oracle in monitors.** `target_refused` answers `ssrf_dns_fail` for a name that
+  does not resolve and `ssrf_blocked_resolved` for one that resolves to a private address. A
+  `manage_server` admin can therefore test which internal names exist (`db`, `redis`, …).
+  Low: that person already runs the infrastructure. A single code for both would close it.
+- **Public text in proposals.** `POST /analytics/error` is public and feeds the error groups, so
+  its text can end up in a proposal title (scrubbed, drawn as text). This is not a leak. Keep it
+  in mind before any proposal is rendered as Markdown.
+- **BMM.** `rich-markdown.ts` also renders `:action` (the BMM side of B.MD). It was not checked in
+  this pass because BMM is another repo. The same `credentials: 'omit'` rule applies there.
+
+### Verification run (agent B)
+
+- `apps/api`, `npm test` run as CI runs it (Postgres dev DB, no `REDIS_URL`, API stopped):
+  **2212 tests, 2208 pass, 0 skipped, 4 fail.** All 4 failures are in `member-reviews.test.mjs`
+  (agent C's card, being edited at the time of the run). They touch none of the files above.
+- `node --check` on every changed module.
+- `apps/web`: `npm run lint` exit 0 (519/519 web tests), `npm run --silent i18n:check` exit 0,
+  `npm run build` exit 0.
+- Nothing was committed. No fixtures were written to the database: all the new tests are pure or
+  use injected resolvers.
