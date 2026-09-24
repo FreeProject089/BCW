@@ -101,7 +101,7 @@ test('the three sections that must never be imported have no restore', () => {
   //  users     — exported as records with NO credentials, so restoring them would create
   //              shells nobody can sign in to and overwrite the role and status of people
   //              who exist.
-  //  catalogs  — rows pointing at files in MinIO the zip does not carry, so restoring them
+  //  catalogs  — rows pointing at files in object storage the zip does not carry, so restoring them
   //  repos       would publish entries whose payloads are gone.
   //
   // A `restore` appearing on any of these is not a feature, it is the safety argument

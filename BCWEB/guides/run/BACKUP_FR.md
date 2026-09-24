@@ -1,7 +1,7 @@
 # BCWEB — Sauvegarde & Restauration
 
 Tout l'état de BCWEB tient en **trois endroits** : la base Postgres, le stockage objet
-MinIO (uploads / médias du blog / fichiers des dépôts hébergés) et l'ancre d'audit
+(le service `storage` : uploads / médias du blog / fichiers des dépôts hébergés) et l'ancre d'audit
 inviolable. `infra/backup/backup.sh` capture les trois ; ce guide couvre son exécution, la
 copie hors-site et — surtout — la **restauration**.
 
@@ -10,7 +10,7 @@ copie hors-site et — surtout — la **restauration**.
 | Source | Comment | Fichier |
 |---|---|---|
 | **Postgres** (toutes les données) | dump logique `pg_dump` (cohérent, sûr sur une base live) → gzip | `pg-bcweb-<ts>.sql.gz` |
-| Stockage objet **MinIO** | tar du volume Docker `<projet>_minio-data` | `minio-<ts>.tar.gz` |
+| **Stockage objet** (`storage`, versitygw) | tar du volume Docker `<projet>_s3-data` : des fichiers ordinaires, un par objet, plus une arborescence `meta/` qui garde le Content-Type et l’ETag de chacun | `s3-<ts>.tar.gz` |
 | **Ancre d'audit** (racine de la chaîne HMAC) | tar du volume `<projet>_audit-anchor` | `audit-anchor-<ts>.tar.gz` |
 
 > Postgres est dumpé avec `pg_dump`, **pas** en tarrant le volume sous un serveur en marche
@@ -121,15 +121,24 @@ docker compose restart api             # se reconnecter à la base restaurée
 
 Ne démarre **pas** encore `web`.
 
-### 2. Stockage objet MinIO
+### 2. Stockage objet
 
 ```bash
 cd infra/compose
-docker compose stop api web
-docker run --rm -v bcweb_minio-data:/data -v /var/backups/bcweb:/backup alpine \
-  sh -c 'rm -rf /data/* && tar xzf /backup/minio-<ts>.tar.gz -C /data'
+docker compose stop api web storage    # pas d'écriture pendant la restauration, stockage compris
+docker run --rm -v bcweb_s3-data:/data -v /var/backups/bcweb:/backup alpine \
+  sh -c 'rm -rf /data/* && tar xzf /backup/s3-<ts>.tar.gz -C /data'
+docker compose up -d storage           # relance volume-perms d'abord (propriétaire), puis le stockage
 docker compose start api               # PAS web : l'étape 4 d'abord
 ```
+
+L’archive se lit sans le serveur : `tar tzf s3-<ts>.tar.gz` liste
+`./buckets/<bucket>/<clé>` pour chaque objet, on peut donc en sortir un seul fichier perdu à la main.
+
+Une archive nommée `minio-<ts>.tar.gz` date d’avant le départ de MinIO (2026-09-24). C’est un
+répertoire de données MinIO, pas des fichiers : restaure-la dans un volume MinIO, lance ce MinIO
+en conteneur temporaire et copie-le avec les étapes rclone de
+[DEPLOY_FR.md → Quitter MinIO](DEPLOY_FR.md#quitter-minio).
 
 (Remplace le préfixe `bcweb_` par ton `COMPOSE_PROJECT_NAME` si différent.)
 
@@ -159,7 +168,7 @@ docker compose start web                                         # c'est seuleme
 `replay-erasures.mjs` lit le journal des effacements, qui vit hors de la base
 (`SERVER_BACKUP_ROOT/erasures.jsonl`) pour qu'un dump ne puisse pas le ramener en arrière, et
 anonymise de nouveau chaque compte que le dump restauré a ramené — y compris, si tu as aussi
-restauré MinIO, l'avatar et les fichiers de retours de ces comptes. Il est idempotent : un
+restauré le stockage objet, l'avatar et les fichiers de retours de ces comptes. Il est idempotent : un
 compte déjà effacé est ignoré, donc le lancer après une restauration qui n'a ramené personne ne
 fait rien. Sauter cette étape défait chaque effacement fait depuis la prise du dump, soit
 exactement ce que la politique de confidentialité dit qui n'arrivera pas.
@@ -173,7 +182,7 @@ clairement :
 | | `infra/backup/backup.sh` | Snapshots dans l’app | Export du contenu |
 |---|---|---|---|
 | Données Postgres (comptes, dépôts, catalogues, paiements) | **Oui** | Non | En partie — en JSON lisible, voir plus bas |
-| Objets MinIO (fichiers envoyés, octets des dépôts hébergés) | **Oui** | Non | Non |
+| Fichiers du stockage objet (fichiers envoyés, octets des dépôts hébergés) | **Oui** | Non | Non |
 | Historique d’édition des fichiers touchés via le gestionnaire | Non | **Oui** | Non |
 | Historique d’édition des lignes touchées via le visualiseur BDD | Non | **Oui** | Non |
 | Peut être restauré dans BCWEB | **Oui** | **Oui** | **Six sections sur neuf** — voir plus bas |
@@ -198,7 +207,7 @@ Trois choses à son sujet sont délibérées et à connaître avant de compter d
   chacune pour sa raison. Les comptes ne portent aucune donnée d’identification : les
   restaurer créerait des coquilles où personne ne peut se connecter et écraserait le rôle et
   le statut de gens qui existent. Les lignes de catalogues et de dépôts pointent vers des
-  fichiers MinIO que le zip ne transporte pas. L’écran marque ces trois-là « export seul »
+  fichiers du stockage objet que le zip ne transporte pas. L’écran marque ces trois-là « export seul »
   avant que tu choisisses, plutôt que de les sauter en cours de route.
 
   Un import remplace les entrées de même id et laisse tranquille tout ce dont le zip n’a
@@ -212,7 +221,7 @@ Trois choses à son sujet sont délibérées et à connaître avant de compter d
   avatar. Aucun hash de mot de passe, aucun secret 2FA, aucun token. C’est ce qui rend le zip
   sûr à garder sur un portable, et c’est pourquoi restaurer les gens veut dire les réinviter.
 - **Catalogues et dépôts sont désactivés par défaut.** Leurs lignes sont des métadonnées qui
-  pointent vers des fichiers MinIO que le zip ne contient pas. Activés par défaut, l’archive
+  pointent vers des fichiers du stockage objet que le zip ne contient pas. Activés par défaut, l’archive
   paraîtrait plus complète qu’elle ne l’est — c’est le pire défaut d’une sauvegarde, parce
   qu’on s’en aperçoit au moment où on en a besoin.
 

@@ -55,7 +55,7 @@ stopped using it. A destructive migration makes the old containers throw during 
 | `api`, `web` | Rolled (new beside old) | A visitor is looking at these. API first: it runs the migrations, and web's new bundle may call routes only the new API has. |
 | `bot`, `telemetry`, `provisioner` | Plain recreate | A bot reconnecting or a dashboard blinking is not an outage. |
 | `caddy` | **`caddy reload`**, never restart | A restart *is* the outage. Reload applies a changed Caddyfile with no dropped connections; unchanged, it is a no-op. |
-| `db`, `redis`, `minio` | Never touched | Stateful. Rolling them needs a failover story this stack does not have and should not pretend to. |
+| `db`, `redis`, `storage` | Never touched | Stateful. Rolling them needs a failover story this stack does not have and should not pretend to. |
 
 ## Knobs
 

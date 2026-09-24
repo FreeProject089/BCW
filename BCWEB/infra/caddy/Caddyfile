@@ -351,10 +351,10 @@
 }
 
 # -----------------------------------------------------------------------------
-# Object storage (MinIO) on its own origin.
+# Object storage (the `storage` service, versitygw) on its own origin.
 #
 # INERT until S3_DOMAIN is set — the default is a hostname nobody can request, exactly like
-# TUNNEL_DOMAIN above. Locally MinIO is reached directly on :9000 and this block never
+# TUNNEL_DOMAIN above. Locally storage is reached directly on :9000 and this block never
 # matches, so it costs nothing.
 #
 # To turn it on: point an A record at this server, then in infra/compose/.env set
@@ -363,20 +363,23 @@
 # and `docker compose up -d caddy api`. Caddy provisions the certificate itself.
 #
 # WHY IT IS NEEDED AT ALL: uploads never pass through the API. The browser asks for a
-# pre-signed URL and PUTs the bytes straight at MinIO, so MinIO needs a public address — and
-# MinIO's own :9000 is published on 127.0.0.1 only (compose), so from outside the host this
+# pre-signed URL and PUTs the bytes straight at storage, so storage needs a public address —
+# and its own :9000 is published on 127.0.0.1 only (compose), so from outside the host this
 # block IS that address. The site CSP's connect-src names it (S3_PUBLIC_ENDPOINT, S3_DOMAIN).
 #
 # NO `handle_path`, NO path prefix. A pre-signed S3 signature covers the HOST and the PATH,
-# so rewriting either makes MinIO compute a different signature and answer 403
+# so rewriting either makes the gateway compute a different signature and answer 403
 # SignatureDoesNotMatch — which reads as "wrong credentials" and is nothing of the sort.
 # Caddy v2 forwards the incoming Host header unchanged by default, which is what makes the
 # signature match; do not add `header_up Host {upstream_hostport}` here.
 {$S3_DOMAIN:http://s3.invalid} {
 	# This origin serves USER-UPLOADED bytes and had no headers at all. `nosniff` is safe to
-	# add here specifically because storage.mjs signs an explicit ContentType into every
-	# presigned PUT (lines 40/45), so an object's declared type is the one the API chose —
-	# nosniff cannot break an asset by refusing a type that was merely guessed.
+	# add here because every writer names a Content-Type (storage.mjs presignPut/putObject),
+	# so no asset depends on a type being guessed.
+	# NOT a guarantee, measured 2026-09-24 (agent-s3-replace): the presigned PUT URL signs
+	# `host` ONLY (X-Amz-SignedHeaders=host), so the uploader's browser can send ANY
+	# Content-Type with the bytes and the store keeps it — MinIO did, versitygw does. The type
+	# on an object is the uploader's claim, not the API's choice.
 	# NOT solved here: nothing sets Content-Disposition, so an object stored as text/html
 	# RENDERS as a page on this sub-domain of the brand. That is an upload-policy question
 	# (which content types may be presigned at all), not an edge one — see SECURITY_AUDIT.md.
@@ -386,7 +389,7 @@
 		Referrer-Policy no-referrer
 		-Server
 	}
-	reverse_proxy minio:9000
+	reverse_proxy storage:9000
 }
 
 # ── Customer domains ──────────────────────────────────────────────────────────────────────

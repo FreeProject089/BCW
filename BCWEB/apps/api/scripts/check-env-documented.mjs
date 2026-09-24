@@ -42,7 +42,6 @@ const INTERNAL = new Set([
     'PGBOUNCER_UPSTREAM_HOST', 'PGBOUNCER_UPSTREAM_PORT',
     'S3_ENDPOINT', 'S3_REGION',
     'TELEMETRY_DATABASE_URL', 'TELEMETRY_INTERNAL_URL',
-    'MINIO_API_CORS_ALLOW_ORIGIN',
     'NODE_OPTIONS',
     // Written by infra/tunnel.mjs while a tunnel is up, removed when it stops. Documenting
     // them as things to set would invite somebody to set them by hand and wonder why the

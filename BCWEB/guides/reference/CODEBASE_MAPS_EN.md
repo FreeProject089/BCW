@@ -123,10 +123,10 @@ services (eleven, plus the `volume-perms` one-shot):
 | Service | Published | Note |
 | --- | --- | --- |
 | `caddy` | `80`, `443`, `5176` | The edge. 80 and 443 are the point of it. |
-`db` (`5432`), `api` (`3000-3009`, a **range**) and `minio` (`9000`, `9001`, object storage and
-its console) are published bound to `127.0.0.1` only, which is why they are not on this list: the
-map reads the bind address, and loopback is not the network. The API and MinIO used to be on
-every interface; Docker-published ports bypass `ufw` on a standard install, so they were
+`db` (`5432`), `api` (`3000-3009`, a **range**) and `storage` (`9000`, object storage; it has
+no console) are published bound to `127.0.0.1` only, which is why they are not on this list: the
+map reads the bind address, and loopback is not the network. The API and object storage (then
+MinIO, with its console on `9001`) used to be on every interface; Docker-published ports bypass `ufw` on a standard install, so they were
 reachable from outside whatever the firewall said (SECURITY_SUMMARY §9 #2). Browsers reach
 storage through Caddy on `S3_DOMAIN`.
 

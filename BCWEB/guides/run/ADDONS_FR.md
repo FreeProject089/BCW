@@ -130,12 +130,13 @@ chose séparée — R2 ≠ CDN.)
    S3_PUBLIC_ENDPOINT=https://<domaine-public-ou-custom-R2>
    S3_BUCKET=<bucket>  S3_ACCESS_KEY=<key>  S3_SECRET_KEY=<secret>
    ```
-3. Copie les objets existants une fois : `rclone sync minio:bcweb r2:bcweb`.
+3. Copie les objets existants une fois avec `rclone copy`, puis `rclone check` — les commandes
+   de [DEPLOY_FR.md → Quitter MinIO](DEPLOY_FR.md#quitter-minio) étapes 5–6, avec R2 comme `new`.
 4. `docker compose up -d api provisioner`.
 
 **Après (à vérifier) :**
 - Un upload + un téléchargement fonctionnent depuis l'UI.
-- Puis seulement, retire le service `minio` + son volume.
+- Puis seulement, retire le service `storage` + son volume.
 
 ---
 
@@ -183,4 +184,4 @@ docker compose stop db     # la DB vit maintenant sur l'autre serveur (volume lo
 - **Teste une restauration** au moins une fois (commandes dans [DEPLOY_FR.md §10](DEPLOY_FR.md)) —
   un backup jamais testé n'en est pas un.
 - Astuce taille : les dumps DB sont minuscules (~130 Ko) → off-site sans souci ; l'archive
-  MinIO est la grosse → baisse sa rétention ou mirror incrémental si besoin.
+  du stockage objet est la grosse → baisse sa rétention ou mirror incrémental si besoin.

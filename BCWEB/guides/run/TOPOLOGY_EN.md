@@ -36,7 +36,7 @@ you will ever make.
 ## ① One VPS — the normal shape
 
 Everything on one machine, which is what `infra/compose/docker-compose.yml` describes:
-Caddy, the web build, the API, Postgres, Redis, MinIO, the bot, the telemetry service and
+Caddy, the web build, the API, Postgres, Redis, object storage (`storage`), the bot, the telemetry service and
 its own Postgres.
 
 ```bash
@@ -57,7 +57,7 @@ it does not already exist, so re-running never resets a password you have since 
 
 **Sizing.** 4 vCPU / 8 GB is comfortable for a community site; 2/4 works if you are not
 hosting large repos. Disk is what actually runs out — hosted repos and catalog payloads
-live in MinIO, so size it against `hosting.totalCapacityGB` rather than against traffic.
+live in object storage, so size it against `hosting.totalCapacityGB` rather than against traffic.
 
 **Backups matter more than topology.** One machine means one thing to lose. Set up
 [BACKUP_EN.md](BACKUP_EN.md) before you worry about any of the shapes below, and restore
@@ -151,7 +151,7 @@ Two things to have in place first:
 **Move here when** even a replicated API on one machine cannot keep up, or you want
 rolling deploys with no downtime.
 
-Each web machine runs Caddy + web + API replicas; Postgres, Redis and MinIO are shared and
+Each web machine runs Caddy + web + API replicas; Postgres, Redis and object storage are shared and
 must already be OFF those machines (shape ②). What changes:
 
 - **A load balancer in front**, with **sticky sessions not required** — auth is a signed
@@ -159,8 +159,8 @@ must already be OFF those machines (shape ②). What changes:
   simple; do not break it by putting state in a process.
 - **Redis becomes mandatory infrastructure**, not an add-on. It is what makes the rate
   limit one shared budget, the cache coherent, and live chat cross-machine.
-- **Object storage must be shared** — MinIO on its own host, or R2 ([ADDONS_EN.md](ADDONS_EN.md) §4).
-  Two machines with two local MinIOs means an upload exists on one and 404s on the other.
+- **Object storage must be shared** — the `storage` service on its own host, or R2 ([ADDONS_EN.md](ADDONS_EN.md) §4).
+  Two machines with two local stores means an upload exists on one and 404s on the other.
 - **One machine runs the singletons.** The Discord bot and the sweeper must not run in
   duplicate: two bots answer every command twice, and two sweepers race on the same rows.
   Run them on one machine only.

@@ -39,6 +39,7 @@ guides/
 | **Sign users in with BetterCommunity** (OIDC — not public yet) | OIDC provider | [EN](reference/OIDC_PROVIDER_EN.md) | [FR](reference/OIDC_PROVIDER_FR.md) |
 | **Understand the design** (subsystems, decisions, roadmap) | Architecture | [EN](reference/ARCHITECTURE_EN.md) | [FR](reference/ARCHITECTURE_FR.md) |
 | **See what the code actually does** (7 admin maps: guards, schema drift, migrations, published ports, secrets, config, data flow) | Codebase maps | [EN](reference/CODEBASE_MAPS_EN.md) | [FR](reference/CODEBASE_MAPS_FR.md) |
+| **Know why storage is versitygw, not MinIO** (the S3 features BCWEB uses, four candidates, what was measured) | ADR: object storage | [EN](reference/ADR_S3_STORAGE_EN.md) | [FR](reference/ADR_S3_STORAGE_FR.md) |
 | **Know how secure it is** (BCWEB + BMM + BetterInstaller: trust boundaries, data, secrets, supply chain, compliance, open decisions) | Security summary | [EN](SECURITY_SUMMARY_EN.md) | [FR](SECURITY_SUMMARY_FR.md) |
 | **Work on the code** (from-scratch dev deep-dive) | Technical analysis | [EN](reference/Technical_Analysis_EN.md) | [FR](reference/Technical_Analysis_FR.md) |
 | **Add a project to the showcase** | Other projects | [EN](reference/OTHER_PROJECTS_GUIDE_EN.md) | [FR](reference/OTHER_PROJECTS_GUIDE_FR.md) |

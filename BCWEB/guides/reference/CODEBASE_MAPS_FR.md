@@ -131,10 +131,10 @@ plus bas et compte trois entrées, pour douze services (onze, plus le ponctuel `
 | Service | Publié | Remarque |
 | --- | --- | --- |
 | `caddy` | `80`, `443`, `5176` | L'entrée. 80 et 443 sont sa raison d'être. |
-`db` (`5432`), `api` (`3000-3009`, une **plage**) et `minio` (`9000`, `9001`, le stockage objet
-et sa console) sont publiés uniquement sur `127.0.0.1`, d'où leur absence de cette liste : la
-carte lit l'adresse d'écoute, et la boucle locale n'est pas le réseau. L'API et MinIO étaient
-publiés sur toutes les interfaces ; les ports publiés par Docker contournent `ufw` sur une
+`db` (`5432`), `api` (`3000-3009`, une **plage**) et `storage` (`9000`, le stockage objet ; il n'a
+pas de console) sont publiés uniquement sur `127.0.0.1`, d'où leur absence de cette liste : la
+carte lit l'adresse d'écoute, et la boucle locale n'est pas le réseau. L'API et le stockage objet (alors
+MinIO, avec sa console sur `9001`) étaient publiés sur toutes les interfaces ; les ports publiés par Docker contournent `ufw` sur une
 installation standard, donc ils étaient joignables de l'extérieur quoi que dise le pare-feu
 (SECURITY_SUMMARY §9 n° 2). Les navigateurs atteignent le stockage par Caddy sur `S3_DOMAIN`.
 

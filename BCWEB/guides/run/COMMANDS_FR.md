@@ -56,7 +56,7 @@ docker compose exec db psql -U bcweb -d bcweb   # une invite psql
 
 ### Les services
 
-`db` · `redis` · `pgbouncer` · `minio` · `api` · `provisioner` · `web` · `bot` ·
+`db` · `redis` · `pgbouncer` · `storage` · `api` · `provisioner` · `web` · `bot` ·
 `telemetry-db` · `telemetry` · `caddy`
 
 ---

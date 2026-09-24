@@ -258,8 +258,14 @@ export class RepoOpError extends Error {
 
 export async function presignRepoFile(p, repo, { path: rawPath, size, contentType = 'application/octet-stream' }) {
   const path = norm(rawPath);
+  // A path cannot be both a file and a folder: `mods` and `mods/a.zip` in one repo. The
+  // bundled storage keeps every object as a real file (versitygw, POSIX backend), so the second
+  // PUT is refused 409 by the store itself, from the browser, after this presign succeeded.
+  // MinIO accepted both and then listed only one of them. Refused here, with a reason.
+  const clash = repo.files.find((f) => f.path !== path && (f.path.startsWith(`${path}/`) || path.startsWith(`${f.path}/`)));
+  if (clash) throw new RepoOpError('path_conflict', 409, { conflictsWith: clash.path });
   const existing = repo.files.find((f) => f.path === path);
-  const used = repo.files.reduce((a, f) => a + Number(f.size), 0) - (existing ? Number(existing.size) : 0);
+  const used =repo.files.reduce((a, f) => a + Number(f.size), 0) - (existing ? Number(existing.size) : 0);
   if (BigInt(used + size) > repo.storageQuotaBytes) throw new RepoOpError('quota_exceeded', 413, { quota: Number(repo.storageQuotaBytes), used });
   const key = `hosting/${repo.id}/${path}`;
   const url = await presignPut(key, contentType);

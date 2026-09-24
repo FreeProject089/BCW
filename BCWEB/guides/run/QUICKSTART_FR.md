@@ -28,7 +28,7 @@ COOKIE_DOMAIN=.example.com                  # point initial (cookie partagé ave
 POSTGRES_PASSWORD=<fort>
 JWT_SECRET=<openssl rand -hex 32>
 BOT_SHARED_SECRET=<fort>
-S3_ACCESS_KEY=<user-minio>   S3_SECRET_KEY=<pass-minio>
+S3_ACCESS_KEY=<user-stockage>   S3_SECRET_KEY=<pass-stockage>
 # Clés Stripe seulement si tu actives l'hébergement payant — voir DEPLOY_FR.md §6
 ```
 > Ne commit jamais `.env` — il est gitignoré (seul `.env.example` est suivi).

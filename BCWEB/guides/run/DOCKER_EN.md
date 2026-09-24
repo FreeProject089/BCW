@@ -14,7 +14,7 @@ production. Everything is driven by **one** compose file:
 |---|---|---|---|
 | `db` | `postgres:16-alpine` | Main database (Prisma) | internal only |
 | `redis` | `redis:7-alpine` | Shared cache + rate-limiter state (+ future queues) | internal only |
-| `minio` | `minio/minio` | S3-compatible object storage (uploads, hosted repos) | `9000` (S3), `9001` (console) |
+| `storage` | `versity/versitygw` | S3-compatible object storage (uploads, hosted repos); objects are plain files on its volume. Replaced MinIO — [ADR_S3_STORAGE_EN.md](../reference/ADR_S3_STORAGE_EN.md) | `127.0.0.1:9000` (S3) |
 | `api` | build `apps/api/Dockerfile` | Fastify API — accounts, catalogs, hosting, billing… | `3000` |
 | `provisioner` | build `apps/provisioner/Dockerfile` | Background worker that provisions hosted repos | — |
 | `web` | build `apps/web/Dockerfile` | React SPA compiled and served by **nginx** | via caddy |
@@ -55,7 +55,7 @@ before `api`/`provisioner` start; `caddy` fronts everything.
 | Volume | Holds | Loss means |
 |---|---|---|
 | `db-data` | the whole main database | accounts, repos, billing — everything |
-| `minio-data` | every uploaded/hosted file | all hosted repos + catalog payloads |
+| `s3-data` | every uploaded/hosted file (`buckets/` = the files, `meta/` = their types) | all hosted repos + catalog payloads |
 | `telemetry-data` | telemetry DB | BMM telemetry history |
 | `redis-data` | cache/limiter state | harmless (rebuilt automatically) |
 | `caddy-data` / `caddy-config` | TLS certificates | re-issued automatically |
@@ -102,11 +102,11 @@ service recreates (a few seconds gap on that service only). For the api you can
 
 - `.env`: real `POSTGRES_PASSWORD`, `JWT_SECRET`, S3 keys, `SITE_DOMAIN`/`SITE_URL`
   (https), `COOKIE_DOMAIN=.your-domain.com`, Stripe keys + webhook secret.
-- Ports: in prod you can remove the published `3000` (api) and `9001` (MinIO console)
-  from the compose if you don't need them from outside — Caddy routes internally.
+- Ports: `5432` (db), `3000` (api) and `9000` (storage) are published on `127.0.0.1` only —
+  Caddy routes internally, and there is no storage console to publish.
 - Scaling: `API_REPLICAS=3` in `.env` + enable the `pgbouncer` profile, then `up -d`
   (see DEPLOY guide §Performance) once traffic justifies it.
-- Backups: `pg_dump` for `db`, mirror `minio-data` (see DEPLOY guide §10).
+- Backups: `pg_dump` for `db`, a tar of `s3-data` (see DEPLOY guide §10, `infra/backup/backup.sh`).
 
 ## 7. Common pitfalls
 

@@ -71,44 +71,72 @@ services:
 
   # S3-compatible object storage for catalog payloads, preset .json, repo data.
   # The browser PUTs/GETs via pre-signed URLs (the signature is bound to the public host —
-  # see S3_PUBLIC_ENDPOINT). In production it reaches MinIO THROUGH CADDY on S3_DOMAIN, never
+  # see S3_PUBLIC_ENDPOINT). In production it reaches storage THROUGH CADDY on S3_DOMAIN, never
   # on :9000 directly.
-  minio:
-    # Pinned (F10-13). This is the last community release, and the only MinIO image this stack
-    # has run: MinIO stopped publishing community images in October 2025 and removed
-    # minio/minio from Docker Hub on 2026-09-11 (quay.io refuses anonymous pulls too). A host
-    # that already has it keeps working; a FRESH host cannot pull it from anywhere official.
-    # Replacing MinIO is an owner decision (SECURITY_SUMMARY §9), not a tag bump.
-    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+  #
+  # Versity S3 Gateway (versitygw, Apache-2.0) with its POSIX backend. It replaced MinIO on
+  # 2026-09-24: MinIO removed minio/minio from Docker Hub on 2026-09-11 and quay.io refuses
+  # anonymous pulls, so a FRESH host could no longer deploy this stack at all. Why this server
+  # and not Garage / SeaweedFS / RustFS: guides/reference/ADR_S3_STORAGE_EN.md. Moving the
+  # data of an existing MinIO install: guides/run/DEPLOY_EN.md → "Moving off MinIO".
+  storage:
+    # Pinned (F10-13), bumped on purpose. v1.8.0 = the newest release on 2026-09-24.
+    image: versity/versitygw:v1.8.0
     restart: unless-stopped
-    command: server /data --console-address ":9001"
+    # Non-root. The image itself runs as root; volume-perms (below) hands /data to 1000 first.
+    user: "1000:1000"
+    depends_on:
+      volume-perms:
+        condition: service_completed_successfully
+    # One bucket = one directory under /data/buckets, one object = one plain FILE at
+    # /data/buckets/<bucket>/<key>. Each object's Content-Type and ETag live in the SIDECAR
+    # directory /data/meta, not in xattrs: infra/backup/backup.sh archives this volume with
+    # busybox tar, which drops xattrs: measured, a PNG stored in xattr mode came back from a
+    # tar restore as text/plain. Both directories are in the one volume, so one tar holds both.
+    # Port 9000 inside the container too, so S3_ENDPOINT, the Caddy upstream and any proxy that
+    # already pointed at :9000 keep their address.
+    command: ["--port", ":9000", "--health", "/health", "--quiet", "posix", "--sidecar", "/data/meta", "/data/buckets"]
     # Loopback ONLY (SECURITY_SUMMARY §9 #2). Docker-published ports bypass ufw on a standard
-    # install, so "9000:9000" put the S3 API and the MinIO CONSOLE (password guessing) on every
-    # interface of the production host. Browsers reach storage through Caddy (S3_DOMAIN);
-    # locally the browser runs on this machine, so http://localhost:9000 still answers.
-    ports: ["127.0.0.1:9000:9000", "127.0.0.1:9001:9001"]
+    # install. Browsers reach storage through Caddy (S3_DOMAIN); locally the browser runs on
+    # this machine, so http://localhost:9000 still answers. There is no admin console any more
+    # (MinIO's was :9001); versitygw's optional WebUI is deliberately not switched on.
+    ports: ["127.0.0.1:${S3_HOST_PORT:-9000}:9000"]
     environment:
-      MINIO_ROOT_USER: ${S3_ACCESS_KEY:?set in .env}
-      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:?set in .env}
-      # Allow the browser to PUT/GET pre-signed objects directly from the web origin.
-      # (Default is already "*", set explicitly so direct-to-storage uploads never 404
-      #  on a CORS preflight regardless of the MinIO version.)
-      MINIO_API_CORS_ALLOW_ORIGIN: ${MINIO_API_CORS_ALLOW_ORIGIN:-*}
+      # Single-account mode: these two ARE the credentials; nothing is written into the data,
+      # so rotating them is an .env change + a restart of storage, api and provisioner.
+      ROOT_ACCESS_KEY: ${S3_ACCESS_KEY:?set in .env}
+      ROOT_SECRET_KEY: ${S3_SECRET_KEY:?set in .env}
+      # The region the gateway checks SigV4 signatures against: the one the api signs with.
+      VGW_REGION: ${S3_REGION:-us-east-1}
+      # Allow the browser to PUT/GET pre-signed objects directly from the web origin. Applied
+      # to every bucket that has no CORS configuration of its own (none does; the api sets none).
+      VGW_CORS_ALLOW_ORIGIN: ${S3_CORS_ALLOW_ORIGIN:-*}
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9000/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 3s
     volumes:
-      - minio-data:/data
+      - s3-data:/data
 
   # One-shot: hands the api's writable volume to the `node` user the api now runs as
   # (SECURITY_SUMMARY §9 #10, F10-12). A FRESH volume needs nothing, Docker copies the image's
   # node-owned /var/audit into it; a volume created while the api ran as root keeps root
   # ownership, and the api would then fail to write the audit anchor, quietly. Runs as root
   # for exactly one chown, exits, and the api waits for it (service_completed_successfully).
+  # It does the same for object storage, which runs as 1000 too: a fresh s3-data volume is
+  # root-owned and empty, so the two directories the gateway needs are made here. `find ...
+  # ! -user 1000` rather than `chown -R`: it only rewrites what is wrong (a restore run as
+  # another user), instead of touching every object on every `up`.
   volume-perms:
     image: node:22-alpine
     user: "0:0"
     restart: "no"
-    command: ["chown", "-R", "1000:1000", "/var/audit"]
+    command: ["sh", "-c", "chown -R 1000:1000 /var/audit && mkdir -p /var/s3/buckets /var/s3/meta && find /var/s3 ! -user 1000 -exec chown 1000:1000 {} +"]
     volumes:
       - audit-anchor:/var/audit
+      - s3-data:/var/s3
 
   api:
     build:
@@ -158,10 +186,10 @@ services:
       # On a managed DB, set DIRECT_DATABASE_URL in .env to its direct (non-pooled) endpoint.
       DIRECT_DATABASE_URL: ${DIRECT_DATABASE_URL:-postgresql://${POSTGRES_USER:-bcweb}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-bcweb}}
       REDIS_URL: redis://:${REDIS_PASSWORD:-bcweb-redis-internal}@redis:6379
-      # S3-compatible storage. Default = the bundled MinIO. Swapping to Cloudflare R2
-      # is env-only: set S3_ENDPOINT/S3_PUBLIC_ENDPOINT/S3_REGION=auto + creds in .env
-      # (see guides/DEPLOY_EN.md "Object storage" for the full migration).
-      S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
+      # S3-compatible storage. Default = the bundled `storage` service (versitygw). Swapping
+      # to Cloudflare R2 is env-only: set S3_ENDPOINT/S3_PUBLIC_ENDPOINT/S3_REGION=auto + creds
+      # in .env (see guides/DEPLOY_EN.md "Object storage" for the full migration).
+      S3_ENDPOINT: ${S3_ENDPOINT:-http://storage:9000}
       S3_REGION: ${S3_REGION:-us-east-1}
       S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-http://localhost:9000}
       S3_BUCKET: ${S3_BUCKET:-bcweb}
@@ -288,7 +316,7 @@ services:
       # Provisioner talks DIRECTLY to Postgres → follows the same managed-DB override.
       DATABASE_URL: ${DIRECT_DATABASE_URL:-postgresql://${POSTGRES_USER:-bcweb}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-bcweb}}
       DIRECT_DATABASE_URL: ${DIRECT_DATABASE_URL:-postgresql://${POSTGRES_USER:-bcweb}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-bcweb}}
-      S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
+      S3_ENDPOINT: ${S3_ENDPOINT:-http://storage:9000}
       S3_REGION: ${S3_REGION:-us-east-1}
       S3_BUCKET: ${S3_BUCKET:-bcweb}
       S3_ACCESS_KEY: ${S3_ACCESS_KEY}
@@ -396,7 +424,7 @@ services:
       # unrelated *.trycloudflare.com hostnames cannot share one. See the Caddyfile.
       TELEMETRY_TUNNEL_DOMAIN: ${TELEMETRY_TUNNEL_DOMAIN:-http://telemetry-tunnel.invalid}
       # Object storage on its own origin. Unset → an unreachable default, so the block in the
-      # Caddyfile never matches and MinIO stays reachable only on :9000 as it is locally.
+      # Caddyfile never matches and storage stays reachable only on :9000 as it is locally.
       S3_DOMAIN: ${S3_DOMAIN:-http://s3.invalid}
       # F10-10: the Caddyfile reads both and neither reached the container, so `ask` sent an
       # empty key and the customer-domain block could never be switched on from .env.
@@ -416,7 +444,10 @@ services:
 volumes:
   db-data:
   redis-data:
-  minio-data:
+  # Object storage (versitygw). `minio-data` is no longer declared: an existing one stays on
+  # disk untouched (compose never deletes a volume it does not declare) until the migration in
+  # guides/run/DEPLOY_EN.md has been verified and you remove it yourself.
+  s3-data:
   telemetry-data:
   caddy-data:
   caddy-config:

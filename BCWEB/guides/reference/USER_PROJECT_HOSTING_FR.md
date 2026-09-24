@@ -73,7 +73,7 @@ réserver un préfixe S3.
 - En implémentant la Phase 1, mettre le driver Docker derrière une petite interface
   (`spinUp/tearDown/reconcile`) pour que remplacer dockerode → Nomad plus tard soit un
   changement de driver, pas une réécriture — comme le stockage est déjà en interface S3
-  (MinIO → R2) et la base un simple swap `.env`.
+  (MinIO → versitygw → R2) et la base un simple swap `.env`.
 - Dimensionner le VPS avec de la marge ; préférer les **montées verticales** (plus de
   CPU/RAM/disque) à un second nœud aussi longtemps que possible.
 

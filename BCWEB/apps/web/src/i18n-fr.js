@@ -4696,6 +4696,9 @@ const DICT = {
     'sp.deps.cfg.h': 'La décocher arrête la sonde. Le service disparaît d’ici ET ne peut plus enregistrer de panne : la page de statut ne le montrera jamais comme indisponible.',
     'sp.dep.db': 'Exécute SELECT 1 sur Postgres.',
     'sp.dep.storage': 'Demande son état au stockage objet (MinIO / S3).',
+    // s3 (agent-s3-replace) : le stockage objet n’est plus MinIO (versitygw, compatible S3) ; la sonde du tableau de dépendances le dit.
+    'sp.dep.objectStore': 'Demande son état au stockage objet (compatible S3).',
+    // fin s3 (agent-s3-replace)
     'sp.dep.bot': 'Vérifie que le battement de cœur du bot Discord a moins de deux minutes.',
     'sp.dep.telemetry': 'Interroge le conteneur de télémétrie en HTTP.',
     'sp.dep.web': 'Interroge le conteneur du site en HTTP, une vraie requête, parce que l’API et le site tombent séparément.',

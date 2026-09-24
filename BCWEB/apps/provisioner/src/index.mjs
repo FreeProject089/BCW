@@ -1,7 +1,7 @@
 // Provisioner — watches for hosted Server-Repos in PROVISIONING and brings them
 // ONLINE. It owns the isolation/quota concern, decoupled from the web API.
 //
-// This scaffold provisions a storage area (a MinIO prefix) per repo and publishes
+// This scaffold provisions a storage area (an object-storage prefix) per repo and publishes
 // a URL. The clearly-marked extension point `spinUpRepoContainer()` is where a real
 // deploy would create an isolated container + quota'd volume (e.g. via dockerode),
 // enforcing storageQuotaBytes / uploadLimitKbps / cpuShare from the plan.
@@ -16,8 +16,10 @@ const prisma = new PrismaClient();
 const BUCKET = process.env.S3_BUCKET || 'bcweb';
 const REPO_BASE = process.env.REPO_PUBLIC_BASE || 'http://localhost/repos';
 const s3 = new S3Client({
-  region: 'us-east-1', forcePathStyle: true,
-  endpoint: process.env.S3_ENDPOINT || 'http://minio:9000',
+  // S3_REGION like the api (compose passes it): a hard-coded region signed every request for
+  // us-east-1 whatever the server was told, which only worked while nobody changed it.
+  region: process.env.S3_REGION || 'us-east-1', forcePathStyle: true,
+  endpoint: process.env.S3_ENDPOINT || 'http://storage:9000',
   credentials: { accessKeyId: process.env.S3_ACCESS_KEY, secretAccessKey: process.env.S3_SECRET_KEY },
 });
 

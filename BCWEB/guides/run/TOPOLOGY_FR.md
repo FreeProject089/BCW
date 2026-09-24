@@ -36,7 +36,7 @@ coûteux que tu feras jamais.
 ## ① Un VPS — la forme normale
 
 Tout sur une machine, ce que décrit `infra/compose/docker-compose.yml` : Caddy, le build web,
-l'API, Postgres, Redis, MinIO, le bot, le service de télémétrie et son propre Postgres.
+l'API, Postgres, Redis, le stockage objet (`storage`), le bot, le service de télémétrie et son propre Postgres.
 
 ```bash
 cd infra/compose
@@ -57,7 +57,7 @@ passe que tu aurais changé depuis.
 
 **Dimensionnement.** 4 vCPU / 8 Go est confortable pour un site communautaire ; 2/4 suffit si
 tu n'héberges pas de gros dépôts. C'est le **disque** qui s'épuise en pratique : les dépôts
-hébergés et les charges utiles des catalogues vivent dans MinIO, dimensionne-le donc en face
+hébergés et les charges utiles des catalogues vivent dans le stockage objet, dimensionne-le donc en face
 de `hosting.totalCapacityGB`, pas en face du trafic.
 
 **Les sauvegardes comptent plus que la topologie.** Une machine, c'est une seule chose à
@@ -154,7 +154,7 @@ Deux choses à avoir en place d'abord :
 **Passe ici quand** même une API répliquée sur une machine ne suit plus, ou quand tu veux des
 déploiements progressifs sans coupure.
 
-Chaque machine web fait tourner Caddy + web + réplicas d'API ; Postgres, Redis et MinIO sont
+Chaque machine web fait tourner Caddy + web + réplicas d'API ; Postgres, Redis et le stockage objet sont
 partagés et doivent déjà être **hors** de ces machines (forme ②). Ce qui change :
 
 - **Un répartiteur de charge devant**, et **les sessions collantes ne sont pas nécessaires** —
@@ -164,8 +164,8 @@ partagés et doivent déjà être **hors** de ces machines (forme ②). Ce qui c
 - **Redis devient une infrastructure obligatoire**, plus un add-on. C'est ce qui fait du
   limiteur un budget unique partagé, du cache un cache cohérent, et du chat en direct un chat
   inter-machines.
-- **Le stockage objet doit être partagé** — MinIO sur son propre hôte, ou R2
-  ([ADDONS_FR.md](ADDONS_FR.md) §4). Deux machines avec deux MinIO locaux, c'est un fichier
+- **Le stockage objet doit être partagé** — le service `storage` sur son propre hôte, ou R2
+  ([ADDONS_FR.md](ADDONS_FR.md) §4). Deux machines avec deux stockages locaux, c'est un fichier
   téléversé qui existe sur l'une et renvoie 404 sur l'autre.
 - **Une seule machine fait tourner les singletons.** Le bot Discord et le sweeper ne doivent
   pas tourner en double : deux bots répondent deux fois à chaque commande, et deux sweepers se

@@ -38,15 +38,17 @@ déjà.
 | `SITE_URL` | l'**URL publique complète** (ex. `https://community.example.com`) — utilisée dans les emails, redirections Stripe, liens du bot, l'issuer OIDC. |
 | `COOKIE_DOMAIN` | `.ton-domaine.com` (point initial) pour que le cookie de session atteigne aussi les sous-domaines (télémétrie). Local : `localhost`. |
 
-## 4. Stockage objet — MinIO / S3 (obligatoire)
+## 4. Stockage objet — S3 (obligatoire)
 | Variable | Rôle |
 |---|---|
-| `S3_ACCESS_KEY` / `S3_SECRET_KEY` | identifiants du stockage objet (MinIO par défaut). |
+| `S3_ACCESS_KEY` / `S3_SECRET_KEY` | identifiants du stockage objet. Le service `storage` fourni (versitygw) les prend **comme** identifiants racine : n'importe quelles valeurs conviennent, rien n'est stocké dans les données, et les changer demande de recréer `storage`, `api` et `provisioner` ensemble. |
 | `S3_BUCKET` | nom du bucket (défaut `bcweb`). |
-| `S3_ENDPOINT` | endpoint S3 (défaut MinIO interne `http://minio:9000`). |
-| `S3_REGION` | région (`us-east-1` en local, `auto` pour Cloudflare R2). |
+| `S3_ENDPOINT` | endpoint S3 (défaut le service interne `storage`, `http://storage:9000`). Un vieux `.env` qui dit encore `http://minio:9000` vise un service qui n'existe plus : retire la ligne. |
+| `S3_REGION` | région (`us-east-1` en local, `auto` pour Cloudflare R2). Compose passe la même valeur au `storage` fourni, qui vérifie les signatures avec. |
+| `S3_HOST_PORT` | port de l'hôte sur lequel `storage` est publié, `127.0.0.1` seulement (défaut `9000`). À changer seulement si 9000 est pris sur la machine, et `S3_PUBLIC_ENDPOINT` doit alors dire le même port. |
+| `S3_CORS_ALLOW_ORIGIN` | origine CORS pour laquelle le `storage` fourni répond aux uploads pré-signés du navigateur. Défaut `*` — correct avec la stack fournie ; à restreindre à ton `SITE_URL` une fois le stockage public sur `S3_DOMAIN`. Une seule origine. Remplace `MINIO_API_CORS_ALLOW_ORIGIN`, qui ne fait plus rien. |
 | `S3_PUBLIC_ENDPOINT` | l'URL **publique** du stockage (les navigateurs y accèdent via des URLs pré-signées). |
-| `S3_DOMAIN` | le nom d'hôte que **Caddy** sert pour MinIO (ex. `s3.ton-domaine.com`). Non renseigné, le bloc Caddy porte un nom que personne ne peut demander et le stockage reste sur `:9000` — voulu en local. Va par paire avec `S3_PUBLIC_ENDPOINT` : l'un dit ce que Caddy écoute, l'autre ce qui est écrit dans l'URL signée. |
+| `S3_DOMAIN` | le nom d'hôte que **Caddy** sert pour le stockage objet (ex. `s3.ton-domaine.com`). Non renseigné, le bloc Caddy porte un nom que personne ne peut demander et le stockage reste sur `:9000` — voulu en local. Va par paire avec `S3_PUBLIC_ENDPOINT` : l'un dit ce que Caddy écoute, l'autre ce qui est écrit dans l'URL signée. |
 | `CUSTOM_DOMAIN_MATCHER` | mettre `https://` pour servir les propriétaires payants sur **leur propre nom d'hôte**. Non défini, ce bloc Caddy est lié à un nom que personne ne peut demander : une stack qui n'a pas activé la fonctionnalité ne paie rien. Le certificat de chaque nom client est obtenu à la demande, à la première poignée de main — il n'y a aucune liste de domaines dans la config, parce que la liste est en base. |
 | `DOMAIN_ASK_KEY` | un secret partagé entre Caddy et l'API pour la question du certificat (`/domains/ask`). Sans lui, quiconque atteint cet endpoint apprend si un nom d'hôte qu'il cite est hébergé ici ; l'edge bloque de toute façon le chemin public, et ceci couvre le cas où l'API est joignable autrement. N'importe quelle longue chaîne aléatoire. Compose la passe **à la fois** à `api` et à `caddy` ; à définir en production. |
 | `CSP_CONNECT_SRC_EXTRA` | des origines supplémentaires que le navigateur peut interroger, séparées par des espaces, ajoutées par Caddy au `connect-src` de la CSP du site. Vide par défaut : le site, l'origine du stockage (`S3_PUBLIC_ENDPOINT`, `S3_DOMAIN`) et une liste fixe (GitHub raw, les CDN d'icônes, Google Analytics après consentement, les tuiles de carte). Un hôte qu'un admin ajoute à la liste des blocs live (Admin > Réglages) ou la source d'un nombre live de projet sur un autre hôte doit aussi figurer ici, sinon le navigateur refuse la requête. Redémarrer `caddy` après un changement. |
@@ -120,7 +122,6 @@ Callback à déclarer chez chaque fournisseur : `<SITE_URL>/api/auth/oauth/<prov
 | `KOFI_WEBHOOK_TOKEN` | token de vérification du webhook Ko-fi. Posé ici, il **prime** sur le token défini en admin et le verrouille dans le dashboard (même logique que `DISCORD_TOKEN`). Vide = géré depuis l'UI admin. |
 | `TWITCH_CLIENT_ID` / `TWITCH_CLIENT_SECRET` | **connexion de profil** Twitch (pas le login). Enregistre `<SITE_URL>/api/auth/connect/twitch/callback`. |
 | `STEAM_API_KEY` | connexion de profil Steam (OpenID — pas de secret). [steamcommunity.com/dev/apikey](https://steamcommunity.com/dev/apikey). |
-| `MINIO_API_CORS_ALLOW_ORIGIN` | origine CORS pour laquelle MinIO répond aux uploads pré-signés du navigateur. Défaut `*` — correct avec la stack fournie ; à restreindre à ton `SITE_URL` si tu exposes MinIO publiquement. |
 
 > **Une variable ne marche que si compose la transmet.** L'API lit `process.env`, mais dans
 > Docker elle ne voit que ce que `infra/compose/docker-compose.yml` passe au service `api`.

@@ -26,7 +26,7 @@ Open `.env` and set, at minimum:
 |---|---|
 | `POSTGRES_PASSWORD` | Database password — pick a real one, even locally. |
 | `JWT_SECRET` | Signs session cookies, 2FA tokens, step-up elevation tokens. Generate with `openssl rand -hex 32`. **The app refuses to boot in production with the insecure default.** |
-| `S3_ACCESS_KEY` / `S3_SECRET_KEY` | MinIO (or real S3) credentials for hosted uploads. |
+| `S3_ACCESS_KEY` / `S3_SECRET_KEY` | Object-storage credentials (the bundled `storage`, or a real S3) for hosted uploads. |
 | `SITE_DOMAIN` / `SITE_URL` | Local dev: leave as `http://localhost`. Production: your real domain — Caddy auto-provisions HTTPS from `SITE_DOMAIN`. |
 
 Everything else (Stripe, GTM, Discord bot, telemetry) is optional and covered in its

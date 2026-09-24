@@ -34,7 +34,7 @@
 #                   a Discord bot reconnecting or a dashboard blinking is not an outage.
 # NEVER RESTARTED:  caddy (a restart IS the outage; config changes go through `caddy reload`,
 #                   which is graceful — this script does that itself when the Caddyfile hash
-#                   changed), db, redis, minio (stateful; rolling them means a failover
+#                   changed), db, redis, storage (stateful; rolling them means a failover
 #                   story this stack does not have and should not pretend to).
 #
 # USAGE

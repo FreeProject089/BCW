@@ -12625,7 +12625,7 @@ function AnnouncementDetail({ a, onClose, t }) {
  */
 const DEP_WHAT = (t) => ({
   db: t('sp.dep.db', 'Runs SELECT 1 against Postgres.'),
-  storage: t('sp.dep.storage', 'Asks the object store (MinIO / S3) for its health.'),
+  storage: t('sp.dep.objectStore', 'Asks the object store (S3-compatible) for its health.'),
   bot: t('sp.dep.bot', 'Checks the Discord bot\u2019s heartbeat is under two minutes old.'),
   telemetry: t('sp.dep.telemetry', 'Fetches the telemetry container over HTTP.'),
   web: t('sp.dep.web', 'Fetches the website container over HTTP, a real request, because the API and the site fail separately.'),

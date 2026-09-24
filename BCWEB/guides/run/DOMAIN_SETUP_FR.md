@@ -77,7 +77,7 @@ SITE_URL=https://community.example.com
 # Le point initial le partage avec les sous-domaines (nécessaire pour la télémétrie).
 COOKIE_DOMAIN=.example.com
 
-# Adresse MinIO vue par le NAVIGATEUR. Les téléversements ne passent pas par l'API : le
+# Adresse du stockage objet vue par le NAVIGATEUR. Les téléversements ne passent pas par l'API : le
 # navigateur reçoit une URL pré-signée et envoie les octets directement ici. Sur localhost,
 # c'est la machine du visiteur — joindre un fichier ne fait alors rien, sans erreur.
 S3_PUBLIC_ENDPOINT=https://s3.example.com
@@ -117,7 +117,7 @@ valide.
 ### 5. Notes
 
 **Le stockage a son propre bloc, inerte par défaut.** Les téléversements ne passent pas par
-l'API : le navigateur reçoit une URL pré-signée et envoie les octets directement à MinIO, qui
+l'API : le navigateur reçoit une URL pré-signée et envoie les octets directement au stockage, qui
 a donc besoin d'une adresse publique — et la CSP du site n'autorise que `https:`, donc un
 `:9000` en clair serait refusé par le navigateur avant même de partir.
 
@@ -130,11 +130,11 @@ S3_PUBLIC_ENDPOINT=https://s3.example.com # ce que le navigateur reçoit dans l'
 ```
 
 puis `docker compose up -d caddy api`. Sans `S3_DOMAIN`, le bloc porte un nom que personne ne
-peut demander et MinIO reste joignable sur `:9000` comme en local — c'est le comportement
+peut demander et le stockage reste joignable sur `:9000` comme en local — c'est le comportement
 voulu en développement.
 
 ⚠ N'ajoutez **pas** de préfixe de chemin à ce bloc. Une signature S3 couvre l'hôte **et** le
-chemin : le réécrire fait calculer à MinIO une signature différente, et il répond
+chemin : le réécrire fait calculer au stockage une signature différente, et il répond
 `403 SignatureDoesNotMatch` — ce qui se lit comme « mauvais identifiants » et n'a rien à voir.
 
 - Le mapping de port local `5176:5176` dans `docker-compose.yml` ne sert qu'aux tests

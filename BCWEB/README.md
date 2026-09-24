@@ -16,7 +16,7 @@ Deploying to production → **[guides/DEPLOY_EN.md](./guides/run/DEPLOY_EN.md)**
 ```bash
 cd infra/compose
 cp .env.example .env      # set POSTGRES_PASSWORD, JWT_SECRET, S3 keys…
-docker compose up -d      # api + web + postgres + redis + minio + caddy + telemetry
+docker compose up -d      # api + web + postgres + redis + storage + caddy + telemetry
 ```
 
 Then:
@@ -44,7 +44,7 @@ symptom points at the app instead.
 docker compose up -d --force-recreate caddy
 ```
 
-Caddy is stateless, so recreating it is free — the database and MinIO volumes are untouched.
+Caddy is stateless, so recreating it is free — the database and object-storage volumes are untouched.
 
 ## Run it (dev, no Docker)
 
@@ -116,7 +116,7 @@ notifications), **Admin** (moderation queue: approve/reject). Dev: `npm run dev`
 ## Status
 
 ✅ **All roadmap phases implemented.** Docker stack · DB schema · accounts · catalogs ·
-submissions + moderation · notifications · blog · repos · admin settings · S3/MinIO
+submissions + moderation · notifications · blog · repos · admin settings · S3 (bundled versitygw)
 pre-signed uploads + downloads · BSM preset validation · **Stripe hosting** (plans,
 capacity-guarded checkout, signature-verified webhook, flexible pricing knobs,
 SHA-only repo updates) · **provisioner** service (brings repos ONLINE, owns
@@ -125,7 +125,7 @@ dashboard, admin moderation + settings).
 
 ### Security hardening (in place)
 - **HTTP security headers** at the edge (Caddy): `Content-Security-Policy` (locked to
-  self + the app's real needs — data/blob images, MinIO uploads, GitHub fetches,
+  self + the app's real needs — data/blob images, object-storage uploads, GitHub fetches,
   youtube-nocookie embeds, rrweb blob frames; no `'unsafe-inline'` in `script-src`, held by
   `apps/web/scripts/check-csp.mjs`), `X-Frame-Options: SAMEORIGIN`,
   `X-Content-Type-Options: nosniff`, `Referrer-Policy`, `Permissions-Policy`, and the
@@ -151,10 +151,10 @@ Before pointing a real domain at this:
    `SITE_URL` and `S3_PUBLIC_ENDPOINT` to the public `https://` origins.
 3. **Stripe** — create the webhook endpoint (`/api/hosting/webhook`) in the Stripe
    dashboard, enable the **Customer Portal**, and use live keys.
-4. **MinIO/S3** — for scale, point at a managed S3 (or a hardened MinIO with its own
-   credentials + backups); the `9000` port only needs to be reachable by browsers for
+4. **Object storage** — the bundled `storage` (versitygw, plain files on disk,
+   [ADR](guides/reference/ADR_S3_STORAGE_EN.md)); for scale, point at a managed S3 or R2; the `9000` port only needs to be reachable by browsers for
    pre-signed PUT/GET.
-5. **Backups** — run `infra/backup/backup.sh` on a cron (consistent `pg_dump` + MinIO +
+5. **Backups** — run `infra/backup/backup.sh` on a cron (consistent `pg_dump` + object-storage +
    audit-anchor archives, retention, optional off-site via rclone). Full run/restore steps:
    [guides/BACKUP_EN.md](./guides/run/BACKUP_EN.md) · [FR](./guides/run/BACKUP_FR.md). *(Don't tar the
    `db-data` volume under a live server — `pg_dump` is the safe path.)*

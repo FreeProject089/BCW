@@ -80,7 +80,7 @@ Docker services (`infra/compose/docker-compose.yml`):
 | `db` | postgres:16-alpine | primary datastore |
 | `redis` | redis:7-alpine | rate-limit buckets, the shared L2 read cache, monitor state |
 | `pgbouncer` | edoburu/pgbouncer | **opt-in**: only starts with `--profile pgbouncer`. Shares a small pool of real Postgres connections across API replicas. Point the API at it with `DB_HOST=pgbouncer DB_PORT=6432 DB_URL_PARAMS=?pgbouncer=true`; `DIRECT_DATABASE_URL` stays on `db:5432` so migrations keep a direct connection |
-| `minio` | minio/minio | S3-compatible object storage for uploads (ports 9000/9001) |
+| `storage` | versity/versitygw | S3-compatible object storage for uploads, objects as plain files (port 9000, loopback) |
 | `telemetry` + `telemetry-db` | BMM dashboard + postgres:16-alpine | separate origin analytics for BMM |
 
 **Config discipline:** any new API env var must be **explicitly whitelisted** in the
@@ -197,7 +197,7 @@ the RBAC map (Admin → Moderation), which reads the route files themselves.
 |---|---|
 | **Accounts & identity** (14) | `auth.mjs` (register/login/logout, password reset, proof-of-work, the TOTP login step, `oauth_only_account`), `oauth.mjs` (GitHub/Discord OAuth2, HMAC-signed `state`, provider-verified email only), `misc.mjs` (`/me`, admin user search + detail incl. **BC id**), `roles.mjs`, `admin-search.mjs`, `connections.mjs`, `links.mjs` (creator/Discord pairing), `avatar.mjs`, `social.mjs`, `api-keys.mjs`, `oidc-provider.mjs`, `transfers.mjs` (ownership transfer), `closure.mjs` (account closure + survey), `rights.mjs` |
 | **Content & site** (15) | `blog.mjs`, `docs.mjs`, `faq.mjs`, `projects.mjs`, `showcase.mjs`, `showcase-requests.mjs`, `og.mjs` (rendered OG/Twitter images), `locales.mjs` (runtime language overrides), `studio.mjs`, `polls.mjs`, `campaigns.mjs`, `events.mjs`, `newsletter.mjs`, `announcements.mjs`, `status.mjs` |
-| **Catalog & uploads** (7) | `catalog.mjs` (browse/submit, the `catalog.json` feed, downloads), `catalogs.mjs` (community catalogs), `uploads.mjs` (pre-signed S3 PUT, direct to MinIO, size/type capped), `files.mjs`, `marketplace.mjs`, `media-flags.mjs`, `platform-assets.mjs` |
+| **Catalog & uploads** (7) | `catalog.mjs` (browse/submit, the `catalog.json` feed, downloads), `catalogs.mjs` (community catalogs), `uploads.mjs` (pre-signed S3 PUT, direct to object storage, size/type checked at presign time — the store itself does not re-check them), `files.mjs`, `marketplace.mjs`, `media-flags.mjs`, `platform-assets.mjs` |
 | **Repos & hosting** (7) | `repos.mjs` (public list + **fingerprint**), `repo-dashboard.mjs` (owner dashboard, files, favorites), `repo-agent.mjs` (manage a repo on the owner's own server), `hosting.mjs` (plans, capacity, price), `hosting-content.mjs` (serve-time sandbox: bans, whitelist, bandwidth), `domains.mjs` (bring-your-own domain + the Caddy `ask` endpoint), `boosts.mjs` |
 | **Billing** (6) | `stripe-webhook.mjs`, `payments-admin.mjs`, `promo.mjs`, `kofi.mjs` (webhook with a constant-time token, donor flag, goal stats), `charity.mjs`, `myo.mjs` |
 | **Moderation & safety** (6) | `reports.mjs`, `sanctions.mjs`, `site-bans.mjs`, `access-policy.mjs` (global + per-user whitelist/ban), `feedback.mjs`, `threads.mjs` |
@@ -225,7 +225,7 @@ All 109, same treatment. `lib.mjs` is the shared-helper module described above; 
 
 The ones worth reading before you touch anything near them:
 
-- **`storage.mjs`**: S3-compatible storage, MinIO by default; endpoint and region are
+- **`storage.mjs`**: S3-compatible storage, the bundled versitygw by default; endpoint and region are
   env-driven, so a Cloudflare R2 swap is config-only.
 - **`net.mjs`**: `safeFetch`, the SSRF guard: resolve DNS, block private, loopback,
   link-local, CGNAT and metadata ranges, and re-check on every redirect hop.

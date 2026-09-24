@@ -12,7 +12,7 @@ import { parse as parseYaml } from 'yaml';
 
 /** Images whose name IS the answer. Matched on the image's repository part, tag ignored. */
 const IMAGE_KIND = [
-    [/^(postgres|postgis|mysql|mariadb|mongo|redis|valkey|memcached|clickhouse|cockroachdb|influxdb|elasticsearch|opensearch|cassandra|neo4j|minio)\b/, 'data'],
+    [/^(postgres|postgis|mysql|mariadb|mongo|redis|valkey|memcached|clickhouse|cockroachdb|influxdb|elasticsearch|opensearch|cassandra|neo4j|minio|versitygw|garage|seaweedfs|rustfs)\b/, 'data'],
     [/^(caddy|nginx|traefik|haproxy|envoyproxy|apache)\b/, 'edge'],
     [/^(rabbitmq|nats|kafka|bitnami\/kafka)\b/, 'worker'],
 ];
@@ -22,7 +22,8 @@ const IMAGE_LABEL = {
     postgres: 'Postgres', postgis: 'PostGIS', mysql: 'MySQL', mariadb: 'MariaDB', mongo: 'MongoDB',
     redis: 'Redis', valkey: 'Valkey', memcached: 'Memcached', clickhouse: 'ClickHouse',
     influxdb: 'InfluxDB', elasticsearch: 'Elasticsearch', opensearch: 'OpenSearch',
-    cassandra: 'Cassandra', neo4j: 'Neo4j', minio: 'MinIO', caddy: 'Caddy', nginx: 'nginx',
+    cassandra: 'Cassandra', neo4j: 'Neo4j', minio: 'MinIO', versitygw: 'Versity S3 Gateway',
+    garage: 'Garage', seaweedfs: 'SeaweedFS', rustfs: 'RustFS', caddy: 'Caddy', nginx: 'nginx',
     traefik: 'Traefik', haproxy: 'HAProxy', apache: 'Apache', rabbitmq: 'RabbitMQ',
     nats: 'NATS', kafka: 'Kafka',
 };

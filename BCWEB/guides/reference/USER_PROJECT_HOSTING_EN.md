@@ -66,7 +66,7 @@ extension point, and the `ServerRepo` model already carries the quota fields
 - Keep the provisioner as the **only** thing that touches runtime isolation (already true).
 - When implementing Phase 1, put the Docker driver behind a small interface
   (`spinUp/tearDown/reconcile`) so swapping dockerode → Nomad later is a driver change,
-  not a rewrite — mirrors how storage is already S3-interface (MinIO → R2) and the DB is a
+  not a rewrite — mirrors how storage is already S3-interface (MinIO → versitygw → R2) and the DB is a
   pure `.env` swap.
 - Size the VPS with headroom; prefer **vertical upgrades** (more CPU/RAM/disk) over a
   second node for as long as possible.

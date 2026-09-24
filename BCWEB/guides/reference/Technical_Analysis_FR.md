@@ -87,7 +87,7 @@ Services Docker (`infra/compose/docker-compose.yml`) :
 | `db` | postgres:16-alpine | datastore principal |
 | `redis` | redis:7-alpine | buckets de rate-limit, le cache de lecture L2 partagé, l'état du monitor |
 | `pgbouncer` | edoburu/pgbouncer | **opt-in** : ne démarre qu'avec `--profile pgbouncer`. Partage un petit pool de vraies connexions Postgres entre les réplicas d'API. On pointe l'API dessus avec `DB_HOST=pgbouncer DB_PORT=6432 DB_URL_PARAMS=?pgbouncer=true` ; `DIRECT_DATABASE_URL` reste sur `db:5432` pour que les migrations gardent une connexion directe |
-| `minio` | minio/minio | stockage objet S3 pour les uploads (ports 9000/9001) |
+| `storage` | versity/versitygw | stockage objet S3 pour les uploads, objets en fichiers ordinaires (port 9000, boucle locale) |
 | `telemetry` + `telemetry-db` | dashboard BMM + postgres:16-alpine | analytics BMM sur origine séparée |
 
 **Discipline de config :** toute nouvelle variable d'env API doit être **explicitement
@@ -204,7 +204,7 @@ fichiers de routes eux-mêmes.
 |---|---|
 | **Comptes & identité** (14) | `auth.mjs` (register/login/logout, reset mot de passe, proof-of-work, l'étape TOTP, `oauth_only_account`), `oauth.mjs` (OAuth2 GitHub/Discord, `state` signé HMAC, email vérifié par le provider uniquement), `misc.mjs` (`/me`, recherche + détail utilisateur admin dont le **BC id**), `roles.mjs`, `admin-search.mjs`, `connections.mjs`, `links.mjs` (appairage creator/Discord), `avatar.mjs`, `social.mjs`, `api-keys.mjs`, `oidc-provider.mjs`, `transfers.mjs` (transfert de propriété), `closure.mjs` (fermeture de compte + questionnaire), `rights.mjs` |
 | **Contenu & site** (15) | `blog.mjs`, `docs.mjs`, `faq.mjs`, `projects.mjs`, `showcase.mjs`, `showcase-requests.mjs`, `og.mjs` (images OG/Twitter rendues), `locales.mjs` (surcouche de langues à l'exécution), `studio.mjs`, `polls.mjs`, `campaigns.mjs`, `events.mjs`, `newsletter.mjs`, `announcements.mjs`, `status.mjs` |
-| **Catalogue & uploads** (7) | `catalog.mjs` (parcourir/soumettre, le flux `catalog.json`, téléchargements), `catalogs.mjs` (catalogues communautaires), `uploads.mjs` (PUT S3 pré-signé, direct vers MinIO, taille/type plafonnés), `files.mjs`, `marketplace.mjs`, `media-flags.mjs`, `platform-assets.mjs` |
+| **Catalogue & uploads** (7) | `catalog.mjs` (parcourir/soumettre, le flux `catalog.json`, téléchargements), `catalogs.mjs` (catalogues communautaires), `uploads.mjs` (PUT S3 pré-signé, direct vers le stockage objet, taille/type vérifiés à la présignature — le stockage lui-même ne les revérifie pas), `files.mjs`, `marketplace.mjs`, `media-flags.mjs`, `platform-assets.mjs` |
 | **Repos & hébergement** (7) | `repos.mjs` (liste publique + **fingerprint**), `repo-dashboard.mjs` (dashboard owner, fichiers, favoris), `repo-agent.mjs` (gérer un repo sur le serveur du propriétaire), `hosting.mjs` (plans, capacité, prix), `hosting-content.mjs` (sandbox au service : bans, whitelist, bande passante), `domains.mjs` (domaine personnalisé + l'endpoint `ask` de Caddy), `boosts.mjs` |
 | **Facturation** (6) | `stripe-webhook.mjs`, `payments-admin.mjs`, `promo.mjs`, `kofi.mjs` (webhook à token comparé en temps constant, flag donateur, stats d'objectif), `charity.mjs`, `myo.mjs` |
 | **Modération & sécurité** (6) | `reports.mjs`, `sanctions.mjs`, `site-bans.mjs`, `access-policy.mjs` (whitelist/ban global + par utilisateur), `feedback.mjs`, `threads.mjs` |
@@ -233,7 +233,7 @@ le reste :
 
 Ceux qu'il faut avoir lus avant de toucher à quoi que ce soit à côté :
 
-- **`storage.mjs`** : stockage compatible S3, MinIO par défaut ; endpoint et région sont
+- **`storage.mjs`** : stockage compatible S3, le versitygw fourni par défaut ; endpoint et région sont
   pilotés par l'env, donc la bascule vers Cloudflare R2 est de la config pure.
 - **`net.mjs`** : `safeFetch`, la garde SSRF : résolution DNS, blocage des plages privées,
   loopback, link-local, CGNAT et metadata, et re-vérification à chaque redirection.

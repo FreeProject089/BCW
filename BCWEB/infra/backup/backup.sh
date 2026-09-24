@@ -1,12 +1,16 @@
 #!/bin/sh
 # POSIX sh: the target is a minimal Alpine container, which has no bash. bootstrap.sh
 # failed exactly that way on the first real install; this script would have too.
-# BCWEB backup — dumps Postgres + archives object storage (MinIO) and the audit
+# BCWEB backup — dumps Postgres + archives object storage (versitygw) and the audit
 # anchor, prunes old backups, and (optionally) copies off-site with rclone.
 #
 # Postgres is dumped with pg_dump (a consistent logical dump — the right way to back
-# up a live DB; far safer than tarring db-data underneath a running server). MinIO and
-# the audit anchor are archived from their Docker volumes.
+# up a live DB; far safer than tarring db-data underneath a running server). Object storage
+# and the audit anchor are archived from their Docker volumes. Storage is PLAIN FILES
+# (versitygw's POSIX backend: data in buckets/, each object's Content-Type + ETag in meta/),
+# so its tar is readable and restorable without the server. It is still a copy of a LIVE
+# directory: an upload landing mid-archive can be in buckets/ without its meta/ entry (restored,
+# it is served with a guessed Content-Type). Run it at a quiet hour, as the cron line says.
 #
 # USAGE
 #   infra/backup/backup.sh                # uses defaults below
@@ -95,7 +99,10 @@ archive_volume() {
     log "WARN: failed to archive $vol — backup continues"; rm -f "$out"
   fi
 }
-archive_volume "${PROJECT}_minio-data"    "minio"
+# s3-data since the move off MinIO (2026-09-24). An older minio-*.tar.gz is a MinIO data
+# directory: it restores into MinIO only, then moves across with the rclone steps in
+# guides/run/DEPLOY_EN.md → "Moving off MinIO".
+archive_volume "${PROJECT}_s3-data"       "s3"
 archive_volume "${PROJECT}_audit-anchor"  "audit-anchor"
 
 # ── 3. Prune old local backups ───────────────────────────────────────────────

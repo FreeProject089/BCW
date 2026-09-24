@@ -124,12 +124,13 @@ saturates your uplink / gets billed. (The free CDN is a separate thing — R2 �
    S3_PUBLIC_ENDPOINT=https://<your-public-or-custom-R2-domain>
    S3_BUCKET=<bucket>  S3_ACCESS_KEY=<key>  S3_SECRET_KEY=<secret>
    ```
-3. Copy existing objects once: `rclone sync minio:bcweb r2:bcweb`.
+3. Copy existing objects once with `rclone copy`, then `rclone check` — the commands of
+   [DEPLOY_EN.md → Moving off MinIO](DEPLOY_EN.md#moving-off-minio) steps 5–6, with R2 as `new`.
 4. `docker compose up -d api provisioner`.
 
 **After (verify):**
 - An upload + a download work from the UI.
-- Only then remove the `minio` service + its volume.
+- Only then remove the `storage` service + its volume.
 
 ---
 
@@ -176,5 +177,5 @@ docker compose stop db     # the DB now lives on the other server (local volume 
 - A file shows up on the remote after a manual run.
 - **Test a restore** at least once (commands in [DEPLOY_EN.md §10](DEPLOY_EN.md)) — an untested
   backup isn't a backup.
-- Size tip: DB dumps are tiny (~130 KB) → off-site freely; the MinIO archive is the big one →
+- Size tip: DB dumps are tiny (~130 KB) → off-site freely; the object-storage archive is the big one →
   lower its retention or use an incremental mirror if needed.

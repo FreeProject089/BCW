@@ -1,23 +1,27 @@
-// Object storage (S3 / MinIO). Two clients:
+// Object storage (any S3-compatible server; the bundled one is versitygw, see
+// guides/reference/ADR_S3_STORAGE_EN.md). Two clients:
 //  - internal: server-side ops (ensure bucket) over the docker network.
 //  - signer:   builds pre-signed URLs against the PUBLIC endpoint, because the
 //              browser PUTs/GETs directly to that host (the signature is bound to it).
 import { S3Client, CreateBucketCommand, HeadBucketCommand, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
-// 'us-east-1' suits MinIO/AWS; Cloudflare R2 wants S3_REGION=auto (see guides/DEPLOY_*).
+// 'us-east-1' suits the bundled versitygw (compose hands it the same S3_REGION) and AWS;
+// Cloudflare R2 wants S3_REGION=auto (see guides/DEPLOY_*).
 const REGION = process.env.S3_REGION || 'us-east-1';
 const BUCKET = process.env.S3_BUCKET || 'bcweb';
-const INTERNAL = process.env.S3_ENDPOINT || 'http://minio:9000';
+const INTERNAL = process.env.S3_ENDPOINT || 'http://storage:9000';
 const PUBLIC = process.env.S3_PUBLIC_ENDPOINT || 'http://localhost:9000';
 const creds = { accessKeyId: process.env.S3_ACCESS_KEY, secretAccessKey: process.env.S3_SECRET_KEY };
 
 // `requestChecksumCalculation: WHEN_REQUIRED` — the AWS SDK v3 (>=3.729) started
 // injecting a default CRC32 flexible-checksum, which stamps `x-amz-checksum-crc32` +
-// `x-amz-sdk-checksum-algorithm` into PRE-SIGNED URLs. S3-compatible stores (MinIO,
-// Cloudflare R2) reject those on the browser's direct PUT → the upload fails CORS
+// `x-amz-sdk-checksum-algorithm` into PRE-SIGNED URLs. S3-compatible stores (MinIO then,
+// Cloudflare R2) rejected those on the browser's direct PUT → the upload fails CORS
 // (status null) and the object never stores (later GETs then 404). Opting out of the
-// default checksum makes presigned PUT/GET work again against MinIO and R2.
+// default checksum makes presigned PUT/GET work against any of them (versitygw included).
+// `forcePathStyle`: http://host:9000/<bucket>/<key>. The bundled gateway runs without a
+// virtual-host domain and Caddy fronts ONE hostname, so the bucket must be in the path.
 const common = { region: REGION, credentials: creds, forcePathStyle: true,
   requestChecksumCalculation: 'WHEN_REQUIRED', responseChecksumValidation: 'WHEN_REQUIRED' };
 const internal = new S3Client({ ...common, endpoint: INTERNAL });

@@ -826,7 +826,7 @@ elevated]`. Cette route livre chaque fiche de compte et chaque mot du site en un
 différence défendable.
 
 Catalogues et dépôts sont **désactivés** par défaut : leurs lignes sont des métadonnées
-pointant vers des objets MinIO que le zip ne transporte pas. Voir
+pointant vers des objets du stockage objet que le zip ne transporte pas. Voir
 [BACKUP_FR.md](../run/BACKUP_FR.md) pour savoir laquelle des trois choses appelées
 « sauvegarde » répond à quelle question.
 

@@ -14,7 +14,7 @@ pour la production. Tout est piloté par **un seul** fichier compose :
 |---|---|---|---|
 | `db` | `postgres:16-alpine` | Base de données principale (Prisma) | interne uniquement |
 | `redis` | `redis:7-alpine` | Cache partagé + état du rate limiter | interne uniquement |
-| `minio` | `minio/minio` | Stockage objet compatible S3 (uploads, dépôts hébergés) | `9000` (S3), `9001` (console) |
+| `storage` | `versity/versitygw` | Stockage objet compatible S3 (uploads, dépôts hébergés) ; les objets sont des fichiers ordinaires sur son volume. A remplacé MinIO — [ADR_S3_STORAGE_FR.md](../reference/ADR_S3_STORAGE_FR.md) | `127.0.0.1:9000` (S3) |
 | `api` | build `apps/api/Dockerfile` | API Fastify — comptes, catalogues, hébergement, facturation… | `3000` |
 | `provisioner` | build `apps/provisioner/Dockerfile` | Worker qui provisionne les dépôts hébergés | — |
 | `web` | build `apps/web/Dockerfile` | SPA React compilée et servie par **nginx** | via caddy |
@@ -57,7 +57,7 @@ healthy avant que `api`/`provisioner` démarrent ; `caddy` est devant tout.
 | Volume | Contient | Le perdre = |
 |---|---|---|
 | `db-data` | toute la base principale | comptes, dépôts, facturation — tout |
-| `minio-data` | tous les fichiers uploadés/hébergés | tous les dépôts + payloads catalogue |
+| `s3-data` | tous les fichiers uploadés/hébergés (`buckets/` = les fichiers, `meta/` = leurs types) | tous les dépôts + payloads catalogue |
 | `telemetry-data` | la DB télémétrie | l'historique télémétrie BMM |
 | `redis-data` | état cache/limiter | sans gravité (reconstruit tout seul) |
 | `caddy-data` / `caddy-config` | certificats TLS | ré-émis automatiquement |
@@ -104,11 +104,11 @@ service se recrée (coupure de quelques secondes sur ce service seulement). Pour
 
 - `.env` : vrais `POSTGRES_PASSWORD`, `JWT_SECRET`, clés S3, `SITE_DOMAIN`/`SITE_URL`
   (https), `COOKIE_DOMAIN=.ton-domaine.com`, clés Stripe + secret webhook.
-- Ports : en prod tu peux retirer les ports publiés `3000` (api) et `9001` (console
-  MinIO) du compose si tu n'en as pas besoin de l'extérieur — Caddy route en interne.
+- Ports : `5432` (db), `3000` (api) et `9000` (stockage) sont publiés sur `127.0.0.1`
+  seulement — Caddy route en interne, et il n'y a plus de console de stockage à publier.
 - Montée en charge : `API_REPLICAS=3` dans `.env` + profil `pgbouncer`, puis `up -d`
   (voir guide DEPLOY §Performance) quand le trafic le justifie.
-- Sauvegardes : `pg_dump` pour `db`, miroir de `minio-data` (guide DEPLOY §10).
+- Sauvegardes : `pg_dump` pour `db`, un tar de `s3-data` (guide DEPLOY §10, `infra/backup/backup.sh`).
 
 ## 7. Pièges classiques
 

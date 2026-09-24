@@ -27,7 +27,7 @@ The existing telemetry-dashboard is Node + Docker, so we stay in that world.
 | **API** | Node 22 + **Fastify 5** + **Zod** (validation) | fast, typed, schema-validated; one container |
 | **DB** | **PostgreSQL 16** + **Prisma** (migrations + typed client) | relational data fits catalogs/billing; migrations |
 | **Cache** | **Redis 7** | rate-limit buckets shared across API replicas, the two-tier public-read cache, perf/monitor state. Every consumer degrades to in-process behaviour when Redis is absent |
-| **Object storage** | **S3-compatible** (**MinIO** for self-host, or AWS S3) | catalog assets, preset files, repo data — never in Postgres/git |
+| **Object storage** | **S3-compatible** (bundled **versitygw** for self-host — [ADR](ADR_S3_STORAGE_EN.md) — or AWS S3 / R2) | catalog assets, preset files, repo data — never in Postgres/git |
 | **Web** | **React 18 + Vite + Tailwind** (matches the ecosystem) | SPA; one static bundle served by nginx behind the proxy |
 | **Proxy / TLS** | **Caddy 2** | automatic HTTPS, routing, one config |
 | **Payments** | **Stripe** (Checkout + Billing + webhooks) | tiered + usage pricing, PCI handled by Stripe |
@@ -207,7 +207,7 @@ There is no `Invoice` model: a completed charge is a `Payment` row, and Stripe k
 invoice itself. A subscription may point at a single `ServerRepo` (the legacy shape) or
 at a `HostingGroup` storage pool (the current one), which is why both ids are nullable.
 
-Object storage (S3/MinIO) holds the heavy bytes (catalog payloads, preset `.json`,
+Object storage (S3; the bundled `storage` service) holds the heavy bytes (catalog payloads, preset `.json`,
 repo data); Postgres holds metadata + pointers (`payloadKey`).
 
 ---
@@ -253,7 +253,7 @@ repo data); Postgres holds metadata + pointers (`payloadKey`).
 ```
 cd BCWEB/infra/compose
 cp .env.example .env        # set DB password, JWT secret, Stripe keys, S3 creds…
-docker compose up -d        # db, redis, minio, api, web, bot, provisioner,
+docker compose up -d        # db, redis, storage, api, web, bot, provisioner,
                             # telemetry + telemetry-db, caddy
                             # (pgbouncer only with --profile pgbouncer)
 ```

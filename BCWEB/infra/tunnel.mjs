@@ -34,13 +34,14 @@
 //
 // UPLOADS need a SECOND tunnel, and that is not an accident of this script. A file never
 // passes through the API: the browser asks for a pre-signed URL and PUTs the bytes straight
-// at MinIO on :9000. Pre-signed means the signature covers the host, so the address in that
+// at object storage on :9000. Pre-signed means the signature covers the host, so the address in that
 // URL is the address the browser must use — and it was S3_PUBLIC_ENDPOINT, http://localhost
 // :9000, i.e. the VISITOR'S own machine. Attaching a file did nothing, with no error worth
 // reading, because the request never left their laptop.
 //
 // So a second quick tunnel fronts :9000 and S3_PUBLIC_ENDPOINT points at it. Nothing else has
-// to change: the CSP already allows `https:` in connect-src, and MinIO's CORS is `*`.
+// to change: the CSP already allows `https:` in connect-src, and storage's CORS is `*`
+// (S3_CORS_ALLOW_ORIGIN).
 //
 // OAUTH STILL WILL NOT WORK, and no change here can fix it: Discord and GitHub only accept a
 // redirect_uri registered in their app settings, and this hostname is different every run.
@@ -56,7 +57,7 @@ import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
 
 const PORT = 5176;
-// MinIO. Pre-signed upload URLs are signed against whatever S3_PUBLIC_ENDPOINT says, so this
+// Object storage. Pre-signed upload URLs are signed against whatever S3_PUBLIC_ENDPOINT says, so this
 // port needs its own public address for a file to reach us at all.
 const S3_PORT = 9000;
 // fileURLToPath, not `new URL(...).pathname`: the latter percent-encodes, so a checkout under
@@ -287,7 +288,7 @@ function ready() {
   say('  duration. OAUTH DOES NOT: Discord and GitHub only accept a');
   say('  redirect_uri registered in their app settings, and this hostname is new every run.');
   say('');
-  say(`  Uploads go to ${s3url} (a second tunnel in front of MinIO).`);
+  say(`  Uploads go to ${s3url} (a second tunnel in front of object storage).`);
   say('');
   say(`  While this runs, SITE_URL is https — so cookies are Secure and signing in at`);
   say(`  http://localhost:${PORT} will not work until you Ctrl-C.`);

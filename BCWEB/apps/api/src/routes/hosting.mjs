@@ -17,7 +17,7 @@ const GiB = 1024 ** 3;
 
 // Real, live disk stats for the volume backing the API container — the best
 // available proxy for "what can this machine actually store" without needing
-// MinIO's own admin API. Same physical host disk as the object-storage volume
+// an admin API on the object store. Same physical host disk as the object-storage volume
 // in a single-host deployment. Never faked: if the stat call fails for any
 // reason, we report null rather than invent a number.
 export function realDiskStats() {

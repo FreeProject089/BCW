@@ -43,7 +43,9 @@ export async function tempMarginStatus(p) {
 }
 
 const IMG = ['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/svg+xml'];
-// Per-kind upload caps + allowed content types (defence in depth; MinIO also enforced).
+// Per-kind upload caps + allowed content types. Checked HERE and nowhere else: the presigned
+// PUT signs `host` only (X-Amz-SignedHeaders=host), so the store enforces neither the type nor
+// the size declared here — MinIO did not either (measured 2026-09-24, agent-s3-replace).
 // The MIME labels a browser actually puts on a file, which are not the ones a spec would
 // suggest. Windows reads the type from the registry, so the SAME .zip arrives as
 // application/zip on one machine and application/x-zip-compressed on another; a file with a

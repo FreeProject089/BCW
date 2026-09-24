@@ -1,7 +1,7 @@
 # BCWEB — Backup & Restore
 
-Everything stateful in BCWEB lives in **three places**: the Postgres database, the MinIO
-object store (uploads / blog media / hosted repo files), and the tamper-evident audit
+Everything stateful in BCWEB lives in **three places**: the Postgres database, the
+object store (the `storage` service: uploads / blog media / hosted repo files), and the tamper-evident audit
 anchor. `infra/backup/backup.sh` captures all three; this guide covers running it, storing
 copies off-site, and — most importantly — **restoring**.
 
@@ -10,7 +10,7 @@ copies off-site, and — most importantly — **restoring**.
 | Source | How | File |
 |---|---|---|
 | **Postgres** (all app data) | `pg_dump` logical dump (consistent, safe on a live DB) → gzip | `pg-bcweb-<ts>.sql.gz` |
-| **MinIO** object storage | tar of the `<project>_minio-data` Docker volume | `minio-<ts>.tar.gz` |
+| **Object storage** (`storage`, versitygw) | tar of the `<project>_s3-data` Docker volume: plain files, one per object, plus a `meta/` tree holding each object's Content-Type and ETag | `s3-<ts>.tar.gz` |
 | **Audit anchor** (HMAC chain root) | tar of the `<project>_audit-anchor` volume | `audit-anchor-<ts>.tar.gz` |
 
 > Postgres is dumped with `pg_dump`, **not** by tarring the db volume under a running
@@ -120,16 +120,25 @@ The API applies the checked-in migrations at boot (`boot-migrate.mjs` → `prism
 deploy`), so the schema self-heals — but the dump already contains it, so a plain restore is
 enough. Do **not** start `web` yet.
 
-### 2. MinIO object storage
+### 2. Object storage
 
 ```bash
 cd infra/compose
-docker compose stop api web            # avoid writes during restore
+docker compose stop api web storage    # avoid writes during restore, and stop the store itself
 # Wipe + repopulate the volume from the archive:
-docker run --rm -v bcweb_minio-data:/data -v /var/backups/bcweb:/backup alpine \
-  sh -c 'rm -rf /data/* && tar xzf /backup/minio-<ts>.tar.gz -C /data'
+docker run --rm -v bcweb_s3-data:/data -v /var/backups/bcweb:/backup alpine \
+  sh -c 'rm -rf /data/* && tar xzf /backup/s3-<ts>.tar.gz -C /data'
+docker compose up -d storage           # re-runs volume-perms first (ownership), then the store
 docker compose start api               # NOT web: step 4 first
 ```
+
+The archive is readable without the server: `tar tzf s3-<ts>.tar.gz` lists
+`./buckets/<bucket>/<key>` for every object, so one lost file can be taken out by hand.
+
+An archive named `minio-<ts>.tar.gz` predates the move off MinIO (2026-09-24). It is a MinIO
+data directory, not files: restore it into a MinIO volume, run that MinIO as a temporary
+container, and copy it across with the rclone steps of
+[DEPLOY_EN.md → Moving off MinIO](DEPLOY_EN.md#moving-off-minio).
 
 (Replace `bcweb_` with your `COMPOSE_PROJECT_NAME` prefix if different.)
 
@@ -158,7 +167,7 @@ docker compose start web                                         # only now does
 
 `replay-erasures.mjs` reads the erasure log, which lives outside the database
 (`SERVER_BACKUP_ROOT/erasures.jsonl`) so a dump cannot take it back in time, and anonymises
-again every account the restored dump brought back — including, when you also restored MinIO,
+again every account the restored dump brought back — including, when you also restored object storage,
 the avatar and feedback files those accounts had. It is idempotent: an account already erased
 is skipped, so running it after a restore that brought nobody back does nothing. Skipping this
 step undoes every erasure made since the dump was taken, which is exactly what the privacy
@@ -173,7 +182,7 @@ plainly:
 | | `infra/backup/backup.sh` | In-app snapshots | Content export |
 |---|---|---|---|
 | Postgres data (accounts, repos, catalogs, payments) | **Yes** | No | Partly — as readable JSON, see below |
-| MinIO objects (uploaded files, hosted repo bytes) | **Yes** | No | No |
+| Object-storage files (uploaded files, hosted repo bytes) | **Yes** | No | No |
 | Edit history of files touched through the file manager | No | **Yes** | No |
 | Edit history of DB rows touched through the DB viewer | No | **Yes** | No |
 | Can be restored back into BCWEB | **Yes** | **Yes** | **Six sections of nine** — see below |
@@ -196,7 +205,7 @@ Three things about it are deliberate and worth knowing before you rely on it:
   settings, and reviews/polls. The other three export and do not, each for its own reason.
   Accounts carry no credentials, so restoring them would create shells nobody can sign in to
   and overwrite the role and status of people who exist. Catalogue and repository rows point
-  at files in MinIO the zip does not carry. The screen marks those three "export only" before
+  at files in object storage the zip does not carry. The screen marks those three "export only" before
   you choose, rather than skipping them halfway through.
 
   An import replaces entries with the same id and leaves alone anything the zip has never
@@ -210,7 +219,7 @@ Three things about it are deliberate and worth knowing before you rely on it:
   password hashes, no 2FA secrets, no tokens. That is what makes the zip safe to keep on a
   laptop, and it is why restoring people means re-inviting them.
 - **Catalogues and repositories are off by default.** Their rows are metadata pointing at
-  files in MinIO that the zip does not contain. On by default, the archive would look more
+  files in object storage that the zip does not contain. On by default, the archive would look more
   complete than it is — which is a backup's worst failure, because you find out when you
   need it.
 

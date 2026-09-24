@@ -27,7 +27,7 @@ Le telemetry-dashboard existant est en Node + Docker, donc on reste dans ce mond
 | **API** | Node 22 + **Fastify 5** + **Zod** (validation) | rapide, typé, validé par schéma ; un conteneur |
 | **BD** | **PostgreSQL 16** + **Prisma** (migrations + client typé) | les données relationnelles collent aux catalogues/facturation ; migrations |
 | **Cache** | **Redis 7** | buckets de rate-limit partagés entre réplicas d'API, le cache à deux niveaux des lectures publiques, l'état perf/monitor. Chaque consommateur se dégrade en mode in-process si Redis est absent |
-| **Stockage objet** | **Compatible S3** (**MinIO** en auto-hébergé, ou AWS S3) | assets de catalogue, fichiers de preset, données de repo — jamais dans Postgres/git |
+| **Stockage objet** | **Compatible S3** (**versitygw** fourni en auto-hébergé — [ADR](ADR_S3_STORAGE_FR.md) — ou AWS S3 / R2) | assets de catalogue, fichiers de preset, données de repo — jamais dans Postgres/git |
 | **Web** | **React 18 + Vite + Tailwind** (colle à l'écosystème) | SPA ; un bundle statique servi par nginx derrière le proxy |
 | **Proxy / TLS** | **Caddy 2** | HTTPS automatique, routage, une seule config |
 | **Paiements** | **Stripe** (Checkout + Billing + webhooks) | tarification par paliers + usage, PCI géré par Stripe |
@@ -215,7 +215,7 @@ Stripe qui conserve la facture elle-même. Un abonnement pointe soit sur un uniq
 `ServerRepo` (l'ancienne forme), soit sur un pool de stockage `HostingGroup` (la forme
 actuelle), d'où deux ids nullables.
 
-Le stockage objet (S3/MinIO) contient les octets lourds (payloads de catalogue, `.json` de
+Le stockage objet (S3 ; le service `storage` fourni) contient les octets lourds (payloads de catalogue, `.json` de
 preset, données de repo) ; Postgres contient les métadonnées + pointeurs (`payloadKey`).
 
 ---
@@ -264,7 +264,7 @@ preset, données de repo) ; Postgres contient les métadonnées + pointeurs (`pa
 ```
 cd BCWEB/infra/compose
 cp .env.example .env        # mets le mot de passe BD, secret JWT, clés Stripe, creds S3…
-docker compose up -d        # db, redis, minio, api, web, bot, provisioner,
+docker compose up -d        # db, redis, storage, api, web, bot, provisioner,
                             # telemetry + telemetry-db, caddy
                             # (pgbouncer seulement avec --profile pgbouncer)
 ```

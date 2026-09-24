@@ -9,7 +9,7 @@ import { alertFingerprint, pendingAlertUpdates, prunePosts } from '../lib/alert-
 
 
 // The dependency checks + SSL probe do live network I/O (a TLS handshake to the site,
-// Redis/DB/MinIO pings) that took seconds. Running them inline made the /metrics endpoint
+// Redis/DB/object-storage pings) that took seconds. Running them inline made the /metrics endpoint
 // slow — even the first page load blocked on them. Serve them stale-while-revalidate:
 // return whatever we have IMMEDIATELY (null on the very first hit) and refresh in the
 // background, so the endpoint is always fast. The CPU/RAM/disk history is a cheap DB read.

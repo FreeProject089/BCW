@@ -59,7 +59,7 @@ coupure qu'on évitait, déplacée dans la base, où elle est pire.
 | `api`, `web` | Roulés (nouveau à côté de l'ancien) | Un visiteur les regarde. L'api d'abord : elle exécute les migrations, et le nouveau bundle web peut appeler des routes que seule la nouvelle api possède. |
 | `bot`, `telemetry`, `provisioner` | Recréation simple | Un bot qui se reconnecte ou un tableau de bord qui clignote n'est pas une panne. |
 | `caddy` | **`caddy reload`**, jamais restart | Un restart *est* la panne. Reload applique un Caddyfile modifié sans couper une connexion ; inchangé, c'est un no-op. |
-| `db`, `redis`, `minio` | Jamais touchés | À état. Les rouler exige une histoire de bascule que cette stack n'a pas et ne doit pas prétendre avoir. |
+| `db`, `redis`, `storage` | Jamais touchés | À état. Les rouler exige une histoire de bascule que cette stack n'a pas et ne doit pas prétendre avoir. |
 
 ## Réglages
 

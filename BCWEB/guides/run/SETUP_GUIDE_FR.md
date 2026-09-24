@@ -26,7 +26,7 @@ Ouvre `.env` et règle, au minimum :
 |---|---|
 | `POSTGRES_PASSWORD` | Mot de passe de la base — choisis-en un vrai, même en local. |
 | `JWT_SECRET` | Signe les cookies de session, les tokens 2FA, les tokens d'élévation. Génère avec `openssl rand -hex 32`. **L'app refuse de booter en production avec le défaut non sécurisé.** |
-| `S3_ACCESS_KEY` / `S3_SECRET_KEY` | Credentials MinIO (ou vrai S3) pour les uploads hébergés. |
+| `S3_ACCESS_KEY` / `S3_SECRET_KEY` | Identifiants du stockage objet (le `storage` fourni, ou un vrai S3) pour les uploads hébergés. |
 | `SITE_DOMAIN` / `SITE_URL` | Dev local : laisse `http://localhost`. Production : ton vrai domaine — Caddy provisionne le HTTPS depuis `SITE_DOMAIN`. |
 
 Tout le reste (Stripe, GTM, bot Discord, télémétrie) est optionnel et couvert dans sa propre

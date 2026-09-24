@@ -118,12 +118,11 @@ export function parsePort(spec) {
  * supposed to publish 80 and 443. It is the list of things that are reachable from outside
  * the machine, which is a list somebody should be able to recite and usually cannot.
  *
- * On this stack it reports six: Caddy's 80/443/5176, the API's 3000, and MinIO's 9000/9001.
- * The last three are deliberate — guides/run/DEPLOY_EN.md §12 says the compose file
- * publishes them for convenience and that the firewall must close everything but 22/80/443
- * right after the first deploy. Which is the point of showing this at all: that instruction
- * lives in section twelve of a deploy guide, and this is the same fact on a screen somebody
- * looks at more than once.
+ * On this stack it reports three: Caddy's 80/443/5176. Postgres (5432), the API (3000-3009)
+ * and object storage (9000) are published on 127.0.0.1 only (SECURITY_SUMMARY §9 #2), and
+ * loopback is not the network. They used to be on every interface, with only a line in
+ * guides/run/DEPLOY_EN.md §12 telling the operator to firewall them — which is the point of
+ * showing this at all: the same fact on a screen somebody looks at more than once.
  */
 export function buildComposeMap(text) {
   const services = parseCompose(text);

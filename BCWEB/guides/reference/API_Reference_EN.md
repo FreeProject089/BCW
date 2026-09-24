@@ -809,7 +809,7 @@ account record and every word on the site in one file, so being the one button o
 any admin could press was not a difference worth defending.
 
 Catalogues and repositories default **off**: their rows are metadata pointing at objects in
-MinIO that the zip does not carry. See [BACKUP_EN.md](../run/BACKUP_EN.md) for which of the
+object storage that the zip does not carry. See [BACKUP_EN.md](../run/BACKUP_EN.md) for which of the
 three things called "backup" answers which question.
 
 ## 37. Webhooks (`webhooks.mjs`, `lib/webhooks.mjs`)

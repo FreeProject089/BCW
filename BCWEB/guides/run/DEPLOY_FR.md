@@ -3,7 +3,7 @@
 > 🇬🇧 English version: [DEPLOY_EN.md](DEPLOY_EN.md)
 
 Comment déployer toute la stack BetterCommunity Web (SPA + API Fastify + Postgres +
-Redis + MinIO + bot Discord + télémétrie + Caddy) sur un vrai serveur, avec HTTPS
+Redis + stockage objet + bot Discord + télémétrie + Caddy) sur un vrai serveur, avec HTTPS
 automatique. Tout tourne dans Docker Compose derrière Caddy.
 
 ---
@@ -37,7 +37,7 @@ cp infra/compose/.env.example infra/compose/.env
 | `BOT_SHARED_SECRET` | Longue chaîne aléatoire — le secret partagé API↔bot |
 | `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` | Depuis le dashboard Stripe (voir §6) |
 | `DISCORD_TOKEN` | Optionnel — sinon défini depuis le dashboard admin |
-| `S3_ACCESS_KEY` / `S3_SECRET_KEY` | Identifiants du stockage objet (MinIO) |
+| `S3_ACCESS_KEY` / `S3_SECRET_KEY` | Identifiants du stockage objet (le service `storage` fourni les prend comme les siens) |
 
 > **Ne commit jamais `.env`.** Il contient des secrets réels et est gitignore. Seul
 > `.env.example` est versionné.
@@ -226,7 +226,7 @@ bonne forme.
 
 ## 10. Sauvegardes
 
-Utilise le script fourni — il fait un `pg_dump` cohérent, archive les volumes MinIO +
+Utilise le script fourni — il fait un `pg_dump` cohérent, archive les volumes stockage objet +
 audit-anchor, purge les vieilles copies, et peut envoyer hors-site avec rclone :
 ```bash
 infra/backup/backup.sh                                       # → /var/backups/bcweb
@@ -240,9 +240,9 @@ Automatise-le chaque jour (03:30) avec `crontab -e` :
 ```bash
 # Postgres :
 gunzip -c pg-bcweb-YYYYMMDD-HHMMSS.sql.gz | docker compose exec -T db psql -U bcweb bcweb
-# Objets MinIO :
-docker run --rm -v bcweb_minio-data:/data -v "$PWD":/backup alpine \
-  sh -c 'cd /data && tar xzf /backup/minio-YYYYMMDD-HHMMSS.tar.gz'
+# Stockage objet (arrête-le d'abord : docker compose stop storage) :
+docker run --rm -v bcweb_s3-data:/data -v "$PWD":/backup alpine \
+  sh -c 'cd /data && tar xzf /backup/s3-YYYYMMDD-HHMMSS.tar.gz'
 ```
 > **Ne fais jamais** `docker compose down -v` en prod — `-v` supprime les volumes
 > (base de données + stockage objet). Et **teste une restauration au moins une fois** — une
@@ -273,15 +273,15 @@ L'API expose trois sondes (toutes exemptées du rate limiter, sans logs de requ�
 
 ## 12. Verrouille — pare-feu (juste après le premier déploiement)
 
-Seul Caddy doit être exposé à Internet. Le compose publie aussi `3000` (api) et
-`9000`/`9001` (MinIO) sur l'hôte par confort ; ferme tout sauf SSH + HTTP(S) :
+Seul Caddy doit être exposé à Internet. Le compose publie aussi `5432` (db), `3000` (api)
+et `9000` (stockage objet) — sur `127.0.0.1` seulement ; ferme quand même tout sauf SSH + HTTP(S) :
 ```bash
 ufw allow 22 && ufw allow 80 && ufw allow 443 && ufw enable
 ```
-Postgres, Redis et les données MinIO restent sur le réseau Docker interne — ne les expose
-jamais. (Le `9000` de MinIO n'est nécessaire publiquement que si tu sers des URLs d'upload
-pré-signées en direct ; dans ce cas, mets-le derrière un sous-domaine Caddy plutôt que
-d'ouvrir le port brut.) Le **CDN** est l'étape juste après — voir *Performance & montée en
+Postgres, Redis et le stockage objet restent sur le réseau Docker interne — ne les expose
+jamais. (Le `9000` du stockage doit être joignable publiquement, parce que le navigateur
+utilise les URLs d'upload pré-signées en direct : mets-le derrière le sous-domaine Caddy
+`S3_DOMAIN` plutôt que d'ouvrir le port brut.) Le **CDN** est l'étape juste après — voir *Performance & montée en
 charge → mettre un CDN devant* ci-dessous.
 
 ## Performance & montée en charge
@@ -335,7 +335,7 @@ tu fais tourner sur un 2ᵉ serveur à toi. 4 points à faire correctement :
 - **TLS :** ajoute `?sslmode=require` (ou `verify-full` avec une CA) sauf si le lien est un LAN
   privé de confiance.
 - **Répartition :** le VPS DB ne fait tourner que Postgres (+ éventuellement PgBouncer et ses
-  propres backups) ; le VPS applicatif fait tout le reste (api / web / redis / minio / caddy / bot).
+  propres backups) ; le VPS applicatif fait tout le reste (api / web / redis / storage / caddy / bot).
 Fais-le quand une seule machine ne peut plus tenir les deux confortablement — avant ça,
 agrandir verticalement le VPS unique est plus simple et moins cher.
 
@@ -354,16 +354,17 @@ agrandir verticalement le VPS unique est plus simple et moins cher.
   (Kubernetes n'est *pas* l'outil pour l'hébergement des conteneurs de projets utilisateurs
   décrit dans [USER_PROJECT_HOSTING.md](../reference/USER_PROJECT_HOSTING_FR.md) — voir ce doc.)
 
-## Stockage objet — MinIO maintenant, R2 plus tard
+## Stockage objet — fourni maintenant, R2 plus tard
 
 **Ne confonds pas les deux produits Cloudflare :** le **CDN est gratuit** (section
 précédente — active-le quand tu veux) ; **R2** est leur *stockage objet payant à
-l'usage* qui remplacerait le MinIO embarqué. Tu n'as **pas besoin de R2** pour profiter
+l'usage* qui remplacerait le stockage fourni. Tu n'as **pas besoin de R2** pour profiter
 du CDN.
 
-**Démarre (et reste longtemps) sur MinIO** — gratuit, les fichiers sont sur le disque de
-ton serveur, et nginx + MinIO servent confortablement une petite/moyenne communauté
-(voir `loadtest/BENCHMARK_FR.md`).
+**Démarre (et reste longtemps) sur le stockage fourni** (`storage`, versitygw) — gratuit,
+les fichiers sont des fichiers ordinaires sur le disque de ton serveur, et il sert
+confortablement une petite/moyenne communauté (voir `loadtest/BENCHMARK_FR.md`, mesuré quand
+le stockage était encore MinIO).
 
 **Passe à R2 quand** l'une de ces choses devient vraie :
 - le stockage des dépôts hébergés déborde du disque du serveur (ou plombe tes sauvegardes),
@@ -380,6 +381,85 @@ ton serveur, et nginx + MinIO servent confortablement une petite/moyenne communa
    S3_BUCKET=<bucket>  S3_ACCESS_KEY=<clé>  S3_SECRET_KEY=<secret>
    ```
 3. Copie une fois les objets existants :
-   `rclone sync minio:bcweb r2:bcweb` (ou `mc mirror`).
+   `rclone copy` puis `rclone check`, les mêmes commandes qu’aux étapes 5 et 6 de
+   [Quitter MinIO](#quitter-minio) avec R2 comme remote `new`.
 4. `docker compose up -d api provisioner`, vérifie upload/download, puis retire le
-   service `minio` + son volume.
+   service `storage` + son volume.
+
+### Quitter MinIO
+
+Pour une installation qui tournait avec le service `minio` (avant le 2026-09-24). Le code lance
+maintenant `storage` (versitygw, voir [ADR_S3_STORAGE_FR.md](../reference/ADR_S3_STORAGE_FR.md)) ;
+les objets doivent être copiés une fois de l’ancien volume MinIO vers le nouveau. Le format
+disque de MinIO n’est pas fait de fichiers ordinaires : c’est donc une copie S3 vers S3 avec
+**rclone**, qui garde le Content-Type de chaque objet. Le volume MinIO n’est jamais que LU : si
+quelque chose rate, l’ancienne stack a toujours toutes ses données.
+
+Tout ce qui suit se lance sur le serveur, dans `infra/compose/`, avec le projet compose `bcweb`
+(volumes `bcweb_*`, réseau `bcweb_default`). L’image MinIO doit encore être sur cette machine —
+elle y est si MinIO tournait ici : `docker image inspect minio/minio:RELEASE.2025-09-07T16-13-09Z`.
+
+1. **Sauvegarde d’abord, avec l’ANCIEN code** (le nouveau `backup.sh` archive `s3-data`, plus
+   `minio-data`), ou à la main :
+   ```bash
+   docker run --rm -v bcweb_minio-data:/data:ro -v /var/backups/bcweb:/backup alpine \
+     tar czf /backup/minio-before-move.tar.gz -C /data .
+   ```
+2. **Récupère le nouveau code**, puis arrête ce qui écrit dans le stockage (le site est coupé
+   d’ici à l’étape 7 ; une URL d’envoi présignée vit 10 minutes, attends donc ce temps si des
+   envois étaient en cours) :
+   ```bash
+   docker compose stop api provisioner
+   ```
+3. **Mets MinIO de côté.** Son service compose n’existe plus : son conteneur est orphelin et
+   tient le port 9000. Arrête-le et relance la même image en conteneur temporaire, sans port
+   publié, sur le réseau de la stack :
+   ```bash
+   docker stop bcweb-minio-1
+   S3K="$(grep '^S3_ACCESS_KEY=' .env | cut -d= -f2-)"; S3S="$(grep '^S3_SECRET_KEY=' .env | cut -d= -f2-)"
+   docker run -d --name bcweb-minio-old --network bcweb_default \
+     -v bcweb_minio-data:/data -e MINIO_ROOT_USER="$S3K" -e MINIO_ROOT_PASSWORD="$S3S" \
+     minio/minio:RELEASE.2025-09-07T16-13-09Z server /data
+   ```
+4. **Démarre le nouveau stockage** (volume-perms passe d’abord et prépare le volume `s3-data` neuf) :
+   ```bash
+   docker compose up -d storage && docker compose ps storage     # attendre (healthy)
+   ```
+5. **Copie.** rclone lit les deux remotes dans des variables d’environnement, rien n’est écrit
+   sur le disque :
+   ```bash
+   RC="docker run --rm --network bcweb_default \
+     -e RCLONE_CONFIG_OLD_TYPE=s3 -e RCLONE_CONFIG_OLD_PROVIDER=Minio \
+     -e RCLONE_CONFIG_OLD_ENDPOINT=http://bcweb-minio-old:9000 \
+     -e RCLONE_CONFIG_OLD_ACCESS_KEY_ID=$S3K -e RCLONE_CONFIG_OLD_SECRET_ACCESS_KEY=$S3S \
+     -e RCLONE_CONFIG_NEW_TYPE=s3 -e RCLONE_CONFIG_NEW_PROVIDER=Other \
+     -e RCLONE_CONFIG_NEW_ENDPOINT=http://storage:9000 \
+     -e RCLONE_CONFIG_NEW_ACCESS_KEY_ID=$S3K -e RCLONE_CONFIG_NEW_SECRET_ACCESS_KEY=$S3S \
+     rclone/rclone:1.75.1"
+   $RC copy old:bcweb new:bcweb --metadata -v
+   ```
+   Mets ton `S3_BUCKET` s’il ne vaut pas `bcweb`. Une ligne `ERROR ... 409` nomme une clé qui
+   est aussi le « dossier » d’une autre (`a` et `a/b`) : MinIO gardait les deux, un stockage
+   POSIX ne peut pas. Garde celle que le site utilise (regarde dans la base) et copie-la seule.
+6. **Vérifie — ne saute pas cette étape.** Mêmes objets, mêmes tailles, mêmes octets, mêmes types :
+   ```bash
+   $RC check old:bcweb new:bcweb                   # tailles + sommes : "0 differences found"
+   $RC check --download old:bcweb new:bcweb        # facultatif : compare chaque octet (plus lent)
+   $RC lsf -R --files-only --format psm old:bcweb > /tmp/old.txt
+   $RC lsf -R --files-only --format psm new:bcweb > /tmp/new.txt
+   diff /tmp/old.txt /tmp/new.txt && echo "types et tailles identiques"
+   ```
+7. **Bascule :** `docker compose up -d`. Puis dans le navigateur : ouvre une image du blog,
+   télécharge un fichier de catalogue, envoie un nouveau fichier ; **Admin → Server perf**
+   montre le stockage objet en service.
+8. **Nettoie :** `docker rm -f bcweb-minio-old && docker rm bcweb-minio-1`. Garde le volume
+   `bcweb_minio-data` et `minio-before-move.tar.gz` jusqu’à être sûr ; les supprimer
+   (`docker volume rm bcweb_minio-data`) est une décision à part, que rien ici ne prend pour toi.
+
+Si un proxy **autre que le Caddy fourni** route ton nom `s3.` (par exemple un Traefik devant la
+stack), il doit maintenant joindre `storage:9000` (conteneur `bcweb-storage-1`) au lieu de
+`minio:9000`. Le port de l’hôte reste `127.0.0.1:9000`.
+
+**Revenir en arrière** avant l’étape 8 : `docker compose stop storage`, redéploie le commit
+précédent, et `docker start bcweb-minio-1` (après `docker rm -f bcweb-minio-old`). Le volume
+MinIO n’a jamais été modifié.

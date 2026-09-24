@@ -228,7 +228,7 @@ export default async function devtoolRoutes(app) {
   // The stack and what it publishes to the network, read from docker-compose.yml.
   //
   // `exposedToNetwork` is the list this exists for. DEPLOY_EN.md §12 says the compose file
-  // publishes the API and MinIO for convenience and that the firewall must close everything
+  // published the API and object storage for convenience and that the firewall must close everything
   // but 22/80/443 immediately after the first deploy — a sentence in section twelve of a
   // guide, which is not where a fact like that survives. This is the same fact somewhere
   // somebody looks.

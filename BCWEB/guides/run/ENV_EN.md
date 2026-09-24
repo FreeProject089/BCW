@@ -38,14 +38,16 @@ page is the reference for what each answer means, and for editing a .env you alr
 | `SITE_URL` | the **full public URL** (e.g. `https://community.example.com`) — used in emails, Stripe redirects, bot links, and the OIDC issuer. |
 | `COOKIE_DOMAIN` | `.your-domain.com` (leading dot) so the session cookie also reaches sub-domains (telemetry). Local: `localhost`. |
 
-## 4. Object storage — MinIO / S3 (required)
+## 4. Object storage — S3 (required)
 | Variable | Purpose |
 |---|---|
-| `S3_ACCESS_KEY` / `S3_SECRET_KEY` | object-storage credentials (bundled MinIO by default). |
+| `S3_ACCESS_KEY` / `S3_SECRET_KEY` | object-storage credentials. The bundled `storage` service (versitygw) takes them **as** its root credentials: any values work, nothing is stored in the data, and changing them means recreating `storage`, `api` and `provisioner` together. |
 | `S3_BUCKET` | bucket name (default `bcweb`). |
-| `S3_ENDPOINT` | S3 endpoint (default internal MinIO `http://minio:9000`). |
-| `S3_REGION` | region (`us-east-1` local, `auto` for Cloudflare R2). |
-| `S3_DOMAIN` | the hostname **Caddy** serves MinIO on (e.g. `s3.your-domain.com`). Unset, the Caddy block carries a name nobody can ask for and storage stays on `:9000` — intended locally. It pairs with `S3_PUBLIC_ENDPOINT`: one is what Caddy listens for, the other is what gets written into the signed URL. |
+| `S3_ENDPOINT` | S3 endpoint (default the internal `storage` service, `http://storage:9000`). An old `.env` that still says `http://minio:9000` points at a service that no longer exists: remove the line. |
+| `S3_REGION` | region (`us-east-1` local, `auto` for Cloudflare R2). Compose hands the same value to the bundled `storage`, which checks signatures against it. |
+| `S3_HOST_PORT` | host port `storage` is published on, `127.0.0.1` only (default `9000`). Change it only when 9000 is taken on the machine, and change `S3_PUBLIC_ENDPOINT` to the same port. |
+| `S3_CORS_ALLOW_ORIGIN` | CORS origin the bundled `storage` answers pre-signed browser uploads for. Default `*` — fine behind the bundled setup; narrow it to your `SITE_URL` once storage is public on `S3_DOMAIN`. One origin. Replaces `MINIO_API_CORS_ALLOW_ORIGIN`, which now does nothing. |
+| `S3_DOMAIN` | the hostname **Caddy** serves object storage on (e.g. `s3.your-domain.com`). Unset, the Caddy block carries a name nobody can ask for and storage stays on `:9000` — intended locally. It pairs with `S3_PUBLIC_ENDPOINT`: one is what Caddy listens for, the other is what gets written into the signed URL. |
 | `CUSTOM_DOMAIN_MATCHER` | set to `https://` to serve paying owners on **their own hostnames**. Unset, that Caddy block is bound to a name nobody can request, so a stack that has not opted in costs nothing. The certificate for each customer name is obtained on demand, at the first handshake — there is no list of domains in the config, because the list is in the database. |
 | `DOMAIN_ASK_KEY` | a shared secret between Caddy and the API for the certificate question (`/domains/ask`). Without it, anyone who can reach that endpoint learns whether a hostname they name is hosted here; the edge blocks the public path either way, and this covers the API being reachable another way. Any long random string. Compose passes it to **both** `api` and `caddy`; set it in production. |
 | `CSP_CONNECT_SRC_EXTRA` | extra origins the browser may fetch from, space-separated, appended to the site CSP's `connect-src` by Caddy. Empty by default: the site, the storage origin (`S3_PUBLIC_ENDPOINT`, `S3_DOMAIN`) and a fixed list (GitHub raw, the icon CDNs, Google Analytics after consent, the map tiles). A host an admin adds to the live-block list (Admin > Settings) or a project's live-number source on another host must be listed here too, or the browser refuses the request. Restart `caddy` after a change. |
@@ -120,7 +122,6 @@ Callback to register at each provider: `<SITE_URL>/api/auth/oauth/<provider>/cal
 | `KOFI_WEBHOOK_TOKEN` | Ko-fi webhook verification token. Set here, it **wins over** the admin-set token and locks it in the dashboard (same pattern as `DISCORD_TOKEN`). Blank = manage it from the admin UI. |
 | `TWITCH_CLIENT_ID` / `TWITCH_CLIENT_SECRET` | Twitch **profile connection** (not login). Register `<SITE_URL>/api/auth/connect/twitch/callback`. |
 | `STEAM_API_KEY` | Steam profile connection (OpenID — no secret). [steamcommunity.com/dev/apikey](https://steamcommunity.com/dev/apikey). |
-| `MINIO_API_CORS_ALLOW_ORIGIN` | CORS origin MinIO answers pre-signed browser uploads for. Default `*` — fine behind the bundled setup; narrow it to your `SITE_URL` if you expose MinIO publicly. |
 
 > **A variable only works if compose forwards it.** The API reads `process.env`, but in Docker
 > it only sees what `infra/compose/docker-compose.yml` passes to the `api` service. Adding a
