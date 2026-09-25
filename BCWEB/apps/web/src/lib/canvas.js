@@ -16,3 +16,5 @@ export * from '../../../../packages/studio/src/actions.js';
 export * from '../../../../packages/studio/src/scene.js';
 // Containers (phase 7a): group, tab card, dialog; the tree rules and the editor's tree operations.
 export * from '../../../../packages/studio/src/tree.js';
+// Components (phase 7b): instances, their expansion, overrides, "update the copies".
+export * from '../../../../packages/studio/src/components.js';

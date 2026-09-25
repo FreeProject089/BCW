@@ -89,7 +89,9 @@ export const GRID = 8;
  * gates everything else. It can come back behind a real sanitiser.
  */
 // `group`, `tabs` and `modal` are CONTAINERS (phase 7a, tree.js): blocks that hold other blocks.
-export const BLOCK_KINDS = ['text', 'image', 'box', 'video', 'embed', 'replay', 'button', 'shape', 'svg', 'group', 'tabs', 'modal'];
+// `instance` (phase 7b, components.js) is a linked copy of a component: it stores the component's id
+// and its own overrides, never the component's blocks; the renderer expands it.
+export const BLOCK_KINDS = ['text', 'image', 'box', 'video', 'embed', 'replay', 'button', 'shape', 'svg', 'group', 'tabs', 'modal', 'instance'];
 /** The shapes a `shape` block can be. Drawn as inline SVG scaled to the block (ui/canvas-view.jsx). */
 export const SHAPES = ['rect', 'rounded', 'ellipse', 'triangle', 'diamond', 'hexagon', 'star', 'arrow', 'chevron', 'blob', 'line', 'ring'];
 
@@ -266,6 +268,9 @@ export const KIND_PROPS = {
   group: [],
   tabs: ['tabs'],
   modal: ['title'],
+  // A component instance (phase 7b): what it shows is the component's; it carries only the
+  // common wrapper props, its overrides live in `component.overrides`.
+  instance: [],
 };
 /** Is `key` a prop this kind may carry? */
 export const propAllowed = (kind, key) => COMMON_PROPS.includes(key) || (KIND_PROPS[kind] || []).includes(key);
@@ -360,7 +365,9 @@ function normalizeBlock(b, i, taken) {
     // and the particular copy of it, so "update every instance" can find the copies and
     // "detach" can forget one. Absent on a block placed by hand. Kept here because this
     // function is an allow-list: a field it does not name is a field the first save drops.
-    component: componentTag(b.component),
+    // Phase 7b: an `instance` block's tag is `{ id, overrides }` (the component, and the
+    // exposed fields this copy changed), components.js.
+    component: kind === 'instance' ? instanceTag(b.component) : componentTag(b.component),
     // The container it sits in (phase 7a, tree.js): its x, y are then relative to that
     // container. A NAME, like every id. Whether the chain holds is decided for the whole page
     // (annotateTree, in normalizeDoc), and `slot` is the tab of a tab card it belongs to.
@@ -465,14 +472,25 @@ function frameOf(raw, w, contentH) {
  * `phoneBoard`, READ-ONLY conveniences derived from the frames for the code that predates
  * them; `serializeDoc` never writes them back.
  */
-export function normalizeDoc(raw) {
+export function normalizeDoc(raw, inner = false) {
   const c = migrate(raw);
   const taken = new Set();
   // The tree (phase 7a): a block whose chain of containers breaks a rule is flagged
   // `treeError` and never drawn for a reader (tree.js). Bounded, whatever is stored.
-  const blocks = annotateTree((Array.isArray(c.blocks) ? c.blocks : []).slice(0, LIMITS.blocks)
+  let blocks = annotateTree((Array.isArray(c.blocks) ? c.blocks : []).slice(0, LIMITS.blocks)
     .map((b, i) => normalizeBlock(b, i, taken))
     .filter(Boolean));
+  // The components this page's instances copy (phase 7b, components.js): one flat map per
+  // page, each entry a small document of its own. `inner` = normalising one of those, which
+  // never carries a map of its own. An instance's size is its component's, decided here, so
+  // every reader of the page (frames, the phone board, the editor) sees the same box.
+  const components = inner ? null : componentMap(c.components);
+  if (components) {
+    for (const cid of Object.keys(components)) {
+      components[cid].doc = { ...components[cid].doc, blocks: sizeInstances(components[cid].doc.blocks, components, 1) };
+    }
+    blocks = sizeInstances(blocks, components, 0);
+  }
   // The page's own flow: top-level blocks, not dialogs. A child is inside its container's box.
   const flow = blocks.filter(isPageRoot);
   const fr = c.frames && typeof c.frames === 'object' ? c.frames : {};
@@ -503,6 +521,7 @@ export function normalizeDoc(raw) {
     // The author's own stylesheet for this page. Scoped and filtered where it is RENDERED
     // (css-scope.js), so what is stored is what was typed and the rule is in one place.
     css: typeof c.css === 'string' ? c.css.slice(0, LIMITS.css) : '',
+    ...(components && Object.keys(components).length ? { components } : {}),
   };
 }
 /** The name every caller used before documents had versions. Same function. */
@@ -595,6 +614,7 @@ export function serializeDoc(canvas, extra = {}) {
       : n.background !== undefined ? n.background : pageBackground(n).background);
   const css = e.css !== undefined ? e.css : n.css;
   const grid = e.grid !== undefined ? e.grid : n.grid;
+  const blocksOut = (Array.isArray(e.blocks) ? e.blocks : n.blocks).filter((b) => b && typeof b === 'object').map(serializeBlock);
   return {
     v: DOC_VERSION,
     id: n.id,
@@ -607,7 +627,8 @@ export function serializeDoc(canvas, extra = {}) {
     ...(background ? { background } : {}),
     ...(grid && grid !== GRID ? { grid } : {}),
     ...(css ? { css } : {}),
-    blocks: (Array.isArray(e.blocks) ? e.blocks : n.blocks).filter((b) => b && typeof b === 'object').map(serializeBlock),
+    ...serializedComponents(e.components !== undefined ? e.components : n.components, blocksOut),
+    blocks: blocksOut,
   };
 }
 
@@ -617,6 +638,203 @@ function componentTag(raw) {
   if (!o || typeof o.id !== 'string' || !o.id || typeof o.inst !== 'string' || !o.inst) return null;
   return { id: o.id.slice(0, 60), inst: o.inst.slice(0, 60) };
 }
+
+// ── Components: definitions, instances, exposed fields (PLAN-STUDIO-2026 2.6, phase 7b) ──
+// A page keeps the components its instances copy in ONE flat map, `components`, keyed by the
+// component's id: `{ name, scope, ref?, doc: { v, frames, blocks }, exposed }`. An instance is
+// ONE block, `kind: 'instance'`, whose tag names the component and carries the fields THIS copy
+// changed (`overrides`, keyed by an exposed field's `key`). The definition is never copied into
+// the instance: editing the page's copy of the definition changes every instance that did not
+// override the changed field. What the renderer draws is the expansion (components.js).
+// The normalisation here is TOLERANT (a stored oddity never throws); validate.js is strict.
+
+/** Where a component definition lives: `user` (one author's), `project` / `showcase` (the
+ *  library of one page, shared by its studio holders) or `site` (manage_studio). */
+export const COMPONENT_SCOPES = ['user', 'project', 'showcase', 'site'];
+/** At most this many components in one page's map. */
+export const MAX_DOC_COMPONENTS = 24;
+/** At most this many blocks in one component (as before phase 7b). */
+export const MAX_COMPONENT_BLOCKS = 40;
+/** At most this many fields a component exposes to its instances. */
+export const MAX_EXPOSED = 20;
+/** An instance inside a component inside a component: this many levels at most. */
+export const MAX_INSTANCE_DEPTH = 3;
+/** The key an exposed field is overridden under. */
+export const EXPOSED_KEY = /^[A-Za-z0-9_-]{1,40}$/;
+/** A library reference: a project key or a showcase id ('' for the site and user scopes). */
+export const COMPONENT_REF = /^[A-Za-z0-9_-]{0,80}$/;
+/**
+ * What an instance may change, a CLOSED list: texts, a picture or a link target, colours, and
+ * what pressing the block does. Anything else (a size, a position, a stylesheet, an SVG) is the
+ * component's own, so an override can never be a way to carry a field the definition did not
+ * offer. Each value is checked by the same rule as the field itself (validate.js).
+ */
+export const EXPOSABLE_FIELDS = [
+  'props.md', 'props.label', 'props.desc', 'props.text', 'props.title', 'props.alt',
+  'props.src', 'props.poster', 'props.url',
+  'props.bg', 'props.color', 'props.border', 'props.fill', 'props.textColor',
+  'action',
+];
+/** The fields of EXPOSABLE_FIELDS a block of `kind` has. */
+export function exposableFor(kind) {
+  if (!BLOCK_KINDS.includes(kind) || kind === 'instance') return [];
+  return EXPOSABLE_FIELDS.filter((f) => f === 'action' || propAllowed(kind, f.slice(6)));
+}
+/** A field's value on a block (`props.md`, `action`). */
+export function fieldValue(b, field) {
+  if (!b || typeof b !== 'object') return undefined;
+  if (field === 'action') return b.action;
+  if (typeof field === 'string' && field.startsWith('props.')) return b.props ? b.props[field.slice(6)] : undefined;
+  return undefined;
+}
+/** The block with one field set (a copy). */
+export function withFieldValue(b, field, value) {
+  if (field === 'action') return { ...b, action: value };
+  return { ...b, props: { ...(b.props || {}), [field.slice(6)]: value } };
+}
+
+const isObj = (v) => v != null && typeof v === 'object' && !Array.isArray(v);
+
+/** An instance's tag, or null: `{ id }` or `{ id, overrides }` (only the well-named keys). */
+function instanceTag(raw) {
+  const o = isObj(raw) ? raw : null;
+  if (!o || typeof o.id !== 'string' || !ID_SHAPE.test(o.id)) return null;
+  const ov = {};
+  let n = 0;
+  if (isObj(o.overrides)) {
+    for (const k of Object.keys(o.overrides)) {
+      if (n >= MAX_EXPOSED) break;
+      if (!EXPOSED_KEY.test(k) || o.overrides[k] === undefined) continue;
+      ov[k] = o.overrides[k];
+      n += 1;
+    }
+  }
+  return n ? { id: o.id, overrides: ov } : { id: o.id };
+}
+
+/** The exposed fields of a definition, tolerant: well-formed, unique keys, on a block of the
+ *  definition that has that field. */
+export function normalizeExposed(raw, blocks) {
+  const list = Array.isArray(raw) ? raw : [];
+  const kinds = new Map((Array.isArray(blocks) ? blocks : []).filter(isObj).map((b) => [b.id, b.kind]));
+  const out = [];
+  const seen = new Set();
+  for (const e of list) {
+    if (out.length >= MAX_EXPOSED) break;
+    if (!isObj(e) || typeof e.key !== 'string' || !EXPOSED_KEY.test(e.key) || seen.has(e.key)) continue;
+    if (typeof e.block !== 'string' || !kinds.has(e.block) || !exposableFor(kinds.get(e.block)).includes(e.field)) continue;
+    seen.add(e.key);
+    out.push({ key: e.key, block: e.block, field: e.field, ...(typeof e.label === 'string' && e.label.trim() ? { label: e.label.trim().slice(0, LIMITS.name) } : {}) });
+  }
+  return out;
+}
+
+/** A page's component map, tolerant. Each definition is normalised as a document of its own. */
+function componentMap(raw) {
+  const out = {};
+  if (!isObj(raw)) return out;
+  let n = 0;
+  for (const cid of Object.keys(raw)) {
+    if (n >= MAX_DOC_COMPONENTS) break;
+    const s = raw[cid];
+    if (!ID_SHAPE.test(cid) || !isObj(s)) continue;
+    const d = isObj(s.doc) ? s.doc : {};
+    const doc = normalizeDoc({ v: DOC_VERSION, id: cid, frames: d.frames, blocks: Array.isArray(d.blocks) ? d.blocks.slice(0, MAX_COMPONENT_BLOCKS) : [] }, true);
+    const ref = typeof s.ref === 'string' && COMPONENT_REF.test(s.ref) ? s.ref : '';
+    out[cid] = {
+      name: typeof s.name === 'string' ? s.name.slice(0, LIMITS.name) : '',
+      scope: COMPONENT_SCOPES.includes(s.scope) ? s.scope : 'site',
+      ...(ref ? { ref } : {}),
+      doc,
+      exposed: normalizeExposed(s.exposed, doc.blocks),
+    };
+    n += 1;
+  }
+  return out;
+}
+
+/**
+ * The box a component takes, on the desktop (`w`, `h`) and on the phone board (`pw`, `ph`):
+ * its top-level blocks' extent from the definition's own (0,0). A frame whose height the author
+ * fixed in component mode gives that height. A dialog is not part of the box (it opens over the
+ * page), unless it is the whole component. Nested instances are measured by their own
+ * component, `depth` levels down at most (a loop simply stops there).
+ */
+export function componentSize(doc, map = {}, depth = 0) {
+  const all = (Array.isArray(doc?.blocks) ? doc.blocks : []).filter((b) => b && !b.treeError && !parentOf(b));
+  const tops = all.length > 1 ? all.filter((b) => b.kind !== 'modal') : all;
+  const sized = tops.map((b) => (b.kind === 'instance' ? { ...b, ...instanceBox(b, map, depth + 1) } : b));
+  let w = 0; let h = 0;
+  for (const b of sized) { w = Math.max(w, num(b.x) + num(b.w)); h = Math.max(h, num(b.y) + num(b.h)); }
+  const fd = doc?.frames?.desktop; const fp = doc?.frames?.phone;
+  const W = clamp(Math.round(w || GRID), GRID, BOUND);
+  const H = fd?.fit === 'fixed' && num(fd.h) > 0 ? clamp(Math.round(num(fd.h)), GRID, BOUND) : clamp(Math.round(h || GRID), GRID, BOUND);
+  // The phone: the author's own phone places when there are any (the phone board's rule), or
+  // the desktop box scaled down to the phone's column.
+  let pw; let ph;
+  if (sized.some((b) => b.phone?.x != null && b.phone?.y != null)) {
+    pw = 0; ph = 0;
+    for (const b of phoneBoardBlocks(sized, 40, null)) { pw = Math.max(pw, num(b.x) + num(b.w)); ph = Math.max(ph, num(b.y) + num(b.h)); }
+    pw = clamp(Math.round(pw || GRID), GRID, BOUND); ph = clamp(Math.round(ph || GRID), GRID, BOUND);
+  } else {
+    const k = Math.min(1, (PHONE_WIDTH - 32) / W);
+    pw = Math.max(GRID, Math.round(W * k)); ph = Math.max(GRID, Math.round(H * k));
+  }
+  if (fp?.fit === 'fixed' && num(fp.h) > 0) ph = clamp(Math.round(num(fp.h)), GRID, BOUND);
+  return { w: W, h: H, pw, ph };
+}
+/** An instance's box: its component's, or its own numbers when the component is unknown. */
+function instanceBox(b, map, depth) {
+  const s = b?.component && isObj(map) ? map[b.component.id] : null;
+  if (!s || depth > MAX_INSTANCE_DEPTH) return { w: num(b.w, GRID), h: num(b.h, GRID) };
+  const z = componentSize(s.doc, map, depth);
+  return { w: z.w, h: z.h };
+}
+/** Every instance of a list of normalised blocks sized as its component. */
+function sizeInstances(blocks, map, depth) {
+  if (!blocks.some((b) => b.kind === 'instance')) return blocks;
+  return blocks.map((b) => (b.kind === 'instance' ? { ...b, ...instanceBox(b, map, depth + 1) } : b));
+}
+
+/** The components the blocks use, and the ones those use (bounded), as a set of ids. */
+export function usedComponentIds(blocks, map) {
+  const out = new Set();
+  const walk = (list, depth) => {
+    if (depth > MAX_INSTANCE_DEPTH + 1) return;
+    for (const b of Array.isArray(list) ? list : []) {
+      const cid = b && b.kind === 'instance' && b.component ? b.component.id : '';
+      if (!cid || !isObj(map) || !isObj(map[cid])) continue;
+      const fresh = !out.has(cid);
+      out.add(cid);
+      if (fresh) walk(map[cid].doc?.blocks, depth + 1);
+    }
+  };
+  walk(blocks, 0);
+  return out;
+}
+
+/** The map to STORE: only what the page's instances use, each definition as stored. */
+function serializedComponents(raw, blocks) {
+  if (!isObj(raw)) return {};
+  const used = usedComponentIds(blocks, raw);
+  if (!used.size) return {};
+  const out = {};
+  for (const cid of used) {
+    const s = raw[cid];
+    const sd = serializeDoc({ ...(isObj(s.doc) ? s.doc : {}), id: cid });
+    out[cid] = {
+      name: typeof s.name === 'string' ? s.name.slice(0, LIMITS.name) : '',
+      scope: COMPONENT_SCOPES.includes(s.scope) ? s.scope : 'site',
+      ...(typeof s.ref === 'string' && s.ref && COMPONENT_REF.test(s.ref) ? { ref: s.ref } : {}),
+      doc: { v: DOC_VERSION, frames: sd.frames, blocks: sd.blocks },
+      exposed: normalizeExposed(s.exposed, sd.blocks),
+    };
+  }
+  return { components: out };
+}
+
+/** One stored block, normalised on its own (ids kept as they are). For components.js. */
+export const normalizeOneBlock = (b) => normalizeBlock(b, 0, null);
 
 /**
  * How a block moves, or null for "it does not". Only the fields that were written survive,

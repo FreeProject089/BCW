@@ -26,8 +26,12 @@ import { stepZoom } from '../lib/studio-page.js';
 import { PAGE_DEVICES } from '../lib/studio-preview.js';
 import {
   componentFromBlocks, instantiateComponent, detachBlocks, updateInstances, componentIdsIn,
-  thumbnailSvg, normalizeComponents, COMPONENT_LIMITS, blocksFromPreset, presetEntry,
+  thumbnailSvg, normalizeComponents, COMPONENT_LIMITS, blocksFromPreset, presetEntry, instanceFromEntry,
 } from '../lib/studio-components.js';
+// Components (phase 7b): instances, their inspector, the page's components, component mode.
+import {
+  SaveComponentDialog, InstanceInspector, PageComponents, LibraryComponents, ExposedFields,
+} from './studio-component-editor.jsx';
 // Studio phase 6: the page list and the preset gallery (dock panels).
 import { PagesPanel, PresetsPanel } from './studio-pages.jsx';
 import { lazy, Suspense, memo } from 'react';
@@ -37,7 +41,7 @@ import { sanitizeSvg, svgRefusals } from '../lib/svg-safe.js';
 import { scopeCss } from '../lib/css-scope.js';
 // The full B.MD editor is heavy and most sessions never open it: loaded on first use.
 const LazyMarkdownEditor = lazy(() => import('./markdown-editor.jsx').then((m) => ({ default: m.MarkdownEditor })));
-import CanvasView, { CanvasBlock, CanvasTree } from '../ui/canvas-view.jsx';
+import CanvasView, { CanvasBlock, CanvasTree, InstanceMap } from '../ui/canvas-view.jsx';
 // Containers (studio phase 7a): the Layers tree, the scope bar, the inspector's section.
 import { LayersTree, ScopeBar, ContainerFields } from './studio-containers.jsx';
 import ActionFields from './studio-actions.jsx'; // studio phase 5: the "On click" section
@@ -58,6 +62,8 @@ import {
   SCENE_SHAPES, SCENE_SURFACES, SCENE_BOUNDS, detailMaxFor,
   isContainer, isPageRoot, toStored, dropTarget, reparentBlocks, groupBlocks, ungroupBlocks, pullChildrenInside,
   descendantIds, subtreeHeight, treeIndex, innerBox, tabLabels, MAX_DEPTH, TAB_STRIP_H,
+  definitionFromBlocks, definitionTreeProblems, replaceWithInstance, updateCopies, setOverride, detachInstance,
+  snapshotOf, snapshotDiffers, withSnapshot, instancesOfComponent,
 } from '../lib/canvas.js';
 import CanvasBackground from '../ui/canvas-background.jsx';
 import StudioTour, { TourButton, useStudioTour } from './studio-tour.jsx';
@@ -106,8 +112,10 @@ const NEW_BLOCK = {
  *        this canvas in place, for the "page preview".
  * @param {object} [props.pages]  page mode only (phase 6): the target's page list, its
  *        operations and its preset libraries, owned by pages/studio.jsx (see studio-pages.jsx).
+ * @param {object} [props.componentMode]  phase 7b: the document is a COMPONENT's definition
+ *        (pages/studio-component.jsx): `{ exposed, onExposed }`, the fields its copies may change.
  */
-export default function CanvasStudio({ value, onChange, layout = 'modal', chrome = null, renderPage = null, pages = null }) {
+export default function CanvasStudio({ value, onChange, layout = 'modal', chrome = null, renderPage = null, pages = null, componentMode = null }) {
   const { t, lang } = useI18n();
   const toast = useToast();
   const pageMode = layout === 'page';
@@ -152,6 +160,9 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
   // exists because space-drag is a keyboard gesture and a touch author has no space bar.
   const [panMode, setPanMode] = useState(false);
   const [keysOpen, setKeysOpen] = useState(false);
+  // "Update the copies" can be undone from its toast (phase 7b): the function it calls reads the
+  // page as it is THEN, so a later change is not thrown away with it.
+  const revertCopiesRef = useRef(null);
   const [wide, setWide] = useState(() => (
     typeof window !== 'undefined' && window.matchMedia
       ? window.matchMedia('(min-width: 1024px)').matches : true));
@@ -510,11 +521,14 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
   }, [canvas.blocks, emit, editTheme, viewById]);
 
   const doUndo = useCallback(() => {
-    const r = undoHist(hist, canvas);
+    // What goes into the redo list is the STORED document (serializeDoc), like every undo
+    // point: the normalised one carries derived fields (height, bgNote...) that a save refuses,
+    // so an undo followed by a redo used to leave a page the server would not take (phase 7b).
+    const r = undoHist(hist, serializeDoc(canvas));
     if (r) { setHist(r.hist); onChange(r.value); }
   }, [hist, canvas, onChange]);
   const doRedo = useCallback(() => {
-    const r = redoHist(hist, canvas);
+    const r = redoHist(hist, serializeDoc(canvas));
     if (r) { setHist(r.hist); onChange(r.value); }
   }, [hist, canvas, onChange]);
 
@@ -545,10 +559,10 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
   /** New blocks (add, paste, component): placed on the board being EDITED (placeOnBoard), so
    *  on the phone board they get a phone place instead of landing at the bottom of the desktop
    *  page and out of view (bug A.2). */
-  const addBlocks = (fresh) => {
+  const addBlocks = (fresh, extra = {}) => {
     if (!fresh.length) return;
     const out = placeOnBoard(canvas, fresh, editTheme);
-    emit(out.blocks, out.extra);
+    emit(out.blocks, { ...out.extra, ...extra });
     // What was added at the top of what was added (a container's own blocks come with it).
     const freshIds = new Set(fresh.map((b) => b.id));
     const tops = fresh.filter((b) => !b.parent || !freshIds.has(b.parent));
@@ -702,16 +716,99 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
     const { parent: _p, slot: _s, treeError: _e, ...rest } = b;
     return { ...rest, x: v.x, y: v.y };
   });
-  const chosenHasBox = chosen.some((b) => isContainer(b.kind));
-  const saveComponent = (name) => {
-    if (chosenHasBox) { toast.error(t('cst.cmp.nobox', 'A container cannot be kept as a component yet: select the blocks inside it instead.')); return; }
-    const comp = componentFromBlocks(name, chosenFlat, uid);
-    if (!comp) return;
-    if (components.length >= COMPONENT_LIMITS.count) { toast.error(t('cst.cmp.full', 'You have reached the limit of saved components, delete one first.')); return; }
-    persistComponents([comp, ...components]);
+  // Phase 7b: a container comes WITH what it holds (the 7a refusal is gone); the tree inside is
+  // the package's to check (definitionTreeProblems, and the API's validateDoc at save).
+  const chosenInner = (() => {
+    const under = new Set(selIds.flatMap((id) => descendantIds(canvas.blocks, id)));
+    return canvas.blocks.filter((b) => under.has(b.id) && !selIds.includes(b.id));
+  })();
+  const lib = pages?.library || null;
+  /** Where "Save as component" may keep the selection: a library (linked copies), or the
+   *  author's own list (plain copies, rebuilt by "Update all copies", as before phase 7b). */
+  const componentDestinations = [
+    ...(lib?.canWrite?.project ? [{ id: 'project', label: t('cst.cmp7.dest.page', 'This page’s library'), hint: t('cst.cmp7.dest.page.h', 'Linked copies. Every studio holder of this page can place and edit it.') }] : []),
+    ...(lib?.canWrite?.site ? [{ id: 'site', label: t('cst.cmp7.dest.site', 'Site library'), hint: t('cst.cmp7.dest.site.h', 'Linked copies, for every studio page of the site.') }] : []),
+    { id: 'user', label: t('cst.cmp7.dest.user', 'My components'), hint: t('cst.cmp7.dest.user.h', 'Your own list. Its copies are plain blocks, rebuilt by “Update all copies”.') },
+  ];
+  const saveComponent = async (name, dest = 'user') => {
+    if (dest === 'user') {
+      if ([...chosen, ...chosenInner].some((b) => b.kind === 'instance')) { toast.error(t('cst.cmp7.nouser', 'A linked copy cannot go into your own list: keep this in a library instead.')); return; }
+      const comp = componentFromBlocks(name, [...chosenFlat, ...chosenInner], uid);
+      if (!comp) return;
+      if (components.length >= COMPONENT_LIMITS.count) { toast.error(t('cst.cmp.full', 'You have reached the limit of saved components, delete one first.')); return; }
+      persistComponents([comp, ...components]);
+      setCompOpen(false);
+      showPanel('components');
+      toast.success(t('cst.cmp.saved', 'Component saved.'));
+      return;
+    }
+    if (!lib) return;
+    const def = definitionFromBlocks(canvas.blocks, selIds, canvas.components || {});
+    if (!def) { toast.error(t('cst.cmp7.bad', 'Select blocks of one container (or of the page), at most 40 blocks with what they hold.')); return; }
+    if (definitionTreeProblems(def.doc).length) { toast.error(t('cst.cmp7.deep', 'This selection holds containers too deep to be a component: three levels at most, with the copy’s own.')); return; }
+    const entry = { id: `cp${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, name, sort: 'component', doc: def.doc, exposed: def.exposed, createdAt: new Date().toISOString() };
+    const ok = await lib.save(entry, dest === 'site' ? 'site' : 'project', { quiet: true });
+    if (!ok) return;
+    const snap = snapshotOf(entry, dest === 'site' ? 'site' : (lib.targetScope || 'project'), dest === 'site' ? '' : (lib.targetRef || ''));
+    const r = replaceWithInstance(canvas.blocks, selIds, canvas.components || {}, entry.id, snap, def, uid);
+    emit(r.blocks, { components: r.components });
+    setScope(def.parent || '');
+    setSelIds([r.id]);
     setCompOpen(false);
     showPanel('components');
-    toast.success(t('cst.cmp.saved', 'Component saved.'));
+    toast.success(t('cst.cmp7.saved', 'Component saved. The selection is now a linked copy of it.'));
+  };
+  /** The library's version of a component this page uses, when this studio reads its library. */
+  const sourceOf = (snap, cid) => {
+    if (!lib || !snap) return null;
+    if (snap.scope === 'site') return lib.entries.find((e) => e.scope === 'site' && e.sort === 'component' && e.id === cid) || null;
+    if (snap.scope !== (lib.targetScope || 'project') || String(snap.ref || '') !== String(lib.targetRef || '')) return null;
+    return lib.entries.find((e) => e.scope === 'project' && e.sort === 'component' && e.id === cid) || null;
+  };
+  /** A linked copy of a library component, placed below the page's content. */
+  const insertLinked = (entry) => {
+    const site = entry.scope === 'site';
+    const r = instanceFromEntry(entry, { x: 64, y: nextY() }, canvas.blocks.length, uid, site ? 'site' : (lib?.targetScope || 'project'), site ? '' : (lib?.targetRef || ''));
+    if (!r) return;
+    // The page already holds this component: the new copy is one more of the SAME version as
+    // the others ("Update the copies" is the one way a new version arrives).
+    const has = canvas.components && canvas.components[entry.id];
+    addBlocks([r.block], { components: has ? canvas.components : withSnapshot(canvas.components, entry.id, r.snap, r.deps) });
+  };
+  /** "Update the copies": the library's version of `cid` put on this page, overrides kept. */
+  const updateCopiesOf = (cid) => {
+    const snap = canvas.components?.[cid];
+    const src = sourceOf(snap, cid);
+    if (!snap || !src) return;
+    const prevTags = new Map(instancesOfComponent(canvas.blocks, cid).map((b) => [b.id, b.component]));
+    const r = updateCopies(canvas.blocks, canvas.components, cid, snapshotOf(src, snap.scope, snap.ref), src.doc?.components || null);
+    emit(r.blocks, { components: r.components });
+    const n = prevTags.size;
+    toast.action({
+      tone: 'success', cancelLabel: t('common.undo', 'Undo'),
+      msg: `${t('cst.cmp7.updated', '{n} copy(ies) updated; the fields each one changed are kept.').replace('{n}', String(n))}${r.dropped ? ` ${t('cst.cmp7.dropped', '{n} change(s) to fields the component no longer offers were dropped.').replace('{n}', String(r.dropped))}` : ''}`,
+      onCommit: () => {},
+      onCancel: () => revertCopiesRef.current?.(cid, snap, prevTags),
+    });
+  };
+  // The undo of "Update the copies": that component's version and its copies' overrides as they
+  // were, on the page as it is now (anything else changed since stays).
+  revertCopiesRef.current = (cid, snap, tags) => {
+    emit(canvas.blocks.map((b) => (tags.has(b.id) && b.kind === 'instance' ? { ...b, component: tags.get(b.id) } : b)),
+      { components: { ...(canvas.components || {}), [cid]: snap } });
+  };
+  const openComponent = (cid, snap) => {
+    if (!pages?.openComponent || !snap || snap.scope === 'user') return;
+    pages.openComponent(snap.scope, snap.ref || '', cid);
+  };
+  const instanceTools = {
+    snapOf: (b) => (b?.component ? canvas.components?.[b.component.id] || null : null),
+    stale: (b) => { const s = b?.component ? canvas.components?.[b.component.id] : null; const src = sourceOf(s, b?.component?.id); return !!src && snapshotDiffers(s, src); },
+    onOverride: (id, key, value) => emit(setOverride(canvas.blocks, id, key, value), {}, value === undefined ? null : `ov-${id}-${key}`),
+    onResetAll: (id) => emit(canvas.blocks.map((b) => (b.id === id && b.kind === 'instance' && b.component ? { ...b, component: { id: b.component.id } } : b))),
+    onDetach: (id) => { emit(detachInstance(canvas.blocks, canvas.components || {}, id, uid)); setSelIds([]); },
+    onUpdate: (b) => updateCopiesOf(b.component.id),
+    onOpen: pages?.openComponent ? (b) => openComponent(b.component.id, canvas.components?.[b.component.id]) : null,
   };
   // Instantiated on the DESKTOP plane (it used to be squeezed into 390px when inserted on the
   // phone board), then placed on the board being edited.
@@ -731,14 +828,14 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
       toast.success(t('cst.pr.applied.bg', 'Background applied to this page.'));
       return;
     }
+    // A component preset is a LINKED copy (phase 7b): one instance, the definition on the page.
+    if (entry.sort === 'component') { insertLinked(entry); return; }
     addBlocks(blocksFromPreset(entry, { x: 64, y: nextY() }, canvas.blocks.length, uid));
   };
   const saveAsPreset = async (name, sort, scope) => {
-    if (chosenHasBox && (sort === 'section' || sort === 'component')) {
-      toast.error(t('cst.cmp.nobox', 'A container cannot be kept as a component yet: select the blocks inside it instead.'));
-      return false;
-    }
-    const entry = presetEntry({ name, sort, canvas: serializeDoc(canvas), blocks: chosenFlat, background: canvas.background });
+    // Phase 7b: containers with what they hold, and the definitions of the copies it holds.
+    const entry = presetEntry({ name, sort, canvas: serializeDoc(canvas), blocks: [...chosenFlat, ...chosenInner], background: canvas.background,
+      components: canvas.components ? Object.fromEntries(Object.entries(canvas.components)) : null });
     if (!entry || !pages?.library) return false;
     return pages.library.save(entry, scope);
   };
@@ -1156,10 +1253,12 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
           addBlocks(clean.map((b) => {
             const { parent: p, slot, treeError: _e, ...rest } = b;
             const np = p && !b.treeError && idMap.has(p) ? idMap.get(p) : '';
+            // A linked copy (phase 7b) stays linked when its component is on this page.
+            const keep = b.kind === 'instance' && b.component && canvas.components?.[b.component.id] ? b.component : null;
             return np
-              ? { ...rest, id: idMap.get(b.id), parent: np, ...(slot ? { slot } : {}), component: null }
-              : { ...rest, id: idMap.get(b.id), x: b.x + GRID * 3, y: b.y + GRID * 3, component: null };
-          }));
+              ? { ...rest, id: idMap.get(b.id), parent: np, ...(slot ? { slot } : {}), component: keep }
+              : { ...rest, id: idMap.get(b.id), x: b.x + GRID * 3, y: b.y + GRID * 3, component: keep };
+          }).filter((b) => b.kind !== 'instance' || b.component));
         };
         e.preventDefault();
         navigator.clipboard?.readText?.().then((txt) => { try { const j = JSON.parse(txt); if (Array.isArray(j?.bcwBlocks)) return paste(j.bcwBlocks); } catch { /* not ours */ } paste(clip.current); }).catch(() => paste(clip.current));
@@ -1227,23 +1326,26 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
         <div className="flex justify-end mt-3"><Button variant="primary" onClick={() => setMdFor(null)}>{t('common.done', 'Done')}</Button></div>
       </Modal>
     )}
-    {compOpen && <SaveComponentModal t={t} blocks={chosen} onSave={saveComponent} onClose={() => setCompOpen(false)} />}
+    {compOpen && <SaveComponentDialog t={t} count={chosen.length} destinations={componentDestinations} onSave={saveComponent} onClose={() => setCompOpen(false)} />}
   </>);
   const inspector = (<>
-    <Inspector {...{ t, sel, patch, canvas, emit, setSelId, hasDark, onOpenMd: setMdFor, pageList: pages ? pages.list.filter((x) => x.id !== pages.currentId) : null }}
+    <Inspector {...{ t, sel, patch, canvas, emit, setSelId, hasDark, onOpenMd: setMdFor, pageList: pages ? pages.list.filter((x) => x.id !== pages.currentId) : null, instanceTools }}
       containerFields={sel ? (
         <ContainerFields t={t} sel={sel} canvas={canvas} patch={patch} emit={emit}
           editSlot={editSlots[sel.id] || 0} setEditSlot={(i) => setSlot(sel.id, i)}
           onMoveTo={(target, slot) => moveTo(sel.id, target, slot)} onUngroup={canUngroup ? ungroupSel : null} />
       ) : null} />
-    {selComponentIds.length > 0 && (
+    {selComponentIds.length > 0 && sel?.kind !== 'instance' && (
       <ComponentSection t={t} ids={selComponentIds} components={components} onDetach={detach} onRefresh={refreshInstances} onRedefine={redefine} />
+    )}
+    {componentMode && (
+      <div className="mt-3"><ExposedFields t={t} sel={rawSel && rawSel.kind !== 'instance' ? rawSel : null} exposed={componentMode.exposed} onChange={componentMode.onExposed} blocks={canvas.blocks} /></div>
     )}
   </>);
   const themeSwitch = (
     <div className="inline-flex rounded-lg border border-[var(--line)] overflow-hidden">
       {[['light', Sun, t('cst.theme.light', 'Light')], ['dark', Moon, t('cst.theme.dark', 'Dark')], ['phone', Smartphone, t('cst.board.phone', 'Phone')]].map(([k, Icon, label]) => (
-        <button key={k} type="button" onClick={() => setEditTheme(k)}
+        <button key={k} type="button" onClick={() => setEditTheme(k)} data-board={k} aria-pressed={editTheme === k}
           className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs transition-colors ${editTheme === k ? 'tint-primary text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>
           <Icon size={12} /> {label}
         </button>
@@ -1318,7 +1420,8 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
               tag={b.kind === 'modal' ? `${t('cst.kind.modal', 'Dialog')}${b.props?.title ? ` · ${String(b.props.title).slice(0, 40)}` : ''}` : ''}
               brokenLabel={b.treeError ? t('cst.tree.broken', 'Broken link') : ''} />
           ));
-          return phoneBoard ? <CanvasTree doc={canvas} theme="light">{els}</CanvasTree> : els;
+          // Instances (phase 7b) draw their component from the page's map.
+          return <InstanceMap components={canvas.components}>{phoneBoard ? <CanvasTree doc={canvas} theme="light">{els}</CanvasTree> : els}</InstanceMap>;
         })()}
         {/* Guides, drawn only while a drag is snapping to something. Long, because the board
             has no edges for them to stop at. */}
@@ -1366,7 +1469,7 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
       </>)}
     </div>
   );
-  const stackList = <StackList {...{ t, canvas, emit, selIds, setSelId, setSelIds, removeIds, add }} />;
+  const stackList = <InstanceMap components={canvas.components}><StackList {...{ t, canvas, emit, selIds, setSelId, setSelIds, removeIds, add }} /></InstanceMap>;
   const previewEl = preview ? (
     <PreviewSurface key={previewKey} t={t} preview={preview} canvas={canvas} renderPage={renderPage}
       pageNote={t('cst.preview.page.none2', 'This document is not part of a page yet: it is being edited on its own, so there is no surrounding page to show it in. Add it to a page from the page settings and the page preview appears here.')}
@@ -1405,7 +1508,17 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
     const panels = {
       blocks: { title: t('cst.pane.blocks', 'Blocks'), icon: Blocks, render: () => <BlocksPanel {...{ t, add, addShape }} /> },
       layers: { title: t('cst.layers', 'Layers'), icon: LayoutList, render: () => <LayersTree {...{ t, canvas, selIds, patch, emit, add, offIds, editSlots }} onSelect={selectFromTree} bare /> },
-      components: { title: t('cst.cmp', 'Components'), icon: Puzzle, render: () => <ComponentsPanel {...{ t, components, insertComponent, deleteComponent }} /> },
+      components: {
+        title: t('cst.cmp', 'Components'), icon: Puzzle,
+        render: () => (
+          <div className="space-y-3">
+            <PageComponents t={t} canvas={canvas} sourceOf={sourceOf} onUpdate={updateCopiesOf} onSelect={(id) => { const b = canvas.blocks.find((x) => x.id === id); setScope(b?.parent || ''); setSelIds([id]); }} />
+            <LibraryComponents t={t} entries={(lib?.entries || []).filter((e) => e.sort === 'component' && e.scope !== 'coded')} onInsert={insertLinked}
+              onOpen={pages?.openComponent ? (e) => pages.openComponent(e.scope === 'site' ? 'site' : (lib?.targetScope || 'project'), e.scope === 'site' ? '' : (lib?.targetRef || ''), e.id) : null} />
+            <ComponentsPanel {...{ t, components, insertComponent, deleteComponent }} />
+          </div>
+        ),
+      },
       // Phase 6: the target's pages, and the preset gallery.
       pages: { title: t('cst.pages', 'Pages'), icon: FileText, render: () => <PagesPanel t={t} lang={lang} pages={pages} /> },
       presets: {
@@ -1474,7 +1587,9 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
         onPointerCancel={dockDrag.drag ? dockDrag.end : undefined}>
         <PageTopBar {...{ t, chrome, hist, doUndo, doRedo, preview, setPreview, themeSwitch, hasPage: !!renderPage,
           wide, onKeys: () => setKeysOpen(true), onTour: tour.start, panelsMenu, setPanelsMenu, dock, panels, applyDock, resetDock,
-          board: editTheme, title: canvas.title || '', onTitle: (v) => emit(canvas.blocks, { title: v }, 'title') }} />
+          board: editTheme, title: canvas.title || '',
+          // Component mode (phase 7b): the top bar names the component; a definition has no page title.
+          onTitle: componentMode ? null : (v) => emit(canvas.blocks, { title: v }, 'title') }} />
         {preview ? (
           <div className="cst-page-body cst-preview-body">{previewEl}</div>
         ) : wide ? (
@@ -1973,23 +2088,6 @@ function ComponentsPanel({ t, components, insertComponent, deleteComponent }) {
   );
 }
 
-/** Name the selection and keep it. The thumbnail is the same one the list will show. */
-function SaveComponentModal({ t, blocks, onSave, onClose }) {
-  const [name, setName] = useState('');
-  return (
-    <Modal open onClose={onClose} title={t('cst.cmp.saveas', 'Save as component')} icon={Puzzle}
-      footer={<><Button variant="ghost" onClick={onClose}>{t('common.cancel', 'Cancel')}</Button><Button variant="primary" disabled={!name.trim() || !blocks.length} onClick={() => onSave(name)}>{t('common.save', 'Save')}</Button></>}>
-      <div className="flex items-start gap-3">
-        <span className="w-24 h-24 shrink-0 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] overflow-hidden" aria-hidden dangerouslySetInnerHTML={{ __html: thumbnailSvg(blocks, 96) }} />
-        <div className="flex-1 min-w-0 space-y-2">
-          <Field label={t('cst.cmp.name', 'Name')}><Input autoFocus value={name} maxLength={COMPONENT_LIMITS.name} onChange={(e) => setName(e.target.value)} placeholder={t('cst.cmp.name.ph', 'Pricing card, hero, footer…')} onKeyDown={(e) => { if (e.key === 'Enter' && name.trim()) onSave(name); }} /></Field>
-          <p className="text-[11px] text-[var(--muted)]">{t('cst.cmp.saveas.h', '{n} block(s), kept with their layout. Available on every page you edit, from the Components tab.').replace('{n}', blocks.length)}</p>
-        </div>
-      </div>
-    </Modal>
-  );
-}
-
 /** In the inspector when the selection came from a component: detach, refresh, redefine. */
 function ComponentSection({ t, ids, components, onDetach, onRefresh, onRedefine }) {
   return (
@@ -2224,7 +2322,8 @@ const BoardBlock = memo(function BoardBlock({ b, on, only, down, off = false, of
           ))}
         </div>
       )}
-      {only && !b.locked && Object.keys(HANDLES).map((hk) => (
+      {/* An instance's size is its component's (phase 7b): no resize handle. */}
+      {only && !b.locked && b.kind !== 'instance' && Object.keys(HANDLES).map((hk) => (
         <span key={hk} onPointerDown={(e) => down(e, b, hk)}
           className="cst-handle"
           style={{ position: 'absolute', width: 12, height: 12, background: 'var(--primary)', borderRadius: 3, ...handlePos(hk), cursor: `${hk}-resize`, touchAction: 'none' }} />
@@ -2716,7 +2815,7 @@ function Toolbar({ t, preview, setPreview, snapOn, setSnapOn, add, addShape, sel
   );
 }
 
-function Inspector({ t, sel, patch, canvas, emit, setSelId, hasDark = false, onOpenMd, pageList = null, containerFields = null }) {
+function Inspector({ t, sel, patch, canvas, emit, setSelId, hasDark = false, onOpenMd, pageList = null, containerFields = null, instanceTools = null }) {
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   if (!sel) {
@@ -2724,6 +2823,15 @@ function Inspector({ t, sel, patch, canvas, emit, setSelId, hasDark = false, onO
       <div className="mt-4 lg:mt-0 rounded-xl border border-[var(--line)] p-3 text-xs text-[var(--muted)]">
         {t('cst.none', 'Select a block to edit it. Arrow keys nudge, Shift+arrow moves further, Delete removes.')}
       </div>
+    );
+  }
+  // A linked copy of a component (phase 7b): the fields its component exposes, nothing else.
+  if (sel.kind === 'instance' && instanceTools) {
+    return (
+      <InstanceInspector t={t} sel={sel} snap={instanceTools.snapOf(sel)} stale={instanceTools.stale(sel)} patch={patch} pageList={pageList}
+        onOverride={(key, value) => instanceTools.onOverride(sel.id, key, value)} onResetAll={() => instanceTools.onResetAll(sel.id)}
+        onDetach={() => instanceTools.onDetach(sel.id)} onUpdate={() => instanceTools.onUpdate(sel)}
+        onOpen={instanceTools.onOpen ? () => instanceTools.onOpen(sel) : null} onDeselect={() => setSelId(null)} />
     );
   }
   const p = sel.props || {};

@@ -7,7 +7,7 @@
 import { db, requireRole, requireCap, requireEditor, logAudit, studioChecker, studioGrants, accountLock } from '../lib/lib.mjs';
 import { parseComponentList, readStored, storageKey } from '../lib/studio-components.mjs';
 import { LINK_POLICY_KEY, studioLinkPolicy, normalizeLinkPolicy, linkPolicyProblems, studioValidateOpts, withStudioLock } from '../lib/studio-doc.mjs';
-import { libraryKey, libraryRev, readLibrary, parseLibrary } from '../lib/studio-library.mjs';
+import { libraryKey, libraryRev, readLibrary, parseLibrary, entryRev, parseComponentSave, replaceComponentEntry } from '../lib/studio-library.mjs';
 import { isProjectKey } from '../lib/project-keys.mjs';
 
 export default async function studioRoutes(app) {
@@ -129,5 +129,46 @@ export default async function studioRoutes(app) {
     if (out.status) return reply.code(out.status).send(out.body);
     if (req.params.scope === 'site') await logAudit(p, req.user.uid, 'site.studio-library', `entries=${out.entries.length}`);
     return { ok: true, entries: out.entries, rev: libraryRev(out.entries) };
+  });
+
+  // ── One component of a library (PLAN-STUDIO-2026 phase 7b, the studio's component mode) ──
+  // GET / PUT /admin/studio/library/:scope/:ref/components/:cid. The SAME doors as the library
+  // itself (libraryTarget): a project or showcase library for canUseStudio on that page, the
+  // site's read by any studio holder and written by manage_studio only. The save is one entry
+  // from the revision the author opened (409 with the stored entry when it moved), under the
+  // library's lock, checked by the library's own rule (every doc through validateDoc, the
+  // exposed fields, the loops).
+  const CID = /^[A-Za-z0-9_-]{1,60}$/;
+  app.get('/admin/studio/library/:scope/:ref/components/:cid', { preHandler: requireEditor() }, async (req, reply) => {
+    const tg = await libraryTarget(req.params.scope, req.params.ref, req.user);
+    if (!tg) return reply.code(404).send({ error: 'not_found' });
+    if (!tg.read) return reply.code(403).send({ error: 'forbidden' });
+    if (!CID.test(String(req.params.cid))) return reply.code(404).send({ error: 'not_found' });
+    const p = await db();
+    const row = await p.adminSetting.findUnique({ where: { key: tg.key } }).catch(() => null);
+    const entry = readLibrary(row?.value).find((e) => e.id === req.params.cid && e.sort === 'component');
+    if (!entry) return reply.code(404).send({ error: 'not_found' });
+    return { entry, rev: entryRev(entry), canWrite: tg.write };
+  });
+
+  app.put('/admin/studio/library/:scope/:ref/components/:cid', { preHandler: requireEditor(), bodyLimit: 400_000, config: { rateLimit: { max: 60, timeWindow: '5 minutes' } } }, async (req, reply) => {
+    const tg = await libraryTarget(req.params.scope, req.params.ref, req.user);
+    if (!tg) return reply.code(404).send({ error: 'not_found' });
+    if (!tg.write) return reply.code(403).send({ error: 'forbidden' });
+    if (!CID.test(String(req.params.cid))) return reply.code(404).send({ error: 'not_found' });
+    const p = await db();
+    const parsed = parseComponentSave(req.params.cid, req.body, await studioValidateOpts(p));
+    if (!parsed.ok) return reply.code(parsed.status).send(parsed.body);
+    const out = await withStudioLock(p, tg.key, async (tx) => {
+      const row = await tx.adminSetting.findUnique({ where: { key: tg.key } });
+      const r = replaceComponentEntry(readLibrary(row?.value), parsed.entry, parsed.base);
+      if (r.status) return r;
+      const value = { entries: r.entries, updatedAt: new Date().toISOString() };
+      await tx.adminSetting.upsert({ where: { key: tg.key }, create: { key: tg.key, value }, update: { value } });
+      return { entry: r.entry };
+    });
+    if (out.status) return reply.code(out.status).send(out.body);
+    if (req.params.scope === 'site') await logAudit(p, req.user.uid, 'site.studio-component', `id=${req.params.cid}`);
+    return { ok: true, entry: out.entry, rev: entryRev(out.entry) };
   });
 }

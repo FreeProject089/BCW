@@ -11,7 +11,7 @@
 //   · no action, no animation: the thumbnail is inert (`inert`, aria-hidden, no pointer), and a
 //     block that animates in is drawn where it lands.
 import { normalizeDoc, frameBlocks, DESIGN_WIDTH } from '../lib/canvas.js';
-import { CanvasBlock, BlockShell, ScopedCss } from './canvas-view.jsx';
+import { CanvasBlock, BlockShell, ScopedCss, InstanceMap } from './canvas-view.jsx';
 import CanvasBackground from './canvas-background.jsx';
 
 /** Kinds that load something heavy or third-party: a placeholder in a thumbnail. */
@@ -34,6 +34,8 @@ export default function CanvasThumb({ doc, width = 180, maxHeight = 900, theme =
       style={{ position: 'relative', width, height: Math.round(h * s), overflow: 'hidden', pointerEvents: 'none', isolation: 'isolate' }}>
       <div data-cv={canvas.id} style={{ position: 'absolute', inset: 0, contain: 'layout paint', transform: 'translateZ(0)' }}>
         <ScopedCss canvas={canvas} />
+        {/* Component instances (phase 7b) are drawn from the page's own map. */}
+        <InstanceMap components={canvas.components}>
         <CanvasBackground bg={canvas.background} still style={{ inset: 'auto', left: 0, top: 0, width, height: Math.round(h * s) }} />
         <div style={{ position: 'absolute', left: 0, top: 0, width: DESIGN_WIDTH, height: h, transform: `scale(${s})`, transformOrigin: 'top left' }}>
           {blocks.map((b) => (
@@ -45,6 +47,7 @@ export default function CanvasThumb({ doc, width = 180, maxHeight = 900, theme =
             </div>
           ))}
         </div>
+        </InstanceMap>
       </div>
     </div>
   );

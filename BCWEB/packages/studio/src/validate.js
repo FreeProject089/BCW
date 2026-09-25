@@ -23,21 +23,28 @@ import {
   ID_SHAPE, LIMITS, BOUND, BLOCK_KINDS, SHAPES, ANIM_KINDS, ANIM_TRIGGERS, ANIM_EASINGS,
   BUTTON_VARIANTS, SHADOWS, HOVER_EFFECTS, GRID_SIZES, TEXT_ALIGNS, FRAME_WIDTHS, FRAME_FITS,
   PHONE_MODES, DOC_VERSION, propAllowed, safeLink, buttonTarget,
+  COMPONENT_SCOPES, COMPONENT_REF, MAX_DOC_COMPONENTS, MAX_COMPONENT_BLOCKS, MAX_EXPOSED, EXPOSED_KEY,
+  EXPOSABLE_FIELDS, exposableFor, withFieldValue, normalizeDoc,
 } from './canvas.js';
 import { safeCssValue, decodeCssEscapes } from './css-scope.js';
 import { backgroundProblems } from './background.js';
 import { actionProblems, normalizeLinkPolicy, DEFAULT_LINK_POLICY } from './actions.js';
 import { treeProblems, containerInfo, MAX_TABS, TAB_LABEL_MAX } from './tree.js';
+// Components (phase 7b): the loops, the depth, the expansion (components.js).
+import {
+  componentGraphProblems, expandedCount, expandedTreeProblems, expandInstances, MAX_EXPANDED_BLOCKS,
+} from './components.js';
 
 /** A page, serialised, may not be larger than this. */
 export const MAX_DOC_BYTES = LIMITS.bytes;
 
 /** The fields a document may have at the top, by version. */
 // `hidden` (phase 6): a page kept in the studio and out of the public page's tabs.
-const DOC_KEYS_V1 = ['id', 'title', 'hidden', 'height', 'phoneHeight', 'phoneBoard', 'bg', 'grid', 'css', 'blocks'];
+// `components` (phase 7b): the definitions the page's instances copy (components.js).
+const DOC_KEYS_V1 = ['id', 'title', 'hidden', 'height', 'phoneHeight', 'phoneBoard', 'bg', 'grid', 'css', 'blocks', 'components'];
 // `background` is the closed value (background.js, phase 4). `bg` stays readable on a v2 page
 // saved before phase 4 (the API tolerates what is already stored); the studio never writes it.
-const DOC_KEYS_V2 = ['v', 'id', 'title', 'hidden', 'frames', 'background', 'bg', 'grid', 'css', 'blocks'];
+const DOC_KEYS_V2 = ['v', 'id', 'title', 'hidden', 'frames', 'background', 'bg', 'grid', 'css', 'blocks', 'components'];
 /** The fields a block may have. */
 export const BLOCK_KEYS = ['id', 'kind', 'x', 'y', 'w', 'h', 'z', 'props', 'opacity', 'themes', 'phone', 'anim',
   'name', 'locked', 'hidden', 'rotate', 'shadow', 'hover', 'link', 'component', 'action',
@@ -46,7 +53,12 @@ export const BLOCK_KEYS = ['id', 'kind', 'x', 'y', 'w', 'h', 'z', 'props', 'opac
 const OVERLAY_KEYS = ['x', 'y', 'w', 'h', 'opacity', 'hidden', 'props'];
 const PHONE_KEYS = ['order', 'hidden', 'h', 'x', 'y', 'w'];
 const ANIM_KEYS = ['kind', 'trigger', 'delay', 'duration', 'easing', 'loop', 'custom'];
-const COMPONENT_KEYS = ['id', 'inst'];
+// `inst`: a personal component's copy (before phase 7b); `overrides`: an instance's (phase 7b).
+const COMPONENT_KEYS = ['id', 'inst', 'overrides'];
+/** A definition in a page's map, and its document (phase 7b). */
+const SNAPSHOT_KEYS = ['name', 'scope', 'ref', 'doc', 'exposed'];
+const SNAPSHOT_DOC_KEYS = ['v', 'frames', 'blocks'];
+const EXPOSED_KEYS = ['key', 'block', 'field', 'label'];
 const PATTERN_KEYS = ['id', 'color', 'size', 'opacity'];
 const ITEM_KEYS = ['label', 'href'];
 /** An action's fields. `api` is the removed type (D5): its own fields are reported as that. */
@@ -89,12 +101,16 @@ export function pinsToViewport(css) {
  * `bad_scroll_target`, and for a block's `action` (actions.js, phase 5): `reserved_action`,
  * `https_only`, `host_not_allowed`, `bad_target`, `unknown_endpoint`, `terminal_not_last`,
  * `too_short`, and for the tree of containers (tree.js, phase 7a): `unknown_parent`,
- * `self_parent`, `not_container`, `cycle`, `too_deep`, `modal_nested`, `outside_parent`.
+ * `self_parent`, `not_container`, `cycle`, `too_deep`, `modal_nested`, `outside_parent`, and for
+ * components (phase 7b, components.js): `unknown_component`, `not_exposed`, `component_cycle`,
+ * `instance_too_deep`, `too_many_expanded`, `unknown_block`, `duplicate`, `required`, `not_allowed`.
  *
  * @param {unknown} doc
  * @param {string} [prefix]  prepended to every path, e.g. `canvases[2]`
- * @param {{ links?: object }} [opts]  `links`: the site's link policy (actions.js), which an
- *        `external` step is checked against. Absent = the default (every https host).
+ * @param {{ links?: object, selfComponent?: string }} [opts]  `links`: the site's link policy
+ *        (actions.js), which an `external` step is checked against. Absent = the default (every
+ *        https host). `selfComponent`: the document IS the definition of this component (a
+ *        library entry), so an instance of it inside is a loop.
  */
 export function validateDoc(doc, prefix = '', opts = {}) {
   const out = [];
@@ -140,14 +156,46 @@ export function validateDoc(doc, prefix = '', opts = {}) {
   if (c.blocks != null && !Array.isArray(c.blocks)) { add('blocks', 'bad_type', null); return out; }
   const blocks = Array.isArray(c.blocks) ? c.blocks : [];
   if (blocks.length > LIMITS.blocks) add('blocks', 'too_many', blocks.length);
+  // Components (phase 7b): the definitions the instances resolve against. A definition inside a
+  // page's map is checked with the PAGE's map (`opts.componentsMap`), which it never repeats.
+  const nested = !!(opts && opts.componentsMap);
+  const map = nested ? opts.componentsMap : (isObj(c.components) ? c.components : {});
+  const hasInstances = blocks.some((b) => isObj(b) && b.kind === 'instance');
+  // An instance stands in its place as a container (its component's own, or a group): a step
+  // of the page may reveal it, or open it when the component is a dialog.
+  let norm = null;
+  let expanded = null;
+  if (hasInstances && !nested) {
+    try { norm = normalizeDoc(c); expanded = expandInstances(norm); } catch { norm = null; expanded = null; }
+  }
   // What a scroll or a reveal may name: the page's own blocks (ids as stored).
   const actx = {
     links: opts && opts.links ? normalizeLinkPolicy(opts.links) : DEFAULT_LINK_POLICY,
     blockIds: new Set(blocks.map((b) => (isObj(b) && typeof b.id === 'string' ? b.id : '')).filter(Boolean)),
     // What a `modal`, `tab` or `reveal` step may name (phase 7a): the kind of each container.
-    containers: containerInfo(blocks),
+    containers: expanded ? new Map([...containerInfo(expanded.blocks), ...containerInfo(blocks)]) : containerInfo(blocks),
   };
   blocks.forEach((b, i) => blockProblems(b, i, add, actx));
+  if (c.components != null) {
+    if (nested) add('components', 'not_allowed', null);
+    else mapProblems(c.components, pre, out, add, opts);
+  }
+  if (hasInstances) instanceProblems(blocks, map, add, actx.links);
+  if (!nested) {
+    for (const p of componentGraphProblems(blocks, map, opts && typeof opts.selfComponent === 'string' ? opts.selfComponent : '')) add(p.path, p.reason, p.value);
+    if (hasInstances) {
+      const n = expandedCount(blocks, map);
+      if (n > MAX_EXPANDED_BLOCKS) add('blocks', 'too_many_expanded', n);
+      // The tree as a reader gets it: an instance may not take the page past its bounds.
+      if (norm) {
+        const at = new Map(blocks.map((b, i) => [isObj(b) ? b.id : null, i]));
+        for (const p of expandedTreeProblems(norm)) {
+          const i = at.get(p.instance);
+          if (i != null) add(`blocks[${i}]`, p.reason, p.instance, p.instance);
+        }
+      }
+    }
+  }
   // The tree of containers (tree.js): every broken link with the path of the block's field.
   for (const p of treeProblems(blocks)) {
     const b = blocks[p.index];
@@ -290,8 +338,11 @@ function blockProblems(b, i, add, actx) {
       keysOnly(b.component, COMPONENT_KEYS, 'component', push);
       text(b.component.id, LIMITS.id, 'component.id', push);
       text(b.component.inst, LIMITS.id, 'component.inst', push);
+      // Overrides belong to an instance (phase 7b), checked against its component elsewhere.
+      if (b.component.overrides != null && b.kind !== 'instance') push('component.overrides', 'not_allowed', null);
+      if (b.kind === 'instance' && !(typeof b.component.id === 'string' && ID_SHAPE.test(b.component.id))) push('component.id', 'bad_id', b.component.id);
     }
-  }
+  } else if (b.kind === 'instance') push('component', 'required', null);
   propsProblems(kind, b.props, 'props', push);
   if (b.themes != null) {
     if (!isObj(b.themes)) push('themes', 'bad_type', null);
@@ -327,4 +378,98 @@ function blockProblems(b, i, add, actx) {
       text(b.anim.custom, LIMITS.custom, 'anim.custom', push);
     }
   }
+}
+
+// ── Components (PLAN-STUDIO-2026 2.6, phase 7b) ─────────────────────────────────────────
+
+/**
+ * The fields a definition exposes to its instances, strict: `[{ key, block, field, label? }]`,
+ * each key a name used once, each naming a block of the definition and a field that block has
+ * among EXPOSABLE_FIELDS. `push(path, reason, value)` with paths under `at`.
+ */
+export function exposedProblems(raw, blocks, push, at = 'exposed') {
+  if (raw == null) return;
+  if (!Array.isArray(raw)) { push(at, 'bad_type', null); return; }
+  if (raw.length > MAX_EXPOSED) push(at, 'too_many', raw.length);
+  const kinds = new Map((Array.isArray(blocks) ? blocks : []).filter(isObj).map((b) => [b.id, b.kind]));
+  const seen = new Set();
+  raw.slice(0, MAX_EXPOSED + 1).forEach((e, j) => {
+    const p = `${at}[${j}]`;
+    if (!isObj(e)) { push(p, 'bad_type', null); return; }
+    keysOnly(e, EXPOSED_KEYS, p, push);
+    if (typeof e.key !== 'string' || !EXPOSED_KEY.test(e.key)) push(`${p}.key`, 'bad_id', e.key);
+    else if (seen.has(e.key)) push(`${p}.key`, 'duplicate', e.key);
+    else seen.add(e.key);
+    if (typeof e.block !== 'string' || !kinds.has(e.block)) push(`${p}.block`, 'unknown_block', e.block);
+    if (!EXPOSABLE_FIELDS.includes(e.field)) push(`${p}.field`, 'bad_value', e.field);
+    else if (kinds.has(e.block) && !exposableFor(kinds.get(e.block)).includes(e.field)) push(`${p}.field`, 'not_allowed', e.field);
+    text(e.label, LIMITS.name, `${p}.label`, push);
+  });
+}
+
+/** A page's map of definitions: each one's fields, its document (validateDoc, with the page's
+ *  map for its own instances), and what it exposes. */
+function mapProblems(raw, pre, out, add, opts) {
+  if (!isObj(raw)) { add('components', 'bad_type', null); return; }
+  const ids = Object.keys(raw);
+  if (ids.length > MAX_DOC_COMPONENTS) add('components', 'too_many', ids.length);
+  for (const cid of ids.slice(0, MAX_DOC_COMPONENTS + 1)) {
+    const at = `components.${cid}`;
+    const push = (path, reason, value) => add(path ? `${at}.${path}` : at, reason, value, cid);
+    if (!ID_SHAPE.test(cid)) { add(at, 'bad_id', cid); continue; }
+    const s = raw[cid];
+    if (!isObj(s)) { push('', 'bad_type', null); continue; }
+    keysOnly(s, SNAPSHOT_KEYS, '', push);
+    text(s.name, LIMITS.name, 'name', push);
+    if (!COMPONENT_SCOPES.includes(s.scope)) push('scope', 'bad_value', s.scope);
+    if (s.ref != null && !(typeof s.ref === 'string' && COMPONENT_REF.test(s.ref))) push('ref', 'bad_value', s.ref);
+    if (!isObj(s.doc)) { push('doc', 'bad_type', null); continue; }
+    keysOnly(s.doc, SNAPSHOT_DOC_KEYS, 'doc', push);
+    const blocks = Array.isArray(s.doc.blocks) ? s.doc.blocks : [];
+    if (blocks.length > MAX_COMPONENT_BLOCKS) push('doc.blocks', 'too_many', blocks.length);
+    const inner = { ...s.doc, id: cid };
+    delete inner.components;
+    for (const p of validateDoc(inner, `${pre}${at}.doc`, { ...(opts || {}), componentsMap: raw, selfComponent: undefined })) out.push(p);
+    exposedProblems(s.exposed, blocks, (path, reason, value) => push(path, reason, value), 'exposed');
+  }
+}
+
+/**
+ * Every instance: its component is in the map (`unknown_component`), and each override names a
+ * field the component EXPOSES (`not_exposed`, whatever the key looks like) and holds a value
+ * that field's own rule accepts: the definition's block with the value put in, checked like any
+ * block, the problems of that field reported under the override's path.
+ */
+function instanceProblems(blocks, map, add, links) {
+  blocks.forEach((b, i) => {
+    if (!isObj(b) || b.kind !== 'instance' || !isObj(b.component)) return;
+    const bid = typeof b.id === 'string' ? b.id : '';
+    const at = `blocks[${i}].component`;
+    const cid = b.component.id;
+    const snap = typeof cid === 'string' && isObj(map) && isObj(map[cid]) ? map[cid] : null;
+    if (typeof cid === 'string' && ID_SHAPE.test(cid) && !snap) add(`${at}.id`, 'unknown_component', cid, bid);
+    const ov = b.component.overrides;
+    if (ov == null) return;
+    if (!isObj(ov)) { add(`${at}.overrides`, 'bad_type', null, bid); return; }
+    const keys = Object.keys(ov);
+    if (keys.length > MAX_EXPOSED) add(`${at}.overrides`, 'too_many', keys.length, bid);
+    const exposed = snap && Array.isArray(snap.exposed) ? snap.exposed : [];
+    const defBlocks = snap && isObj(snap.doc) && Array.isArray(snap.doc.blocks) ? snap.doc.blocks.filter(isObj) : [];
+    const dctx = {
+      links,
+      blockIds: new Set(defBlocks.map((x) => (typeof x.id === 'string' ? x.id : '')).filter(Boolean)),
+      containers: containerInfo(defBlocks),
+    };
+    for (const k of keys.slice(0, MAX_EXPOSED + 1)) {
+      const kp = `${at}.overrides.${k}`;
+      const e = EXPOSED_KEY.test(k) ? exposed.find((x) => isObj(x) && x.key === k) : null;
+      const db = e ? defBlocks.find((x) => x.id === e.block) : null;
+      if (!e || !db || !exposableFor(db.kind).includes(e.field)) { add(kp, 'not_exposed', k, bid); continue; }
+      const probe = withFieldValue(db, e.field, ov[k]);
+      blockProblems(probe, 0, (path, reason, value) => {
+        const rel = path.replace(/^blocks\[0\]\.?/, '');
+        if (rel === e.field || rel.startsWith(`${e.field}.`) || rel.startsWith(`${e.field}[`)) add(`${kp}${rel.slice(e.field.length)}`, reason, value, bid);
+      }, dctx);
+    }
+  });
 }

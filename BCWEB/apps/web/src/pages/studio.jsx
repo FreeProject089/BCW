@@ -44,7 +44,7 @@ import { PagesPanel } from '../editor/studio-pages.jsx';
 import {
   parseStudioParams, handoffKey, draftKey, saveState, studioPath, studioLoadPath, studioSaveRequest,
   resolvePageRef, pageEntries, pageIndexOf, canvasById, withCanvasById, withPageInserted, withPageRemoved,
-  withPageOrder, movedOrder, newPageId, studioListPaths,
+  withPageOrder, movedOrder, newPageId, studioListPaths, componentPath,
 } from '../lib/studio-page.js';
 import { codedPresets, normalizeLibrary, storedEntry, pageFromPreset, duplicatePage, libraryPath } from '../lib/studio-components.js';
 import StudioPageFrame from '../editor/studio-page-frame.jsx';
@@ -400,7 +400,7 @@ export default function StudioPage() {
   }, [paths, target, kind, pendingDel, pageId, flush, navigate, id, toast, t, forget, listError]);
 
   // ── The preset libraries ─────────────────────────────────────────────────────────────────
-  const saveToLibrary = useCallback(async (entry, scope) => {
+  const saveToLibrary = useCallback(async (entry, scope, opts = {}) => {
     const path = scope === 'site' ? libraryPath('site') : libraryPath(kind, target?.saveId);
     const cur = scope === 'site' ? libs.site : libs.project;
     const write = (base, list) => api.put(path, { entries: [storedEntry(entry), ...list.map(storedEntry)], base });
@@ -412,7 +412,7 @@ export default function StudioPage() {
         r = await write(e.data?.rev ?? '', normalizeLibrary(e.data?.entries, scope)); // somebody added one meanwhile: kept
       }
       setLibs((l) => ({ ...l, [scope === 'site' ? 'site' : 'project']: { ...(cur || {}), entries: r.entries, rev: r.rev, canWrite: true } }));
-      toast.success(t('cst.pr.saved', 'Preset saved.'));
+      if (!opts.quiet) toast.success(t('cst.pr.saved', 'Preset saved.'));
       return true;
     } catch (e) {
       const code = e?.data?.error;
@@ -448,7 +448,18 @@ export default function StudioPage() {
     error: libs.error,
     save: saveToLibrary,
     remove: removeFromLibrary,
-  }), [libs, user, saveToLibrary, removeFromLibrary]);
+    // Phase 7b: which library `project` is here (a component placed from it remembers it).
+    targetScope: kind === 'showcase' ? 'showcase' : 'project',
+    targetRef: target?.saveId || '',
+  }), [libs, user, saveToLibrary, removeFromLibrary, kind, target?.saveId]);
+
+  // Phase 7b: "Edit the component" opens the studio's component mode on its definition, and
+  // its Back comes here (the draft of this page is kept, like on a page switch).
+  const openComponent = useCallback((scope, ref, cid) => {
+    flush();
+    const from = studioPath(kind, id, pageId || undefined);
+    navigate(`${componentPath(scope, ref, cid)}?from=${encodeURIComponent(from)}`);
+  }, [flush, navigate, kind, id, pageId]);
 
   const pagesApi = useMemo(() => {
     if (!target) return null;
@@ -462,8 +473,9 @@ export default function StudioPage() {
       rename: (pid, title) => setMeta(pid, { title }),
       setHidden: (pid, hidden) => setMeta(pid, { hidden }),
       library,
+      openComponent: kind === 'home' ? null : openComponent,
     };
-  }, [target, kind, dirtyIds, pendingDel, pageId, busy, select, create, duplicate, move, remove, setMeta, library]);
+  }, [target, kind, dirtyIds, pendingDel, pageId, busy, select, create, duplicate, move, remove, setMeta, library, openComponent]);
 
   // The whole public page, with THIS canvas in its tab: the REAL route, framed at a device
   // width, fed the draft (editor/studio-page-frame.jsx, lib/studio-preview.js).

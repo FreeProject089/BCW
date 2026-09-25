@@ -63,6 +63,10 @@ try {
     'export const renderWithPages = (value, pages) => renderToStaticMarkup(',
     '  <I18nProvider><CanvasStudio layout="page" value={value} onChange={() => {}} renderPage={() => null} pages={pages}',
     '    chrome={{ title: "Doc", state: "saved", canSave: false, onSave() {}, onBack() {} }} /></I18nProvider>);',
+    // Studio phase 7b: component mode (the same studio on a definition, with its exposed fields).
+    'export const renderComponentMode = (value, exposed) => renderToStaticMarkup(',
+    '  <I18nProvider><CanvasStudio layout="page" value={value} onChange={() => {}} componentMode={{ exposed, onExposed() {} }}',
+    '    chrome={{ title: "Component", state: "saved", canSave: false, onSave() {}, onBack() {} }} /></I18nProvider>);',
     'export const renderLoose = (value) => renderToStaticMarkup(',
     '  <I18nProvider><CanvasStudio layout="page" value={value} onChange={() => {}}',
     '    chrome={{ title: "Doc", state: "dirty", canSave: true, onSave() {}, onBack() {} }} /></I18nProvider>);',
@@ -93,8 +97,8 @@ try {
 }
 
 let render; let page; let renderPage; let renderLoose; let stack; let setStudioLinks;
-let pagesPanel; let gallery; let thumb; let renderWithPages;
-try { ({ render, page, renderPage, renderLoose, stack, setStudioLinks, pagesPanel, gallery, thumb, renderWithPages } = await import(pathToFileURL(bundle).href)); }
+let pagesPanel; let gallery; let thumb; let renderWithPages; let renderComponentMode;
+try { ({ render, page, renderPage, renderLoose, stack, setStudioLinks, pagesPanel, gallery, thumb, renderWithPages, renderComponentMode } = await import(pathToFileURL(bundle).href)); }
 catch (e) { console.error(`✗ the studio would not load: ${e?.message || e}`); cleanup(); process.exit(1); }
 
 const problems = [];
@@ -759,6 +763,76 @@ try {
   const edEvil = withWindow(mq(true, false), () => renderPage({ ...EVIL_TREE, blocks: EVIL_TREE.blocks.slice(0, 12) }));
   must(tagWith(edEvil, 'data-tree-error=').length >= 5, 'the Layers tree does not flag the blocks whose container link is broken');
 } catch (e) { problems.push(`the phase 7a render threw: ${e?.message || e}`); }
+
+// ── Components (PLAN-STUDIO-2026, phase 7b). ─────────────────────────────────────────
+// A page holds two linked copies of one component, one overriding the exposed title. A READER
+// gets the component's blocks for each copy (never an `instance` block), the override on its
+// copy only, and nothing an override may not carry: a key the component does not expose is
+// not drawn (whatever it names), an exposed `On click` override to `javascript:` is not an
+// href. A component that contains itself renders, bounded, without throwing. A dialog
+// component opens by the copy's id. The editor draws each copy on the board from the page's
+// map (not an error box), lists the component "On this page" with its
+// copies and the one that diverges; component mode draws both frames and the exposed-fields
+// panel. Each assertion was checked by breaking what it guards (phase 7b report).
+try {
+  const F2 = { desktop: { w: 1200, h: 900, fit: 'fixed' }, phone: { w: 390, fit: 'content', mode: 'stack' } };
+  const ctext = (id, md, extra = {}) => ({ id, kind: 'text', x: 0, y: 0, w: 300, h: 80, props: { md }, ...extra });
+  const CARD = {
+    name: 'Card', scope: 'site',
+    doc: { v: 2, frames: F2, blocks: [ctext('title', 'CARD-TITLE-DEFAULT'), ctext('body', 'CARD-BODY', { y: 100 }),
+      { id: 'go', kind: 'button', x: 0, y: 200, w: 160, h: 48, props: { label: 'CARD-GO' }, action: [{ type: 'navigate', to: '/card' }] }] },
+    exposed: [{ key: 'title', block: 'title', field: 'props.md' }, { key: 'go', block: 'go', field: 'action' }],
+  };
+  const DLG = { name: 'Dlg', scope: 'site', doc: { v: 2, frames: F2, blocks: [{ id: 'd', kind: 'modal', x: 0, y: 0, w: 400, h: 240, props: { title: 'Dlg' } }, ctext('db', 'DIALOG-BODY', { parent: 'd', x: 16, y: 16 })] }, exposed: [] };
+  const I = (id, x, cid, overrides) => ({ id, kind: 'instance', x, y: 40, w: 8, h: 8, z: 1, component: overrides ? { id: cid, overrides } : { id: cid } });
+  const COMP_PAGE = {
+    v: 2, id: 'cp1', frames: F2,
+    blocks: [
+      I('ia', 40, 'card'),
+      I('ib', 500, 'card', { title: 'CARD-TITLE-MINE', body: 'SMUGGLED-BODY', style: 'position:fixed;inset:0', go: [{ type: 'navigate', to: 'javascript:alert(1)' }] }),
+      I('dlg1', 1400, 'dlg'),
+      { id: 'open', kind: 'button', x: 40, y: 500, w: 200, h: 56, z: 3, props: { label: 'Open' }, action: [{ type: 'modal', target: 'dlg1' }] },
+    ],
+    components: { card: CARD, dlg: DLG },
+  };
+  for (const [name, out] of [['scaled', page(COMP_PAGE, 'light')], ['stacked', stack(COMP_PAGE)]]) {
+    const count = (s) => out.split(s).length - 1;
+    must(count('CARD-BODY') === 2, `${name}: two copies of a component should draw its body twice, drew ${count('CARD-BODY')}`);
+    must(count('CARD-TITLE-DEFAULT') === 1 && count('CARD-TITLE-MINE') === 1, `${name}: the override is not on its copy only (default ${count('CARD-TITLE-DEFAULT')}, override ${count('CARD-TITLE-MINE')})`);
+    must(!out.includes('SMUGGLED-BODY'), `${name}: an override of a field the component does not expose was drawn`);
+    must(!/position:\s*fixed/.test(out), `${name}: an override carried a style the component does not expose`);
+    must(!/href="\s*javascript:/i.test(out), `${name}: an exposed On-click override reached an href as javascript:`);
+    must(!/data-cv-instance/.test(out), `${name}: a reader was handed an unexpanded instance`);
+    must(!out.includes('DIALOG-BODY'), `${name}: a dialog component was mounted before any step opened it`);
+    const opener = tagWith(out, 'data-act="modal"')[0] || '';
+    must(/^<button\b/.test(opener) && !/data-inert/.test(opener), `${name}: a step opening a dialog component by the copy's id is not live: ${opener.slice(0, 160) || 'absent'}`);
+  }
+  // A component that contains itself (stored anyway): drawn, bounded, no throw.
+  const LOOP = { name: 'Loop', scope: 'site', doc: { v: 2, frames: F2, blocks: [ctext('t', 'LOOP-LEVEL'), { id: 'n', kind: 'instance', x: 0, y: 100, w: 8, h: 8, component: { id: 'loop' } }] }, exposed: [] };
+  for (const [name, renderIt] of [['scaled', () => page({ ...COMP_PAGE, blocks: [I('il', 0, 'loop')], components: { loop: LOOP } }, 'light')], ['stacked', () => stack({ ...COMP_PAGE, blocks: [I('il', 0, 'loop')], components: { loop: LOOP } })]]) {
+    let out = '';
+    try { out = renderIt(); } catch (e) { problems.push(`${name}: a component that contains itself threw: ${e?.message || e}`); continue; }
+    const levels = out.split('LOOP-LEVEL').length - 1;
+    must(levels >= 1 && levels <= 3, `${name}: a component that contains itself drew ${levels} level(s) (at most 3)`);
+  }
+  // The editor: each copy drawn from the page's map, no resize handle, and "On this page".
+  const ed = withWindow(mq(true, false), () => renderPage(COMP_PAGE));
+  const board = (id) => /<div[^>]*data-cst-block="([^"]+)"/.test(ed) && (ed.split(`data-cst-block="${id}"`)[1] || '').slice(0, 4000);
+  must(/data-cv-instance="card"/.test(board('ia') || '') && !/data-instance-error/.test(board('ia') || ''), 'the board does not draw a copy from the page\'s component map');
+  must((ed.match(/CARD-BODY/g) || []).length >= 2, 'the board does not draw the component inside each copy');
+  const onPage = tagWith(ed, 'data-page-component="card"');
+  must(onPage.length === 1, 'the Components panel does not list the component used on this page');
+  must(tagWith(ed, 'data-copies="2"').length >= 1, 'the Components panel does not count the page\'s two copies');
+  must(tagWith(ed, 'data-diverging-copy="ib"').length === 1 && tagWith(ed, 'data-diverging-copy="ia"').length === 0, 'the Components panel does not name the one copy that diverges');
+  // Component mode: both frames, and the exposed-fields panel.
+  const cm = withWindow(mq(true, false), () => renderComponentMode({ ...CARD.doc, id: 'card' }, CARD.exposed));
+  must(/data-cst-frame="desktop"/.test(cm), 'component mode draws no desktop frame');
+  must(tagWith(cm, 'data-board="phone"').length >= 1, 'component mode offers no phone frame');
+  must(tagWith(cm, 'data-exposed-panel').length === 1, 'component mode has no "What a copy can change" panel');
+  must(tagWith(cm, 'data-exposed-row="title"').length === 1 && tagWith(cm, 'data-exposed-row="go"').length === 1, 'component mode does not list the exposed fields');
+  const appSrc7 = (await import('node:fs')).readFileSync('src/App.jsx', 'utf8');
+  must(/path="\/studio\/component\/:scope\/:id"/.test(appSrc7), 'there is no component mode route');
+} catch (e) { problems.push(`the phase 7b render threw: ${e?.message || e}`); }
 
 cleanup();
 

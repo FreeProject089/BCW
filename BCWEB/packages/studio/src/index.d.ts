@@ -1,6 +1,6 @@
 // Types for @bettercommunity/studio. The runtime is plain ESM (src/*.js); these describe it.
 
-export type BlockKind = 'text' | 'image' | 'box' | 'video' | 'embed' | 'replay' | 'button' | 'shape' | 'svg' | ContainerKind;
+export type BlockKind = 'text' | 'image' | 'box' | 'video' | 'embed' | 'replay' | 'button' | 'shape' | 'svg' | ContainerKind | 'instance';
 /** Blocks that hold other blocks (tree.js, phase 7a). */
 export type ContainerKind = 'group' | 'tabs' | 'modal';
 export type FrameFit = 'fixed' | 'content';
@@ -31,7 +31,8 @@ export interface Block {
   rotate: number; shadow: string; hover: string;
   /** What pressing it does (actions.js, phase 5). A legacy `link` / `props.action` is read into it. */
   action: ActionStep[];
-  component: { id: string; inst: string } | null;
+  /** A personal component's copy `{ id, inst }`, or (kind `instance`, phase 7b) `{ id, overrides? }`. */
+  component: { id: string; inst: string } | { id: string; overrides?: Record<string, unknown> } | null;
   /** The container it sits in (phase 7a): x, y are then relative to that container's inner area. */
   parent?: string;
   /** Its tab, when its container is a tab card (0 = the first tab, left out). */
@@ -54,6 +55,8 @@ export interface StudioDoc {
   background: Background; bgNote: '' | 'replaced';
   grid: number; css: string;
   blocks: Block[];
+  /** The definitions the page's instances use (phase 7b), when there are any. */
+  components?: Record<string, ComponentSnapshot>;
 }
 
 /** A document as it is STORED (serializeDoc): defaults left out, derived values never written. */
@@ -104,11 +107,12 @@ export const HANDLES: Readonly<Record<string, [number, number]>>;
 
 // The document
 export function migrate(raw: unknown): Record<string, unknown>;
-export function normalizeDoc(raw: unknown): StudioDoc;
+export function normalizeDoc(raw: unknown, inner?: boolean): StudioDoc;
 export const normalizeCanvas: typeof normalizeDoc;
 export function serializeDoc(doc: unknown, extra?: Record<string, unknown>): StoredDoc;
 export function serializeCanvas(doc: unknown, raw?: unknown, extra?: Record<string, unknown>): StoredDoc;
-export function validateDoc(doc: unknown, prefix?: string, opts?: { links?: LinkPolicy }): Problem[];
+export function validateDoc(doc: unknown, prefix?: string, opts?: { links?: LinkPolicy; selfComponent?: string; componentsMap?: Record<string, unknown> }): Problem[];
+export function exposedProblems(raw: unknown, blocks: unknown, push: (path: string, reason: string, value?: unknown) => void, at?: string): void;
 export function cssValueOk(value: unknown): boolean;
 export function pinsToViewport(css: unknown): boolean;
 export function propAllowed(kind: string, key: string): boolean;
@@ -333,3 +337,45 @@ export function ungroupBlocks<T>(blocks: T[], gid: string): T[] | null;
 export function pullChildrenInside<T>(blocks: T[], containerId: string): T[];
 export function reorderSiblings<T>(blocks: T[], id: string, dir: 'up' | 'down'): T[];
 export function removeTab<T>(blocks: T[], containerId: string, index: number): T[];
+
+// ── Components (canvas.js + components.js, phase 7b) ───────────────────────────────────
+export type ComponentScope = 'user' | 'project' | 'showcase' | 'site';
+export interface ExposedField { key: string; block: string; field: string; label?: string }
+/** A definition as a page keeps it in `components`. */
+export interface ComponentSnapshot { name: string; scope: ComponentScope; ref?: string; doc: StudioDoc; exposed: ExposedField[] }
+export const COMPONENT_SCOPES: readonly ComponentScope[];
+export const MAX_DOC_COMPONENTS: number;
+export const MAX_COMPONENT_BLOCKS: number;
+export const MAX_EXPOSED: number;
+export const MAX_INSTANCE_DEPTH: number;
+export const MAX_EXPANDED_BLOCKS: number;
+export const EXPOSED_KEY: RegExp;
+export const COMPONENT_REF: RegExp;
+export const EXPOSABLE_FIELDS: readonly string[];
+export function exposableFor(kind: unknown): string[];
+export function fieldValue(block: unknown, field: string): unknown;
+export function withFieldValue<T>(block: T, field: string, value: unknown): T;
+export function normalizeExposed(raw: unknown, blocks: unknown): ExposedField[];
+export function componentSize(doc: unknown, map?: Record<string, unknown>, depth?: number): { w: number; h: number; pw: number; ph: number };
+export function usedComponentIds(blocks: unknown, map: unknown): Set<string>;
+export function normalizeOneBlock(block: unknown): Block | null;
+export function applyOverrides(blocks: Block[], exposed: ExposedField[], overrides: Record<string, unknown>): Block[];
+export function expandInstance(inst: Block, map: Record<string, ComponentSnapshot>, opts?: { mode?: 'desktop' | 'phone' | 'stack'; taken?: Iterable<string> }): { root: Block & { instOf?: string; instanceError?: string }; blocks: Block[] };
+export function expandInstances(doc: StudioDoc, opts?: { mode?: 'desktop' | 'phone' | 'stack' }): StudioDoc;
+export function componentGraphProblems(blocks: unknown, map: unknown, selfId?: string): Array<{ path: string; reason: string; value: unknown }>;
+export function expandedCount(blocks: unknown, map: unknown): number;
+export function expandedTreeProblems(doc: StudioDoc): Array<{ instance: string; reason: string }>;
+export function overridesOf(block: unknown): Record<string, unknown>;
+export function divergence(inst: unknown, snap: unknown): ExposedField[];
+export function instancesOfComponent(blocks: unknown, cid: string): Block[];
+export function snapshotOf(src: unknown, scope?: ComponentScope, ref?: string): unknown;
+export function snapshotDiffers(pageSnap: unknown, libSnap: unknown): boolean;
+export function withSnapshot(map: unknown, cid: string, snap: unknown, deps?: unknown): Record<string, unknown>;
+export function updateCopies<T>(blocks: T[], map: unknown, cid: string, snap: unknown, deps?: unknown): { blocks: T[]; components: Record<string, unknown>; dropped: number };
+export function setOverride<T>(blocks: T[], instId: string, key: string, value: unknown): T[];
+export function detachInstance<T>(blocks: T[], map: unknown, instId: string, uid: () => string): T[];
+export function defaultExposed(blocks: unknown): ExposedField[];
+export function definitionFromBlocks(blocks: unknown, ids: string[], pageMap?: unknown): { doc: unknown; exposed: ExposedField[]; at: { x: number; y: number }; parent: string; slot: number; z: number; depth: number } | null;
+export function replaceWithInstance<T>(blocks: T[], ids: string[], map: unknown, cid: string, snap: unknown, def: unknown, uid: () => string): { blocks: T[]; components: Record<string, unknown>; id: string };
+export function newInstance(cid: string, at: { x: number; y: number }, z: number, uid: () => string): Record<string, unknown>;
+export function definitionTreeProblems(doc: unknown): Array<{ index: number; field: string; reason: string }>;

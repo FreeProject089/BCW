@@ -832,6 +832,136 @@ describe('studio phase 6: concurrency and old links', { skip }, () => {
   });
 });
 
+// ── PHASE 7b: component mode (PLAN-STUDIO-2026 section 4, phase 7b; 3.3.6) ───────────────
+// One component of a library is read and saved by its own door,
+// /admin/studio/library/:scope/:ref/components/:cid, behind the library's rule: a page's
+// library for canUseStudio on that page, the site's read by any studio holder and written by
+// manage_studio only. Same method: every refused request, then nothing changed; the least
+// privileged holder's positive pass; a concurrent definition save from a stale revision is a 409.
+const compPath = (t, cid) => `${libPath(t)}/components/${cid}`;
+const SITE_COMP = (cid) => `/admin/studio/library/site/site/components/${cid}`;
+const compEntry = (md = 'Hello') => ({
+  name: 'Card', doc: V2('x', [{ id: 't', kind: 'text', x: 0, y: 0, w: 200, h: 80, props: { md } }]),
+  exposed: [{ key: 'title', block: 't', field: 'props.md' }],
+});
+/** A definition's document as a page keeps it (a snapshot has no id or title of its own). */
+const DEF = (blocks) => { const { id: _i, title: _t, ...d } = V2('x', blocks); return d; };
+const libsNow = async () => stable(await p.adminSetting.findMany({ where: { key: { startsWith: 'studio.library:' } }, orderBy: { key: 'asc' } }));
+
+describe('studio phase 7b: component mode, permission matrix', { skip }, () => {
+  test('refusals: a non-holder reads and writes no component of a page library, nor writes the site library, and nothing changes', async () => {
+    // A component in each page library and in the site library, so a refusal is not a 404 for
+    // want of something to read.
+    for (const t of PAGE_TARGETS) {
+      const r = await call('SUPERADMIN', 'PUT', compPath(t, 'cfix'), { entry: compEntry(), base: '' });
+      assert.equal(r.status, 200, `${t.name}: ${JSON.stringify(r.body)}`);
+    }
+    const siteFix = await call('SUPERADMIN', 'PUT', SITE_COMP('cfix'), { entry: compEntry(), base: '' });
+    assert.ok(siteFix.status === 200 || siteFix.body?.error === 'conflict', JSON.stringify(siteFix.body));
+    const before = await libsNow();
+    let refused = 0;
+    for (const t of PAGE_TARGETS) {
+      for (const name of ACTORS()) {
+        if (studioOracle(name, t)) continue;
+        for (const [method, url, payload] of [
+          ['GET', compPath(t, 'cfix')],
+          ['PUT', compPath(t, 'cfix'), { entry: compEntry('by-a-stranger'), base: '' }],
+          ['PUT', compPath(t, `new${seq++}`), { entry: compEntry('new'), base: '' }],
+        ]) {
+          const r = await call(name, method, url, payload);
+          const why = `${name} ${method} ${url} → ${r.status} ${JSON.stringify(r.body)}`;
+          if (A[name].spec.twofa === false) { assert.equal(r.status, 403, why); assert.ok(['2fa_required', ...SOFT_REFUSALS].includes(r.body?.error), why); }
+          else {
+            assert.ok(r.status === 403 || r.status === 404, why);
+            assert.ok(SOFT_REFUSALS.includes(r.body?.error), `unexpected refusal (broken fixture?): ${why}`);
+          }
+          refused++;
+        }
+      }
+      for (const [method, url, payload] of [['GET', compPath(t, 'cfix')], ['PUT', compPath(t, 'cfix'), { entry: compEntry(), base: '' }]]) {
+        const r = await call(null, method, url, payload);
+        assert.ok(r.status === 401 || r.status === 403, `anonymous ${method} ${url} → ${r.status}`);
+      }
+    }
+    // The site library: a component is read by any studio holder, written by manage_studio only.
+    for (const name of ACTORS()) {
+      const read = await call(name, 'GET', SITE_COMP('cfix'));
+      const why = `${name} GET site component → ${read.status} ${JSON.stringify(read.body)}`;
+      if (siteReadOracle(name)) { assert.equal(read.status, 200, why); assert.equal(read.body.canWrite, siteWriteOracle(name), why); }
+      else { assert.equal(read.status, 403, why); refused++; }
+      if (!siteWriteOracle(name)) {
+        for (const cid of ['cfix', `s${seq++}`]) {
+          const w = await call(name, 'PUT', SITE_COMP(cid), { entry: compEntry('not yours'), base: read.body?.rev ?? '' });
+          assert.equal(w.status, 403, `${name} wrote a site component without manage_studio: ${w.status} ${JSON.stringify(w.body)}`);
+          refused++;
+        }
+      }
+    }
+    assert.equal(await libsNow(), before, 'a refused component request changed a library');
+    assert.ok(refused > 100, `only ${refused} refusals were exercised`);
+  });
+
+  test('positive pass: the least privileged holder opens, saves and re-saves a component; a stale save is a 409', async () => {
+    const ORDER = ['studioA', 'scopedStudioB', 'studioX', 'allShowcaseStudio', 'manageStudio', 'ADMIN', 'SUPERADMIN'];
+    for (const t of PAGE_TARGETS) {
+      const who = ORDER.find((n) => studioOracle(n, t));
+      const cid = `cpos${seq++}`;
+      assert.equal((await call(who, 'GET', compPath(t, cid))).status, 404, 'an unknown component is a 404');
+      const made = await call(who, 'PUT', compPath(t, cid), { entry: compEntry('v1'), base: '' });
+      assert.equal(made.status, 200, `${who} on ${t.name}: ${JSON.stringify(made.body)}`);
+      const open = await call(who, 'GET', compPath(t, cid));
+      assert.equal(open.status, 200);
+      assert.equal(open.body.rev, made.body.rev);
+      assert.equal(open.body.canWrite, true);
+      assert.deepEqual(open.body.entry.exposed, [{ key: 'title', block: 't', field: 'props.md' }]);
+      // Two tabs from the same revision: the first lands, the second is a 409 with the stored entry.
+      const first = await call(who, 'PUT', compPath(t, cid), { entry: compEntry('tab one'), base: open.body.rev });
+      assert.equal(first.status, 200, JSON.stringify(first.body));
+      const second = await call(who, 'PUT', compPath(t, cid), { entry: compEntry('tab two'), base: open.body.rev });
+      assert.equal(second.status, 409, `a concurrent definition save from a stale revision landed: ${JSON.stringify(second.body)}`);
+      assert.equal(second.body.error, 'conflict');
+      assert.equal(second.body.rev, first.body.rev);
+      assert.equal(second.body.entry.doc.blocks[0].props.md, 'tab one');
+      const lib = await call(who, 'GET', libPath(t));
+      assert.equal(lib.body.entries.find((e) => e.id === cid).doc.blocks[0].props.md, 'tab one', 'the losing save changed the stored component');
+      // The recursion refusal reaches the route: a component holding a copy of itself.
+      const self = await call(who, 'PUT', compPath(t, cid), { entry: { ...compEntry(), doc: { ...V2('x', [{ id: 'n', kind: 'instance', x: 0, y: 0, w: 8, h: 8, component: { id: cid } }]), components: { [cid]: { name: 'x', scope: 'project', doc: DEF([{ id: 't', kind: 'text', x: 0, y: 0, w: 10, h: 10 }]), exposed: [] } } }, exposed: [] }, base: first.body.rev });
+      assert.equal(self.status, 400, JSON.stringify(self.body));
+      assert.equal(self.body.reason, 'component_cycle');
+      assert.equal(self.body.path, 'entry.doc.blocks[0].component.id');
+    }
+  });
+
+  test('the site library: a holder of A reads its components and writes none; manage_studio writes', async () => {
+    const cid = `csite${seq++}`;
+    assert.equal((await call('studioA', 'PUT', SITE_COMP(cid), { entry: compEntry(), base: '' })).status, 403, 'a site component written without manage_studio');
+    const ok = await call('manageStudio', 'PUT', SITE_COMP(cid), { entry: compEntry('official'), base: '' });
+    assert.equal(ok.status, 200, JSON.stringify(ok.body));
+    const read = await call('studioA', 'GET', SITE_COMP(cid));
+    assert.equal(read.status, 200);
+    assert.equal(read.body.canWrite, false);
+    assert.equal((await call('studioA', 'PUT', SITE_COMP(cid), { entry: compEntry('mine now'), base: read.body.rev })).status, 403);
+    assert.equal((await call('studioA', 'GET', compPath(T.B, 'cfix'))).status, 403, 'a holder of A read a component of B');
+  });
+
+  test('a page may place copies of a component and override an exposed field, and nothing else', async () => {
+    const keep = await storedDoc(T.A);
+    try {
+      const card = { name: 'Card', scope: 'project', ref: KA, doc: DEF([{ id: 't', kind: 'text', x: 0, y: 0, w: 200, h: 80, props: { md: 'Hello' } }]), exposed: [{ key: 'title', block: 't', field: 'props.md' }] };
+      const inst = (iid, overrides) => ({ id: iid, kind: 'instance', x: 0, y: 0, w: 8, h: 8, component: overrides ? { id: 'card', overrides } : { id: 'card' } });
+      const revs = (await call('studioA', 'GET', openPath(T.A))).body.revs;
+      const good = await call('studioA', 'PUT', savePath(T.A), { canvas: { ...V2('p1', [inst('i1'), inst('i2', { title: 'Mine' })]), components: { card } }, base: revs.p1 });
+      assert.equal(good.status, 200, JSON.stringify(good.body));
+      const bad = await call('studioA', 'PUT', savePath(T.A), { canvas: { ...V2('p1', [inst('i1', { style: 'position:fixed' })]), components: { card } }, base: good.body.rev });
+      assert.equal(bad.status, 400);
+      assert.equal(bad.body.reason, 'not_exposed');
+      assert.equal(bad.body.path, 'canvases[0].blocks[0].component.overrides.style');
+      const stored = (await storedDoc(T.A)).canvases.find((c) => c.id === 'p1');
+      assert.equal(stored.blocks[1].component.overrides.title, 'Mine', 'the refused save changed the page');
+    } finally { await writeDoc(T.A, keep); }
+  });
+});
+
 // MUTATION CHECK (run by hand, 23.09.2026) — phase 0/1:
 //   · GET /admin/projects/:key/studio with `canEditProject` replaced by `true`: the refusal
 //     pass goes red on the first non-grantee (USER GET project A → 200).
@@ -865,3 +995,11 @@ describe('studio phase 6: concurrency and old links', { skip }, () => {
 //     holder of A writes neither B nor the site library" go red.
 //   · A4 insertConfigPage no longer freezing the order: the phase 6 positive pass goes red.
 //   · A5 a showcase library readable and writable by anybody: the phase 6 refusal pass goes red.
+//
+// MUTATION CHECK — phase 7b (25.09.2026, scripted as above; see the phase 7b report):
+//   · B1 the component PUT without `tg.write` (any reader writes): the 7b refusal pass and the
+//     site-library test go red.
+//   · B2 the component GET without `tg.read`: the 7b refusal pass goes red.
+//   · B3 replaceComponentEntry without the revision comparison: the positive pass goes red
+//     (the concurrent second save lands).
+//   · B4 validateDoc without the not_exposed check: the override test goes red.

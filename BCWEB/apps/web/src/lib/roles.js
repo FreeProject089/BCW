@@ -92,6 +92,18 @@ export function canUseStudio(user, kind, ref, config) {
   const has = (list) => Array.isArray(list) && list.includes(ref);
   return kind === 'project' ? has(g.projectKeys) : (!!g.allShowcase || has(g.showcaseIds) || has(g.showcaseSlugs));
 }
+/**
+ * May this person READ the site's studio library (phase 6/7b: its presets and components)? The
+ * mirror of the server's libraryTarget('site'): manage_studio, or the studio right on some page.
+ * Writing it takes manage_studio (hasStudioCap).
+ */
+export function canReadSiteLibrary(user) {
+  if (!user || accountLocked(user)) return false;
+  if (hasStudioCap(user)) return true;
+  const g = user.studioGrants;
+  const any = (list) => Array.isArray(list) && list.length > 0;
+  return !!g && (!!g.allShowcase || any(g.projectKeys) || any(g.showcaseIds));
+}
 /** A suspension (or ban) that is still running: the server's accountLock('service'). */
 function accountLocked(user) {
   if (!user?.status || user.status === 'active') return false;

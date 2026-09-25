@@ -94,6 +94,8 @@ const DevMarkdown = lazyChunk(() => import('./pages/dev-markdown.jsx'));
 const DevBmd = lazyChunk(() => import('./pages/dev-bmd.jsx'));
 const DevEditor = lazyChunk(() => import('./pages/dev-editor.jsx'));
 const StudioPage = lazyChunk(() => import('./pages/studio.jsx'));
+// Studio phase 7b: the studio on one component definition (pages/studio-component.jsx).
+const StudioComponentPage = lazyChunk(() => import('./pages/studio-component.jsx'));
 // The 404 page carries the Orb Fall canvas game — a whole game, in the entry chunk, for a
 // route almost nobody reaches. Split out it is worth 9 KB gzip, which is what the bundle
 // budget was over by, and it costs a Suspense flash on a page that is already a surprise.
@@ -1906,6 +1908,8 @@ export default function App() {
                   It draws itself over the shell (position: fixed), so it sits inside <main>
                   like every other route without needing a second layout. */}
               <Route path="/studio/:kind/:id/:page?" element={<Protected><StudioPage /></Protected>} />
+              {/* Component mode (phase 7b): the same studio on one component of a library. */}
+              <Route path="/studio/component/:scope/:id" element={<Protected><StudioComponentPage /></Protected>} />
               <Route path="*" element={<NotFound />} />
             </Routes>
             )}

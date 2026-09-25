@@ -15,6 +15,8 @@ import {
   isContainer, innerBox, insideParent, tabLabels, treeIndex, modalBlocks, revealTargets, resolveBlock, paintOrder, readingOrder,
   TAB_STRIP_H,
 } from '../lib/canvas.js';
+// Components (studio phase 7b): an instance is drawn as its component's blocks (expanded).
+import { expandInstances, expandInstance, annotateTree } from '../lib/canvas.js';
 import { Modal } from './ui.jsx';
 import { CanvasActions, ActionCover, useCanvasActions, planAttrs, useFeedback, feedbackText } from './canvas-actions.jsx';
 import CanvasBackground from './canvas-background.jsx';
@@ -253,6 +255,10 @@ export function ScopedCss({ canvas }) {
 
 export function CanvasBlock({ b, stacked, slot = 0 }) {
   const p = b.props || {};
+  // A component instance (phase 7b). The page expands its instances before drawing
+  // (expandInstances, below), so this is the editor's board and the thumbnails, which draw the
+  // stored block: the component's blocks inside the instance's box, from the page's map.
+  if (b.kind === 'instance') return <InstanceBody b={b} stacked={stacked} />;
   // A container draws its own box and, where the page's tree is known (CanvasTree), its
   // children; the editor's board draws only the box and places the children itself.
   if (isContainer(b.kind)) return <ContainerBody b={b} stacked={stacked} slot={slot} />;
@@ -367,6 +373,37 @@ export function CanvasBlock({ b, stacked, slot = 0 }) {
 
 /** The page's tree, for the containers drawn inside it. Absent on the editor's own board. */
 const TreeCtx = createContext(null);
+
+// ── Component instances (studio phase 7b) ─────────────────────────────────────────────────
+/** The page's map of component definitions, for the instances drawn under it unexpanded. */
+const InstanceMapCtx = createContext(null);
+/** Hands the page's component map to the instances drawn under it (the editor, a thumbnail). */
+export function InstanceMap({ components, children }) {
+  return <InstanceMapCtx.Provider value={components || null}>{children}</InstanceMapCtx.Provider>;
+}
+
+/**
+ * One instance drawn in its own box: its expansion (the package's, the same the page gets) as a
+ * little tree of its own, its root at the box's corner. An unknown component, or one past the
+ * depth bound, is an empty dashed box saying so, never a throw.
+ */
+function InstanceBody({ b, stacked }) {
+  const map = useContext(InstanceMapCtx);
+  const drawn = useMemo(() => {
+    const exp = expandInstance(b, map || {}, {});
+    const { parent: _p, slot: _s, ...root } = exp.root;
+    const blocks = annotateTree([{ ...root, x: 0, y: 0 }, ...exp.blocks]);
+    return { error: exp.root.instanceError || '', root: blocks[0], doc: { id: `i-${String(b.id)}`, blocks } };
+  }, [b, map]);
+  if (drawn.error) {
+    return <div data-cv-instance={b.component?.id || ''} data-instance-error={drawn.error} style={{ width: '100%', height: stacked ? 48 : '100%', border: '1px dashed var(--warning)', borderRadius: 8 }} />;
+  }
+  return (
+    <div data-cv-instance={b.component?.id || ''} style={{ position: 'relative', width: '100%', height: stacked ? undefined : '100%' }}>
+      <CanvasTree doc={drawn.doc}><ContainerBody b={drawn.root} stacked={stacked} slot={0} /></CanvasTree>
+    </div>
+  );
+}
 
 /**
  * The tree of a normalised document, for the containers drawn under it. The public page wraps
@@ -584,7 +621,9 @@ function Shown({ b, children }) {
  *        purely a measurement is that an author on a desktop cannot otherwise ever see it.
  */
 export default function CanvasView({ canvas: raw, stackPreview = false, themePreview = null, actionsPreview = false }) {
-  const canvas = normalizeDoc(raw);
+  // The stored document, then (below, once the layout is known) its component instances
+  // expanded for that layout (phase 7b): a reader never meets an `instance` block.
+  const norm = normalizeDoc(raw);
   const hostRef = useRef(null);
   const [vw, setVw] = useState(DESIGN_WIDTH);
 
@@ -619,7 +658,8 @@ export default function CanvasView({ canvas: raw, stackPreview = false, themePre
   // `themePreview` lets the editor show the other theme without changing the whole site's.
   const mode = themePreview || theme;
 
-  const L = stackPreview ? { mode: 'stack' } : layoutFor(vw, canvas);
+  const L = stackPreview ? { mode: 'stack' } : layoutFor(vw, norm);
+  const canvas = expandInstances(norm, { mode: L.mode === 'phone' ? 'phone' : L.mode === 'stack' ? 'stack' : 'desktop' });
   // The page background (closed, PLAN-STUDIO-2026 2.4), painted by canvas-background.jsx. Every
   // kind is drawn in the FRAME, under the blocks, except `board`, whose whole point is to go on
   // past the page's edges: that one is the root's own background, the container's full width.

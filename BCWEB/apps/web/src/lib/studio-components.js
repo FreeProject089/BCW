@@ -9,7 +9,10 @@
 // copy produces carries `component: { id, inst }` — the component it came from and the
 // particular copy — which is what lets "update every instance" find the copies later and
 // "detach" forget one of them.
-import { boundsOf, GRID, DESIGN_WIDTH, BOUND, normalizeDoc, serializeDoc, CANVAS_PRESETS, presetBlocks } from './canvas.js';
+import {
+  boundsOf, GRID, DESIGN_WIDTH, BOUND, normalizeDoc, serializeDoc, CANVAS_PRESETS, presetBlocks,
+  snapshotOf, newInstance, defaultExposed,
+} from './canvas.js';
 
 /** Hard limits, shared with the API's validation (lib/studio-components.mjs there). */
 export const COMPONENT_LIMITS = { count: 60, blocks: 40, name: 60 };
@@ -31,17 +34,36 @@ function stripIdentity(b) {
 export function componentFromBlocks(name, blocks, uid = fallbackUid) {
   const list = (Array.isArray(blocks) ? blocks : []).filter(Boolean).slice(0, COMPONENT_LIMITS.blocks);
   if (!list.length) return null;
-  const bb = boundsOf(list);
-  const zs = list.map((b) => Number(b.z) || 0);
+  // Phase 7b: a container comes with what it holds. `blocks` is then the selection AND
+  // everything inside it; a block whose container is in the list keeps its link (and its
+  // coordinates, relative to that container), so the component keeps the block ids it needs to
+  // say which container is which. A flat selection stores no ids, as before.
+  const ids = new Set(list.map((b) => b.id));
+  const inside = (b) => !!b.parent && ids.has(b.parent);
+  const nested = list.some(inside);
+  const roots = list.filter((b) => !inside(b));
+  const bb = boundsOf(roots);
+  const zs = roots.map((b) => Number(b.z) || 0);
   const zMin = Math.min(...zs);
   return {
     id: `cmp${uid().slice(1)}`,
     name: String(name || '').trim().slice(0, COMPONENT_LIMITS.name) || 'Component',
     w: bb.w,
     h: bb.h,
-    blocks: list.map((b) => ({ ...stripIdentity(b), x: b.x - bb.x, y: b.y - bb.y, z: (Number(b.z) || 0) - zMin })),
+    blocks: list.map((b) => {
+      if (inside(b)) { const { component: _c, treeError: _t, ...rest } = b; return rest; }
+      const { parent: _p, slot: _s, treeError: _t, ...rest } = stripIdentity(b);
+      return { ...rest, ...(nested ? { id: b.id } : {}), x: b.x - bb.x, y: b.y - bb.y, z: (Number(b.z) || 0) - zMin };
+    }),
     createdAt: new Date().toISOString(),
   };
+}
+
+/** Fresh ids for a copy of blocks that may hold containers: `{ ids, parentOf }`. */
+function remapIds(blocks, uid) {
+  const map = new Map();
+  for (const b of blocks) if (b.id) map.set(b.id, uid());
+  return map;
 }
 
 /**
@@ -57,14 +79,19 @@ export function instantiateComponent(comp, at = { x: 64, y: 64 }, zBase = 0, uid
   void boardWidth;
   const x0 = Math.max(-BOUND, Math.min(Number(at.x) || 0, BOUND - (comp.w || GRID)));
   const y0 = Math.max(-BOUND, Math.min(Number(at.y) || 0, BOUND - (comp.h || GRID)));
-  return comp.blocks.map((b) => ({
-    ...b,
-    id: uid(),
-    x: x0 + (Number(b.x) || 0),
-    y: y0 + (Number(b.y) || 0),
-    z: zBase + (Number(b.z) || 0),
-    component: { id: comp.id, inst },
-  }));
+  // A block inside a container of the component keeps its link, pointed at the copy's container
+  // (phase 7b), and its coordinates, which are relative to it.
+  const fresh = remapIds(comp.blocks, uid);
+  return comp.blocks.map((b) => {
+    const inner = b.parent && fresh.has(b.parent);
+    return {
+      ...b,
+      id: (b.id && fresh.get(b.id)) || uid(),
+      ...(inner ? { parent: fresh.get(b.parent) } : { x: x0 + (Number(b.x) || 0), y: y0 + (Number(b.y) || 0) }),
+      z: inner ? (Number(b.z) || 0) : zBase + (Number(b.z) || 0),
+      component: { id: comp.id, inst },
+    };
+  });
 }
 
 /** Forget the component link on the given blocks — they become ordinary blocks. */
@@ -105,9 +132,15 @@ export function updateInstances(blocks, comp, uid = fallbackUid) {
   const out = blocks.filter((b) => !(b.component && b.component.id === comp.id));
   let zBase = out.reduce((m, b) => Math.max(m, Number(b.z) || 0), -1) + 1;
   for (const [inst, old] of groups) {
-    const bb = boundsOf(old);
+    // The copy's corner: its blocks that are not inside one of its own containers.
+    const oldIds = new Set(old.map((b) => b.id));
+    const bb = boundsOf(old.filter((b) => !(b.parent && oldIds.has(b.parent))));
+    const fresh = remapIds(comp.blocks, uid);
     for (const b of comp.blocks) {
-      out.push({ ...b, id: uid(), x: bb.x + (Number(b.x) || 0), y: bb.y + (Number(b.y) || 0), z: zBase + (Number(b.z) || 0), component: { id: comp.id, inst } });
+      const inner = b.parent && fresh.has(b.parent);
+      out.push({ ...b, id: (b.id && fresh.get(b.id)) || uid(),
+        ...(inner ? { parent: fresh.get(b.parent), z: Number(b.z) || 0 } : { x: bb.x + (Number(b.x) || 0), y: bb.y + (Number(b.y) || 0), z: zBase + (Number(b.z) || 0) }),
+        component: { id: comp.id, inst } });
     }
     zBase += comp.blocks.length;
   }
@@ -210,14 +243,16 @@ export function normalizeLibrary(raw, scope) {
     if (!e || typeof e !== 'object' || typeof e.id !== 'string' || seen.has(e.id)) continue;
     if (!PRESET_SORTS.includes(e.sort) || !e.doc || typeof e.doc !== 'object') continue;
     seen.add(e.id);
-    out.push({ id: e.id, name: String(e.name || '').slice(0, LIBRARY_LIMITS.name) || 'Preset', sort: e.sort, doc: e.doc, createdAt: typeof e.createdAt === 'string' ? e.createdAt : '', scope });
+    out.push({ id: e.id, name: String(e.name || '').slice(0, LIBRARY_LIMITS.name) || 'Preset', sort: e.sort, doc: e.doc, createdAt: typeof e.createdAt === 'string' ? e.createdAt : '', scope,
+      ...(e.sort === 'component' && Array.isArray(e.exposed) ? { exposed: e.exposed } : {}) });
     if (out.length >= LIBRARY_LIMITS.entries) break;
   }
   return out;
 }
 
 /** An entry as the API stores it (the gallery's `scope` and `coded` left out). */
-export const storedEntry = (e) => ({ id: e.id, name: e.name, sort: e.sort, doc: e.doc, ...(e.createdAt ? { createdAt: e.createdAt } : {}) });
+export const storedEntry = (e) => ({ id: e.id, name: e.name, sort: e.sort, doc: e.doc, ...(e.createdAt ? { createdAt: e.createdAt } : {}),
+  ...(e.sort === 'component' && Array.isArray(e.exposed) ? { exposed: e.exposed } : {}) });
 
 /**
  * A new preset from what the author has in front of them:
@@ -226,7 +261,7 @@ export const storedEntry = (e) => ({ id: e.id, name: e.name, sort: e.sort, doc: 
  *   background            `background`
  * Null when there is nothing to keep or no name.
  */
-export function presetEntry({ name, sort, canvas = null, blocks = [], background = null }, uid = presetUid) {
+export function presetEntry({ name, sort, canvas = null, blocks = [], background = null, components = null }, uid = presetUid) {
   const label = String(name || '').trim().slice(0, LIBRARY_LIMITS.name);
   if (!label || !PRESET_SORTS.includes(sort)) return null;
   const id = uid();
@@ -236,15 +271,38 @@ export function presetEntry({ name, sort, canvas = null, blocks = [], background
   else {
     const list = (Array.isArray(blocks) ? blocks : []).filter(Boolean).slice(0, sort === 'component' ? COMPONENT_LIMITS.blocks : 500);
     if (!list.length) return null;
-    const bb = boundsOf(list);
-    const moved = list.map((b, i) => {
+    // Phase 7b: containers come with what they hold (`blocks` = the selection and everything
+    // inside it); a block inside a listed container keeps its link and relative place.
+    const ids = new Map(list.map((b, i) => [b.id, `b${i}`]));
+    const inside = (b) => !!b.parent && ids.has(b.parent);
+    const bb = boundsOf(list.filter((b) => !inside(b)));
+    const moved = list.map((b) => {
       // eslint-disable-next-line no-unused-vars
-      const { component, ...rest } = b;
-      return { ...rest, id: `b${i}`, x: b.x - bb.x, y: b.y - bb.y };
+      const { component, parent, slot, treeError, ...rest } = b;
+      // An instance keeps its link: a section or a component may hold copies of components.
+      const tag = b.kind === 'instance' && component ? { component } : {};
+      return inside(b)
+        ? { ...rest, ...tag, id: ids.get(b.id), parent: ids.get(parent), ...(slot ? { slot } : {}) }
+        : { ...rest, ...tag, id: ids.get(b.id), x: b.x - bb.x, y: b.y - bb.y };
     });
-    doc = storedDoc(id, { blocks: moved });
+    // v2: the blocks are where they were drawn (a v1 document would be snapped to the grid).
+    doc = storedDoc(id, { v: 2, blocks: moved, ...(components ? { components } : {}) });
   }
-  return { id, name: label, sort, doc, createdAt: new Date().toISOString() };
+  const exposed = sort === 'component' ? defaultExposed(doc.blocks) : null;
+  return { id, name: label, sort, doc, createdAt: new Date().toISOString(), ...(exposed ? { exposed } : {}) };
+}
+
+/**
+ * A linked copy of a COMPONENT from a library (phase 7b): the instance block to put on the page
+ * at `at`, above `zBase`, and what the page's map needs: the definition (`snap`) and the ones it
+ * uses (`deps`). `scope` / `ref` say which library it came from, so "update the copies" and
+ * "edit the definition" know where to look.
+ */
+export function instanceFromEntry(entry, at, zBase, uid, scope, ref = '') {
+  if (!entry || !entry.doc) return null;
+  const snap = snapshotOf(entry, scope, ref);
+  const deps = entry.doc.components && typeof entry.doc.components === 'object' ? entry.doc.components : null;
+  return { block: newInstance(entry.id, at, zBase, uid), snap, deps };
 }
 
 /** A NEW page from a page preset: the preset's document with this page's id and title. */

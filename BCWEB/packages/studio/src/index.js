@@ -13,3 +13,4 @@ export * from './actions.js';
 export * from './patterns.js';
 export * from './scene.js';
 export * from './tree.js';
+export * from './components.js';

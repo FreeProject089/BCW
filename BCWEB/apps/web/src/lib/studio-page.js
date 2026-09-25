@@ -32,6 +32,35 @@ export function studioPath(kind, id, page) {
   return `${base}/${Math.max(0, Number(page) || 0)}`;
 }
 
+// ── Component mode (PLAN-STUDIO-2026 phase 7b) ─────────────────────────────────────────
+// `/studio/component/:scope/:id`: the studio on ONE component definition of a library. The
+// scope segment names the library: `site`, `project.<key>` or `showcase.<id>` (a project key
+// and a showcase id are names, so the dot cannot be part of either).
+const COMPONENT_SEG = /^(site|project\.[a-z][a-z0-9-]{1,30}|showcase\.[A-Za-z0-9_-]{1,60})$/;
+
+/** The component mode address of component `cid` in library (`scope`, `ref`). */
+export function componentPath(scope, ref, cid) {
+  const seg = scope === 'site' ? 'site' : `${scope === 'showcase' ? 'showcase' : 'project'}.${ref}`;
+  return `/studio/component/${encodeURIComponent(seg)}/${encodeURIComponent(String(cid))}`;
+}
+
+/** The component mode parameters: `{ scope, ref, cid }`, or null when they name nothing. */
+export function parseComponentParams(params = {}) {
+  const seg = typeof params.scope === 'string' ? params.scope : '';
+  const cid = typeof params.id === 'string' ? params.id : '';
+  if (!COMPONENT_SEG.test(seg) || !PAGE_REF.test(cid)) return null;
+  if (seg === 'site') return { scope: 'site', ref: '', cid };
+  const dot = seg.indexOf('.');
+  return { scope: seg.slice(0, dot), ref: seg.slice(dot + 1), cid };
+}
+
+/** Where component mode's Back goes: the studio page it was opened from, else the admin. A
+ *  studio address only (never another site, never `//host`): the value comes from the URL. */
+export function componentBack(from) {
+  const f = typeof from === 'string' ? from : '';
+  return /^\/studio\/(project|showcase)\/[A-Za-z0-9_%.-]+(\/[A-Za-z0-9_%-]+)?$/.test(f) ? f : '/admin';
+}
+
 /**
  * The URL parameters, made sense of. `page` is the raw last segment (a page id, or the digits
  * of an old index link), `index` its number when it is only digits, both null when the route
