@@ -1684,6 +1684,7 @@ function useRouteScroll() {
 
 export default function App() {
   const loc = useLocation();
+  const onStudio = /^\/studio(\/|$)/.test(loc.pathname);
   useRouteScroll();
   const toast = useToast();
   const { t, lang } = useI18n();
@@ -1799,7 +1800,9 @@ export default function App() {
             every other failure mode is handled inside Hero3D with a still drawing of the scene. */}
         {/* A page that brings its own 3D background (a studio page, PLAN-STUDIO-2026 2.4) takes
             the backdrop's place while it is shown: a page has one scene and one WebGL context. */}
-        {!getHero3dDisabled() && !pageScene && <ErrorBoundary fallback={null}><Suspense fallback={null}><Hero3D /></Suspense></ErrorBoundary>}
+        {/* Not in the studio: it draws over the whole shell, so the backdrop is never seen there,
+            and the first-visit intro (z-999) covered the studio's own panels. */}
+        {!getHero3dDisabled() && !pageScene && !onStudio && <ErrorBoundary fallback={null}><Suspense fallback={null}><Hero3D /></Suspense></ErrorBoundary>}
         <AppReveal>
           <PromoBadge />
           <EventEffect />
@@ -1814,7 +1817,9 @@ export default function App() {
           <LegalReaccept />
           {/* One-time, and it answers the cookie question itself — so it replaces the
               banner rather than stacking a second prompt on top of it. */}
-          <WelcomePrefs />
+          {/* Not over the studio either (z-100 over its bottom tabs at 768 px): the welcome waits
+              for the next ordinary page; the cookie banner still answers consent meanwhile. */}
+          {!onStudio && <WelcomePrefs />}
           <main ref={mainRef} id="main-content" tabIndex={-1}
             className={`relative z-10 flex-1 w-full mx-auto px-4 py-10 anim-fade ${/^\/docs(\/|$)/.test(loc.pathname) ? 'max-w-[84rem]' : 'max-w-6xl'}`}>
             <Suspense fallback={<div className="flex justify-center py-20 text-[var(--muted)]"><span className="anim-fade">…</span></div>}>
