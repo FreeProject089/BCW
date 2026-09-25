@@ -59,6 +59,18 @@ cd "$REPO_DIR"
 command -v docker >/dev/null || die "docker not found"
 [ -f "$COMPOSE_DIR/docker-compose.yml" ] || die "no compose file at $COMPOSE_DIR"
 
+# A server's own additions (an extra_hosts entry, a local volume, a port) live in
+# docker-compose.override.yml next to the compose file: untracked and gitignored, so they
+# survive every pull and never make the tree dirty. With an explicit -f, compose does NOT read
+# the override by itself, so it is named here whenever it exists.
+dc() {
+  if [ -f "$COMPOSE_DIR/docker-compose.override.yml" ]; then
+    docker compose -f "$COMPOSE_DIR/docker-compose.yml" -f "$COMPOSE_DIR/docker-compose.override.yml" "$@"
+  else
+    docker compose -f "$COMPOSE_DIR/docker-compose.yml" "$@"
+  fi
+}
+
 # The commit to come back to, resolved BEFORE anything moves. If the working tree is dirty
 # the deploy stops: rolling back with `git reset --hard` would take uncommitted work with it,
 # and a deploy script is not the place to discover that.
@@ -96,10 +108,10 @@ fi
 # Build BEFORE up, as its own step: a compile error should fail here with the running site
 # untouched, rather than half way through replacing containers.
 say "Building"
-run docker compose -f "$COMPOSE_DIR/docker-compose.yml" build || die "build failed — nothing was replaced, the site is still up on the old version"
+run dc build || die "build failed — nothing was replaced, the site is still up on the old version"
 
 say "Starting"
-run docker compose -f "$COMPOSE_DIR/docker-compose.yml" up -d
+run dc up -d
 
 # ── 4. Wait for it to actually work ─────────────────────────────────────────
 # /ready is 503 until the API can query the database, so this waits for the thing that
@@ -154,7 +166,7 @@ fi
 warn "never became ready within ${READY_TIMEOUT}s"
 echo
 echo "Last 40 lines from the API:"
-docker compose -f "$COMPOSE_DIR/docker-compose.yml" logs --tail=40 api || true
+dc logs --tail=40 api || true
 echo
 
 if [ "$DO_ROLLBACK" = 0 ]; then
@@ -168,8 +180,8 @@ fi
 
 say "Rolling the CODE back to $(git rev-parse --short "$BEFORE")"
 git reset --hard "$BEFORE"
-docker compose -f "$COMPOSE_DIR/docker-compose.yml" build
-docker compose -f "$COMPOSE_DIR/docker-compose.yml" up -d
+dc build
+dc up -d
 
 if wait_ready; then
   printf '\033[1;32m✓ rolled back and ready\033[0m\n'

@@ -211,13 +211,49 @@ finishes in-flight requests, then closes its DB/Redis handles before exiting (10
 budget) — a rebuild never hard-drops a live request. With 2+ replicas (next section)
 the rollout is effectively invisible to users.
 
-### Why there is no GitHub deploy
+### From GitHub (CD)
 
-CI (`.github/workflows/ci.yml`) **checks** — build, tests, migration drift, secret scan — and
-deliberately does not deploy. Automatic deployment would mean an SSH key or registry
-credentials living in GitHub's secrets, which is a new way in to your server, in exchange for
-saving one command. That trade is worth it when several people push or there is a staging
-environment. Until then this script is the better shape.
+`.github/workflows/deploy.yml` deploys the tip of `master` to the VPS. The trade the paragraph
+that used to stand here worried about (a key in GitHub's secrets is a new way in) is paid down
+by what that key is allowed to do: **one forced command**.
+
+- **The key.** A dedicated ed25519 key, in `~/.ssh/authorized_keys` of the deploy user as
+  `restrict,command="/srv/BetterCommunity/deploy-gate.sh" ssh-ed25519 AAAA… bcweb-deploy@github-actions`.
+  `restrict` disables the pty and every forwarding; `command=` makes sshd run the gate whatever
+  the client asks. A stolen key gets no shell, no file copy, no tunnel to the database.
+- **The gate** (`infra/deploy-gate.sh`, installed OUTSIDE the repository with
+  `install -m 0755 BCWEB/infra/deploy-gate.sh /srv/BetterCommunity/deploy-gate.sh`, so a commit
+  cannot rewrite the gate that deploys it) accepts only `status` and
+  `deploy <40-hex sha> [--dry-run]`, and the sha must be the current tip of `origin/master`,
+  fetched by the server. It refuses a dirty checkout, takes a lock (one deploy at a time), runs
+  `infra/deploy.sh` (backup, pull, build, wait for `/ready`, roll the code back if it never comes
+  up) and logs to `/srv/BetterCommunity/deploy-logs/`.
+- **The kill switch.** While `/srv/BetterCommunity/deploy-gate.disabled` exists, every deploy is
+  refused (`status` still answers). `touch` it to stop CD at once, `rm` it to allow deploys.
+- **Triggers.** By hand: Actions > *BCWEB deploy (production)* > Run workflow on `master`, with a
+  dry-run box. Automatically after a green *BCWEB CI* on a push to `master`, only when the
+  repository variable `CD_AUTO_DEPLOY` is exactly `true`. Both go through the GitHub environment
+  `production`: add required reviewers there to make every deploy wait for your approval.
+- **Configuration** (Settings > Secrets and variables > Actions): secret `DEPLOY_SSH_KEY` (the
+  private key); variables `DEPLOY_HOST`, `DEPLOY_PORT`, `DEPLOY_USER`, `DEPLOY_KNOWN_HOSTS` (the
+  server's host key line, required: no trust-on-first-use) and optionally `CD_AUTO_DEPLOY`.
+
+**Server-local changes** must not live in tracked files, or the gate (and `deploy.sh`) refuses
+to deploy: compose additions go in `infra/compose/docker-compose.override.yml` (gitignored;
+`deploy.sh` and a plain `docker compose` both read it), other sites in
+`infra/caddy/sites.d/<name>.caddy` (gitignored, imported by the Caddyfile).
+
+**Test it without deploying**: `ssh -i <deploy key> -p <port> <user>@<host> status`, or run the
+workflow with *dry run* ticked (the gate still checks the sha and the tree, then
+`deploy.sh --dry-run` prints every step and changes nothing).
+
+**The first deploy after September 2026** is a migration and is done by hand, kill switch on:
+move the server's local edits (the `bettervault` site block into `caddy/sites.d/`, `extra_hosts`
+into the override file) and `git checkout` the two tracked files; update `.env`
+(`BOT_SHARED_SECRET`, an `S3_SECRET_KEY` of 24+ characters, `S3_CORS_ALLOW_ORIGIN` replacing
+`MINIO_API_CORS_ALLOW_ORIGIN`, `DOMAIN_ASK_KEY`; `node infra/check-env-spec.mjs` lists what is
+missing); follow *Moving off MinIO* for the storage; then `infra/deploy.sh`. Remove the kill
+switch only once that deploy is green.
 
 ## 10. Backups
 

@@ -215,14 +215,57 @@ il capte le `SIGTERM`, termine les requêtes en cours, puis ferme ses connexions
 de quitter (budget de 10 s) — un rebuild ne coupe jamais une requête en vol. Avec 2+ réplicas
 (section suivante), le déploiement est invisible pour les utilisateurs.
 
-### Pourquoi il n'y a pas de déploiement GitHub
+### Depuis GitHub (CD)
 
-La CI (`.github/workflows/ci.yml`) **vérifie** — build, tests, dérive des migrations, scan de
-secrets — et ne déploie délibérément pas. Un déploiement automatique voudrait dire une clé SSH
-ou des identifiants de registre dans les secrets GitHub, soit une nouvelle porte vers ton
-serveur, en échange d'une commande économisée. Ce compromis devient intéressant quand
-plusieurs personnes poussent ou qu'il existe une préproduction. D'ici là, ce script est la
-bonne forme.
+`.github/workflows/deploy.yml` déploie la pointe de `master` sur le VPS. Le compromis que
+redoutait le paragraphe qui se trouvait ici (une clé dans les secrets GitHub est une nouvelle
+porte) est réglé par ce que cette clé a le droit de faire : **une seule commande imposée**.
+
+- **La clé.** Une clé ed25519 dédiée, dans `~/.ssh/authorized_keys` de l'utilisateur de
+  déploiement sous la forme
+  `restrict,command="/srv/BetterCommunity/deploy-gate.sh" ssh-ed25519 AAAA… bcweb-deploy@github-actions`.
+  `restrict` coupe le terminal et toute redirection ; `command=` fait exécuter la porte par sshd,
+  quoi que le client demande. Une clé volée ne donne ni shell, ni copie de fichier, ni tunnel
+  vers la base.
+- **La porte** (`infra/deploy-gate.sh`, installée HORS du dépôt avec
+  `install -m 0755 BCWEB/infra/deploy-gate.sh /srv/BetterCommunity/deploy-gate.sh`, pour qu'un
+  commit ne puisse pas réécrire la porte qui le déploie) n'accepte que `status` et
+  `deploy <sha de 40 caractères> [--dry-run]`, et le sha doit être la pointe actuelle de
+  `origin/master`, récupérée par le serveur lui-même. Elle refuse un dépôt modifié, prend un
+  verrou (un déploiement à la fois), lance `infra/deploy.sh` (sauvegarde, pull, build, attente
+  de `/ready`, retour du code en arrière s'il ne démarre pas) et journalise dans
+  `/srv/BetterCommunity/deploy-logs/`.
+- **L'interrupteur.** Tant que `/srv/BetterCommunity/deploy-gate.disabled` existe, tout
+  déploiement est refusé (`status` répond toujours). `touch` pour couper le CD tout de suite,
+  `rm` pour le rouvrir.
+- **Déclenchement.** À la main : Actions > *BCWEB deploy (production)* > Run workflow sur
+  `master`, avec une case « dry run ». Automatiquement après une *BCWEB CI* verte sur un push
+  vers `master`, seulement si la variable du dépôt `CD_AUTO_DEPLOY` vaut exactement `true`. Les
+  deux passent par l'environnement GitHub `production` : ajoute-y des relecteurs obligatoires
+  pour que chaque déploiement attende ton accord.
+- **Configuration** (Settings > Secrets and variables > Actions) : secret `DEPLOY_SSH_KEY` (la
+  clé privée) ; variables `DEPLOY_HOST`, `DEPLOY_PORT`, `DEPLOY_USER`, `DEPLOY_KNOWN_HOSTS` (la
+  ligne de clé d'hôte du serveur, obligatoire : pas de confiance au premier contact) et, au
+  choix, `CD_AUTO_DEPLOY`.
+
+**Les modifications locales du serveur** ne doivent pas vivre dans des fichiers suivis, sinon
+la porte (et `deploy.sh`) refuse de déployer : les ajouts compose vont dans
+`infra/compose/docker-compose.override.yml` (ignoré par git ; `deploy.sh` et un simple
+`docker compose` le lisent), les autres sites dans `infra/caddy/sites.d/<nom>.caddy` (ignoré,
+importé par le Caddyfile).
+
+**Tester sans déployer** : `ssh -i <clé de déploiement> -p <port> <user>@<hôte> status`, ou
+lancer le workflow avec *dry run* coché (la porte vérifie quand même le sha et le dépôt, puis
+`deploy.sh --dry-run` affiche chaque étape sans rien changer).
+
+**Le premier déploiement après septembre 2026** est une migration et se fait à la main,
+interrupteur en place : déplacer les modifications locales du serveur (le bloc du site
+`bettervault` dans `caddy/sites.d/`, `extra_hosts` dans le fichier override) puis
+`git checkout` des deux fichiers suivis ; mettre `.env` à jour (`BOT_SHARED_SECRET`, un
+`S3_SECRET_KEY` d'au moins 24 caractères, `S3_CORS_ALLOW_ORIGIN` à la place de
+`MINIO_API_CORS_ALLOW_ORIGIN`, `DOMAIN_ASK_KEY` ; `node infra/check-env-spec.mjs` liste ce qui
+manque) ; suivre *Quitter MinIO* pour le stockage ; puis `infra/deploy.sh`. Ne retirer
+l'interrupteur qu'une fois ce déploiement vert.
 
 ## 10. Sauvegardes
 

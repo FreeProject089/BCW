@@ -38,3 +38,7 @@ apps/web/public/*.bmmreplay
 
 *.bmmreplay
 .claude/
+
+# A server's own compose additions (extra_hosts, a local volume): read by infra/deploy.sh,
+# never committed, so a pull never makes the tree dirty.
+BCWEB/infra/compose/docker-compose.override.yml

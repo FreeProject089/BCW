@@ -1,0 +1,121 @@
+name: BCWEB deploy (production)
+
+# Deploys the tip of master to the production VPS through ONE forced SSH command.
+#
+# The key in DEPLOY_SSH_KEY can do nothing on the server except run BCWEB/infra/deploy-gate.sh
+# (installed outside the repository, pinned in authorized_keys with `restrict,command=`). The
+# gate only accepts `status` and `deploy <sha>` where <sha> is the current tip of
+# origin/master, fetched by the server itself; it then runs infra/deploy.sh (backup, pull,
+# build, wait for /ready, roll the code back if it never comes up). A server-side kill switch
+# (/srv/BetterCommunity/deploy-gate.disabled) refuses every deploy while it exists.
+#
+# Triggers:
+#   - by hand: Actions > "BCWEB deploy (production)" > Run workflow, on master (dry run
+#     available);
+#   - automatically after a green "BCWEB CI" on master, ONLY if the repository variable
+#     CD_AUTO_DEPLOY is exactly `true`.
+# Both go through the `production` environment: add required reviewers there to make every
+# deploy wait for an approval (Settings > Environments > production).
+#
+# Configuration (Settings > Secrets and variables > Actions):
+#   secret   DEPLOY_SSH_KEY       the private deploy key (ed25519, no passphrase)
+#   variable DEPLOY_HOST          45.145.164.20
+#   variable DEPLOY_PORT          2222
+#   variable DEPLOY_USER          freeproject
+#   variable DEPLOY_KNOWN_HOSTS   the server's host key line(s), e.g.
+#                                 "[45.145.164.20]:2222 ssh-ed25519 AAAA…"; REQUIRED: there is no
+#                                 trust-on-first-use here, a missing value fails the job
+#   variable CD_AUTO_DEPLOY       `true` to deploy after every green CI on master (default: off)
+# See BCWEB/guides/run/DEPLOY_EN.md, section 9, "From GitHub (CD)".
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run: print what deploy.sh would do, change nothing'
+        type: boolean
+        default: false
+  workflow_run:
+    workflows: ['BCWEB CI']
+    types: [completed]
+    branches: [master]
+
+permissions: {}
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master') ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       vars.CD_AUTO_DEPLOY == 'true')
+    runs-on: ubuntu-24.04
+    environment: production
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+      DEPLOY_PORT: ${{ vars.DEPLOY_PORT }}
+      DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+      DEPLOY_KNOWN_HOSTS: ${{ vars.DEPLOY_KNOWN_HOSTS }}
+      # The commit that CI checked (workflow_run) or the one this run was started on (dispatch).
+      # The gate refuses it unless it is still the tip of origin/master when the deploy starts.
+      SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+      DRY: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && '--dry-run' || '' }}
+    steps:
+      - name: Check configuration
+        run: |
+          missing=""
+          for v in DEPLOY_HOST DEPLOY_PORT DEPLOY_USER DEPLOY_KNOWN_HOSTS; do
+            eval "val=\${$v}"
+            [ -n "$val" ] || missing="$missing $v"
+          done
+          [ -n "$missing" ] && { echo "::error::missing repository variable(s):$missing"; exit 1; }
+          case "$SHA" in *[!0-9a-f]*|'') echo "::error::bad commit sha"; exit 1 ;; esac
+          echo "deploying $SHA ${DRY:-} to $DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PORT"
+
+      - name: Install the deploy key
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          [ -n "$DEPLOY_SSH_KEY" ] || { echo "::error::secret DEPLOY_SSH_KEY is not set"; exit 1; }
+          install -d -m 700 ~/.ssh
+          umask 077
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Deploy
+        id: deploy
+        run: |
+          set -o pipefail
+          ssh -i ~/.ssh/deploy_key -p "$DEPLOY_PORT" \
+            -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$HOME/.ssh/known_hosts \
+            -o BatchMode=yes -o ConnectTimeout=20 -o ServerAliveInterval=30 \
+            "$DEPLOY_USER@$DEPLOY_HOST" "deploy $SHA $DRY" 2>&1 | tee deploy.log
+
+      - name: Server status after the deploy
+        if: always() && steps.deploy.outcome != 'skipped'
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "$DEPLOY_PORT" \
+            -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$HOME/.ssh/known_hosts \
+            -o BatchMode=yes -o ConnectTimeout=20 \
+            "$DEPLOY_USER@$DEPLOY_HOST" status 2>&1 | tee -a deploy.log || true
+
+      - name: Remove the key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
+
+      - name: Keep the deploy log
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: deploy-log-${{ github.run_id }}
+          path: deploy.log
+          if-no-files-found: ignore
+          retention-days: 90
