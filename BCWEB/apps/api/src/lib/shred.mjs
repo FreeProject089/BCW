@@ -93,7 +93,10 @@ export function seal(key, plaintext, userId) {
 export function open(key, envelope) {
     const e = typeof envelope === 'string' ? JSON.parse(envelope) : envelope;
     if (e?.shred !== SHRED_VERSION) throw new Error('not a shredded envelope');
-    const d = crypto.createDecipheriv(ALG, key, Buffer.from(e.iv, 'base64'));
+    // authTagLength pins the tag to the 16 bytes seal() writes. Without it Node accepts a tag
+    // as short as 4 bytes, so whoever can edit an envelope could forge one by trying 2^32 tags
+    // instead of 2^128 (semgrep gcm-no-tag-length, fixed 2026-09-25).
+    const d = crypto.createDecipheriv(ALG, key, Buffer.from(e.iv, 'base64'), { authTagLength: 16 });
     d.setAuthTag(Buffer.from(e.tag, 'base64'));
     // GCM: `final()` is what verifies the tag, so a tampered payload throws here rather
     // than returning plausible-looking garbage.

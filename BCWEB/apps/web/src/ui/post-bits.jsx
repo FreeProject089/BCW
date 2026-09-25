@@ -45,7 +45,7 @@ export function useSectionCommentPills(rootRef, sectionComments, onOpen, deps) {
         let h; try { h = root.querySelector(`#${CSS.escape(slug)}`); } catch { continue; }
         if (!h || h.querySelector('.section-comment-pill')) continue;
         const btn = document.createElement('button');
-        btn.type = 'button'; btn.className = 'section-comment-pill'; btn.innerHTML = `💬 ${n}`;
+        btn.type = 'button'; btn.className = 'section-comment-pill'; btn.textContent = `💬 ${n}`; // text, not HTML: nothing here is markup
         btn.title = `${n} comment${n > 1 ? 's' : ''} pinned here — open`;
         btn.style.cssText = 'margin-left:8px;font-size:11px;font-weight:600;vertical-align:middle;padding:1px 8px;border-radius:999px;border:1px solid var(--line);background:var(--surface-2);color:var(--primary-2);cursor:pointer;opacity:.5;transition:opacity .15s,border-color .15s';
         btn.addEventListener('mouseenter', () => { btn.style.opacity = '1'; btn.style.borderColor = 'var(--primary)'; });

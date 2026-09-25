@@ -1,0 +1,385 @@
+name: BCWEB DAST
+
+# Dynamic testing of a RUNNING BCWEB with OWASP ZAP and Nuclei, no AI. The static half
+# (secrets, SAST, dependencies, images) is .github/workflows/security.yml; the gate, its
+# thresholds and every command below are explained in BCWEB/guides/run/SECURITY_CI_EN.md.
+#
+# Two targets, and production is neither:
+#   local    (default) an instance started INSIDE this job: Postgres service, the checked-in
+#            migrations, the demo seed, the API as `node src/server.mjs` with NODE_ENV=production
+#            and dummy secrets generated for this run, the built web served by nginx with the
+#            repository's nginx.conf, and the repository's REAL Caddyfile in front — so the
+#            headers, CSP and edge rules ZAP judges are the ones production sends. No bot, no
+#            Stripe, no Discord, no mail, no object storage (their variables are left unset and
+#            the API runs without them). Nothing is published on the runner: the scanners join
+#            the edge container's network and scan http://localhost.
+#   staging  the URL in the repository variable DAST_STAGING_URL, only on a manual run (target:
+#            staging) or the weekly schedule, and only if its host is in DAST_ALLOWED_HOSTS.
+#
+# Production can not be scanned, three times over, all BEFORE the first request:
+#   1. .github/scripts/dast-scope.mjs refuses bettercommunity.ch and every subdomain, the
+#      production VPS 45.145.164.20 (literally, or as what any target resolves to), anything in
+#      DAST_DENY_HOSTS, and in local mode anything but localhost. Hard-coded: no variable can
+#      switch it off. It fails the job (tested in .github/scripts/dast-scope.test.mjs).
+#   2. the runner's firewall REJECTS every packet to 45.145.164.20 and to the addresses
+#      bettercommunity.ch resolves to at the start of the job (host and containers);
+#   3. the scanner containers resolve those names to a dead loopback address.
+#
+# Non-destructive by default: ZAP baseline = passive rules + the traditional and AJAX spiders,
+# no attack payload. The ACTIVE scan (zap-full-scan.py) runs only when somebody starts this
+# workflow by hand with zap_mode=full, and only against the CI-local instance — on staging it
+# is refused unless the repository variable DAST_ALLOW_ACTIVE_STAGING is `true`. Nuclei runs
+# http templates only, without the dos / fuzz / intrusive / bruteforce / default-login tags,
+# without out-of-band callbacks, without following redirects, at a bounded rate.
+#
+# Measured on the CI-local instance (2026-09-25, on a workstation): ZAP baseline + AJAX spider
+# 2m50s, Nuclei 2m45s. With the installs and the build this should stay near ten minutes, so it
+# also runs on pull requests that touch what it tests. The GitHub-hosted time was not measured.
+
+on:
+  pull_request:
+    paths:
+      - 'BCWEB/apps/api/**'
+      - 'BCWEB/apps/web/**'
+      - 'BCWEB/packages/**'
+      - 'BCWEB/infra/caddy/**'
+      - '.github/workflows/dast.yml'
+      - '.github/scripts/dast-*'
+      - '.github/scripts/security-gate.mjs'
+      - '.github/security/zap-rules.tsv'
+  schedule:
+    # Tuesdays 04:41 UTC: the CI-local instance, and staging if DAST_STAGING_URL is set.
+    - cron: '41 4 * * 2'
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'What to scan: the instance this job starts (local), or DAST_STAGING_URL (staging)'
+        type: choice
+        options: [local, staging]
+        default: local
+      zap_mode:
+        description: 'baseline = passive + spiders. full = ACTIVE attack scan (local only, unless DAST_ALLOW_ACTIVE_STAGING=true)'
+        type: choice
+        options: [baseline, full]
+        default: baseline
+
+permissions: {}
+
+concurrency:
+  group: dast-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ZAP_IMAGE: ghcr.io/zaproxy/zaproxy:2.17.0@sha256:781a2bdaea47324e7bab583e2263f21d257b0aee61ed51521a5be45f5f5081ef
+  NUCLEI_IMAGE: projectdiscovery/nuclei:v3.11.1@sha256:582d5546902e67052097cb2d07296c642d50a1afc5e44623cb038845df9a32eb
+  # nuclei-templates v10.4.9 (a lightweight tag, so this is its commit). Fetched by hash.
+  NUCLEI_TEMPLATES_SHA: 893122ffce8ebf8e264f15d2cd3960cb1dd36d6c
+  # The system under test, NOT tools: the same references the stack itself uses
+  # (infra/compose/docker-compose.yml runs caddy:2-alpine, apps/web/Dockerfile serves with
+  # nginx:alpine), so the scan sees the edge production runs.
+  CADDY_IMAGE: caddy:2-alpine
+  NGINX_IMAGE: nginx:alpine
+  SECURITY_GATE_SEVERITY: ${{ vars.SECURITY_GATE_SEVERITY }}
+  SECURITY_GATE_SEVERITY_ZAP: ${{ vars.SECURITY_GATE_SEVERITY_ZAP }}
+  SECURITY_GATE_SEVERITY_NUCLEI: ${{ vars.SECURITY_GATE_SEVERITY_NUCLEI }}
+
+jobs:
+  local:
+    name: DAST on a CI-local instance (ZAP + Nuclei)
+    if: github.event_name != 'workflow_dispatch' || inputs.target == 'local'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: { POSTGRES_PASSWORD: test, POSTGRES_DB: bcwebdast }
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:test@localhost:5432/bcwebdast
+      DIRECT_DATABASE_URL: postgresql://postgres:test@localhost:5432/bcwebdast
+      TARGET: http://localhost
+      ZAP_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.zap_mode || 'baseline' }}
+      REPORTS: ${{ github.workspace }}/reports
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with: { node-version: '22' }
+
+      - name: Block production at the firewall
+        run: bash .github/scripts/dast-block-production.sh
+
+      - name: Scope check (fails closed, before any request)
+        id: scope
+        run: node .github/scripts/dast-scope.mjs --target "$TARGET" --mode local
+
+      - name: API — install, migrate, seed
+        working-directory: BCWEB/apps/api
+        run: |
+          npm ci --no-audit --no-fund
+          npx prisma generate --schema ../../packages/db/schema.prisma
+          npx prisma migrate deploy --schema ../../packages/db/schema.prisma
+          # Content for the spiders to find. seed-demo refuses NODE_ENV=production, so the seeds
+          # run here, before the API is started in production mode. The admin password is random
+          # and thrown away: the scan is unauthenticated.
+          SEED_ADMIN_EMAIL=admin@ci.invalid SEED_ADMIN_PASSWORD="$(openssl rand -hex 24)" node src/seed.mjs
+          node src/seed-demo.mjs
+
+      - name: Web — build
+        working-directory: BCWEB/apps/web
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build -- --logLevel error
+
+      # NODE_ENV=production so the boot guard (src/lib/boot-guard.mjs) runs as in production. It
+      # refuses the repository's placeholder secrets, so every one is generated here, for this
+      # run only; a localhost SITE_URL is a warning there, not a refusal. RATE_LIMIT_MAX is the
+      # documented operator knob (guides/run/ENV): at the 600/min default one scanner IP would
+      # be measuring the limiter instead of the routes. Per-route limits stay as they are.
+      - name: Start the API (production mode, throw-away secrets)
+        working-directory: BCWEB/apps/api
+        run: |
+          mkdir -p "$REPORTS" "$RUNNER_TEMP/api/audit" "$RUNNER_TEMP/api/backups" "$RUNNER_TEMP/api/files"
+          rnd() { openssl rand -hex 32; }
+          export NODE_ENV=production PORT=3000 SITE_URL=http://localhost COOKIE_DOMAIN=localhost
+          # Assigned, then exported: `export X="$(cmd)"` would hide a failing openssl.
+          JWT_SECRET="$(rnd)"; BOT_SHARED_SECRET="$(rnd)"; LINK_LOOKUP_SECRET="$(rnd)"
+          S3_ACCESS_KEY="$(rnd)"; S3_SECRET_KEY="$(rnd)"; DOMAIN_ASK_KEY="$(rnd)"
+          export JWT_SECRET BOT_SHARED_SECRET LINK_LOOKUP_SECRET S3_ACCESS_KEY S3_SECRET_KEY DOMAIN_ASK_KEY
+          export S3_ENDPOINT=http://127.0.0.1:1 TELEMETRY_INTERNAL_URL=http://127.0.0.1:1
+          export RATE_LIMIT_MAX=100000
+          export AUDIT_ANCHOR_DIR="$RUNNER_TEMP/api/audit" SERVER_BACKUP_ROOT="$RUNNER_TEMP/api/backups" SERVER_FILES_ROOT="$RUNNER_TEMP/api/files"
+          nohup node src/server.mjs > "$REPORTS/api.log" 2>&1 &
+          for _ in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:3000/health > /dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:3000/health || { echo "::error::the API did not start"; tail -50 "$REPORTS/api.log"; exit 1; }
+
+      # The edge is the repository's Caddyfile, unmodified, under the service names it expects:
+      # `web` is a container on the same network, `api` is mapped to the runner where the API
+      # listens. The production names are pointed at a dead address in this container's
+      # /etc/hosts, which the scanners share.
+      - name: Start web (nginx) + edge (the real Caddyfile)
+        env:
+          SINKHOLE: ${{ steps.scope.outputs.sinkhole }}
+        run: |
+          docker network create dast
+          docker run -d --name web --network dast --network-alias web \
+            -v "$PWD/BCWEB/apps/web/dist:/usr/share/nginx/html:ro" \
+            -v "$PWD/BCWEB/apps/web/nginx.conf:/etc/nginx/conf.d/default.conf:ro" "$NGINX_IMAGE"
+          # shellcheck disable=SC2086  # SINKHOLE is a list of --add-host flags
+          docker run -d --name edge --network dast --add-host api:host-gateway $SINKHOLE \
+            -v "$PWD/BCWEB/infra/caddy:/etc/caddy:ro" "$CADDY_IMAGE" \
+            caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
+          for _ in $(seq 1 30); do
+            if docker exec edge wget -qO /dev/null http://localhost/api/health 2>/dev/null; then break; fi
+            sleep 1
+          done
+          docker exec edge wget -qO- http://localhost/api/health || { docker logs edge | tail -30; exit 1; }
+          docker exec edge wget -qO- http://localhost/ | head -c 200; echo
+
+      - name: ZAP (${{ env.ZAP_MODE }})
+        env:
+          DOCKER_NET_ARGS: --network container:edge
+          ZAP_RULES: .github/security/zap-rules.tsv
+        run: bash .github/scripts/dast-scan.sh zap
+
+      - name: Nuclei
+        env:
+          DOCKER_NET_ARGS: --network container:edge
+          NUCLEI_TEMPLATES: ${{ runner.temp }}/nuclei-templates
+        run: |
+          bash .github/scripts/dast-scan.sh templates "$NUCLEI_TEMPLATES"
+          bash .github/scripts/dast-scan.sh nuclei
+
+      # A scanner that got itself blocked reports nothing, which reads as "clean". The API's
+      # abuse guard blocks an address for 10 minutes after repeated scanner-path hits, so the
+      # instance is asked once more, through the edge, as the scanners reached it.
+      - name: The instance is still answering, and did not block the scanners
+        if: always() && steps.scope.outcome == 'success'
+        run: |
+          if ! docker exec edge wget -qO- http://localhost/api/health; then
+            echo "::error::after the scans the API no longer answers 200 through the edge (down, or the scanners' address was blocked): the results are incomplete"
+            exit 1
+          fi
+          n429="$(grep -c '"statusCode":429' "$REPORTS/api.log" || true)"
+          n5xx="$(grep -cE '"statusCode":5[0-9][0-9]' "$REPORTS/api.log" || true)"
+          echo "API responses during the scans: ${n429:-0} x 429 (per-route rate limits), ${n5xx:-0} x 5xx"
+          if [ "${n429:-0}" -gt 0 ]; then echo "::warning::${n429} scanner requests were rate-limited (429) by per-route limits; the templates behind them saw a 429, not the route"; fi
+          if [ "${n5xx:-0}" -gt 0 ]; then echo "::warning::${n5xx} scanner requests made the API answer 5xx; read reports/api.log"; fi
+
+      - name: Gate — ZAP
+        if: always() && steps.scope.outcome == 'success'
+        run: node .github/scripts/security-gate.mjs --tool zap --report "$REPORTS/zap/zap.json" --zap-rules .github/security/zap-rules.tsv --summary "$REPORTS/zap-summary.md" --json "$REPORTS/gate-zap.json" --label "ZAP $ZAP_MODE (CI-local instance)"
+      - name: Gate — Nuclei
+        if: always() && steps.scope.outcome == 'success'
+        run: node .github/scripts/security-gate.mjs --tool nuclei --report "$REPORTS/nuclei/nuclei.jsonl" --summary "$REPORTS/nuclei-summary.md" --json "$REPORTS/gate-nuclei.json" --label "Nuclei (CI-local instance)"
+
+      - name: Collect logs
+        if: always()
+        run: |
+          mkdir -p "$REPORTS"
+          docker logs edge > "$REPORTS/edge.log" 2>&1 || true
+          docker logs web > "$REPORTS/web.log" 2>&1 || true
+          docker rm -f edge web > /dev/null 2>&1 || true
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with: { name: dast-local, path: reports/, retention-days: 14, if-no-files-found: warn }
+
+  staging:
+    name: DAST on staging (ZAP + Nuclei)
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.target == 'staging') ||
+      (github.event_name == 'schedule' && vars.DAST_STAGING_URL != '')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    env:
+      TARGET: ${{ vars.DAST_STAGING_URL }}
+      DAST_ALLOWED_HOSTS: ${{ vars.DAST_ALLOWED_HOSTS }}
+      DAST_DENY_HOSTS: ${{ vars.DAST_DENY_HOSTS }}
+      REQUESTED_ZAP_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.zap_mode || 'baseline' }}
+      ALLOW_ACTIVE: ${{ vars.DAST_ALLOW_ACTIVE_STAGING }}
+      # Gentler than the CI-local instance: this one is shared, and may be small.
+      NUCLEI_RATE: ${{ vars.DAST_NUCLEI_RATE_LIMIT || '10' }}
+      NUCLEI_CONCURRENCY: '5'
+      REPORTS: ${{ github.workspace }}/reports
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with: { node-version: '22' }
+
+      - name: Block production at the firewall
+        run: bash .github/scripts/dast-block-production.sh
+
+      - name: Scope check (fails closed, before any request)
+        id: scope
+        run: node .github/scripts/dast-scope.mjs --target "$TARGET" --mode staging
+
+      # An active scan sends attack payloads. Asked for on staging without the owner's switch,
+      # the run stops here rather than quietly doing something else.
+      - name: ZAP mode
+        id: mode
+        run: |
+          if [ "$REQUESTED_ZAP_MODE" = full ] && [ "$ALLOW_ACTIVE" != true ]; then
+            echo "::error::zap_mode=full on staging needs the repository variable DAST_ALLOW_ACTIVE_STAGING=true"
+            exit 1
+          fi
+          echo "zap_mode=$REQUESTED_ZAP_MODE" >> "$GITHUB_OUTPUT"
+
+      - name: ZAP (${{ steps.mode.outputs.zap_mode }})
+        env:
+          ZAP_MODE: ${{ steps.mode.outputs.zap_mode }}
+          DOCKER_NET_ARGS: ${{ steps.scope.outputs.sinkhole }}
+          ZAP_RULES: .github/security/zap-rules.tsv
+        run: bash .github/scripts/dast-scan.sh zap
+
+      - name: Nuclei
+        env:
+          DOCKER_NET_ARGS: ${{ steps.scope.outputs.sinkhole }}
+          NUCLEI_TEMPLATES: ${{ runner.temp }}/nuclei-templates
+        run: |
+          bash .github/scripts/dast-scan.sh templates "$NUCLEI_TEMPLATES"
+          bash .github/scripts/dast-scan.sh nuclei
+
+      - name: Gate — ZAP
+        if: always() && steps.mode.outcome == 'success'
+        env:
+          ZAP_MODE: ${{ steps.mode.outputs.zap_mode }}
+        run: node .github/scripts/security-gate.mjs --tool zap --report "$REPORTS/zap/zap.json" --zap-rules .github/security/zap-rules.tsv --summary "$REPORTS/zap-summary.md" --json "$REPORTS/gate-zap.json" --label "ZAP $ZAP_MODE (staging)"
+      - name: Gate — Nuclei
+        if: always() && steps.mode.outcome == 'success'
+        run: node .github/scripts/security-gate.mjs --tool nuclei --report "$REPORTS/nuclei/nuclei.jsonl" --summary "$REPORTS/nuclei-summary.md" --json "$REPORTS/gate-nuclei.json" --label "Nuclei (staging)"
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with: { name: dast-staging, path: reports/, retention-days: 14, if-no-files-found: warn }
+
+  # ZAP's and Nuclei's own SARIF (ZAP through .github/security/zap-hooks.py, Nuclei with
+  # -sarif-export) in Security > Code scanning, one category per tool and target. A DAST alert
+  # points at a URL, not a file, so it is listed and tracked but not drawn on a PR's lines.
+  # Same rules as security.yml: the only job allowed to write, and only code-scanning results;
+  # uploads after a failed gate too; asks first whether this repository accepts SARIF and, if
+  # not, says so and keeps the file in the artifact.
+  code-scanning:
+    name: Code scanning upload (${{ matrix.category }})
+    needs: [local, staging]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { artifact: dast-local, file: zap/zap.sarif.json, category: dast-zap-local }
+          - { artifact: dast-local, file: nuclei/nuclei.sarif, category: dast-nuclei-local }
+          - { artifact: dast-staging, file: zap/zap.sarif.json, category: dast-zap-staging }
+          - { artifact: dast-staging, file: nuclei/nuclei.sarif, category: dast-nuclei-staging }
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        continue-on-error: true
+        with: { name: '${{ matrix.artifact }}', path: sarif }
+      - name: SARIF present?
+        id: file
+        env:
+          FILE: ${{ matrix.file }}
+          ARTIFACT: ${{ matrix.artifact }}
+        run: |
+          if [ -s "sarif/$FILE" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::no $FILE in $ARTIFACT (that target was not scanned in this run, or its scan stopped first)"
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Code scanning available?
+        id: cs
+        if: steps.file.outputs.present == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        run: bash .github/scripts/code-scanning-available.sh
+      - if: steps.cs.outputs.available == 'true'
+        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          sarif_file: 'sarif/${{ matrix.file }}'
+          category: '${{ matrix.category }}'
+
+  # The DAST table on the pull request: one sticky comment of its own, marker
+  # <!-- bcw-security-gate-dast -->, next to the static-scan one (<!-- bcw-security-gate -->)
+  # that security.yml keeps. Two workflows finish at different times; editing ONE shared
+  # comment from both would let the later run erase the other's table.
+  pr-comment:
+    name: DAST table on the pull request
+    needs: [local]
+    if: always() && github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with: { node-version: '22' }
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        continue-on-error: true
+        with: { name: dast-local, path: results }
+      - name: Render the table
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bash .github/scripts/gate-comment.sh results bcw-security-gate-dast comment.md
+      - name: Post or update the comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        run: bash .github/scripts/pr-comment.sh bcw-security-gate-dast comment.md

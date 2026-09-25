@@ -1,0 +1,23 @@
+# Reviewed Trivy exclusions, read with `--ignorefile .github/security/trivyignore.yaml` by the
+# Trivy jobs in .github/workflows/security.yml. Trivy's YAML ignore format: every entry is
+# scoped to the lockfile(s) or image path(s) it was judged in, says why, and EXPIRES — on the
+# expiry date the finding comes back and has to be judged again.
+#
+# The rule is the same as .github/audit-ignore.json (the npm / cargo audit list): an entry is
+# a decision somebody made with a reason, never a way to make the build green. A finding
+# with no reason written down fails the gate.
+
+vulnerabilities:
+  # The SAME advisory the owner already judged for npm audit: .github/audit-ignore.json entry
+  # GHSA-jrc7-96c5-q579 (Trivy names it CVE-2026-85061 and lists that GHSA as its alias).
+  # XSS sanitizer bypass in maplibre's DOM.sanitize(), which maplibre applies to attribution
+  # HTML and popup content only; both maps feed it string literals, neither uses
+  # Popup/setHTML, and both are admin-only surfaces. Fix = semver-major 5.x -> 6.x, scheduled.
+  # Reviewed 2026-09-24 (audit-ignore.json), mirrored here 2026-09-25. Remove both entries
+  # together the day maplibre is upgraded.
+  - id: CVE-2026-85061
+    paths:
+      - "BCWEB/apps/web/package-lock.json"
+      - "BCWEB/bmm/telemetry-dashboard/web/package-lock.json"
+    statement: "Mirrors .github/audit-ignore.json GHSA-jrc7-96c5-q579 (BCWEB/SECURITY_AUDIT.md F10-14): sanitizer only fed string literals on admin-only maps; major upgrade scheduled."
+    expired_at: 2026-12-31

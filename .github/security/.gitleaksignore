@@ -1,0 +1,56 @@
+# Reviewed gitleaks false positives, one fingerprint per line (commit:file:rule:line).
+# Read by the "Secrets (gitleaks)" job in .github/workflows/security.yml via --gitleaks-ignore-path.
+#
+# A fingerprint names ONE finding in ONE commit. The same value committed again, in another
+# file or on another line, is a new finding and fails again: that is the point. Never add a
+# path-wide allowlist to gitleaks.toml instead.
+#
+# To add one: run the scan (BCWEB/guides/run/SECURITY_CI_EN.md, "Gitleaks"), read the finding
+# in the redacted report, confirm the value is not a credential, and add its Fingerprint below
+# with a comment saying WHY, the reviewer and the date. A real secret is never listed here: it
+# is rotated first, and only then may its fingerprint be listed, with "rotated on <date>".
+#
+# Reviewed 2026-09-25 (agent-secci-bcw), every value read in the commit it was found in.
+# NOT listed on purpose: BCWEB/infra/compose/.env.example:115 TELEMETRY_API_KEY in 63ecc8c6 and
+# 9abfe0e3. The compose file calls it the public ingest key, but whether it is public by
+# design (shipped inside the BMM client) was not verified; that is the owner's call, and until
+# it is made the full-history run keeps reporting it.
+
+# Test fixtures written with FAKE / TEST inside the value (the file header says "Fake secrets,
+# one per place a real one lives"); the file now builds its shapes at run time.
+20fd09982ad05fb4d0b36073d832ad40c6404b53:BCWEB/apps/api/test/config-transfer.test.mjs:discord-bot-token:52
+20fd09982ad05fb4d0b36073d832ad40c6404b53:BCWEB/apps/api/test/config-transfer.test.mjs:private-key:54
+20fd09982ad05fb4d0b36073d832ad40c6404b53:BCWEB/apps/api/test/config-transfer.test.mjs:private-key:55
+20fd09982ad05fb4d0b36073d832ad40c6404b53:BCWEB/apps/api/test/config-transfer.test.mjs:stripe-access-token:59
+20fd09982ad05fb4d0b36073d832ad40c6404b53:BCWEB/apps/api/test/config-transfer.test.mjs:github-pat:60
+20fd09982ad05fb4d0b36073d832ad40c6404b53:BCWEB/apps/api/test/config-transfer.test.mjs:jwt:61
+20fd09982ad05fb4d0b36073d832ad40c6404b53:BCWEB/apps/api/test/config-transfer.test.mjs:generic-api-key:64
+20fd09982ad05fb4d0b36073d832ad40c6404b53:BCWEB/apps/api/test/config-transfer.test.mjs:discord-bot-token:67
+cb0a9872f6ac290d3d7af0d90693042d8568c507:BCWEB/apps/api/test/config-transfer.test.mjs:generic-api-key:68
+
+# Discord-bot-token-shaped test fixtures: the value itself contains TEST / FAKE and its id part
+# decodes to a counting sequence, not a Discord snowflake.
+0235e83abc753514ad73ba4e6378ade3873e872e:BCWEB/apps/api/test/emoji-sync.test.mjs:discord-bot-token:22
+049614e4283af19fc62eefe2308a4c648a5c8c54:BCWEB/apps/api/test/emoji-sync.test.mjs:discord-bot-token:22
+38e36b7935c367f20d7c2973f36b902aa5d94e3c:BCWEB/apps/bot/test/sync-app-emojis.test.mjs:discord-bot-token:9
+
+# Test fixtures standing for "a value somebody set": boot-guard's hand-typed hex, the
+# config-diff example value, the log-redaction canary (S3CR3TKEY…), and a stripe
+# `sk_test_placeholder` fallback inside a source string the secrets map is tested on.
+d9142b65d64e8cc9110aa0e4e9a8188805b08c7d:BCWEB/apps/api/test/boot-guard.test.mjs:generic-api-key:22
+70bbf5613b766f0c6905a35ad8b572d79151e756:BCWEB/apps/api/test/config-diff.test.mjs:generic-api-key:67
+70bbf5613b766f0c6905a35ad8b572d79151e756:BCWEB/apps/api/test/config-diff.test.mjs:generic-api-key:68
+0f5679993948db85e82f5d9cae093bd3e9640be6:BCWEB/apps/api/test/task-suggestions-db.test.mjs:generic-api-key:21
+7b6f5845342b68146d781b89677bc25cb134406b:BCWEB/apps/api/test/task-suggestions-db.test.mjs:generic-api-key:21
+2dc7061381895b44656effc9614f20f4caec75f3:BCWEB/apps/api/test/secrets-map.test.mjs:stripe-access-token:131
+
+# Documentation placeholders in the seeded API docs: `Bearer bck_YOUR_KEY` / `bck_VOTRE_CLE`.
+2eff49286e0d3c4c29bc72e755cf8f8ceecf48c8:BCWEB/apps/api/src/seed-docs.mjs:curl-auth-header:456
+e404f531a482bd03ce70b5ed20dc82f550940ae4:BCWEB/apps/api/src/seed-docs-fr.mjs:curl-auth-header:1204
+
+# localStorage KEY NAMES, not keys: `const X_KEY = 'bcw_…'` / 'bcw.cmdk.recent.v2'.
+36d9d41764ed4c15f782c990ab533178052831a4:BCWEB/apps/web/src/pages.jsx:generic-api-key:1175
+803ef2d40e17ae467bc9fd6ff79519c658d9a580:BCWEB/apps/web/src/pages/dashboard.jsx:generic-api-key:137
+f94bffeee14292b3abcce5542450c8f3b3c6ea54:BCWEB/apps/web/src/pages/dashboard.jsx:generic-api-key:137
+d4c89fe4f07fe5ea74cb8bdef95f38878a1a18fb:BCWEB/apps/web/src/twofa-lib.js:generic-api-key:6
+9fa0827b16e38d67cab43f63ae6019cc905ee600:BCWEB/apps/web/src/ui/palette-recent.js:generic-api-key:14

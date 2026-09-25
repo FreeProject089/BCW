@@ -30,6 +30,8 @@ guides/
 | **Not lose data** (backup, restore, off-site, cron) | Backup & restore | [EN](run/BACKUP_EN.md) | [FR](run/BACKUP_FR.md) |
 | **Decide how many machines** (1 VPS, DB on its own, several web hosts) | Topology | [EN](run/TOPOLOGY_EN.md) | [FR](run/TOPOLOGY_FR.md) |
 | **Scale it up** (CDN, PgBouncer, replicas, R2, separate DB) | Add-ons | [EN](run/ADDONS_EN.md) | [FR](run/ADDONS_FR.md) |
+| **Know what every GitHub workflow does** (CI, security scans, DAST, CD deploy: triggers, gates, artifacts, variables, PR comment, Code scanning) | CI/CD | [EN](run/CI_CD_EN.md) | [FR](run/CI_CD_FR.md) |
+| **Run, tune or extend the security scans** (Gitleaks, Semgrep, Trivy, ZAP, Nuclei: thresholds, targets, reviewed exclusions, by hand) | Security CI | [EN](run/SECURITY_CI_EN.md) | [FR](run/SECURITY_CI_FR.md) |
 | **Ship app updates through BCWEB** (BMM/BSM release feeds) | Auto-updates | [EN](run/AUTO_UPDATE_EN.md) | [FR](run/AUTO_UPDATE_FR.md) |
 | **Use the site as a member** | User guide | [EN](use/USER_GUIDE_EN.md) | [FR](use/USER_GUIDE_FR.md) |
 | **Moderate** (tools, roles, judgement calls) | Moderator guide | [EN](use/MODERATOR_GUIDE_EN.md) | [FR](use/MODERATOR_GUIDE_FR.md) |

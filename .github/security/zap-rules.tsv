@@ -1,0 +1,17 @@
+# OWASP ZAP rules for the DAST jobs (.github/workflows/dast.yml, via .github/scripts/dast-scan.sh).
+# Passed to zap-baseline.py / zap-full-scan.py with -c, and read by .github/scripts/security-gate.mjs.
+#
+# Format, one rule per line, TAB-separated:   <plugin id>	<IGNORE|WARN|FAIL|INFO>	(<reason>)
+#
+# Only IGNORE changes what the gate counts, and the gate REFUSES an IGNORE without a reason.
+# Add one only for a reviewed false positive: say what ZAP saw, why it is not a vulnerability
+# here, who reviewed it and when. A real finding is fixed, or left failing for the owner to
+# decide; it is never ignored here to make the job green.
+#
+# Pass/fail is NOT decided by this file: the gate reads ZAP's risk (High / Medium / Low /
+# Informational) against SECURITY_GATE_SEVERITY_ZAP / SECURITY_GATE_SEVERITY. WARN/FAIL here
+# only change what ZAP prints in its own summary.
+#
+# Reviewed 2026-09-25 against the CI-local instance: no false positive found, nothing ignored.
+# What ZAP reported then (all below the default "high" threshold) is listed in
+# BCWEB/guides/run/SECURITY_CI_EN.md, "What the scans found on 2026-09-25".

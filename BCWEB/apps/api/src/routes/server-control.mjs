@@ -676,8 +676,8 @@ export default async function serverControlRoutes(app) {
     // ORDER BY, Postgres doesn't guarantee row order stays stable across pages
     // (LIMIT/OFFSET alone can silently reshuffle rows between requests) — always
     // order by at least the ordinal position so pagination is deterministic.
-    const rows = await p.$queryRawUnsafe(`SELECT * FROM "${req.params.name}" ${orderBy} LIMIT ${pageSize} OFFSET ${page * pageSize}`);
-    const total = await p.$queryRawUnsafe(`SELECT count(*)::bigint AS n FROM "${req.params.name}"`);
+    const rows = await p.$queryRawUnsafe(`SELECT * FROM "${req.params.name}" ${orderBy} LIMIT ${pageSize} OFFSET ${page * pageSize}`); // nosemgrep: tainted-sql-string -- identifier checked against pg_class/information_schema above, page and size are numbers
+    const total = await p.$queryRawUnsafe(`SELECT count(*)::bigint AS n FROM "${req.params.name}"`); // nosemgrep: tainted-sql-string -- identifier checked against pg_class/information_schema above, page and size are numbers
     // BigInt/Date aren't JSON-safe by default — stringify them explicitly.
     const safeRows = rows.map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, typeof v === 'bigint' ? v.toString() : v instanceof Date ? v.toISOString() : v])));
     // Rich read trail: exactly what was paged out (table, page, size, sort,
@@ -779,8 +779,8 @@ export default async function serverControlRoutes(app) {
       const cols = (await pool.query(`SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1`, [req.params.name])).rows;
       if (cols.some((c) => c.column_name === sortCol)) orderBy = `ORDER BY "${sortCol}" ${req.query?.dir === 'desc' ? 'DESC' : 'ASC'} NULLS LAST`;
     }
-    const rows = (await pool.query(`SELECT * FROM "${req.params.name}" ${orderBy} LIMIT ${pageSize} OFFSET ${page * pageSize}`)).rows;
-    const total = Number((await pool.query(`SELECT count(*)::bigint AS n FROM "${req.params.name}"`)).rows[0].n);
+    const rows = (await pool.query(`SELECT * FROM "${req.params.name}" ${orderBy} LIMIT ${pageSize} OFFSET ${page * pageSize}`)).rows; // nosemgrep: tainted-sql-string -- identifier checked against pg_class/information_schema above, page and size are numbers
+    const total = Number((await pool.query(`SELECT count(*)::bigint AS n FROM "${req.params.name}"`)).rows[0].n); // nosemgrep: tainted-sql-string -- identifier checked against pg_class/information_schema above, page and size are numbers
     const safeRows = rows.map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, typeof v === 'bigint' ? v.toString() : v instanceof Date ? v.toISOString() : v])));
     await logAudit(await db(), req.user.uid, 'server.telemetry_db_read', `${req.params.name} page=${page} size=${pageSize} rows=${rows.length}/${total}`, clientIp(req));
     return { rows: safeRows, total, page, pageSize, readOnly: true };
@@ -846,7 +846,7 @@ export default async function serverControlRoutes(app) {
     if (!pkCol) return reply.code(400).send({ error: 'no_single_pk' });
     // Snapshot the WHOLE row (git-committed as JSON) before the update — same
     // "commit right before HEAD is the pre-edit state" pattern as file backups.
-    const oldRows = await p.$queryRawUnsafe(`SELECT * FROM "${req.params.name}" WHERE "${pkCol}" = $1`, b.data.pk);
+    const oldRows = await p.$queryRawUnsafe(`SELECT * FROM "${req.params.name}" WHERE "${pkCol}" = $1`, b.data.pk); // nosemgrep: tainted-sql-string -- table checked against pg_class above, pkCol read from the catalog (singlePkColumn), pk bound as $1
     if (oldRows[0]) {
       // Encrypted with the ROW OWNER's key when the row belongs to somebody, so a later
       // erasure request reaches this snapshot too — git is append-only and the alternative
@@ -906,7 +906,7 @@ export default async function serverControlRoutes(app) {
     } catch { return reply.code(404).send({ error: 'backup_not_found' }); }
     const cols = await p.$queryRaw`SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = ${b.data.table}`;
     const colNames = new Set(cols.map((c) => c.column_name));
-    const currentRows = await p.$queryRawUnsafe(`SELECT * FROM "${b.data.table}" WHERE "${pkCol}" = $1`, b.data.pk);
+    const currentRows = await p.$queryRawUnsafe(`SELECT * FROM "${b.data.table}" WHERE "${pkCol}" = $1`, b.data.pk); // nosemgrep: tainted-sql-string -- table checked against pg_class above, pkCol read from the catalog (singlePkColumn), pk bound as $1
     if (!currentRows[0]) return reply.code(404).send({ error: 'row_not_found' });
     await backupFile(DB_BACKUP_ROOT, `${b.data.table}/${b.data.pk}.json`,
       await sealForOwner(p, ownerOfRow(currentRows[0]), JSON.stringify(serializeRow(currentRows[0]), null, 2)),

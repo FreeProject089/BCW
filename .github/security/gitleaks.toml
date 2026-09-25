@@ -1,0 +1,24 @@
+# Gitleaks configuration for BCW (read by the "Secrets (gitleaks)" job in
+# .github/workflows/security.yml, and by the manual command in BCWEB/guides/run/SECURITY_CI_EN.md).
+#
+# Gitleaks' built-in rules, plus the one shape they miss that this project has actually leaked:
+# a Discord BOT token (base64 user id . timestamp . HMAC). Gitleaks' own discord rules need the
+# word "discord" next to a 64-hex value; a bot token matches neither, and the real token that
+# once sat in infra/compose/.env.example would not have been found by the defaults. The pattern
+# is the same one .github/scripts/secret-scan.mjs uses on the current tree, so history and tree
+# are checked for the same shapes.
+#
+# Exclusions do NOT go here. A reviewed false positive is one line in
+# .github/security/.gitleaksignore, by fingerprint (commit:file:rule:line), with a comment that
+# says why. A path-wide allowlist in this file would hide the next real secret in that path.
+
+title = "BCW gitleaks config"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "discord-bot-token"
+description = "Discord bot token"
+regex = '''(?:^|[^A-Za-z0-9_-])([MNO][A-Za-z0-9_-]{23,27}\.[A-Za-z0-9_-]{6}\.[A-Za-z0-9_-]{27,40})(?:$|[^A-Za-z0-9_-])'''
+secretGroup = 1

@@ -1,0 +1,344 @@
+name: BCWEB security
+
+# Automated security testing, no AI: secrets, SAST, dependencies and containers. The DAST half
+# (ZAP + Nuclei against a running instance) is .github/workflows/dast.yml.
+# How it works, how to run each scan by hand, how to change a threshold or add a reviewed
+# exclusion: BCWEB/guides/run/SECURITY_CI_EN.md (FR: SECURITY_CI_FR.md).
+#
+# What each job adds to ci.yml, which it does not replace:
+#   gitleaks    git HISTORY, every commit (ci.yml's secret-scan.mjs reads the current tree only).
+#               Same Discord-bot-token shape as secret-scan.mjs, plus gitleaks' ~200 rules.
+#   semgrep     SAST on the source; ci.yml has lint and syntax checks, no security rules.
+#   trivy-fs    Dockerfile misconfiguration (nothing checked them before), and a second advisory
+#               database over the same lockfiles npm/cargo audit read — scoped to the same
+#               folders, with the same reviewed exception, so the two cannot disagree silently.
+#   trivy-image the five images as built: OS packages and whatever the base image ships (the
+#               node images' own npm), which no lockfile audit can see, plus secrets baked into
+#               a layer.
+#
+# The gate: every scanner writes a report and exits 0; .github/scripts/security-gate.mjs reads
+# the report and fails the job by severity:
+#   repository variable SECURITY_GATE_SEVERITY = critical | high | medium | low (default high),
+#   the LOWEST severity that fails; SECURITY_GATE_SEVERITY_<SEMGREP|TRIVY|ZAP|NUCLEI> overrides
+#   it per tool. INFO never fails. Gitleaks is binary: any unreviewed secret fails.
+# A report that is missing or not what the tool writes fails too (exit 2): a scan that did not
+# run is not a scan that found nothing.
+#
+# Where the results go: the gate's table in each job's log and in the run Summary; the reports,
+# SARIF and verdicts (gate-<tool>.json) as artifacts; the SARIF in Security > Code scanning
+# (job code-scanning); and on a pull request ONE comment, edited in place (job pr-comment,
+# marker <!-- bcw-security-gate -->). BCWEB/guides/run/CI_CD_EN.md, "Reading the results".
+#
+# Versions: every tool is a container image pinned by tag AND digest, every action by commit
+# SHA (the tag in the comment), the Semgrep rules by commit. The advisory databases Trivy
+# downloads are deliberately NOT pinned: a new advisory against an unchanged lockfile is exactly
+# what this is for, and it can turn a run red without a code change.
+# To bump an image: `docker buildx imagetools inspect <image>:<tag>` gives the digest. To bump an
+# action: `git ls-remote https://github.com/<owner>/<repo> refs/tags/<tag>` (peel an annotated
+# tag with `^{}`), read the diff, change both.
+
+on:
+  push:
+    paths: ['BCWEB/**', '.github/**']
+  pull_request:
+    paths: ['BCWEB/**', '.github/**']
+  schedule:
+    # Mondays 03:17 UTC: the whole git history, and fresh advisories, without waiting for a push.
+    - cron: '17 3 * * 1'
+  workflow_dispatch:
+
+# Nothing by default; each job asks for what it uses.
+permissions: {}
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  GITLEAKS_IMAGE: zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
+  SEMGREP_IMAGE: semgrep/semgrep:1.178.0@sha256:32e459968daabe7ab86968184a29109b9564aa00392401156f9788452b42786b
+  TRIVY_IMAGE: aquasec/trivy:0.74.0@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969
+  # semgrep/semgrep-rules has no tags; this is the tip of its `develop` branch on 2026-09-22.
+  SEMGREP_RULES_SHA: a84ff9cc2453ca91d581380de4b8b3f272f6f4be
+  SECURITY_GATE_SEVERITY: ${{ vars.SECURITY_GATE_SEVERITY }}
+  SECURITY_GATE_SEVERITY_GITLEAKS: ${{ vars.SECURITY_GATE_SEVERITY_GITLEAKS }}
+  SECURITY_GATE_SEVERITY_SEMGREP: ${{ vars.SECURITY_GATE_SEVERITY_SEMGREP }}
+  SECURITY_GATE_SEVERITY_TRIVY: ${{ vars.SECURITY_GATE_SEVERITY_TRIVY }}
+
+jobs:
+  gate-selftest:
+    name: Security gate + DAST scope (self-tests)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with: { node-version: '22' }
+      # The gate decides whether every other job here fails. These tests build reports of each
+      # tool and prove the thresholds, the "LOW/INFO never block" rule, the refusal of a missing
+      # or empty-because-nothing-ran report, and that production is out of DAST scope.
+      - run: node --test .github/scripts/security-gate.test.mjs .github/scripts/dast-scope.test.mjs
+
+  gitleaks:
+    name: Secrets in git history (gitleaks)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with: { node-version: '22' }
+      # A push or a PR scans the commits it brings: those are what it can still fix. The weekly
+      # schedule and a manual run scan the whole history of every ref, which is where an old,
+      # already-pushed secret shows up (and keeps showing up until it is rotated and reviewed).
+      - name: Which commits
+        id: range
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          opts=""
+          case "$EVENT" in
+            pull_request) opts="$PR_BASE..$PR_HEAD" ;;
+            push)
+              if [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ] \
+                 && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+                opts="$BEFORE..$AFTER"
+              fi ;;
+          esac
+          echo "log_opts=$opts" >> "$GITHUB_OUTPUT"
+          echo "scope=${opts:-full history, every ref}" >> "$GITHUB_OUTPUT"
+      - name: gitleaks
+        env:
+          LOG_OPTS: ${{ steps.range.outputs.log_opts }}
+        run: |
+          set -o pipefail
+          mkdir -p reports
+          set --
+          if [ -n "$LOG_OPTS" ]; then set -- "--log-opts=$LOG_OPTS"; fi
+          # --redact: the report is an artifact of a PUBLIC repository; it must not be a second leak.
+          # safe.directory via the environment: if git inside the container refuses the checkout
+          # ("dubious ownership"), gitleaks logs an error, scans 0 commits and exits 0 with an
+          # empty report (measured). The check below catches it if it ever happens anyway.
+          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
+            -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0=/repo \
+            -v "$PWD:/repo:ro" -v "$PWD/reports:/reports" "$GITLEAKS_IMAGE" \
+            git "$@" --config /repo/.github/security/gitleaks.toml \
+            --gitleaks-ignore-path /repo/.github/security/.gitleaksignore \
+            --redact --no-banner --no-color --exit-code 0 \
+            --report-format json --report-path /reports/gitleaks.json /repo 2>&1 | tee reports/gitleaks.log
+          # A range with commits in it must have been scanned. (Not an equality: gitleaks does not
+          # count commits whose patch is empty.)
+          scanned="$(grep -Eo '[0-9]+ commits scanned' reports/gitleaks.log | grep -Eo '^[0-9]+' | tail -1 || true)"
+          expected="$(git rev-list --no-merges --count "${LOG_OPTS:---all}")"
+          if grep -q ' ERR ' reports/gitleaks.log || { [ "${expected:-0}" -gt 0 ] && [ "${scanned:-0}" -eq 0 ]; }; then
+            echo "::error::gitleaks scanned ${scanned:-0} of $expected commits, or logged an error: the scan did not run"
+            exit 1
+          fi
+      - name: gate
+        env:
+          SCOPE: ${{ steps.range.outputs.scope }}
+        run: node .github/scripts/security-gate.mjs --tool gitleaks --report reports/gitleaks.json --summary reports/gitleaks-summary.md --json reports/gate-gitleaks.json --label "gitleaks ($SCOPE)"
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with: { name: security-gitleaks, path: reports/, retention-days: 14, if-no-files-found: warn }
+
+  semgrep:
+    name: SAST (semgrep)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with: { node-version: '22' }
+      - name: pinned rules for this stack
+        run: bash .github/scripts/semgrep-rules.sh "$RUNNER_TEMP/semgrep-rules"
+      # Findings reviewed as false positives carry `// nosemgrep: <rule> -- <reason>` on the line.
+      # Semgrep's default ignore list applies (node_modules, dist, build, test/ and tests/).
+      - name: semgrep
+        run: |
+          mkdir -p reports
+          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
+            -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0=/src \
+            -v "$PWD:/src:ro" -v "$RUNNER_TEMP/semgrep-rules:/rules:ro" -v "$PWD/reports:/reports" \
+            -w /src "$SEMGREP_IMAGE" \
+            semgrep scan --metrics=off --disable-version-check --config /rules \
+            --json-output=/reports/semgrep.json --sarif-output=/reports/semgrep.sarif --quiet /src \
+            > reports/semgrep.txt
+          # (the text report, several hundred findings long, goes to the artifact; the gate step
+          # below prints the table.)
+      - name: gate
+        run: node .github/scripts/security-gate.mjs --tool semgrep --report reports/semgrep.json --summary reports/semgrep-summary.md --json reports/gate-semgrep.json --label "semgrep (SAST)"
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with: { name: security-semgrep, path: reports/, retention-days: 14, if-no-files-found: warn }
+
+  trivy-fs:
+    name: Dependencies + Dockerfiles (trivy fs)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with: { node-version: '22' }
+      # --skip-files: the telemetry dashboard's ROOT lockfile belongs to the deprecated Express
+      # version (BCWEB/bmm/telemetry-dashboard/README.md) that no image builds; ci.yml's npm-audit
+      # matrix leaves it out for the same reason ("not deployed"). One scope for both tools.
+      # --ignorefile: reviewed exceptions, each scoped to a lockfile, with a reason and an expiry;
+      # --show-suppressed puts them in the report so the gate prints them on every run.
+      - name: trivy fs
+        run: |
+          mkdir -p reports "$RUNNER_TEMP/trivy-cache"
+          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -e TRIVY_CACHE_DIR=/cache \
+            -v "$PWD:/src:ro" -v "$RUNNER_TEMP/trivy-cache:/cache" -v "$PWD/reports:/reports" \
+            -w /src "$TRIVY_IMAGE" \
+            fs --scanners vuln,misconfig \
+            --skip-files BCWEB/bmm/telemetry-dashboard/package-lock.json \
+            --ignorefile .github/security/trivyignore.yaml --show-suppressed \
+            --format json --output /reports/trivy-fs.json --exit-code 0 --no-progress .
+          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD/reports:/reports" "$TRIVY_IMAGE" \
+            convert --format sarif --output /reports/trivy-fs.sarif /reports/trivy-fs.json
+      - name: gate
+        run: node .github/scripts/security-gate.mjs --tool trivy --report reports/trivy-fs.json --summary reports/trivy-fs-summary.md --json reports/gate-trivy-fs.json --label "trivy fs (lockfiles + Dockerfiles)"
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with: { name: security-trivy-fs, path: reports/, retention-days: 14, if-no-files-found: warn }
+
+  trivy-image:
+    name: Container image (${{ matrix.image }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        # The five images infra/compose/docker-compose.yml builds, with the same contexts.
+        include:
+          - { image: api, context: BCWEB, dockerfile: BCWEB/apps/api/Dockerfile }
+          - { image: web, context: BCWEB, dockerfile: BCWEB/apps/web/Dockerfile }
+          - { image: provisioner, context: BCWEB, dockerfile: BCWEB/apps/provisioner/Dockerfile }
+          - { image: bot, context: BCWEB/apps/bot, dockerfile: BCWEB/apps/bot/Dockerfile }
+          - { image: telemetry, context: BCWEB/bmm/telemetry-dashboard, dockerfile: BCWEB/bmm/telemetry-dashboard/Dockerfile }
+    env:
+      IMAGE: ${{ matrix.image }}
+      CONTEXT: ${{ matrix.context }}
+      DOCKERFILE: ${{ matrix.dockerfile }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with: { node-version: '22' }
+      # --pull: the base image as a deploy would get it today, not a stale local layer.
+      - name: build
+        run: docker build --pull -t "bcweb-$IMAGE:scan" -f "$DOCKERFILE" "$CONTEXT"
+      # Scanned from a saved tarball: the scanner container never gets the Docker socket.
+      # vuln = OS packages + every language package in the image; secret = keys baked into a layer.
+      - name: trivy image
+        run: |
+          mkdir -p reports "$RUNNER_TEMP/trivy-cache" "$RUNNER_TEMP/img"
+          docker save -o "$RUNNER_TEMP/img/image.tar" "bcweb-$IMAGE:scan"
+          chmod a+r "$RUNNER_TEMP/img/image.tar"
+          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -e TRIVY_CACHE_DIR=/cache \
+            -v "$RUNNER_TEMP/img:/img:ro" -v "$RUNNER_TEMP/trivy-cache:/cache" -v "$PWD/reports:/reports" \
+            -v "$PWD/.github/security:/cfg:ro" "$TRIVY_IMAGE" \
+            image --input /img/image.tar --scanners vuln,secret \
+            --ignorefile /cfg/trivyignore.yaml --show-suppressed \
+            --format json --output "/reports/trivy-image-$IMAGE.json" --exit-code 0 --no-progress
+          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD/reports:/reports" "$TRIVY_IMAGE" \
+            convert --format sarif --output "/reports/trivy-image-$IMAGE.sarif" "/reports/trivy-image-$IMAGE.json"
+      - name: gate
+        run: node .github/scripts/security-gate.mjs --tool trivy --report "reports/trivy-image-$IMAGE.json" --summary "reports/trivy-image-$IMAGE-summary.md" --json "reports/gate-trivy-image-$IMAGE.json" --label "trivy image ($IMAGE)"
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with: { name: 'security-trivy-image-${{ matrix.image }}', path: reports/, retention-days: 14, if-no-files-found: warn }
+
+  # The SARIF reports in the repository's Security tab > Code scanning, one category per tool
+  # (and per image), so an alert is tracked across runs (open, fixed, reopened) and a pull
+  # request's new alerts are annotated on its changed lines. The only job here that may write,
+  # and only code-scanning results. Runs when a scan FAILED its gate too, which is when it
+  # matters, as long as that scan wrote its SARIF. Whether this repository can receive SARIF at
+  # all is asked first (.github/scripts/code-scanning-available.sh): if not, a notice, no
+  # failure, and the SARIF stays in the scan's artifact.
+  code-scanning:
+    name: Code scanning upload (${{ matrix.report }})
+    needs: [semgrep, trivy-fs, trivy-image]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        report: [semgrep, trivy-fs, trivy-image-api, trivy-image-web, trivy-image-provisioner, trivy-image-bot, trivy-image-telemetry]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        continue-on-error: true
+        with: { name: 'security-${{ matrix.report }}', path: sarif }
+      - name: SARIF present?
+        id: file
+        env:
+          REPORT: ${{ matrix.report }}
+        run: |
+          if [ -s "sarif/$REPORT.sarif" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::no sarif/$REPORT.sarif: that scan stopped before writing it (see its job)"
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Code scanning available?
+        id: cs
+        if: steps.file.outputs.present == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        run: bash .github/scripts/code-scanning-available.sh
+      - if: steps.cs.outputs.available == 'true'
+        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          sarif_file: 'sarif/${{ matrix.report }}.sarif'
+          category: '${{ matrix.report }}'
+
+  # ONE comment on the pull request with the gate table, edited in place on every run (found by
+  # its hidden marker <!-- bcw-security-gate -->). Rendered by security-gate.mjs --markdown from
+  # the verdicts the scan jobs saved with --json. The only job here that may write to the pull
+  # request. A fork's pull request has a read-only token: a notice, never a failure.
+  pr-comment:
+    name: Gate table on the pull request
+    needs: [gate-selftest, gitleaks, semgrep, trivy-fs, trivy-image]
+    if: always() && github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with: { node-version: '22' }
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        continue-on-error: true
+        with: { pattern: 'security-*', path: results }
+      - name: Render the table
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bash .github/scripts/gate-comment.sh results bcw-security-gate comment.md
+      - name: Post or update the comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        run: bash .github/scripts/pr-comment.sh bcw-security-gate comment.md

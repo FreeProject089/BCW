@@ -151,7 +151,7 @@
 	#
 	# Two matchers because Caddy has no "append the query only if there is one": with a single
 	# rule every redirect ends in a bare `?`. The first handles the URLs that carry a query,
-	# the second the ones that do not. `^(/.+)/$` never matches the root, which must keep its
+	# the second the ones that do not. The pattern never matches the root, which must keep its
 	# slash.
 	#
 	# /api and /hosting are exempt. Under /hosting a trailing slash is not noise, it is a
@@ -164,15 +164,23 @@
 	# to `/myapp`, which the drop-in redirects back to `/myapp/` — a redirect loop. Each
 	# paths.d file sets the `bc_mount` variable on its own prefix (`vars` runs before `redir`),
 	# so this list never has to be edited to mount something.
+	#
+	# The captured path must not start with a second `/`, a `\` (\x5c) or whitespace. The
+	# Location it produces is RELATIVE, and browsers read `/\evil.example` (and `/<TAB>/evil…`,
+	# the tab being dropped) as `//evil.example`: a request for `/%5Cevil.example/` was answered
+	# `308 Location: /\evil.example`, an open redirect to any host (CWE-601), found by the DAST
+	# job (nuclei open-redirect-generic, 2026-09-25). Such a path is not a page anyway; it falls
+	# through to the SPA like any unknown URL. `\x5c` is written that way because the Caddyfile
+	# lexer turns `\\` into one backslash (checked with `caddy adapt`).
 	@tslash_q {
-		path_regexp tslash ^(/.+)/$
+		path_regexp tslash ^(/[^/\x5c\s].*)/$
 		not path /api/* /hosting/* /og/*
 		not vars {http.vars.bc_mount} yes
 		expression {query} != ""
 	}
 	redir @tslash_q {re.tslash.1}?{query} 308
 	@tslash {
-		path_regexp tslash2 ^(/.+)/$
+		path_regexp tslash2 ^(/[^/\x5c\s].*)/$
 		not path /api/* /hosting/* /og/*
 		not vars {http.vars.bc_mount} yes
 	}

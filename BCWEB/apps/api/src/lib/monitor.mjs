@@ -115,7 +115,7 @@ const DEP_CHECKS = {
     return botFresh === null ? null : (botFresh && botStatus.value.online !== false);
   },
   telemetry: async () => {
-    try { const r = await fetch('http://telemetry:8900/', { signal: AbortSignal.timeout(4000) }); return r.ok; } catch { return false; }
+    try { const r = await fetch('http://telemetry:8900/', { signal: AbortSignal.timeout(4000) }); return r.ok; } catch { return false; } // nosemgrep: react-insecure-request -- server-side health probe of the compose-internal service, never a browser request
   },
   // The site itself. A status page that lists the database, the bot and Stripe but not the
   // website cannot answer the question people open it to ask. Probed as a real request to the
@@ -125,7 +125,7 @@ const DEP_CHECKS = {
   // There is deliberately no "API" row. This answer comes FROM the API, so it could only ever
   // say "up", and a row that cannot report a failure is worse than no row.
   web: async () => {
-    try { const r = await fetch('http://web/', { signal: AbortSignal.timeout(4000) }); return r.ok; } catch { return false; }
+    try { const r = await fetch('http://web/', { signal: AbortSignal.timeout(4000) }); return r.ok; } catch { return false; } // nosemgrep: react-insecure-request -- server-side health probe of the compose-internal service, never a browser request
   },
   // Stripe's OWN published status (lib/stripe-status.mjs), not a call with our key: `/v1/balance`
   // answered "does our key work", and a restricted or rotated key painted Stripe red while

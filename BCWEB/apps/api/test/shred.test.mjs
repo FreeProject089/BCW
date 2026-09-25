@@ -105,3 +105,16 @@ test('two concurrent first-uses agree on one key', { skip }, async () => {
   const [k1, k2] = await Promise.all([S.keyForUser(p, u.id), S.keyForUser(p, u.id)]);
   assert.equal(Buffer.compare(k1, k2), 0, 'a race must not mint two keys for one user');
 });
+
+// No database: seal()/open() are pure. GCM verifies whatever tag length it is handed unless the
+// decipher pins it, so without authTagLength a 4-byte tag was accepted — a forgery then costs
+// 2^32 tries, not 2^128 (semgrep gcm-no-tag-length, 2026-09-25). This asserts the pin.
+test('a truncated authentication tag is refused, not verified on fewer bytes', async () => {
+  const { seal, open } = await import('../src/lib/shred.mjs');
+  const crypto = await import('node:crypto');
+  const key = crypto.randomBytes(32);
+  const env = JSON.parse(seal(key, 'personal data', 'u-tag'));
+  assert.equal(open(key, env), 'personal data');
+  const short = { ...env, tag: Buffer.from(env.tag, 'base64').subarray(0, 4).toString('base64') };
+  assert.throws(() => open(key, short));
+});

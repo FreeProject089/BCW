@@ -33,4 +33,8 @@ COPY --from=server /app/target/release/bmm-telemetry-server /usr/local/bin/bmm-t
 COPY --from=web /web/dist ./public
 ENV STATIC_DIR=/app/public
 EXPOSE 8900
+# Already the image's default user (:nonroot is uid 65532); written out so a reader, and the
+# Dockerfile scanners in .github/workflows/security.yml (Trivy DS-0002, Semgrep missing-user),
+# see it without knowing the base image. Changes nothing at runtime.
+USER nonroot
 CMD ["/usr/local/bin/bmm-telemetry-server"]
