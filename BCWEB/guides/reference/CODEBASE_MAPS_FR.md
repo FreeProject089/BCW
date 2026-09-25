@@ -261,9 +261,11 @@ compose ci-dessus est la première. Voici la seconde — les workflows GitHub Ac
 chacun publie (lu depuis les ACTIONS utilisées, jamais depuis son nom), et quels secrets un
 clone neuf exigerait.
 
-Ce qu'elle rapporte, c'est **un workflow, sept jobs, aucun secret** :
+Ce qu'elle rapporte, c'est **deux workflows, huit jobs, un secret** :
 `BCW/.github/workflows/ci.yml`, qui exécute `web-build`, `api-check`, `native`, `caddyfile`,
-`secret-scan`, `npm-audit` et `cargo-audit` sur `push` et sur `pull_request`. Les trois chiffres sont épinglés plus bas. Rien
+`secret-scan`, `npm-audit` et `cargo-audit` sur `push` et sur `pull_request`, et `deploy.yml`, un
+job `deploy` qui exige `DEPLOY_SSH_KEY` (une clé à qui le serveur ne laisse lancer que
+infra/deploy-gate.sh, DEPLOY_FR section 9). Les trois chiffres sont épinglés plus bas. Rien
 dans la CI ne demande de secret : un contributeur sur un fork peut donc vérifier son travail,
 un fait d'une ligne qui ne vit sinon que dans la tête de celui qui l'a monté.
 
@@ -303,9 +305,9 @@ les semaines et sont écrits plus haut comme des instantanés datés, volontaire
 | `dataLossMigrations` | Migrations contenant `DROP TABLE`, `DROP COLUMN` ou `DELETE FROM` | **3** |
 | `indexDrift` | Index créés par une migration et absents de `schema.prisma` | **0** |
 | `publishedPorts` | Entrées de port joignables depuis l'extérieur de la machine | **3** |
-| `workflows` | Fichiers de workflow GitHub Actions que la carte peut atteindre | **1** |
-| `workflowJobs` | Jobs dans ces workflows | **7** |
-| `workflowSecrets` | Secrets distincts exigés par ces workflows | **0** |
+| `workflows` | Fichiers de workflow GitHub Actions que la carte peut atteindre | **2** |
+| `workflowJobs` | Jobs dans ces workflows | **8** |
+| `workflowSecrets` | Secrets distincts exigés par ces workflows | **1** |
 
 ## Ce qu'elles ne sont pas
 

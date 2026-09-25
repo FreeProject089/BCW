@@ -246,10 +246,12 @@ above is the first. This is the second — the GitHub Actions workflows, what ea
 publishes (read from the ACTIONS it uses, never from its name), and which secrets a fresh
 clone would need.
 
-What it reports is **one workflow, seven jobs, no secrets at all**: `BCW/.github/workflows/ci.yml`,
+What it reports is **two workflows, eight jobs, one secret**: `BCW/.github/workflows/ci.yml`,
 running `web-build`, `api-check`, `native`, `caddyfile`, `secret-scan`, `npm-audit` and
 `cargo-audit` on push and on
-pull_request. All three figures are pinned below. Nothing in CI needs a secret, so a
+pull_request, and `deploy.yml`, one `deploy` job that needs `DEPLOY_SSH_KEY` (a key the server
+only lets run infra/deploy-gate.sh, DEPLOY_EN section 9). All three figures are pinned below.
+Nothing in CI needs a secret, so a
 contributor on a fork can check their work, which is a one-line fact that otherwise lives only
 in whoever set it up.
 
@@ -288,9 +290,9 @@ be switched off within a month.
 | `dataLossMigrations` | Migrations containing `DROP TABLE`, `DROP COLUMN` or `DELETE FROM` | **3** |
 | `indexDrift` | Indexes created by a migration and absent from `schema.prisma` | **0** |
 | `publishedPorts` | Port entries reachable from outside the machine | **3** |
-| `workflows` | GitHub Actions workflow files the map can reach | **1** |
-| `workflowJobs` | Jobs across those workflows | **7** |
-| `workflowSecrets` | Distinct secrets those workflows need | **0** |
+| `workflows` | GitHub Actions workflow files the map can reach | **2** |
+| `workflowJobs` | Jobs across those workflows | **8** |
+| `workflowSecrets` | Distinct secrets those workflows need | **1** |
 
 ## What these are not
 
