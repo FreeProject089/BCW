@@ -471,9 +471,11 @@ async function cmdInventory(i, from = '') {
   if (!rows.length) return ui.reply(i, { title: `${ui.icx('inventory')}${t('inv.title')}`, body: t('inv.empty'), buttons: [...ecoButtons('inventory', t, here), learnButton(t, 'inventory'), ...backButtons(t, from)] });
   const pending = rows.filter((x) => x.status === 'pending').length;
   const sections = rows.slice(0, 10).map((x) => {
+    // nosemgrep: html-in-template-string -- Discord message text (markdown, <t:…> timestamps), never parsed as HTML
     const when = `<t:${Math.floor(new Date(x.createdAt).getTime() / 1000)}:d>`;
     const d = x.delivery || {};
     const state = x.status === 'pending' ? `${ui.icx('timed')}waiting for an admin`
+      // nosemgrep: html-in-template-string -- Discord message text (markdown, <t:…> timestamps), never parsed as HTML
       : d.revealed && d.code ? `code \`${d.code}\`${x.expiresAt ? ` · until <t:${Math.floor(new Date(x.expiresAt).getTime() / 1000)}:d>` : ''}${x.expired ? ' · expired' : ''}`
       : d.badge ? `badge **${d.badge}**`
       : x.canReveal ? `${ui.icx('reveal')}sealed — reveal when you want the code` : `${ui.icx('done')}delivered`;
@@ -497,6 +499,7 @@ async function invReveal(i) {
   const d = r.delivery || {};
   return ui.reply(i, {
     title: `${ui.icx('reveal')}Your code`, color: ui.GOOD,
+    // nosemgrep: html-in-template-string -- Discord message text (markdown, <t:…> timestamps), never parsed as HTML
     body: [`# ${d.code}`, `Redeem it on the site${d.target ? ` (${d.target})` : ''}.`, r.expiresAt ? `-# Valid until <t:${Math.floor(new Date(r.expiresAt).getTime() / 1000)}:f>` : '-# No expiry.', '-# It is kept in your inventory — only you can see this message.'],
     buttons: [ui.btn(`${SITE_URL}/dashboard?s=economy`, 'Open on the site', ButtonStyle.Secondary, { emoji: 'site' }), ui.btn('eco:inventory', 'Inventory', ButtonStyle.Secondary, { emoji: 'inventory' })],
   });
@@ -557,6 +560,7 @@ async function cmdHistory(i, kind = '', from = '') {
     const m = x.meta || {};
     const who = x.kind === 'gift_out' ? ` → ${m.toName || '?'}` : x.kind === 'gift_in' ? ` ← ${m.fromName || '?'}` : x.kind === 'purchase' ? ` · ${m.name || ''}` : x.kind === 'casino' ? ` · ${m.game || ''} ×${m.multiplier ?? '?'}` : x.kind === 'levelup' ? ` · Lv ${m.level}` : '';
     const d = x.delta > 0 ? `**+${n(x.delta)}**` : x.delta < 0 ? `**−${n(-x.delta)}**` : '±0';
+    // nosemgrep: html-in-template-string -- Discord message text (markdown, <t:…> timestamps), never parsed as HTML
     return `<t:${Math.floor(new Date(x.createdAt).getTime() / 1000)}:d> ${kindLabel(x.kind) || x.kind}${who} — ${d} → ${n(x.balance)}`;
   });
   return ui.reply(i, { title: `${ui.icx('history')}${t('hist.title')}${kind ? ` · ${kindLabel(kind) || kind}` : ''}`, body: lines, footer: t('hist.footer'), buttons: [ui.btn(`${SITE_URL}/dashboard?s=economy`, t('btn.site'), ButtonStyle.Secondary, { emoji: 'site' }), ...ecoButtons('', t, here), ...backButtons(t, from)] });

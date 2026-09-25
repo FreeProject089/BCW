@@ -23,7 +23,6 @@ telemetry-dashboard/
   web/      React/Tailwind dashboard (built to web/dist, served by the API)
     src/lib/replay-decode.ts   .bmmreplay / rrweb stream decoder (unit-tested)
   Dockerfile, docker-compose.yml
-  *.mjs     legacy Express/SQLite version (deprecated, kept for reference)
 ```
 
 ## Run with Docker (recommended)

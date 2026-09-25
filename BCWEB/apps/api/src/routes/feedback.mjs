@@ -6,7 +6,7 @@ import { findUserIdByBcId, looksLikeBcId } from '../lib/repofingerprint.mjs';
 import { verifyCreatorProof, expectedProofAudience } from '../lib/creator-proof.mjs';
 import { acceptCreatorProof } from '../lib/creator-identity.mjs';
 import { putObject, getObject, deleteObject, prefixUsage } from '../lib/storage.mjs';
-import { sendMail, mailShell, emailEnabled } from '../lib/mail.mjs';
+import { sendMail, mailShell, emailEnabled, escapeHtml } from '../lib/mail.mjs';
 import { deleteSubmission } from '../lib/feedback-thread.mjs';
 
 // Feedback & crash centre. One inbox per project (BMM, BSM, whatever comes next) that any app
@@ -483,7 +483,8 @@ export default async function feedbackRoutes(app) {
       sendMail({
         to: d.email,
         subject: `We received your ${d.kind === 'feedback' ? 'feedback' : d.kind === 'bug' ? 'bug report' : 'crash report'} (${key})`,
-        html: mailShell('Thanks — we have it', `Your ${d.kind} for <b>${key}</b> reached the team. Reference: <code>${id}</code>. If we need more, or once it is handled, we will answer at this address. Create a BetterCommunity account with this e-mail to follow it from your dashboard instead.`, { url: `${SITE_URL}/auth`, label: 'Open BetterCommunity' }),
+        // nosemgrep: raw-html-format, html-in-template-string -- kind is a zod enum, id a server hex id, key an admin-configured project key (escaped); the reply body is entity-escaped on the line
+        html: mailShell('Thanks — we have it', `Your ${d.kind} for <b>${escapeHtml(key)}</b> reached the team. Reference: <code>${id}</code>. If we need more, or once it is handled, we will answer at this address. Create a BetterCommunity account with this e-mail to follow it from your dashboard instead.`, { url: `${SITE_URL}/auth`, label: 'Open BetterCommunity' }),
         text: `We received your ${d.kind} for ${key}. Reference: ${id}.`,
       }).catch(() => {});
     }
@@ -760,6 +761,7 @@ export default async function feedbackRoutes(app) {
     if (r.email && emailEnabled()) {
       const sent = await sendMail({
         to: r.email, subject: `About your ${r.kind} (${r.projectKey}) — BetterCommunity`,
+        // nosemgrep: raw-html-format, html-in-template-string -- kind is a zod enum, id a server hex id, key an admin-configured project key (escaped); the reply body is entity-escaped on the line
         html: mailShell('A reply from the team', `<p style="white-space:pre-wrap">${b.data.body.replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]))}</p><p>Reference: <code>${r.id}</code></p>`, { url: `${SITE_URL}/auth`, label: 'Open BetterCommunity' }),
         text: `${b.data.body}\n\nReference: ${r.id}`,
       }).catch(() => false);

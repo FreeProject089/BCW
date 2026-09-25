@@ -78,8 +78,9 @@ jobs:
         with: { node-version: '22' }
       # The gate decides whether every other job here fails. These tests build reports of each
       # tool and prove the thresholds, the "LOW/INFO never block" rule, the refusal of a missing
-      # or empty-because-nothing-ran report, and that production is out of DAST scope.
-      - run: node --test .github/scripts/security-gate.test.mjs .github/scripts/dast-scope.test.mjs
+      # or empty-because-nothing-ran report, that production is out of DAST scope, and the
+      # verdict deploy.yml reads before it deploys (a green run of THIS workflow for the commit).
+      - run: node --test .github/scripts/security-gate.test.mjs .github/scripts/dast-scope.test.mjs .github/scripts/security-verdict.test.mjs
 
   gitleaks:
     name: Secrets in git history (gitleaks)
@@ -192,9 +193,9 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with: { node-version: '22' }
-      # --skip-files: the telemetry dashboard's ROOT lockfile belongs to the deprecated Express
-      # version (BCWEB/bmm/telemetry-dashboard/README.md) that no image builds; ci.yml's npm-audit
-      # matrix leaves it out for the same reason ("not deployed"). One scope for both tools.
+      # The same lockfiles as ci.yml's npm-audit matrix: the telemetry dashboard's old root
+      # lockfile (deprecated Express version, built into no image) was skipped here and there
+      # until it was deleted on 2026-09-25, so no --skip-files is needed any more.
       # --ignorefile: reviewed exceptions, each scoped to a lockfile, with a reason and an expiry;
       # --show-suppressed puts them in the report so the gate prints them on every run.
       - name: trivy fs
@@ -204,7 +205,6 @@ jobs:
             -v "$PWD:/src:ro" -v "$RUNNER_TEMP/trivy-cache:/cache" -v "$PWD/reports:/reports" \
             -w /src "$TRIVY_IMAGE" \
             fs --scanners vuln,misconfig \
-            --skip-files BCWEB/bmm/telemetry-dashboard/package-lock.json \
             --ignorefile .github/security/trivyignore.yaml --show-suppressed \
             --format json --output /reports/trivy-fs.json --exit-code 0 --no-progress .
           docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD/reports:/reports" "$TRIVY_IMAGE" \

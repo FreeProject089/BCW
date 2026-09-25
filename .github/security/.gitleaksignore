@@ -11,10 +11,24 @@
 # is rotated first, and only then may its fingerprint be listed, with "rotated on <date>".
 #
 # Reviewed 2026-09-25 (agent-secci-bcw), every value read in the commit it was found in.
-# NOT listed on purpose: BCWEB/infra/compose/.env.example:115 TELEMETRY_API_KEY in 63ecc8c6 and
-# 9abfe0e3. The compose file calls it the public ingest key, but whether it is public by
-# design (shipped inside the BMM client) was not verified; that is the owner's call, and until
-# it is made the full-history run keeps reporting it.
+
+# TELEMETRY_API_KEY in BCWEB/infra/compose/.env.example (the telemetry INGEST key). Public by
+# design, not a credential: it ships inside every copy of the BMM desktop app
+# (frontend/src/core/links-config.ts, analytics_key, commented "PUBLIC ingest key — safe to
+# ship") and only lets a client SUBMIT opt-in telemetry; reading, exporting and deleting need
+# TELEMETRY_ADMIN_KEY, which is not in any commit. The .env.example itself says "NOT a secret,
+# despite the name". Verified 2026-09-25 (agent-findings-bcw) by comparing the committed values
+# with the client's, without printing them: the 9abfe0e3 value is the one the current BMM
+# client ships; the 63ecc8c6 value is the previous one, which the BMM client source carried
+# before (BMM history: commits 6caec539, c508d605, a96065cc touch it). Rotating it means
+# shipping a new BMM client, and gains nothing: whoever has the app has the key.
+63ecc8c6c92c79475bee21308f1fed2dcbcc63d9:BCWEB/infra/compose/.env.example:generic-api-key:115
+9abfe0e33f7242911a1599833b90d70775119807:BCWEB/infra/compose/.env.example:generic-api-key:115
+
+# This file's own comment in 6c571764 (line 39): the words describing the secrets-map fixture
+# spelled out a Stripe TEST-key placeholder, which matches the stripe-access-token rule. Not a
+# key; the comment now describes it without the shape (reviewed 2026-09-25, agent-findings-bcw).
+6c57176497e356df7d9e8c1bd14fba877c0677d7:.github/security/.gitleaksignore:stripe-access-token:39
 
 # Test fixtures written with FAKE / TEST inside the value (the file header says "Fake secrets,
 # one per place a real one lives"); the file now builds its shapes at run time.
@@ -35,8 +49,9 @@ cb0a9872f6ac290d3d7af0d90693042d8568c507:BCWEB/apps/api/test/config-transfer.tes
 38e36b7935c367f20d7c2973f36b902aa5d94e3c:BCWEB/apps/bot/test/sync-app-emojis.test.mjs:discord-bot-token:9
 
 # Test fixtures standing for "a value somebody set": boot-guard's hand-typed hex, the
-# config-diff example value, the log-redaction canary (S3CR3TKEY…), and a stripe
-# `sk_test_placeholder` fallback inside a source string the secrets map is tested on.
+# config-diff example value, the log-redaction canary (S3CR3TKEY…), and a Stripe test-key
+# placeholder (the word "placeholder" after the test prefix) inside a source string the
+# secrets map is tested on.
 d9142b65d64e8cc9110aa0e4e9a8188805b08c7d:BCWEB/apps/api/test/boot-guard.test.mjs:generic-api-key:22
 70bbf5613b766f0c6905a35ad8b572d79151e756:BCWEB/apps/api/test/config-diff.test.mjs:generic-api-key:67
 70bbf5613b766f0c6905a35ad8b572d79151e756:BCWEB/apps/api/test/config-diff.test.mjs:generic-api-key:68

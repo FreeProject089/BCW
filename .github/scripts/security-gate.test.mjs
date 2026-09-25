@@ -166,6 +166,58 @@ test('zap: an IGNORE rule with a reason removes the alert, and says so', () => {
   assert.match(f.ignored[0].reason, /Caddy/);
 });
 
+// ZAP reports every CSP problem under ONE plugin id (10055) and tells them apart by alertRef
+// (10055-4 wildcard source, 10055-6 style-src 'unsafe-inline', 10055-13 missing form-action…).
+// Ignoring by plugin id would hide every future CSP regression with the one reviewed alert, so
+// a rule can name the alertRef, and then it removes that alert and nothing else.
+const zapRefReport = (alerts) => ({
+  '@version': '2.17.0',
+  site: [{ '@name': 'http://localhost', alerts: alerts.map(([alertRef, riskcode]) => ({
+    pluginid: alertRef.split('-')[0], alertRef, alert: `alert ${alertRef}`, name: `alert ${alertRef}`,
+    riskcode: String(riskcode), confidence: '3', riskdesc: 'x', instances: [{ uri: 'http://localhost/', method: 'GET' }], count: '1',
+  })) }],
+});
+
+test('zap: an IGNORE on an alertRef removes that alert only, not its siblings under the same plugin', () => {
+  const rules = parseZapRules('10055-6\tIGNORE\t(style-src unsafe-inline: React style attributes; reviewed)\n');
+  const f = normalise('zap', zapRefReport([['10055-6', 2], ['10055-13', 2], ['10055-4', 2]]), { zapRules: rules });
+  assert.deepEqual(f.ignored.map((x) => x.id.split(' ')[0]), ['10055-6']);
+  assert.deepEqual(f.findings.map((x) => x.id.split(' ')[0]).sort(), ['10055-13', '10055-4']);
+});
+
+test('zap: a plugin-id IGNORE still covers every alertRef of that plugin (unchanged meaning)', () => {
+  const rules = parseZapRules('10055\tIGNORE\t(reviewed)\n');
+  const f = normalise('zap', zapRefReport([['10055-6', 2], ['10055-13', 2]]), { zapRules: rules });
+  assert.equal(f.findings.length, 0);
+  assert.equal(f.ignored.length, 2);
+});
+
+test('zap: an IGNORE whose reason says `expires <date>` stops applying on that date', () => {
+  const text = '10055-6\tIGNORE\t(reviewed; expires 2027-03-31)\n';
+  assert.ok(parseZapRules(text, { today: '2027-03-31' }).ignore.has('10055-6'));
+  const late = parseZapRules(text, { today: '2027-04-01' });
+  assert.ok(!late.ignore.has('10055-6'));
+  assert.deepEqual(late.expired, ['10055-6 (expired 2027-03-31)']);
+  const f = normalise('zap', zapRefReport([['10055-6', 2]]), { zapRules: late });
+  assert.equal(f.findings.length, 1);
+});
+
+test('zap: a rule id that is neither a plugin id nor an alertRef is refused', () => {
+  assert.throws(() => parseZapRules('10055-x\tIGNORE\t(r)\n'), /plugin id/);
+  assert.throws(() => parseZapRules('csp\tIGNORE\t(r)\n'), /plugin id/);
+});
+
+test('the repository zap-rules.tsv ignores exactly the reviewed CSP alerts, never the whole CSP plugin', () => {
+  const rules = parseZapRules(readFileSync(new URL('../security/zap-rules.tsv', import.meta.url), 'utf8'));
+  assert.ok(!rules.ignore.has('10055'), 'IGNORE 10055 would hide every CSP alert, including a missing form-action or an unsafe script-src');
+  const f = normalise('zap', zapRefReport([['10055-4', 2], ['10055-6', 2], ['10055-13', 2], ['10055-5', 2], ['10055-10', 2]]), { zapRules: rules });
+  assert.deepEqual(f.ignored.map((x) => x.id.split(' ')[0]).sort(), ['10055-4', '10055-6']);
+  for (const x of f.ignored) {
+    assert.ok(x.reason.length > 40, `the reason for ${x.id} is too thin to review: "${x.reason}"`);
+    assert.match(x.reason, /\bexpires \d{4}-\d{2}-\d{2}\b/, `${x.id}: a reviewed exclusion must say when it expires`);
+  }
+});
+
 test('zap: an IGNORE rule with no reason is refused', () => {
   assert.throws(() => parseZapRules('10038\tIGNORE\n'), /reason/);
   assert.throws(() => parseZapRules('10038\tIGNORE\t()\n'), /reason/);

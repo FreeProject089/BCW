@@ -47,9 +47,11 @@ function lineChart({ series, levels, yLabel, scale = 'linear', fmtY }) {
     for (let i = 0; i <= 4; i++) ticks.push((maxY / 4) * i);
   }
 
+  // nosemgrep: html-in-template-string -- local stress report from the harness's own numbers; text through esc()/md()
   const grid = ticks.map((v) => `<line class="grid" x1="${P.l}" x2="${P.l + iw}" y1="${yPos(v).toFixed(1)}" y2="${yPos(v).toFixed(1)}"/>
     <text class="tick" x="${P.l - 8}" y="${(yPos(v) + 4).toFixed(1)}" text-anchor="end">${esc(fmtY(v))}</text>`).join('');
 
+  // nosemgrep: html-in-template-string -- local stress report from the harness's own numbers; text through esc()/md()
   const xticks = levels.map((l, i) => `<text class="tick" x="${xPos(i).toFixed(1)}" y="${H - P.b + 18}" text-anchor="middle">${esc(l.name)}</text>
     <text class="tick tick-sub" x="${xPos(i).toFixed(1)}" y="${H - P.b + 32}" text-anchor="middle">${esc(fmt(l.conns))}</text>`).join('');
 
@@ -75,9 +77,11 @@ function lineChart({ series, levels, yLabel, scale = 'linear', fmtY }) {
     const last = pts[pts.length - 1];
     const c = `var(${SLOTS[si % SLOTS.length]})`;
     // Marks: 2px line, >=8px markers with a 2px surface ring where they overlap.
+    // nosemgrep: html-in-template-string -- local stress report from the harness's own numbers; text through esc()/md()
     const dots = pts.map((p) => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="4" fill="${c}" stroke="var(--surface-1)" stroke-width="2"/>`).join('');
     // Hover: a >=24px invisible target per point; the tooltip ENHANCES — every value is also
     // in the table below, so nothing is gated behind hover.
+    // nosemgrep: html-in-template-string -- local stress report from the harness's own numbers; text through esc()/md()
     const hits = pts.map((p) => `<rect class="hit" x="${(p.x - 14).toFixed(1)}" y="${(p.y - 14).toFixed(1)}" width="28" height="28" fill="transparent"
       tabindex="0" role="img" aria-label="${esc(s.name)} ${esc(p.raw.label)}: ${esc(fmtY(p.raw.y))}"
       data-tip="${esc(s.name)} · ${esc(p.raw.label)} · ${esc(fmtY(p.raw.y))}"/>`).join('');
@@ -85,11 +89,14 @@ function lineChart({ series, levels, yLabel, scale = 'linear', fmtY }) {
     // connects it back to its line when de-collision moved it off the endpoint.
     const ly = labelY.get(si);
     const leader = Math.abs(ly - last.y) > 2
+      // nosemgrep: html-in-template-string -- local stress report from the harness's own numbers; text through esc()/md()
       ? `<line x1="${(last.x + 4).toFixed(1)}" y1="${last.y.toFixed(1)}" x2="${(last.x + 8).toFixed(1)}" y2="${ly.toFixed(1)}" stroke="${c}" stroke-width="1" opacity=".5"/>` : '';
+    // nosemgrep: html-in-template-string -- local stress report from the harness's own numbers; text through esc()/md()
     return `<g><path d="${d}" fill="none" stroke="${c}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>${dots}${leader}
       <text class="endlabel" x="${(last.x + 10).toFixed(1)}" y="${(ly + 4).toFixed(1)}">${esc(s.name)}</text>${hits}</g>`;
   }).join('');
 
+  // nosemgrep: html-in-template-string -- local stress report from the harness's own numbers; text through esc()/md()
   return `<svg viewBox="0 0 ${W} ${H}" class="chart" role="img" aria-label="${esc(yLabel)}">
     <text class="axis-title" x="${P.l}" y="12">${esc(yLabel)}</text>
     ${grid}
@@ -117,22 +124,44 @@ export function toHtml(meta, scenarios, lang = 'en', altHref = null) {
     series: scenarios.map((s) => ({ name: s.name, points: s.results.map((r) => ({ y: r.p99_9, label: r.level })) })),
   });
 
+  // The nested templates are hoisted into named pieces: one that starts inside another
+  // template's text cannot carry a nosemgrep. Everything here is the harness's own
+  // measurements (numbers through fmt()/ms()) and this file's own prose (esc()/md()).
+  // nosemgrep: html-in-template-string -- the level passes esc(); the rest are numbers through fmt()/ms()
+  const resultRow = (r) => `<tr><td>${esc(r.level)}</td><td>${fmt(r.conns)}</td><td>${fmt(r.rps)}</td><td><b>${fmt(r.ok2xx_s)}</b></td>
+          <td>${ms(r.p50)}</td><td>${ms(r.p90)}</td><td>${ms(r.p99)}</td><td>${ms(r.p99_9)}</td><td>${fmt(r.non2xx)}</td>
+          <td class="${r.errors ? 'bad' : ''}">${r.errors}</td><td class="${r.timeouts ? 'bad' : ''}">${r.timeouts}</td><td>${r.ping ? ms(r.ping.p99) : '—'}</td></tr>`;
+  // nosemgrep: html-in-template-string -- the note goes through md(), which escapes first
+  const noteItem = (n) => `<li>${md(n)}</li>`;
+  // nosemgrep: html-in-template-string -- scenario names pass esc(); the slot is a constant
+  const legend = `<ul class="legend">${scenarios.map((s, i) => `<li><span class="sw" style="background:var(${SLOTS[i % SLOTS.length]})"></span>${esc(s.name)}</li>`).join('')}</ul>`;
+  // nosemgrep: html-in-template-string -- the other language's file name passes esc()
+  const altLink = altHref ? ` · <a href="${esc(altHref)}">${lang === 'fr' ? 'English' : 'Français'}</a>` : '';
+
+  // nosemgrep: html-in-template-string -- names, descriptions and headers pass esc(); rows and notes are built above
   const tables = scenarios.map((s) => `
     <section class="card">
       <h3>${esc(s.name)}</h3>
       <p class="desc">${esc(s.desc)}</p>
       <div class="scroll"><table>
         <thead><tr><th>${esc(t('th.level'))}</th><th>${esc(t('th.conns'))}</th><th>${esc(t('th.rps'))}</th><th>${esc(t('th.ok'))}</th><th>p50</th><th>p90</th><th>p99</th><th>p99.9</th><th>${esc(t('th.non2xx'))}</th><th>${esc(t('th.err'))}</th><th>${esc(t('th.to'))}</th><th>${esc(t('th.ping'))}</th></tr></thead>
-        <tbody>${s.results.map((r) => `<tr><td>${esc(r.level)}</td><td>${fmt(r.conns)}</td><td>${fmt(r.rps)}</td><td><b>${fmt(r.ok2xx_s)}</b></td>
-          <td>${ms(r.p50)}</td><td>${ms(r.p90)}</td><td>${ms(r.p99)}</td><td>${ms(r.p99_9)}</td><td>${fmt(r.non2xx)}</td>
-          <td class="${r.errors ? 'bad' : ''}">${r.errors}</td><td class="${r.timeouts ? 'bad' : ''}">${r.timeouts}</td><td>${r.ping ? ms(r.ping.p99) : '—'}</td></tr>`).join('')}</tbody>
+        <tbody>${s.results.map(resultRow).join('')}</tbody>
       </table></div>
-      <ul class="notes">${diagnoseText(s, t).map((n) => `<li>${md(n)}</li>`).join('')}</ul>
+      <ul class="notes">${diagnoseText(s, t).map(noteItem).join('')}</ul>
     </section>`).join('');
 
   const specRows = anchor ? minSpec(meta, anchor.ok2xx_s).map((s) =>
+    // nosemgrep: html-in-template-string -- local stress report from the harness's own numbers; text through esc()/md()
     `<tr><td>${s.users.toLocaleString(loc)}</td><td>${s.coresNeeded}</td><td>${s.gb} GB</td><td>${esc(t(tierKey(s.users)))}</td></tr>`).join('') : '';
+  // nosemgrep: html-in-template-string -- this file's prose through md()/esc(); the numbers through fmt(); specRows is built above
+  const minspecHtml = anchor ? `<p class="desc">${md(t('minspec.intro', { scenario: anchor.scenario, rps: fmt(anchor.ok2xx_s), cores: meta.cores, perCore: fmt(anchor.ok2xx_s / meta.cores), rpm: meta.rpmPerUser, usersPerCore: minSpec(meta, anchor.ok2xx_s)[0].usersPerCore.toLocaleString(loc) }))}</p>
+  <div class="scroll"><table><thead><tr><th>${esc(t('minspec.users'))}</th><th>${esc(t('minspec.cpu'))}</th><th>${esc(t('minspec.ram'))}</th><th>${esc(t('minspec.notes'))}</th></tr></thead>
+    <tbody>${specRows}</tbody></table></div>
+  <ul class="notes"><li>${md(t('minspec.caveat'))}</li></ul>`
+    // nosemgrep: html-in-template-string -- local stress report from the harness's own numbers; text through esc()/md()
+    : `<p class="desc">${md(t('minspec.none'))}</p>`;
 
+  // nosemgrep: html-in-template-string -- local stress report from the harness's own numbers; text through esc()/md()
   return `<div class="viz-root" data-palette="#2a78d6,#1baf7a,#eda100,#008300">
 <style>
   .viz-root{color-scheme:light;--surface-1:#fcfcfb;--plane:#f9f9f7;--text-primary:#0b0b0b;--text-secondary:#52514e;--muted:#898781;
@@ -184,7 +213,7 @@ export function toHtml(meta, scenarios, lang = 'en', altHref = null) {
 </style>
 
 <h1>${esc(t('title'))}</h1>
-<p class="sub">${esc(meta.at)} · ${esc(t('meta.target'))} <code>${esc(meta.origin + meta.prefix)}</code> · ${esc(meta.cores)} ${esc(t('meta.cores'))} / ${esc(meta.memGB)} GB · Node ${esc(meta.node)} · ${esc(meta.durationSec)}s ${esc(t('meta.perLevel'))}${altHref ? ` · <a href="${esc(altHref)}">${lang === 'fr' ? 'English' : 'Français'}</a>` : ''}</p>
+<p class="sub">${esc(meta.at)} · ${esc(t('meta.target'))} <code>${esc(meta.origin + meta.prefix)}</code> · ${esc(meta.cores)} ${esc(t('meta.cores'))} / ${esc(meta.memGB)} GB · Node ${esc(meta.node)} · ${esc(meta.durationSec)}s ${esc(t('meta.perLevel'))}${altLink}</p>
 
 <div class="tiles">
   <div class="card tile"><div class="k">${esc(t('tile.peak'))}</div><div class="v">${peak ? fmt(peak.ok2xx_s) : '—'}</div>
@@ -201,14 +230,14 @@ export function toHtml(meta, scenarios, lang = 'en', altHref = null) {
   <h3>${esc(t('chart.throughput'))}</h3>
   <p class="desc">${esc(t('chart.throughput.desc'))}</p>
   ${thr}
-  <ul class="legend">${scenarios.map((s, i) => `<li><span class="sw" style="background:var(${SLOTS[i % SLOTS.length]})"></span>${esc(s.name)}</li>`).join('')}</ul>
+  ${legend}
 </section>
 
 <section class="card">
   <h3>${esc(t('chart.latency'))}</h3>
   <p class="desc">${esc(t('chart.latency.desc'))}</p>
   ${lat}
-  <ul class="legend">${scenarios.map((s, i) => `<li><span class="sw" style="background:var(${SLOTS[i % SLOTS.length]})"></span>${esc(s.name)}</li>`).join('')}</ul>
+  ${legend}
 </section>
 
 <h2>${esc(t('perScenario'))}</h2>
@@ -216,11 +245,7 @@ ${tables}
 
 <h2>${esc(t('minspec'))}</h2>
 <section class="card">
-  ${anchor ? `<p class="desc">${md(t('minspec.intro', { scenario: anchor.scenario, rps: fmt(anchor.ok2xx_s), cores: meta.cores, perCore: fmt(anchor.ok2xx_s / meta.cores), rpm: meta.rpmPerUser, usersPerCore: minSpec(meta, anchor.ok2xx_s)[0].usersPerCore.toLocaleString(loc) }))}</p>
-  <div class="scroll"><table><thead><tr><th>${esc(t('minspec.users'))}</th><th>${esc(t('minspec.cpu'))}</th><th>${esc(t('minspec.ram'))}</th><th>${esc(t('minspec.notes'))}</th></tr></thead>
-    <tbody>${specRows}</tbody></table></div>
-  <ul class="notes"><li>${md(t('minspec.caveat'))}</li></ul>`
-    : `<p class="desc">${md(t('minspec.none'))}</p>`}
+  ${minspecHtml}
 </section>
 
 <div id="tip"></div>

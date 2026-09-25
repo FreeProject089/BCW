@@ -83,7 +83,7 @@ infra/        docker-compose + Caddy reverse proxy (edge anti-bot/CSP)
 
 ## API (implemented so far)
 
-After `docker compose up`, run the seed once: `docker compose exec api npm run seed`
+After `docker compose up`, run the seed once: `docker compose exec api node src/seed.mjs`
 (creates the projects, an admin account, hosting plans + default admin settings).
 
 | Method | Route | Auth | Purpose |
@@ -159,7 +159,7 @@ Before pointing a real domain at this:
    [guides/BACKUP_EN.md](./guides/run/BACKUP_EN.md) · [FR](./guides/run/BACKUP_FR.md). *(Don't tar the
    `db-data` volume under a live server — `pg_dump` is the safe path.)*
 6. **Bring it up** — `docker compose up -d`, then seed once:
-   `docker compose exec api npm run seed` and change the seeded admin password.
+   `docker compose exec api node src/seed.mjs` and change the seeded admin password.
 
 ### Shipped since the original roadmap
 - **Auth**: TOTP 2FA (QR + recovery codes, required for admin tiers, step-up for

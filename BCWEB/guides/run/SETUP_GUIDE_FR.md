@@ -36,7 +36,7 @@ section ci-dessous — laisse-les vides pour l'instant et reviens une fois le si
 
 ```bash
 docker compose up -d
-docker compose exec api npm run setup
+docker compose exec api node src/setup.mjs
 ```
 
 `setup` applique les migrations puis lance **tous** les seeds dans le bon ordre. Il remplace
@@ -64,7 +64,7 @@ fraîche a donc un catalogue vide — rien à parcourir, et rien à rendre pour 
 charge. Pour le remplir avec du contenu réaliste :
 
 ```bash
-docker compose exec api npm run seed:demo      # ~400 items ; DEMO_N=1000 pour plus
+docker compose exec api node src/seed-demo.mjs      # ~400 items ; DEMO_N=1000 pour plus
 ```
 
 Tout ce qu'il crée est slugué `demo-*` : le relancer remplace exactement ses propres lignes et
@@ -222,14 +222,16 @@ trace visible.
 
 ## 10. Optionnel : dashboard de télémétrie BMM
 
-Le service de télémétrie (`bmm/telemetry-dashboard`, son propre conteneur + SQLite) collecte les
-statistiques opt-in de l'app BMM. La config env vit dans `bmm/telemetry-dashboard/.env`
-(`API_KEY` doit correspondre à l'`analytics_key` de l'app BMM ; `ADMIN_KEY` déverrouille le panneau
-admin). Au-delà du premier boot, tu **n'édites pas** ce `.env` pour les limites du quotidien :
+Le service de télémétrie (`bmm/telemetry-dashboard` : Rust/Axum + React, son propre conteneur et
+sa propre base Postgres, `telemetry-db`) collecte les statistiques opt-in de l'app BMM. Sous Docker,
+ses réglages viennent du `infra/compose/.env` de BCWEB, pas d'un `.env` à côté du dashboard
+(`TELEMETRY_API_KEY` doit correspondre à l'`analytics_key` de l'app BMM ; `TELEMETRY_ADMIN_KEY`
+déverrouille le panneau admin). Au-delà du premier boot, tu **n'édites pas** le `.env` pour les
+limites du quotidien :
 
 - **Le cap de stockage, la rétention RGPD et le délai d'effacement sont éditables EN DIRECT**
   depuis Admin → **Réglages d'hébergement** → la carte *« BMM telemetry (live) »*. Sauver pousse
-  au service de télémétrie, persiste dans son `config.json` (override `.env`, survit aux
+  au service de télémétrie, persiste dans sa base de données (override `.env`, survit aux
   redémarrages), et rogne les données au-delà de la limite immédiatement — sans redémarrage.
 - Pour que BCWEB joigne le service de télémétrie, le conteneur `api` a besoin de
   `TELEMETRY_INTERNAL_URL` (défaut `http://telemetry:8900`) et `TELEMETRY_ADMIN_KEY` (=

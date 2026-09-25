@@ -239,6 +239,7 @@ export function renderOgHtml(meta, lang = 'en') {
   // blog post's, a project's icon — is what the large shape is for, so the card follows the
   // picture instead of being fixed.
   const twCard = meta.image && meta.image !== LOGO() ? 'summary_large_image' : 'summary';
+  // nosemgrep: html-in-template-string -- every meta value passes esc(); twCard and the locale are constants
   return `<!doctype html>
 <html lang="en">
 <head>

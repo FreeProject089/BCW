@@ -14,6 +14,7 @@ const SITE = (process.env.SITE_URL || 'http://localhost:5176').replace(/\/$/, ''
 // client that forces light mode (Gmail, Outlook) showed it as a smudge on the cream header.
 // The plate is a table cell (not a CSS background) so every client paints it.
 function brandLogo() {
+  // nosemgrep: html-in-template-string -- mail renderer: text goes through inlineMd()/escapeHtml(), URLs through safeUrl() (http(s) only, escaped), colours through safeColor(); the shell escapes title/CTA
   return `<table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:separate"><tr><td style="background:#ffffff;border-radius:10px;padding:5px;line-height:0;border:1px solid #e7e2da"><img src="${BRAND_LOGO_DATA_URI}" width="26" height="26" alt="BetterCommunity" style="display:block;border-radius:6px"></td></tr></table>`;
 }
 
@@ -183,7 +184,11 @@ export function escapeHtml(s) {
 // columns, :badge chips, tables…) with inline styles for email clients. Everything is
 // escaped at the text/attribute level (only http(s) URLs, sanitised colours) so trusted-
 // author content still can't inject markup/CSS (CWE-79).
-function safeUrl(u) { const v = String(u ?? '').trim(); return /^https?:\/\//i.test(v) ? v : ''; }
+// Returns the value ESCAPED, because every caller puts it inside a double-quoted attribute.
+// The scheme check alone was not enough: `{href=https://x"onmouseover="…}` starts with
+// https:// and closed the attribute (mdAttrs keeps a `"` in an unquoted or single-quoted
+// value), so a directive could add attributes, or markup, to every copy of the mail.
+function safeUrl(u) { const v = String(u ?? '').trim(); return /^https?:\/\//i.test(v) ? escapeHtml(v) : ''; }
 function safeColor(c) { const v = String(c ?? '').trim(); return (/^#[0-9a-f]{3,8}$/i.test(v) || /^[a-z]+$/i.test(v) || /^rgba?\([\d.,\s%]+\)$/i.test(v)) ? v : ''; }
 function mdAttrs(s) { const out = {}; if (!s) return out; const re = /([\w-]+)=("[^"]*"|'[^']*'|[^\s}]+)/g; let m; while ((m = re.exec(s))) out[m[1]] = m[2].replace(/^["']|["']$/g, ''); return out; }
 
@@ -195,6 +200,7 @@ function inlineMd(raw) {
   let s = String(raw ?? '')
     .replace(/:badge\[([^\]]*)\](?:\{([^}]*)\})?/g, (_, txt, at) => {
       const c = safeColor(mdAttrs(at).color) || '#64748b';
+      // nosemgrep: html-in-template-string -- mail renderer: text goes through inlineMd()/escapeHtml(), URLs through safeUrl() (http(s) only, escaped), colours through safeColor(); the shell escapes title/CTA
       holders.push(`<span style="display:inline-block;background:${c};color:#fff;padding:1px 9px;border-radius:999px;font-size:12px;font-weight:600;vertical-align:1px">${escapeHtml(txt)}</span>`);
       return `${holders.length - 1}`;
     })
@@ -255,12 +261,18 @@ function renderDirective(name, label, attrs, innerLines) {
   const body = renderBlocks(innerLines);
   if (name === 'card' || name === 'ref') {
     const title = attrs.title || label; const href = safeUrl(attrs.href || attrs.link); const img = safeUrl(attrs.image);
+    // nosemgrep: html-in-template-string -- mail renderer: text goes through inlineMd()/escapeHtml(), URLs through safeUrl() (http(s) only, escaped), colours through safeColor(); the shell escapes title/CTA
     const inside = `${img ? `<img src="${img}" alt="" style="max-width:100%;border-radius:10px;margin:0 0 10px">` : ''}${title ? `<div style="font-weight:700;font-size:16px;margin-bottom:6px">${inlineMd(title)}</div>` : ''}${body}`;
+    // nosemgrep: html-in-template-string -- mail renderer: text goes through inlineMd()/escapeHtml(), URLs through safeUrl() (http(s) only, escaped), colours through safeColor(); the shell escapes title/CTA
     const box = `<div style="border:1px solid #eae4da;border-radius:14px;padding:16px;margin:0 0 14px">${inside}</div>`;
+    // nosemgrep: html-in-template-string -- mail renderer: text goes through inlineMd()/escapeHtml(), URLs through safeUrl() (http(s) only, escaped), colours through safeColor(); the shell escapes title/CTA
     return href ? `<a href="${href}" style="text-decoration:none;color:inherit;display:block">${box}</a>` : box;
   }
+  // nosemgrep: html-in-template-string -- mail renderer: text goes through inlineMd()/escapeHtml(), URLs through safeUrl() (http(s) only, escaped), colours through safeColor(); the shell escapes title/CTA
   if (name === 'details' || name === 'collapse') return `<div style="border:1px solid #eae4da;border-radius:12px;padding:14px 16px;margin:0 0 14px"><div style="font-weight:700;margin-bottom:8px">${inlineMd(label || attrs.title || 'Details')}</div>${body}</div>`;
+  // nosemgrep: html-in-template-string -- mail renderer: text goes through inlineMd()/escapeHtml(), URLs through safeUrl() (http(s) only, escaped), colours through safeColor(); the shell escapes title/CTA
   if (name === 'file') { const href = safeUrl(attrs.href || attrs.url); return `<div style="border:1px solid #eae4da;border-radius:12px;padding:12px 16px;margin:0 0 14px"><a href="${href}" style="color:#c2410c;font-weight:600;text-decoration:none">&#x2913; ${inlineMd(label || attrs.name || 'Download')}</a>${attrs.size ? ` <span style="color:#918a80;font-size:12px">(${escapeHtml(attrs.size)})</span>` : ''}</div>`; }
+  // nosemgrep: html-in-template-string -- mail renderer: text goes through inlineMd()/escapeHtml(), URLs through safeUrl() (http(s) only, escaped), colours through safeColor(); the shell escapes title/CTA
   if (name === 'center' || name === 'left' || name === 'right') return `<div style="text-align:${name};margin:0 0 14px">${body}</div>`;
   // Steps keep their numbers. They were in the flatten list below, which meant the children
   // rendered and the markers disappeared — a procedure arriving as three unrelated
@@ -272,14 +284,20 @@ function renderDirective(name, label, attrs, innerLines) {
       if (!child.directive) return child.html;
       const marker = mailStepMarker(kind, n++);
       const title = child.label || child.attrs.title || '';
+      // Hoisted: a template nested inside another starts inside the outer one's text, where
+      // no nosemgrep can be written.
+      // nosemgrep: html-in-template-string -- the title goes through inlineMd() (escapes first)
+      const head = title ? `<div style="font-weight:700;margin:2px 0 6px">${inlineMd(title)}</div>` : '';
+      // nosemgrep: html-in-template-string -- the marker passes escapeHtml(); head and child.html are this renderer's output
       return `<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;margin:0 0 12px"><tr>
         <td width="34" valign="top" style="width:34px;padding:0 12px 0 0">
           <div style="width:26px;height:26px;line-height:26px;text-align:center;border-radius:999px;background:#f97316;color:#ffffff;font-weight:700;font-size:13px">${escapeHtml(marker)}</div>
         </td>
-        <td valign="top">${title ? `<div style="font-weight:700;margin:2px 0 6px">${inlineMd(title)}</div>` : ''}${child.html}</td>
+        <td valign="top">${head}${child.html}</td>
       </tr></table>`;
     });
     const heading = label || attrs.title;
+    // nosemgrep: html-in-template-string -- mail renderer: text goes through inlineMd()/escapeHtml(), URLs through safeUrl() (http(s) only, escaped), colours through safeColor(); the shell escapes title/CTA
     return `${heading ? `<div style="font-weight:700;margin:0 0 10px">${inlineMd(heading)}</div>` : ''}${rows.join('')}`;
   }
   // A roadmap is a live tracker on the web and cannot be one here, so the e-mail gets the
@@ -292,11 +310,15 @@ function renderDirective(name, label, attrs, innerLines) {
       items = (doc?.categories || []).flatMap((c) => [{ head: c.name }, ...(c.items || []).map((it) => ({ label: it.label, status: it.status, percent: it.percent }))]);
     } catch { /* an unreadable block is not worth breaking the mail over */ }
     const heading = label || attrs.title || 'Roadmap';
+    // nosemgrep: html-in-template-string -- mail renderer: text goes through inlineMd()/escapeHtml(), URLs through safeUrl() (http(s) only, escaped), colours through safeColor(); the shell escapes title/CTA
     if (!items.length) return `<div style="border:1px solid #eae4da;border-radius:12px;padding:14px 16px;margin:0 0 14px"><div style="font-weight:700">${inlineMd(heading)}</div><div style="color:#918a80;font-size:13px">See it on the site.</div></div>`;
     const MARK = { done: '&#x2713;', progress: '&#x2192;', planned: '&#x25CB;' };
     const li = items.map((it) => (it.head
+      // nosemgrep: html-in-template-string -- mail renderer: text goes through inlineMd()/escapeHtml(), URLs through safeUrl() (http(s) only, escaped), colours through safeColor(); the shell escapes title/CTA
       ? `<div style="font-weight:700;margin:10px 0 4px">${inlineMd(it.head)}</div>`
+      // nosemgrep: html-in-template-string -- mail renderer: text goes through inlineMd()/escapeHtml(), URLs through safeUrl() (http(s) only, escaped), colours through safeColor(); the shell escapes title/CTA
       : `<div style="margin:2px 0;color:#3f3a34">${MARK[it.status] || '&#x25CB;'} ${inlineMd(String(it.label || ''))}${it.percent != null ? ` <span style="color:#918a80">(${Number(it.percent)}%)</span>` : ''}</div>`)).join('');
+    // nosemgrep: html-in-template-string -- mail renderer: text goes through inlineMd()/escapeHtml(), URLs through safeUrl() (http(s) only, escaped), colours through safeColor(); the shell escapes title/CTA
     return `<div style="border:1px solid #eae4da;border-radius:12px;padding:14px 16px;margin:0 0 14px"><div style="font-weight:700;margin-bottom:4px">${inlineMd(heading)}</div>${li}</div>`;
   }
   // Grid wrappers: email can't do real columns — stack the children.
@@ -304,6 +326,7 @@ function renderDirective(name, label, attrs, innerLines) {
   // Everything else → a callout box (tip/note/warning/danger/info/success/custom…).
   const color = safeColor(attrs.color) || MAIL_CALLOUT[name] || '#2563eb';
   const title = label || attrs.title || '';
+  // nosemgrep: html-in-template-string -- mail renderer: text goes through inlineMd()/escapeHtml(), URLs through safeUrl() (http(s) only, escaped), colours through safeColor(); the shell escapes title/CTA
   return `<div style="border:1px solid #eae4da;border-left:4px solid ${color};border-radius:12px;padding:14px 16px;margin:0 0 14px;background:rgba(120,120,120,.05)">${title ? `<div style="font-weight:700;color:${color};margin-bottom:6px">${inlineMd(title)}</div>` : ''}${body}</div>`;
 }
 
@@ -311,7 +334,9 @@ function renderDirective(name, label, attrs, innerLines) {
 function renderMarkdown(text) {
   const lines = String(text).split('\n');
   const out = []; let para = []; let list = null;
+  // nosemgrep: html-in-template-string -- mail renderer: text goes through inlineMd()/escapeHtml(), URLs through safeUrl() (http(s) only, escaped), colours through safeColor(); the shell escapes title/CTA
   const flushPara = () => { if (para.length) { out.push(`<p style="margin:0 0 14px">${inlineMd(para.join('\n')).replace(/\n/g, '<br>')}</p>`); para = []; } };
+  // nosemgrep: html-in-template-string -- mail renderer: text goes through inlineMd()/escapeHtml(), URLs through safeUrl() (http(s) only, escaped), colours through safeColor(); the shell escapes title/CTA
   const flushList = () => { if (list) { out.push(`<${list.type} style="margin:0 0 14px;padding-left:22px">${list.items.map((it) => `<li style="margin:4px 0">${inlineMd(it)}</li>`).join('')}</${list.type}>`); list = null; } };
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].replace(/\s+$/, '');
@@ -324,13 +349,18 @@ function renderMarkdown(text) {
       const head = cells(line); const rows = []; i += 2;
       while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) { rows.push(cells(lines[i])); i++; }
       i--;
+      // nosemgrep: html-in-template-string -- mail renderer: text goes through inlineMd()/escapeHtml(), URLs through safeUrl() (http(s) only, escaped), colours through safeColor(); the shell escapes title/CTA
       const th = head.map((c) => `<th style="text-align:left;padding:8px 12px;border-bottom:2px solid #eae4da;font-weight:700">${inlineMd(c)}</th>`).join('');
+      // nosemgrep: html-in-template-string -- mail renderer: text goes through inlineMd()/escapeHtml(), URLs through safeUrl() (http(s) only, escaped), colours through safeColor(); the shell escapes title/CTA
       const tb = rows.map((r) => `<tr>${r.map((c) => `<td style="padding:8px 12px;border-bottom:1px solid #eae4da">${inlineMd(c)}</td>`).join('')}</tr>`).join('');
+      // nosemgrep: html-in-template-string -- mail renderer: text goes through inlineMd()/escapeHtml(), URLs through safeUrl() (http(s) only, escaped), colours through safeColor(); the shell escapes title/CTA
       out.push(`<table role="presentation" style="border-collapse:collapse;width:100%;margin:0 0 16px;font-size:14px"><thead><tr>${th}</tr></thead><tbody>${tb}</tbody></table>`);
       continue;
     }
     if (/^\s*(?:---|\*\*\*|___)\s*$/.test(line)) { flushPara(); flushList(); out.push('<hr style="border:none;border-top:1px solid #eae4da;margin:18px 0">'); continue; }
+    // nosemgrep: html-in-template-string -- mail renderer: text goes through inlineMd()/escapeHtml(), URLs through safeUrl() (http(s) only, escaped), colours through safeColor(); the shell escapes title/CTA
     if ((m = line.match(/^(#{1,4})\s+(.*)$/))) { flushPara(); flushList(); const sz = [22, 19, 17, 15][m[1].length - 1]; out.push(`<h${m[1].length} style="margin:18px 0 10px;font-size:${sz}px;font-weight:800;line-height:1.3">${inlineMd(m[2])}</h${m[1].length}>`); continue; }
+    // nosemgrep: html-in-template-string -- mail renderer: text goes through inlineMd()/escapeHtml(), URLs through safeUrl() (http(s) only, escaped), colours through safeColor(); the shell escapes title/CTA
     if ((m = line.match(/^\s*>\s?(.*)$/))) { flushPara(); flushList(); out.push(`<blockquote style="margin:0 0 14px;padding:8px 16px;border-left:3px solid #f97316;color:#6f685d">${inlineMd(m[1])}</blockquote>`); continue; }
     if ((m = line.match(/^\s*[-*+]\s+(.*)$/))) { flushPara(); if (!list || list.type !== 'ul') { flushList(); list = { type: 'ul', items: [] }; } list.items.push(m[1]); continue; }
     if ((m = line.match(/^\s*\d+[.)]\s+(.*)$/))) { flushPara(); if (!list || list.type !== 'ol') { flushList(); list = { type: 'ol', items: [] }; } list.items.push(m[1]); continue; }
@@ -394,6 +424,7 @@ export function mailShell(title, bodyHtml, cta, opts = {}) {
   const url = cta ? escapeHtml(cta.url) : '';
   const label = cta ? escapeHtml(cta.label) : '';
   const btn = cta
+    // nosemgrep: html-in-template-string -- mail renderer: text goes through inlineMd()/escapeHtml(), URLs through safeUrl() (http(s) only, escaped), colours through safeColor(); the shell escapes title/CTA
     ? `<tr><td style="padding-top:26px"><a href="${url}" style="display:inline-block;background:#f97316;color:#ffffff;text-decoration:none;padding:13px 30px;border-radius:12px;font-weight:700;font-size:15px;box-shadow:0 6px 18px -6px rgba(249,115,22,.5)">${label}</a></td></tr>
        <tr><td class="bc-faint" style="padding-top:18px;color:#918a80;font-size:12px;line-height:1.5">Or paste this link into your browser:<br><a href="${url}" style="color:#c2410c;word-break:break-all;text-decoration:none">${url}</a></td></tr>`
     : '';
@@ -404,6 +435,7 @@ export function mailShell(title, bodyHtml, cta, opts = {}) {
   // A caller may pass plain prose rather than HTML (several do). Wrapping it gives that
   // text the same paragraph spacing as markdown-rendered bodies instead of a naked run
   // of text jammed against the heading.
+  // nosemgrep: html-in-template-string -- mail renderer: text goes through inlineMd()/escapeHtml(), URLs through safeUrl() (http(s) only, escaped), colours through safeColor(); the shell escapes title/CTA
   const wrapped = /^\s*</.test(String(bodyHtml || '')) ? bodyHtml : `<p style="margin:0 0 14px">${bodyHtml}</p>`;
   // The admin's wording, if there is any for this mail. Applied AFTER the plain-prose wrap so
   // an override always receives well-formed HTML in {{body}}, whatever the sender passed.
@@ -431,6 +463,7 @@ export function mailShell(title, bodyHtml, cta, opts = {}) {
     : scheme === 'dark' ? darkDecls
     : `@media (prefers-color-scheme: dark){${darkDecls}
     }`;
+  // nosemgrep: html-in-template-string -- mail renderer: text goes through inlineMd()/escapeHtml(), URLs through safeUrl() (http(s) only, escaped), colours through safeColor(); the shell escapes title/CTA
   const style = `<style>
     ${darkBlock}
     /* Phones: the card's 34px padding eats a third of a 320px screen. */
@@ -443,6 +476,7 @@ export function mailShell(title, bodyHtml, cta, opts = {}) {
   // emitted as a bare leading <style> with no <html>/<head> around it — which clients are
   // free to drop or, worse, render as text. <head> is where they look for it, and the
   // charset meta is what stops a "—" from arriving as mojibake.
+  // nosemgrep: html-in-template-string -- mail renderer: text goes through inlineMd()/escapeHtml(), URLs through safeUrl() (http(s) only, escaped), colours through safeColor(); the shell escapes title/CTA
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="${scheme === 'auto' ? 'light dark' : scheme}"><title>${safeTitle}</title>${style}</head><body style="margin:0;padding:0;background:#f4f1ec">
 <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;height:0;width:0">${preheader}</div>
 <div class="bc-bg" style="margin:0;padding:36px 16px;background:#f4f1ec;font-family:ui-sans-serif,system-ui,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">

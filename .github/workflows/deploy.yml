@@ -17,6 +17,17 @@ name: BCWEB deploy (production)
 # Both go through the `production` environment: add required reviewers there to make every
 # deploy wait for an approval (Settings > Environments > production).
 #
+# Both also wait for "BCWEB security" (.github/workflows/security.yml: gitleaks, semgrep, trivy)
+# to have PASSED for the very commit being deployed, before the deploy key is even written to
+# disk. Not started yet or still running: the job polls for up to 20 minutes, then fails and
+# says so. Failed, cancelled or timed out: it fails at once. The decision is
+# .github/scripts/security-verdict.mjs (tested), fed by the GitHub API with this job's own
+# token, read-only (actions: read, checks: read — on this job only).
+# "BCWEB DAST" is NOT waited for: it scans a running instance on a schedule and on pull
+# requests (not on the push to master), it takes ten minutes of its own, and its findings are
+# response headers of a whole site rather than properties of one commit. It stays advisory for
+# the deploy; its failures are read on the PR and in the weekly run (DEPLOY_EN.md section 9).
+#
 # Configuration (Settings > Secrets and variables > Actions):
 #   secret   DEPLOY_SSH_KEY       the private deploy key (ed25519, no passphrase)
 #   variable DEPLOY_HOST          45.145.164.20
@@ -56,9 +67,13 @@ jobs:
        vars.CD_AUTO_DEPLOY == 'true')
     runs-on: ubuntu-24.04
     environment: production
-    timeout-minutes: 30
+    # up to 20 minutes waiting for "BCWEB security", then the deploy itself
+    timeout-minutes: 55
     permissions:
       contents: read
+      # read-only: list the workflow runs of this commit (the security gate below)
+      actions: read
+      checks: read
     env:
       DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
       DEPLOY_PORT: ${{ vars.DEPLOY_PORT }}
@@ -79,6 +94,46 @@ jobs:
           [ -n "$missing" ] && { echo "::error::missing repository variable(s):$missing"; exit 1; }
           case "$SHA" in *[!0-9a-f]*|'') echo "::error::bad commit sha"; exit 1 ;; esac
           echo "deploying $SHA ${DRY:-} to $DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PORT"
+
+      # Only the gate script, from the commit being deployed; no credentials kept on disk.
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ env.SHA }}
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+          sparse-checkout-cone-mode: true
+
+      # "BCWEB security" must have PASSED for this exact commit (see the header). exit codes of
+      # security-verdict.mjs: 0 pass, 10 not decided yet (poll), anything else = stop.
+      - name: Security scans passed for this commit (BCWEB security)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          WAIT_MINUTES: '20'
+        run: |
+          deadline=$(( $(date +%s) + WAIT_MINUTES * 60 ))
+          while :; do
+            code=0
+            if gh api "repos/$REPO/actions/runs?head_sha=$SHA&per_page=100" > runs.json; then
+              node .github/scripts/security-verdict.mjs --sha "$SHA" --workflow "BCWEB security" < runs.json || code=$?
+            else
+              echo "::warning::could not list the workflow runs (gh api failed); retrying"
+              code=10
+            fi
+            case "$code" in
+              0) exit 0 ;;
+              10) ;;
+              1) echo "::error::refusing to deploy $SHA: \"BCWEB security\" did not pass for it (see the runs above). Fix the findings, or re-run that workflow, then deploy again."
+                 exit 1 ;;
+              *) echo "::error::refusing to deploy $SHA: the list of workflow runs could not be read (security-verdict.mjs exit $code), so nothing proves the scans passed."
+                 exit 1 ;;
+            esac
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "::error::refusing to deploy $SHA: no successful \"BCWEB security\" run for it after ${WAIT_MINUTES} minutes (missing or still running). Start it by hand (Actions > BCWEB security > Run workflow, on master) and deploy again once it is green."
+              exit 1
+            fi
+            sleep 30
+          done
 
       - name: Install the deploy key
         env:

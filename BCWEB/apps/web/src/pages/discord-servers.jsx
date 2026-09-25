@@ -215,6 +215,7 @@ function GuildConfig({ guildId, onSaved }) {
     setBuyingBanner(true);
     try {
       const r = await api.post(`/me/discord/guilds/${guildId}/banner/checkout`);
+      // nosemgrep: js-open-redirect-from-function -- the URL is the Stripe Checkout / portal URL our own API returned, not page input
       if (r?.url) { window.location.href = r.url; return; }
       toast.error(t('ds.wc.bg.buyfail', 'Could not start checkout.'));
     } catch (x) {

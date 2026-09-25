@@ -63,6 +63,7 @@ function ContributeModal({ pot, onClose }) {
     setBusy(true);
     try {
       const r = await api.post('/charity/contribute', { amountCents: finalCents });
+      // nosemgrep: js-open-redirect-from-function -- the URL is the Stripe Checkout / portal URL our own API returned, not page input
       if (r?.url) { window.location.href = r.url; return; } // hand off to Stripe's hosted page
       toast.error(t('common.failed', 'Failed.'));
     } catch (e) {

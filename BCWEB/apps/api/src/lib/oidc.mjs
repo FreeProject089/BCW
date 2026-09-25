@@ -80,6 +80,39 @@ export function verifyPkce(challenge, verifier) {
 }
 
 /**
+ * Where RP-initiated sign-out sends the browser afterwards. ONE rule, used by the GET that
+ * shows the confirmation page and by the POST that performs it.
+ *
+ *  · `want` (post_logout_redirect_uri) is honoured only when it is one of `client`'s
+ *    REGISTERED redirect URIs, compared exactly; `state` rides along as a query parameter.
+ *  · `legacy` is the `redirect` field the confirmation form used to post: the finished URL.
+ *    The POST used to accept it when it was ANY http(s) URL — a cross-site form with no cookie
+ *    passes the CSRF guard (there is nothing to forge), so `/oauth2/logout` was an open
+ *    redirect to any site. It is kept for a page rendered before this change, and only when
+ *    it points at the issuer's own origin (compared as an origin, not as a string prefix:
+ *    `https://site.example.evil.com` starts with `https://site.example`).
+ *  · Anything else: the site's home.
+ */
+export function logoutTarget({ client = null, want = '', state = '', legacy = '' } = {}, iss = issuer()) {
+  const home = `${iss}/`;
+  const w = String(want || '');
+  if (w) {
+    const registered = !!client && Array.isArray(client.redirectUris) && client.redirectUris.includes(w);
+    if (!registered) return home;
+    const s = String(state || '');
+    return s ? `${w}${w.includes('?') ? '&' : '?'}state=${encodeURIComponent(s)}` : w;
+  }
+  const l = String(legacy || '');
+  if (l) {
+    try {
+      const u = new URL(l);
+      if ((u.protocol === 'https:' || u.protocol === 'http:') && u.origin === new URL(iss).origin) return u.href;
+    } catch { /* not a URL: home */ }
+  }
+  return home;
+}
+
+/**
  * The /authorize front door: everything that can be decided from the request and the
  * registered client alone, before any state is created.
  *

@@ -250,6 +250,7 @@ export default function BmdEditor({
     // Diagrams: the static render carries each as its source in a <pre>; the live preview has
     // drawn them. Substituted in order, so the exported page shows the picture.
     const svgs = Array.from(root.current?.querySelectorAll('.bmde-preview .doc-mermaid-svg') || []).map((el) => el.innerHTML);
+    // nosemgrep: html-in-template-string -- downloaded file (a.download), diagrams rendered by mermaid securityLevel strict
     if (svgs.length) { let n = 0; html = html.replace(/<pre class="doc-mermaid-src">[\s\S]*?<\/pre>/g, (m) => (svgs[n] ? `<div class="doc-mermaid-svg">${svgs[n++]}</div>` : m)); }
     const blob = new Blob([html], { type: 'text/html' });
     const a = document.createElement('a');

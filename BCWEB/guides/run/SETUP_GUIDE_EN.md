@@ -37,7 +37,7 @@ running.
 
 ```bash
 docker compose up -d
-docker compose exec api npm run setup
+docker compose exec api node src/setup.mjs
 ```
 
 `setup` runs migrations and then EVERY seed in the right order. It replaces running them
@@ -70,7 +70,7 @@ an empty catalog — nothing to click through, and nothing for the load harness 
 fill it with realistic-looking content:
 
 ```bash
-docker compose exec api npm run seed:demo      # ~400 items; DEMO_N=1000 for more
+docker compose exec api node src/seed-demo.mjs      # ~400 items; DEMO_N=1000 for more
 ```
 
 Everything it creates is slugged `demo-*`, so re-running replaces exactly its own rows and
@@ -225,14 +225,15 @@ this off with no visible trace.
 
 ## 10. Optional: BMM telemetry dashboard
 
-The telemetry service (`bmm/telemetry-dashboard`, its own container + SQLite) collects
-opt-in BMM app analytics. Config env lives in `bmm/telemetry-dashboard/.env`
-(`API_KEY` must match the BMM app's `analytics_key`; `ADMIN_KEY` unlocks the admin
-panel). Beyond first boot you **don't** edit that `.env` for day-to-day limits:
+The telemetry service (`bmm/telemetry-dashboard`: Rust/Axum + React, its own container and
+its own Postgres, `telemetry-db`) collects opt-in BMM app analytics. Under Docker its settings
+come from BCWEB's `infra/compose/.env`, not from a `.env` beside the dashboard
+(`TELEMETRY_API_KEY` must match the BMM app's `analytics_key`; `TELEMETRY_ADMIN_KEY` unlocks
+the admin panel). Beyond first boot you **don't** edit `.env` for day-to-day limits:
 
 - **Storage cap, GDPR retention, and erase delay are editable LIVE** from
   Admin → **Hosting settings** → the *"BMM telemetry (live)"* card. Saving pushes to
-  the telemetry service, persists to its `config.json` (overrides `.env`, survives
+  the telemetry service, persists in its database (overrides `.env`, survives
   restarts), and trims over-limit data immediately — no restart.
 - For BCWEB to reach the telemetry service, the `api` container needs
   `TELEMETRY_INTERNAL_URL` (default `http://telemetry:8900`) and `TELEMETRY_ADMIN_KEY`

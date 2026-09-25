@@ -181,13 +181,17 @@ export default async function transferRoutes(app) {
       to: to.email,
       mailId: 'transfer-offer',
       subject,
-      html: mailShell(subject, `
-        <p><b>${escapeHtml(from?.displayName || 'Someone')}</b> would like to transfer the ${what}
-           <b>${escapeHtml(tr.targetName)}</b> to your account.</p>
-        ${b.data.message ? `<p style="padding:10px 14px;border-left:3px solid #f97316;color:#6f685d">${escapeHtml(b.data.message)}</p>` : ''}
-        <p>Nothing has changed yet — it becomes yours only if you accept. If you do, you take on
-           its content and any storage it uses.</p>
-        <p>This offer expires in ${TTL_DAYS} days.</p>`,
+      // One element per line so each can carry its nosemgrep (a multi-line template is
+      // reported at a line inside it). Names and the message pass escapeHtml().
+      html: mailShell(subject, [
+        // nosemgrep: raw-html-format, html-in-template-string -- both names pass escapeHtml(); `what` is one of two constants
+        `<p><b>${escapeHtml(from?.displayName || 'Someone')}</b> would like to transfer the ${what} <b>${escapeHtml(tr.targetName)}</b> to your account.</p>`,
+        // nosemgrep: raw-html-format, html-in-template-string -- the message passes escapeHtml()
+        b.data.message ? `<p style="padding:10px 14px;border-left:3px solid #f97316;color:#6f685d">${escapeHtml(b.data.message)}</p>` : '',
+        '<p>Nothing has changed yet — it becomes yours only if you accept. If you do, you take on its content and any storage it uses.</p>',
+        // nosemgrep: html-in-template-string -- TTL_DAYS is a constant
+        `<p>This offer expires in ${TTL_DAYS} days.</p>`,
+      ].join('\n'),
       { label: 'Review the transfer', url: `${SITE}/dashboard#transfers` }),
       text: `${subject}\n${SITE}/dashboard#transfers`,
     });
@@ -289,6 +293,7 @@ export default async function transferRoutes(app) {
     await notify(p, tr.fromUserId, 'Transfer accepted', `${me?.displayName || 'They'} accepted "${tr.targetName}". It is no longer yours.`).catch(() => {});
     if (from?.email) {
       const subject = `"${tr.targetName}" has been transferred`;
+      // nosemgrep: raw-html-format, html-in-template-string -- mail HTML: every user, request or database string passes escapeHtml(); the rest are numbers, dates, enums, server tokens or constants
       await mail(app, 'transfer-accepted', { to: from.email, mailId: 'transfer-accepted', subject, html: mailShell(subject, `<p><b>${escapeHtml(me?.displayName || 'The recipient')}</b> accepted the transfer of <b>${escapeHtml(tr.targetName)}</b>. It now belongs to them and no longer appears in your dashboard.</p>`), text: subject });
     }
     return { ok: true };
@@ -411,11 +416,14 @@ export default async function transferRoutes(app) {
           to: from.email,
           mailId: 'transfer-declined',
           subject,
-          html: mailShell(subject, `
-            <p><b>${escapeHtml(name)}</b> declined the transfer of <b>${escapeHtml(tr.targetName)}</b>.
-               Nothing moved \u2014 it is still yours, and still in your dashboard.</p>
-            ${reason ? `<p style="padding:10px 14px;border-left:3px solid #f97316;color:#6f685d">${escapeHtml(reason)}</p>` : ''}
-            <p>You can offer it to somebody else whenever you like.</p>`,
+          // One element per line so each can carry its nosemgrep (see the offer mail above).
+          html: mailShell(subject, [
+            // nosemgrep: raw-html-format, html-in-template-string -- both names pass escapeHtml()
+            `<p><b>${escapeHtml(name)}</b> declined the transfer of <b>${escapeHtml(tr.targetName)}</b>. Nothing moved \u2014 it is still yours, and still in your dashboard.</p>`,
+            // nosemgrep: raw-html-format, html-in-template-string -- the reason passes escapeHtml()
+            reason ? `<p style="padding:10px 14px;border-left:3px solid #f97316;color:#6f685d">${escapeHtml(reason)}</p>` : '',
+            '<p>You can offer it to somebody else whenever you like.</p>',
+          ].join('\n'),
             { label: 'Open your dashboard', url: `${SITE}/dashboard#transfers` }),
           text: `${subject}${reason ? `\n${reason}` : ''}\n${SITE}/dashboard#transfers`,
         });

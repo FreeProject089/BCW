@@ -70,11 +70,13 @@
 # Same shape, same reason. `reverse_proxy web:80` resolved the name when the config loaded
 # and stuck with what it got — the exact defect described above api_upstream — so a rolling
 # replacement of the web container would leave Caddy talking to the dead one's address.
+# Port 8080: the web image runs nginx unprivileged (apps/web/Dockerfile, apps/web/nginx.conf),
+# and an unprivileged process cannot listen on 80.
 (web_upstream) {
 	reverse_proxy {
 		dynamic a {
 			name web
-			port 80
+			port 8080
 			refresh 10s
 		}
 		lb_try_duration 12s
@@ -85,6 +87,27 @@
 
 {$SITE_DOMAIN:http://localhost}, {$TUNNEL_DOMAIN:http://tunnel.invalid} {
 	encode gzip zstd
+
+	# -- form-action, per page (used by the CSP below) --
+	# form-action does not fall back to default-src, so without it a form injected into a page
+	# could post anywhere (ZAP 10055-13, 2026-09-25). 'self' everywhere, EXCEPT the two pages
+	# whose form is SUPPOSED to end on another site: a browser checks form-action against every
+	# redirect that follows the submission (Chromium does), and both of these answer the POST
+	# with a redirect to a third party's registered URL:
+	#   /authorize      the OAuth consent page (apps/web account-pages.jsx): its form posts to
+	#                   /oauth2/authorize/decision, which redirects to the client's redirect_uri
+	#   /oauth2/logout  the RP-initiated logout page (apps/api oidc-provider.mjs): its form posts
+	#                   to /oauth2/logout, which redirects to the post_logout_redirect_uri
+	# With 'self' there, every third-party sign-in would stop on the consent screen. The relaxed
+	# list is what a registered redirect URI may be (oidc-provider.mjs: https, or http on
+	# localhost / 127.0.0.1); [::1] cannot be written in a CSP source, so it is not listed.
+	# apps/web/scripts/check-csp.mjs checks this map: the default must stay 'self', and only
+	# these two paths may widen it.
+	map {path} {csp_form_action} {
+		/authorize "'self' https: http://localhost:* http://127.0.0.1:*"
+		/oauth2/logout "'self' https: http://localhost:* http://127.0.0.1:*"
+		default "'self'"
+	}
 
 	# -- Security headers --
 	header {
@@ -121,7 +144,15 @@
 		#   *.google-analytics.com, *.analytics.google.com, *.googletagmanager.com   GA4 hits
 		# CSP_CONNECT_SRC_EXTRA adds more (space-separated), for a live B.MD block's host or a
 		# project's live-number source; empty by default.
-		Content-Security-Policy "default-src 'self'; img-src 'self' data: https: blob:; media-src 'self' https: blob:; font-src 'self' data: https:; style-src 'self' 'unsafe-inline' https:; script-src 'self' https://www.googletagmanager.com https://www.google-analytics.com https://ssl.google-analytics.com https://tagmanager.google.com; worker-src 'self' blob:; child-src 'self' blob:; frame-src 'self' blob: https://www.youtube-nocookie.com https://www.youtube.com https://open.spotify.com https://www.googletagmanager.com; connect-src 'self' {$S3_PUBLIC_ENDPOINT:http://localhost:9000} {$S3_DOMAIN:http://s3.invalid} https://raw.githubusercontent.com https://cdn.jsdelivr.net https://cdn.simpleicons.org https://basemaps.cartocdn.com https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com {$CSP_CONNECT_SRC_EXTRA:}; object-src 'none'; frame-ancestors 'self'; base-uri 'self'"
+		#
+		# Kept on purpose, and reviewed as ZAP IGNORE rules in .github/security/zap-rules.tsv
+		# (2026-09-25): style-src 'unsafe-inline' (React `style={…}` attributes and the theme
+		# engine's runtime CSS variables are inline styles; a nonce cannot cover an attribute),
+		# and img-src/media-src/font-src `https:` (avatars and markdown images, videos and theme
+		# fonts come from any host a member links). style-src `https:` was not proven unused and
+		# was left alone: dropping it would not clear that ZAP alert, which img-src keeps anyway.
+		# form-action is per page: see the map above.
+		Content-Security-Policy "default-src 'self'; img-src 'self' data: https: blob:; media-src 'self' https: blob:; font-src 'self' data: https:; style-src 'self' 'unsafe-inline' https:; script-src 'self' https://www.googletagmanager.com https://www.google-analytics.com https://ssl.google-analytics.com https://tagmanager.google.com; worker-src 'self' blob:; child-src 'self' blob:; frame-src 'self' blob: https://www.youtube-nocookie.com https://www.youtube.com https://open.spotify.com https://www.googletagmanager.com; connect-src 'self' {$S3_PUBLIC_ENDPOINT:http://localhost:9000} {$S3_DOMAIN:http://s3.invalid} https://raw.githubusercontent.com https://cdn.jsdelivr.net https://cdn.simpleicons.org https://basemaps.cartocdn.com https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com {$CSP_CONNECT_SRC_EXTRA:}; object-src 'none'; frame-ancestors 'self'; base-uri 'self'; form-action {csp_form_action}"
 		-Server
 	}
 
@@ -400,7 +431,7 @@
 		X-Content-Type-Options nosniff
 		X-Frame-Options SAMEORIGIN
 		Referrer-Policy no-referrer
-		Content-Security-Policy "sandbox; default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'unsafe-inline'; frame-ancestors 'none'"
+		Content-Security-Policy "sandbox; default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'unsafe-inline'; frame-ancestors 'none'; form-action 'none'"
 		-Server
 	}
 	reverse_proxy storage:9000

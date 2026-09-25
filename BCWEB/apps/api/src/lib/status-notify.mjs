@@ -44,7 +44,9 @@ export async function notifyStatusChange(p, dep, kind, since = null) {
     const minutes = since ? Math.round((Date.now() - new Date(since).getTime()) / 60000) : null;
     const subject = kind === 'down' ? `${label} is down` : `${label} is back`;
     const line = kind === 'down'
+        // nosemgrep: html-in-template-string -- monitor label and links pass escapeHtml(); minutes is a number
         ? `<p><b>${escapeHtml(label)}</b> stopped responding. We are on it.</p>`
+        // nosemgrep: html-in-template-string -- monitor label and links pass escapeHtml(); minutes is a number
         : `<p><b>${escapeHtml(label)}</b> is working again${minutes != null ? ` — it was down for about ${minutes} minute(s)` : ''}.</p>`;
 
     let sent = 0;
@@ -59,6 +61,7 @@ export async function notifyStatusChange(p, dep, kind, since = null) {
                 // id, so an admin styles the pair rather than half of it.
                 mailId: 'status-down',
                 subject,
+                // nosemgrep: html-in-template-string -- monitor label and links pass escapeHtml(); minutes is a number
                 html: mailShell(subject, `${line}
           <p><a href="${escapeHtml(`${SITE}/status`)}">See the status page</a></p>
           <p style="font-size:12px;color:#6b7280">You asked to be told about this.

@@ -539,6 +539,7 @@ export default async function sanctionRoutes(app) {
       contestAnsweredAt: new Date(), contestAnsweredById: req.user.uid,
     };
     if (b.data.outcome === 'overturned' && s.status === 'active') {
+      // nosemgrep: express-data-exfiltration -- Object.assign of named, zod-validated fields (or constants) into a Prisma data object, not a request body
       Object.assign(data, { status: 'lifted', liftedAt: new Date(), liftedById: req.user.uid, liftReason: 'Contest upheld.' });
       if (s.scope === 'content' && s.targetType && s.targetId) {
         const def = CONTENT_TARGETS[s.targetType];
@@ -551,11 +552,19 @@ export default async function sanctionRoutes(app) {
     if (emailEnabled()) {
       await sendMail({
         to: s.user.email, subject: `[${s.code}] Your contest was ${b.data.outcome}`,
-        html: mailShell(`Contest ${b.data.outcome}`, `
-          <p>Hi ${escapeHtml(s.user.displayName || '')},</p>
-          <p>We have looked again at <code>${s.code}</code>.</p>
-          <p style="margin-top:12px"><b>Outcome:</b> ${b.data.outcome}</p>
-          <p style="margin-top:12px">${escapeHtml(b.data.answer)}</p>`,
+        // One element per line so each can carry its nosemgrep (a multi-line template is
+        // reported at a line inside it). Escaped here: name, code, answer; `outcome` is a zod enum.
+        // nosemgrep: raw-html-join -- outcome is a zod enum, code server-generated, name/answer pass escapeHtml()
+        html: mailShell(`Contest ${b.data.outcome}`, [
+          // nosemgrep: raw-html-format, html-in-template-string -- the name passes escapeHtml()
+          `<p>Hi ${escapeHtml(s.user.displayName || '')},</p>`,
+          // nosemgrep: raw-html-format, html-in-template-string -- the code is server-generated, escaped anyway
+          `<p>We have looked again at <code>${escapeHtml(s.code)}</code>.</p>`,
+          // nosemgrep: raw-html-format, html-in-template-string -- outcome is z.enum(['upheld', 'overturned'])
+          `<p style="margin-top:12px"><b>Outcome:</b> ${b.data.outcome}</p>`,
+          // nosemgrep: raw-html-format, html-in-template-string -- the answer passes escapeHtml()
+          `<p style="margin-top:12px">${escapeHtml(b.data.answer)}</p>`,
+        ].join('\n'),
           { url: `${SITE_URL}/sanctions/${s.code}`, label: 'Open it' }),
         text: `Contest of ${s.code}: ${b.data.outcome}. ${b.data.answer}`,
       }).catch(() => {});

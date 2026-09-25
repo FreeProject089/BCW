@@ -1349,6 +1349,7 @@ function ItemEditModal({ open, item, onClose, onDone }) {
       const res = await api.post(`/catalog/${item.id}/update`, patch);
       // A re-upload past the free tier is billed by size → finish payment first;
       // the new file only takes effect once the webhook confirms it's paid.
+      // nosemgrep: js-open-redirect-from-function -- the URL is the Stripe Checkout / portal URL our own API returned, not page input
       if (res?.checkoutUrl) { window.location.href = res.checkoutUrl; return; }
       if (res?.validation && res.validation.valid === false) toast.error(t('ie.savefail', 'Saved, but the new .bmmplug failed validation ({reason}). A moderator will review.').replace('{reason}', res.validation.reason));
       else if (res?.validation?.valid) toast.success(t('ie.saveverified', 'Saved, plugin re-verified. Pending admin re-approval.'));

@@ -101,6 +101,11 @@ npm run setup -- --demo         # ... et les fixtures de démo (dépôts, catalo
 npm run setup -- --skip-migrate # seulement les seeds
 ```
 
+Dans le **conteneur** api il n'y a pas de npm (l'image d'exécution le retire, voir
+`apps/api/Dockerfile`) : lance le script avec node, `docker compose exec api node src/setup.mjs`
+(mêmes options). Chaque `npm run <x>` ci-dessous y devient `node src/<fichier>.mjs`, comme le
+liste `apps/api/package.json`.
+
 Chaque étape est idempotente : la relancer sur une base existante est sans risque. Préfère-la
 aux seeds lancés à la main — ils ont un ordre, et se tromper laisse une base à moitié
 remplie qui échoue plus tard, ailleurs, sans rapport apparent.

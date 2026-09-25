@@ -165,8 +165,11 @@ export async function maybeAlertLogin(p, user, prior, { recentFails = 0, session
       ['Where', place],
       ['Device', what],
       ['IP address', session.ip || 'unknown'],
+    // nosemgrep: html-in-template-string -- row labels are constants, values pass escapeHtml()
     ].map(([k, v]) => `<tr><td style="padding:4px 14px 4px 0;color:#918a80">${k}</td><td style="padding:4px 0"><b>${escapeHtml(v)}</b></td></tr>`).join('');
+    // nosemgrep: html-in-template-string -- row labels are constants, values pass escapeHtml()
     const body = `<p style="margin:0 0 14px">${escapeHtml(LEAD[verdict.reason])}</p>`
+      // nosemgrep: html-in-template-string -- row labels are constants, values pass escapeHtml()
       + `<table role="presentation" style="border-collapse:collapse;font-size:14px;margin:0 0 14px">${rows}</table>`
       + '<p style="margin:0 0 14px">Your signed-in devices are listed in your account, and you can sign any of them out from there.</p>';
     await sendMail({

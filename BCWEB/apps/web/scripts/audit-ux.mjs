@@ -312,6 +312,7 @@ function auditPage(width) {
     last = lvl;
   }
   const mains = [...document.querySelectorAll('main,[role="main"]')].filter((el) => vis(el));
+  // nosemgrep: html-in-template-string -- dev audit script output (a count), not served
   if (mains.length !== 1) out.push({ kind: 'landmark', sel: 'document', text: '', detail: `${mains.length} <main>` });
   const navs = [...document.querySelectorAll('nav,[role="navigation"]')].filter((el) => vis(el));
   if (!navs.length) out.push({ kind: 'landmark', sel: 'document', text: '', detail: 'no <nav>' });

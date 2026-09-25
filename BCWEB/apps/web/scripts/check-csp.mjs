@@ -16,7 +16,8 @@
 //
 //   1. infra/caddy/Caddyfile: every Content-Security-Policy header. script-src has neither
 //      'unsafe-inline' nor 'unsafe-eval' (nor a wildcard host), and connect-src is not
-//      "any host" again (https:, http:, ws:, wss:, *).
+//      "any host" again (https:, http:, ws:, wss:, *). Every policy has a form-action, and the
+//      site's is 'self' except on the two OAuth pages listed in section 1b.
 //   2. apps/web/index.html: no inline executable <script> (a JSON-LD data block is not
 //      executed, so it is allowed) and no on*= handler attribute.
 //   3. apps/web/vite.config.js: no transformIndexHtml tag 'script' with `children`.
@@ -82,6 +83,72 @@ for (const p of policies) {
       }
     }
   }
+}
+
+// ── 1b. form-action ─────────────────────────────────────────────────────────────────────
+// form-action does NOT fall back to default-src: a policy without it lets an injected <form>
+// post anywhere (ZAP 10055-13, 2026-09-25). So every policy must carry it, and it must not be
+// "any host" — except on the two pages whose form is meant to end on a third party's site
+// (the OAuth consent page and the RP-initiated logout page: the POST answers with a redirect
+// to the client's registered URL, and browsers check form-action against that redirect).
+// The site policy writes it as a placeholder filled by a Caddy `map {path} …` block, so the
+// check reads that block: the default must be exactly 'self', only these paths may widen it,
+// and even they may not allow http: (other than loopback), data:, javascript: or *.
+const FORM_ACTION_WIDENED_PATHS = new Set(['/authorize', '/oauth2/logout']);
+const FORM_ACTION_NEVER = ['*', 'http:', 'data:', 'blob:', 'javascript:', "'unsafe-inline'", "'unsafe-eval'"];
+const LOOPBACK_SOURCE = /^http:\/\/(localhost|127\.0\.0\.1)(:(\*|\d+))?$/i;
+
+const maps = new Map();
+for (const m of caddy.matchAll(/^[ \t]*map[ \t]+(\{[^}\s]+\})[ \t]+(\{[\w.]+\})[ \t]*\{[ \t]*\r?\n([\s\S]*?)\r?\n[ \t]*\}/gm)) {
+  const entries = [];
+  for (const raw of m[3].split(/\r?\n/)) {
+    const t = raw.trim();
+    if (!t || t.startsWith('#')) continue;
+    const e = /^(\S+)\s+(?:"([^"]*)"|(\S+))$/.exec(t);
+    if (e) entries.push({ key: e[1], value: e[2] ?? e[3] });
+    else entries.push({ key: t, value: null });
+  }
+  maps.set(m[2], { source: m[1], line: caddy.slice(0, m.index).split('\n').length, entries });
+}
+
+const badFormSources = (tokens, { widened }) => tokens.filter((s) => {
+  const v = s.toLowerCase();
+  if (FORM_ACTION_NEVER.includes(v)) return true;
+  if (v.startsWith('http://')) return !(widened && LOOPBACK_SOURCE.test(v));
+  if (v === 'https:') return !widened;
+  return false;
+});
+
+for (const p of policies) {
+  const where = `${rel(CADDYFILE)}:${p.line}`;
+  const fa = directive(p.value, 'form-action');
+  if (!fa || !fa.length) {
+    fail.push(`${where}: no form-action directive. It does not fall back to default-src, so an injected\n`
+      + "    form could post anywhere. Add `form-action 'self'` (or 'none' where no form belongs).");
+    continue;
+  }
+  if (fa.length === 1 && /^\{[\w.]+\}$/.test(fa[0])) {
+    const map = maps.get(fa[0]);
+    if (!map) { fail.push(`${where}: form-action ${fa[0]} but no \`map … ${fa[0]} { … }\` block defines it: the policy would send an empty form-action.`); continue; }
+    const at = `${rel(CADDYFILE)}:${map.line}`;
+    if (map.source !== '{path}') fail.push(`${at}: the ${fa[0]} map reads ${map.source}; it must key on {path} (a header or query is the client's to choose).`);
+    const def = map.entries.find((e) => e.key === 'default');
+    if (!def || def.value !== "'self'") fail.push(`${at}: the ${fa[0]} map's default is ${def ? JSON.stringify(def.value) : 'missing'}; it must be exactly "'self'".`);
+    for (const e of map.entries) {
+      if (e.key === 'default') continue;
+      if (e.value === null) { fail.push(`${at}: unreadable map line "${e.key}".`); continue; }
+      if (!FORM_ACTION_WIDENED_PATHS.has(e.key)) {
+        fail.push(`${at}: the ${fa[0]} map sets form-action for ${e.key}; only ${[...FORM_ACTION_WIDENED_PATHS].join(' and ')} may differ from 'self'.\n`
+          + '    A page that needs another target is a reviewed change to this check, not a new map line.');
+        continue;
+      }
+      const bad = badFormSources(e.value.split(/\s+/).filter(Boolean), { widened: true });
+      if (bad.length) fail.push(`${at}: form-action for ${e.key} allows ${bad.join(' ')}.`);
+    }
+    continue;
+  }
+  const bad = badFormSources(fa, { widened: false });
+  if (bad.length) fail.push(`${where}: form-action allows ${bad.join(' ')} (any host, or a scheme a form must never target).`);
 }
 
 // ── 2. index.html ───────────────────────────────────────────────────────────────────────
@@ -152,4 +219,4 @@ if (fail.length) {
   process.exit(1);
 }
 console.log(`✓ csp OK — ${policies.length} policy header(s) without 'unsafe-inline' in script-src, `
-  + `connect-src bounded; index.html, vite.config.js, ${webFiles} web and ${apiFiles} API file(s) carry no inline script`);
+  + `connect-src bounded, form-action on every one; index.html, vite.config.js, ${webFiles} web and ${apiFiles} API file(s) carry no inline script`);

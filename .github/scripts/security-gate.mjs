@@ -91,22 +91,34 @@ function mapSev(table, raw, notes) {
  * The ZAP rules file (.github/security/zap-rules.tsv), the same format zap-baseline.py reads
  * with -c: `<plugin id>\t<IGNORE|WARN|FAIL|INFO>\t<reason>`. Only IGNORE changes what the gate
  * counts; an IGNORE with no reason is refused, so every exclusion says why it exists.
+ *
+ * The id may also be an ALERT REF (`10055-6`): ZAP reports several distinct problems under one
+ * plugin (10055 is every CSP alert: wildcard source, style-src 'unsafe-inline', a missing
+ * form-action…) and tells them apart by alertRef. An IGNORE on the plugin id would hide all of
+ * them, including the next real one; an IGNORE on an alertRef removes that alert and nothing
+ * else. (zap-baseline.py keys its own -c rules on the plugin id only, so it simply does not
+ * match an alertRef line: that changes ZAP's own printed summary, never this gate.)
  */
-export function parseZapRules(text) {
+export function parseZapRules(text, { today = new Date().toISOString().slice(0, 10) } = {}) {
   const ignore = new Map();
+  const expired = [];
   for (const [i, line] of String(text).split(/\r?\n/).entries()) {
     if (!line.trim() || line.trim().startsWith('#')) continue;
     const [id, action, ...rest] = line.split('\t');
-    if (!/^\d+$/.test((id || '').trim())) throw new GateError(`zap rules line ${i + 1}: "${id}" is not a plugin id`);
+    if (!/^\d+(-\d+)?$/.test((id || '').trim())) throw new GateError(`zap rules line ${i + 1}: "${id}" is not a plugin id (or a plugin-id-N alertRef)`);
     const act = (action || '').trim().toUpperCase();
     if (!['IGNORE', 'WARN', 'FAIL', 'INFO', 'OUTOFSCOPE'].includes(act)) throw new GateError(`zap rules line ${i + 1}: unknown action "${action}"`);
     const reason = rest.join('\t').trim().replace(/^\(|\)$/g, '').trim();
     if (act === 'IGNORE') {
       if (!reason) throw new GateError(`zap rules line ${i + 1}: IGNORE ${id} has no reason — write why it is not a finding`);
+      // `expires YYYY-MM-DD` in the reason, like trivyignore's expired_at: from that day the
+      // alert counts again and has to be judged again.
+      const exp = /\bexpires (\d{4}-\d{2}-\d{2})\b/.exec(reason)?.[1];
+      if (exp && exp < today) { expired.push(`${id.trim()} (expired ${exp})`); continue; }
       ignore.set(id.trim(), reason);
     }
   }
-  return { ignore };
+  return { ignore, expired };
 }
 
 function parseJson(text, tool) {
@@ -185,8 +197,10 @@ export function normalise(tool, input, { zapRules } = {}) {
         for (const a of site.alerts || []) {
           if (String(a.confidence) === '0') { notes.push(`alert ${a.pluginid} marked false positive in ZAP, not counted`); continue; }
           const id = String(a.pluginid);
-          const f = { severity: mapSev(ZAP_SEV, a.riskcode, notes), id: `${id} ${a.alert || a.name || ''}`.trim(), location: `${site['@name']} (${a.count || (a.instances || []).length} instance(s), e.g. ${a.instances?.[0]?.uri || '?'})`, title: String(a.name || a.alert || '').slice(0, 160) };
-          const reason = zapRules?.ignore?.get(id);
+          const ref = String(a.alertRef || id);
+          const f = { severity: mapSev(ZAP_SEV, a.riskcode, notes), id: `${ref} ${a.alert || a.name || ''}`.trim(), location: `${site['@name']} (${a.count || (a.instances || []).length} instance(s), e.g. ${a.instances?.[0]?.uri || '?'})`, title: String(a.name || a.alert || '').slice(0, 160) };
+          // The narrow rule (this alertRef) first, then the whole plugin.
+          const reason = zapRules?.ignore?.get(ref) ?? zapRules?.ignore?.get(id);
           if (reason) ignored.push({ ...f, reason });
           else findings.push(f);
         }
@@ -380,6 +394,7 @@ export function main(argv = process.argv.slice(2), env = process.env) {
     const ignored = [];
     const notes = [];
     if (args.tool === 'gitleaks' && env.SECURITY_GATE_SEVERITY_GITLEAKS) notes.push('SECURITY_GATE_SEVERITY_GITLEAKS is ignored: any unallowlisted secret fails');
+    for (const e of zapRules?.expired || []) notes.push(`zap rule ${e} no longer applies: the alert counts again until it is reviewed`);
     for (const file of args.reports) {
       if (!existsSync(file)) throw new GateError(`${args.tool}: report ${file} does not exist — the scan did not run or wrote elsewhere`);
       const r = normalise(args.tool, readFileSync(file, 'utf8'), { zapRules });

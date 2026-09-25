@@ -10,6 +10,7 @@ import { presignGet, putObject, deleteObject } from '../lib/storage.mjs';
 import { sendMail, mailShell, emailEnabled } from '../lib/mail.mjs';
 import { stripe, ensureCustomer } from './hosting.mjs';
 import { recordPendingCheckout, purchaseStatusForSession } from '../lib/pending-checkout.mjs';
+import { safeFetch } from '../lib/net.mjs';
 
 // What a product HANDS OVER. The first five were the whole of it, and between them they
 // could not sell the most ordinary thing a project sells — a file. The workaround was to paste
@@ -370,13 +371,20 @@ const pub = (pr) => ({
 // Ask an external key generator for a code. The admin sets externalUrl + externalSecret; we POST
 // a signed body and expect { key } back. Signed with HMAC-SHA256 so the external system can trust
 // the request came from us; timed out so a dead endpoint never hangs a purchase.
-async function externalKey(product, buyerId) {
+//
+// Through safeFetch, not fetch: "the admin" is anyone holding a market-scoped grant on the
+// page (marketPower), not only staff, and a plain fetch POSTed to whatever they typed — the
+// compose network included (http://storage:9000, http://telemetry:8900, the API itself) —
+// then handed the `key`/`code` field of the answer to the buyer. safeFetch refuses private,
+// loopback and internal addresses at every hop (test/marketplace-external-ssrf.test.mjs).
+// Exported for that test.
+export async function externalKey(product, buyerId) {
   const body = JSON.stringify({ productId: product.id, buyerId, name: product.name, ts: Date.now() });
   const sig = product.externalSecret ? crypto.createHmac('sha256', product.externalSecret).update(body).digest('hex') : '';
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 10_000);
   try {
-    const r = await fetch(product.externalUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-BC-Signature': sig }, body, signal: ctrl.signal });
+    const r = await safeFetch(product.externalUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-BC-Signature': sig }, body, signal: ctrl.signal });
     if (!r.ok) { const e = new Error('external_failed'); e.code = 'external_failed'; throw e; }
     const j = await r.json().catch(() => ({}));
     const key = String(j.key || j.code || '').trim();

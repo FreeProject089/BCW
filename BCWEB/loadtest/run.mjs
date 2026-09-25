@@ -145,6 +145,7 @@ writeFileSync(new URL('./last-run.json', import.meta.url), JSON.stringify(json, 
 // report.html is the one to actually LOOK at: self-contained (no CDN/build), open it straight
 // from the filesystem. The <head> is added here so the file stands alone in a browser; each
 // language links to the other.
+// nosemgrep: html-in-template-string -- local stress report from the harness's own numbers; text through esc()/md()
 const page = (lang, altHref) => `<!doctype html><html lang="${lang}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${lang === 'fr' ? 'Rapport de stress BCWEB' : 'BCWEB stress report'} — ${meta.at}</title>

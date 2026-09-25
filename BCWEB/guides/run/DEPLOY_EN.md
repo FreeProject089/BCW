@@ -234,6 +234,17 @@ by what that key is allowed to do: **one forced command**.
   dry-run box. Automatically after a green *BCWEB CI* on a push to `master`, only when the
   repository variable `CD_AUTO_DEPLOY` is exactly `true`. Both go through the GitHub environment
   `production`: add required reviewers there to make every deploy wait for your approval.
+- **Security first.** Before the key is even written to the runner, the job checks that
+  *BCWEB security* (Gitleaks, Semgrep, Trivy) **passed for the exact commit** it deploys:
+  `gh api` lists that commit's workflow runs with the job's own read-only token
+  (`actions: read`, `checks: read`, on that job only) and `.github/scripts/security-verdict.mjs`
+  decides. Not started or still running: it polls every 30 s for up to 20 minutes, then fails
+  ("no successful BCWEB security run for it after 20 minutes": start that workflow by hand on
+  `master`, then deploy again). Failed or cancelled: it fails at once. A pull-request run does
+  not count (it tested a merge, not this commit). *BCWEB DAST* is **not** waited for: it does
+  not run on the push to `master`, it needs a whole running instance and ten minutes, and it
+  judges the site's headers rather than one commit, so it stays advisory; read it on the PR and
+  in the weekly run. Details: [CI_CD_EN.md](CI_CD_EN.md#bcweb-deploy-deployyml--the-cd).
 - **Configuration** (Settings > Secrets and variables > Actions): secret `DEPLOY_SSH_KEY` (the
   private key); variables `DEPLOY_HOST`, `DEPLOY_PORT`, `DEPLOY_USER`, `DEPLOY_KNOWN_HOSTS` (the
   server's host key line, required: no trust-on-first-use) and optionally `CD_AUTO_DEPLOY`.

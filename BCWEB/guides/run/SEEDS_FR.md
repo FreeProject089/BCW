@@ -12,7 +12,7 @@ C'est ce qui en fait des outils de réparation et pas seulement d'amorçage.
 À lancer dans le conteneur API :
 
 ```bash
-docker compose -f infra/compose/docker-compose.yml exec api npm run seed
+docker compose -f infra/compose/docker-compose.yml exec api node src/seed.mjs
 ```
 
 Ou depuis `apps/api/` avec `DATABASE_URL` défini, si tu fais tourner l'API sur la machine.

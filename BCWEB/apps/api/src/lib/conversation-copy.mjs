@@ -96,13 +96,21 @@ export async function verifyCopy(p, doc) {
 /** The readable copy, as HTML. Every value escaped: a message body is somebody's input. */
 export function renderHtml(payload) {
   const c = payload.conversation;
-  const rows = payload.messages.map((m) => `
+  const rows = payload.messages.map((m) => {
+    // Hoisted out of the row: a template nested inside another starts inside the outer one's
+    // text, where no nosemgrep can be written.
+    // nosemgrep: html-in-template-string -- file names pass escapeHtml(); sizes are numbers
+    const files = m.files.length ? `<div style="font-size:12px;color:#666;margin-top:6px">Files: ${m.files.map((f) => `${escapeHtml(f.name)} (${Math.max(1, Math.round(f.size / 1024))} KB)`).join(', ')}</div>` : '';
+    // nosemgrep: html-in-template-string -- sender, date and body pass escapeHtml(); the style is one of two constants
+    return `
     <div style="margin:10px 0;padding:10px 12px;border:1px solid #ddd;border-radius:10px;${m.side === 'sender' ? '' : 'background:#f6f7fb;'}">
       <div style="font-size:12px;color:#666">${escapeHtml(m.from)} · ${escapeHtml(new Date(m.at).toUTCString())}</div>
       <div style="white-space:pre-wrap;margin-top:4px">${escapeHtml(m.body)}</div>
-      ${m.files.length ? `<div style="font-size:12px;color:#666;margin-top:6px">Files: ${m.files.map((f) => `${escapeHtml(f.name)} (${Math.max(1, Math.round(f.size / 1024))} KB)`).join(', ')}</div>` : ''}
-    </div>`).join('');
+      ${files}
+    </div>`;
+  }).join('');
   const who = c.sender.account ? escapeHtml(c.sender.name) : `${escapeHtml(c.sender.name || 'Anonymous')}${c.sender.email ? ` &lt;${escapeHtml(c.sender.email)}&gt;` : ''}`;
+  // nosemgrep: html-in-template-string -- every message field passes escapeHtml(); sizes are numbers
   return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(c.subject)}</title></head>
 <body style="font-family:system-ui,sans-serif;max-width:720px;margin:24px auto;padding:0 16px;color:#111">
   <h1 style="font-size:20px;margin:0 0 4px">${escapeHtml(c.subject)}</h1>

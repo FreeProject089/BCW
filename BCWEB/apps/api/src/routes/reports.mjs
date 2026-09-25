@@ -2,7 +2,7 @@ import { z } from 'zod';
 import crypto from 'node:crypto';
 import { db, requireRole, requireCap, notify } from '../lib/lib.mjs';
 import { userBcId, findUserIdByBcId, looksLikeBcId } from '../lib/repofingerprint.mjs';
-import { sendMail, mailShell, emailEnabled } from '../lib/mail.mjs';
+import { sendMail, mailShell, emailEnabled, escapeHtml } from '../lib/mail.mjs';
 import { powVerify } from './auth.mjs';
 import { publishToThread, streamThread } from '../lib/threadbus.mjs';
 import { markRead, markDelivered, cursorsOf, withReceipts } from '../lib/receipts.mjs';
@@ -66,7 +66,18 @@ const msgInput = z.object({
 async function mailReport(p, to, subject, line, reportId, mailId) {
   if (!emailEnabled() || !to) return;
   const cta = { label: 'View the conversation', url: `${SITE_URL}/dashboard?s=reports&r=${reportId}` };
-  await sendMail({ to, mailId, subject, html: mailShell(subject, `<p>${line}</p>`, cta, { mailId }), text: `${line}\n\n${cta.url}` }).catch(() => {});
+  await sendMail({ to, mailId, subject, html: reportMailHtml(subject, line, cta, mailId), text: `${line}\n\n${cta.url}` }).catch(() => {});
+}
+
+/**
+ * The HTML of those notices. `line` is TEXT and is escaped here: the "new report" notice to
+ * staff quotes the reporter's own `targetLabel` (any signed-in user, 160 characters), and it
+ * went in raw, so a report could put a link or an image of its choosing into the mail the
+ * moderators receive. Exported for test/report-mail-escape.test.mjs.
+ */
+export function reportMailHtml(subject, line, cta, mailId) {
+  // nosemgrep: html-in-template-string -- line passes escapeHtml() in reportMailHtml (test/report-mail-escape.test.mjs)
+  return mailShell(subject, `<p>${escapeHtml(line)}</p>`, cta, { mailId });
 }
 
 const reportPublic = (r) => ({

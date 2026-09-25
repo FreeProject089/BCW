@@ -47,7 +47,7 @@ docker compose up -d
 Puis initialise la base (projets, compte admin, plans, docs, FAQ) :
 
 ```bash
-docker compose exec api npm run setup
+docker compose exec api node src/setup.mjs
 ```
 
 Renseigne `SEED_ADMIN_EMAIL` et `SEED_ADMIN_PASSWORD` dans `.env` **avant ce premier

@@ -72,12 +72,15 @@ export async function notifyAccountAction({ to, kind, reason, appealTo = null })
     if (!emailEnabled() || !to || /@account\.invalid$/i.test(to)) return false;
     const title = ACTION_TITLE[kind] || 'A decision about your account';
     const body = [
+        // nosemgrep: html-in-template-string -- mail HTML: every user, request or database string passes escapeHtml(); the rest are numbers, dates, enums, server tokens or constants
         `<p>${escapeHtml(title)}.</p>`,
         '<p><b>Reason given:</b></p>',
+        // nosemgrep: html-in-template-string -- mail HTML: every user, request or database string passes escapeHtml(); the rest are numbers, dates, enums, server tokens or constants
         `<blockquote style="margin:0;padding:10px 14px;border-left:3px solid #d1d5db;color:#374151">${escapeHtml(reason)}</blockquote>`,
         kind === 'erasure'
             ? '<p>Your account and the data attached to it have been removed. Some records we are required to keep — payments and moderation decisions — remain, without your name on them.</p>'
             : '<p>If you think this is wrong, you can reply to this message.</p>',
+        // nosemgrep: html-in-template-string -- mail HTML: every user, request or database string passes escapeHtml(); the rest are numbers, dates, enums, server tokens or constants
         appealTo ? `<p>Write to <a href="mailto:${escapeHtml(appealTo)}">${escapeHtml(appealTo)}</a>.</p>` : '',
     ].join('\n');
     try {

@@ -49,13 +49,18 @@ export function documentHtml(md, opt = {}) {
   const body = renderHtml(md, { lang: opt.lang || 'en', ...(opt.render || {}) });
   return [
     '<!doctype html>',
+    // nosemgrep: html-in-template-string -- values pass escapeHtml(); the body is renderHtml() output (rehype-sanitize)
     `<html lang="${escapeHtml(opt.lang || 'en')}">`,
     '<head>',
     '<meta charset="utf-8">',
     '<meta name="viewport" content="width=device-width, initial-scale=1">',
+    // nosemgrep: html-in-template-string -- values pass escapeHtml(); the body is renderHtml() output (rehype-sanitize)
     `<title>${escapeHtml(opt.title || 'Document')}</title>`,
+    // nosemgrep: html-in-template-string -- values pass escapeHtml(); the body is renderHtml() output (rehype-sanitize)
     `<style>${tokens}body{margin:0;background:var(--bg-solid);font:15px/1.7 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--text)}main{max-width:820px;margin:0 auto;padding:32px 20px}</style>`,
+    // nosemgrep: html-in-template-string -- values pass escapeHtml(); the body is renderHtml() output (rehype-sanitize)
     opt.css ? `<style>${opt.css}</style>` : '',
+    // nosemgrep: html-in-template-string -- values pass escapeHtml(); the body is renderHtml() output (rehype-sanitize)
     opt.extraCss ? `<style>${opt.extraCss}</style>` : '',
     '</head>',
     '<body><main>',

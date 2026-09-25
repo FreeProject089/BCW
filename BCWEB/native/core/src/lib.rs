@@ -256,6 +256,7 @@ mod tests {
 
     #[test]
     fn scan_dir_lists_files() {
+        // nosemgrep: temp-dir -- inside #[cfg(test)]: a per-process scratch dir for a unit test
         let dir = std::env::temp_dir().join(format!("bcweb-core-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("sub")).unwrap();

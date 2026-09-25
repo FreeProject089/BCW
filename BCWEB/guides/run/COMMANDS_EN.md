@@ -99,6 +99,11 @@ npm run setup -- --demo         # ... and demo fixtures (sample repos, catalogs,
 npm run setup -- --skip-migrate # seeds only
 ```
 
+Inside the api **container** there is no npm (the runtime image drops it, see
+`apps/api/Dockerfile`): run the script with node, `docker compose exec api node src/setup.mjs`
+(same flags). Every `npm run <x>` below is `node src/<file>.mjs` there, as `apps/api/package.json`
+lists.
+
 Every step is idempotent, so running it against an existing database is safe. Prefer this to
 running the seeds by hand — they have an order, and getting it wrong leaves a half-populated
 database that fails later somewhere unrelated.

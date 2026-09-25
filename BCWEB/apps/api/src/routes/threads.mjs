@@ -277,7 +277,8 @@ async function mailAnonSender(thread, subject, intro, mailId = undefined) {
   await (linkMailer || sendMail)({
     mailId,
     to: thread.senderEmail, subject,
-    html: mailShell(subject, `<p>${escapeHtml(intro)}</p><p><a href="${link}">${escapeHtml(link)}</a></p><p style="color:#888;font-size:12px">Anyone with this link can read and answer the conversation — keep it to yourself.</p>`, { label: 'Open the conversation', href: link }),
+    // nosemgrep: html-in-template-string -- intro and link pass escapeHtml(); link = SITE_URL + a server access token
+    html: mailShell(subject, `<p>${escapeHtml(intro)}</p><p><a href="${escapeHtml(link)}">${escapeHtml(link)}</a></p><p style="color:#888;font-size:12px">Anyone with this link can read and answer the conversation — keep it to yourself.</p>`, { label: 'Open the conversation', url: link }),
     text: `${intro}\n\n${link}`,
   }).catch(() => {});
   return true;
@@ -320,7 +321,8 @@ export async function flushAnonThreadMails(p, { now = new Date(), send = sendMai
     const intro = `${t.targetLabel} answered you. You have ${unread} unread message${unread === 1 ? '' : 's'} in this conversation.`;
     await send({
       to: t.senderEmail, subject, mailId: 'thread.unread',
-      html: mailShell(subject, `<p>${escapeHtml(intro)}</p><p><a href="${link}">${escapeHtml(link)}</a></p><p style="color:#888;font-size:12px">Anyone with this link can read and answer the conversation, keep it to yourself.</p>`, { label: 'Open the conversation', href: link }),
+      // nosemgrep: html-in-template-string -- intro and link pass escapeHtml(); link = SITE_URL + a server access token
+      html: mailShell(subject, `<p>${escapeHtml(intro)}</p><p><a href="${escapeHtml(link)}">${escapeHtml(link)}</a></p><p style="color:#888;font-size:12px">Anyone with this link can read and answer the conversation, keep it to yourself.</p>`, { label: 'Open the conversation', url: link }),
       text: `${intro}\n\n${link}`,
     }).catch(() => {});
     // The mail is the delivery: the sender's side now HAS the messages, in their inbox.

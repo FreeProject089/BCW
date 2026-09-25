@@ -190,18 +190,21 @@ export default async function closureRoutes(app) {
     // Their invoices travel WITH the notice. After the account is gone they will have no
     // way to fetch them, and "download them before you go" is advice nobody reads in time.
     const payments = await p.payment.findMany({ where: { userId: me.id }, orderBy: { createdAt: 'desc' }, take: 200 });
+    // nosemgrep: html-in-template-string -- the description passes escapeHtml(); the date and money() are server-formatted numbers
+    const invoiceRow = (x) => `<tr>
+             <td style="padding:6px 10px;border-bottom:1px solid #f0ece4">${x.createdAt.toISOString().slice(0, 10)}</td>
+             <td style="padding:6px 10px;border-bottom:1px solid #f0ece4">${escapeHtml(x.description || x.kind)}</td>
+             <td style="padding:6px 10px;border-bottom:1px solid #f0ece4;text-align:right">${money(x.amountCents, x.currency)}</td>
+           </tr>`;
     const invoiceRows = payments.length
+      // nosemgrep: html-in-template-string -- mail HTML: every user, request or database string passes escapeHtml(); the rest are numbers, dates, enums, server tokens or constants
       ? `<table role="presentation" style="border-collapse:collapse;width:100%;font-size:13px;margin:8px 0 16px">
            <thead><tr>
              <th style="text-align:left;padding:6px 10px;border-bottom:2px solid #eae4da">Date</th>
              <th style="text-align:left;padding:6px 10px;border-bottom:2px solid #eae4da">What</th>
              <th style="text-align:right;padding:6px 10px;border-bottom:2px solid #eae4da">Amount</th>
            </tr></thead><tbody>
-           ${payments.map((x) => `<tr>
-             <td style="padding:6px 10px;border-bottom:1px solid #f0ece4">${x.createdAt.toISOString().slice(0, 10)}</td>
-             <td style="padding:6px 10px;border-bottom:1px solid #f0ece4">${escapeHtml(x.description || x.kind)}</td>
-             <td style="padding:6px 10px;border-bottom:1px solid #f0ece4;text-align:right">${money(x.amountCents, x.currency)}</td>
-           </tr>`).join('')}
+           ${payments.map(invoiceRow).join('')}
            </tbody></table>`
       : '<p>You have no payments on record.</p>';
 
@@ -356,24 +359,28 @@ export default async function closureRoutes(app) {
 
     const day = when.toISOString().slice(0, 10);
     const subject = 'Your BetterCommunity account is scheduled for closure';
-    const html = mailShell(subject, `
-      <p>Your account <b>${escapeHtml(target.email)}</b> has been scheduled for closure by our team.</p>
-      <table style="margin:14px 0;font-size:15px">
-        <tr><td style="padding:2px 14px 2px 0;color:#94a3b8">Reason</td><td><b>${escapeHtml(b.data.reason.trim())}</b></td></tr>
-        <tr><td style="padding:2px 14px 2px 0;color:#94a3b8">Closes on</td><td><b>${escapeHtml(day)}</b></td></tr>
-      </table>
-      <p>Until that date nothing has been deleted. Your invoices and the records we are required to keep
-         are retained either way; everything personal on the account is removed when it closes.</p>
-      ${blockers.length ? `<p><b>What happens to what the account holds.</b> Your repositories, catalogs and items
-         are <b>suspended now</b> — they stop being served, and nothing is deleted. On ${escapeHtml(day)} any active
-         subscription is cancelled and all of it is deleted for good. Nothing is transferred to anyone else. If you
-         want to keep any of it, move it to another account before that date${cancellable ? ', or ask us to call this off — everything comes back exactly as it was' : ''}.</p>` : ''}
-      <p>${cancellable
-        ? `If you want to keep the account, contest it before ${escapeHtml(day)} and we can stop it.`
-        : `This closure is final and cannot be called off from your side — but you can still contest it, and a person reads every contest.`}</p>
-      ${sanction ? `<p style="margin-top:12px"><b>Reference:</b> <code>${escapeHtml(sanction.code)}</code> — quote it in anything you send us.</p>` : ''}
-      <p style="margin:22px 0"><a href="${escapeHtml(SITE)}${sanction ? `/sanctions/${escapeHtml(sanction.code)}` : '/contact'}"
-         style="background:#6366f1;color:#fff;padding:11px 20px;border-radius:9px;text-decoration:none;font-weight:600">${sanction ? 'Read it and contest' : 'Contact us'}</a></p>`);
+    // One element per line, on purpose: Semgrep reports a multi-line template at a line INSIDE
+    // it, where no `nosemgrep` can be written. Every value passes escapeHtml(); `blockers`,
+    // `cancellable` and `sanction` only choose between constant sentences.
+    const html = mailShell(subject, [
+      // nosemgrep: raw-html-format, html-in-template-string -- the address passes escapeHtml()
+      `<p>Your account <b>${escapeHtml(target.email)}</b> has been scheduled for closure by our team.</p>`,
+      '<table style="margin:14px 0;font-size:15px">',
+      // nosemgrep: raw-html-format, html-in-template-string -- the reason passes escapeHtml()
+      `<tr><td style="padding:2px 14px 2px 0;color:#94a3b8">Reason</td><td><b>${escapeHtml(b.data.reason.trim())}</b></td></tr>`,
+      // nosemgrep: raw-html-format, html-in-template-string -- the date passes escapeHtml()
+      `<tr><td style="padding:2px 14px 2px 0;color:#94a3b8">Closes on</td><td><b>${escapeHtml(day)}</b></td></tr>`,
+      '</table>',
+      '<p>Until that date nothing has been deleted. Your invoices and the records we are required to keep are retained either way; everything personal on the account is removed when it closes.</p>',
+      // nosemgrep: raw-html-format, html-in-template-string -- the date passes escapeHtml(); the rest is constant text
+      blockers.length ? `<p><b>What happens to what the account holds.</b> Your repositories, catalogs and items are <b>suspended now</b> — they stop being served, and nothing is deleted. On ${escapeHtml(day)} any active subscription is cancelled and all of it is deleted for good. Nothing is transferred to anyone else. If you want to keep any of it, move it to another account before that date${cancellable ? ', or ask us to call this off — everything comes back exactly as it was' : ''}.</p>` : '',
+      // nosemgrep: raw-html-format, html-in-template-string -- the date passes escapeHtml(); the rest is constant text
+      `<p>${cancellable ? `If you want to keep the account, contest it before ${escapeHtml(day)} and we can stop it.` : 'This closure is final and cannot be called off from your side — but you can still contest it, and a person reads every contest.'}</p>`,
+      // nosemgrep: raw-html-format, html-in-template-string -- the sanction code passes escapeHtml()
+      sanction ? `<p style="margin-top:12px"><b>Reference:</b> <code>${escapeHtml(sanction.code)}</code> — quote it in anything you send us.</p>` : '',
+      // nosemgrep: raw-html-format, html-in-template-string -- SITE and the sanction code pass escapeHtml(); the label is constant
+      `<p style="margin:22px 0"><a href="${escapeHtml(SITE)}${sanction ? `/sanctions/${escapeHtml(sanction.code)}` : '/contact'}" style="background:#6366f1;color:#fff;padding:11px 20px;border-radius:9px;text-decoration:none;font-weight:600">${sanction ? 'Read it and contest' : 'Contact us'}</a></p>`,
+    ].join('\n'));
     let mailed = false;
     // Same mail as the one above, from the other direction (an admin closed it, not the
     // owner) — so the same id: rewording one and not the other is how two notices about one

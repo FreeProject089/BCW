@@ -65,6 +65,7 @@ export default async function webhookRoutes(app) {
     if (b.data.events) data.events = [...new Set(b.data.events.filter((e) => WEBHOOK_EVENTS[e]))];
     // Re-enabling clears the failure count: otherwise an address fixed after twenty failures
     // is one bad delivery away from being switched off again.
+    // nosemgrep: express-data-exfiltration -- Object.assign of named, zod-validated fields (or constants) into a Prisma data object, not a request body
     if (b.data.enabled !== undefined) Object.assign(data, { enabled: b.data.enabled, failures: b.data.enabled ? 0 : row.failures, disabledReason: b.data.enabled ? null : row.disabledReason });
     const out = await p.webhookEndpoint.update({ where: { id: row.id }, data });
     return { webhook: view(out) };

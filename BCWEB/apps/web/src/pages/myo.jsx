@@ -370,6 +370,7 @@ export function MyoConversation({ id, admin = false }) {
     finally { setSending(false); }
   };
   const payQuote = async (q) => {
+    // nosemgrep: js-open-redirect-from-function -- the URL is the Stripe Checkout / portal URL our own API returned, not page input
     try { const res = await api.post(`/myo/quotes/${q.id}/pay`, {}); if (res?.checkoutUrl) { window.location.href = res.checkoutUrl; } }
     catch { toast.error(t('myo.e.pay', 'Could not start checkout.')); }
   };
@@ -402,6 +403,7 @@ export function MyoConversation({ id, admin = false }) {
         <Card className="p-4 flex items-center gap-3 border-warning-border bg-warning-bg">
           <CreditCard size={18} className="text-warning shrink-0" />
           <div className="flex-1 text-sm">{t('myo.pending', 'This request opens once the consultation fee is paid.')}</div>
+          {/* nosemgrep: js-open-redirect-from-function -- the URL is the Stripe Checkout URL our own API returned, not page input */}
           <Button size="sm" variant="primary" onClick={async () => { try { const res = await api.post(`/myo/requests/${id}/pay`, {}); if (res?.checkoutUrl) location.href = res.checkoutUrl; } catch { toast.error(t('myo.e.pay', 'Could not start checkout.')); } }}>{t('myo.payNow', 'Pay now')}</Button>
         </Card>
       )}

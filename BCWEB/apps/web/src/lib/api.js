@@ -23,6 +23,7 @@ async function req(method, path, body) {
     if (method !== 'GET' && res.status === 403 && data?.error === 'missing_permission' && typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('bcw:forbidden', { detail: { capability: data.capability } }));
     }
+    // nosemgrep: insecure-object-assign -- the error object carries the API's own status and JSON reply; nothing is merged into a shared object
     throw Object.assign(new Error('api_error'), { status: res.status, data });
   }
   return data;

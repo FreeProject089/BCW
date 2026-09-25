@@ -62,8 +62,10 @@ export function incidentSpec(t, a) {
       resolved ? `~~${a.message}~~` : a.message,
       resolved
         ? t('al.resolved', { dur: durationLabel(new Date(a.resolvedAt) - new Date(a.createdAt)) })
+        // nosemgrep: html-in-template-string -- Discord message text (markdown, <t:…> timestamps), never parsed as HTML
         : t('al.ongoing', { since: `<t:${ts(a.createdAt)}:R>` }),
     ],
+    // nosemgrep: html-in-template-string -- Discord message text (markdown, <t:…> timestamps), never parsed as HTML
     footer: `<t:${ts(a.createdAt)}:f>${resolved ? ` → <t:${ts(a.resolvedAt)}:f>` : ''}`,
     url: a.url || null,
     icon: resolved ? 'done' : 'warn',
@@ -76,8 +78,10 @@ export function eventsSpec(t, group) {
   const first = group.alerts[0];
   const sev = group.alerts.some((a) => a.severity === 'critical') ? 'critical' : group.alerts.some((a) => a.severity === 'warning') ? 'warning' : 'info';
   return {
+    // nosemgrep: html-in-template-string -- Discord message text (markdown, <t:…> timestamps), never parsed as HTML
     title: `${kindLabel(t, group.kind)} · ${t('al.events', { n: group.alerts.length, since: `<t:${ts(first.createdAt)}:t>` })}`,
     color: COLOR[sev],
+    // nosemgrep: html-in-template-string -- Discord message text (markdown, <t:…> timestamps), never parsed as HTML
     body: group.alerts.map((a) => `- <t:${ts(a.createdAt)}:t> ${String(a.message).slice(0, 180)}`),
     footer: null,
     // The events have no page each worth opening; the list they sit in is the useful link.

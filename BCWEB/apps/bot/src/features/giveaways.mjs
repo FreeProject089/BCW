@@ -74,6 +74,7 @@ export async function pollGiveaways(client) {
             : '';
         const msg = await ch.send(ui.card({
           title: `${ui.ic('enter')} Giveaway!`,
+          // nosemgrep: html-in-template-string -- Discord message text (<t:…> timestamp), never parsed as HTML
           body: [`**Prize:** ${gw.prize}`, gw.rewardLabel && gw.rewardLabel !== gw.prize ? T('gw.reward', { reward: gw.rewardLabel }) : null, `**Winners:** ${gw.winnersCount}`, `**Ends:** <t:${endTs}:R> (<t:${endTs}:f>)`, reqLine.trim() || null, '', 'Press **Enter** below to join — one entry per person.'],
           buttons: [ui.btn(`gw:enter:${gw.id}`, 'Enter', ButtonStyle.Primary, { emoji: 'enter' }), learnButton(T, 'giveaway')],
         })).catch((e) => { console.warn('[bot] giveaway post failed', e.message); return null; });

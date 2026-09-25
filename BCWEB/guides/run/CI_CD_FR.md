@@ -13,7 +13,7 @@ configurer, et comment faire la même chose sur votre machine. Les workflows son
 | **BCWEB CI** | `ci.yml` | push / pull request touchant `BCWEB/**` ou `.github/**` | un contrôle de build, lint, test, schéma, Caddyfile, secret ou dépendance échoue |
 | **BCWEB security** | `security.yml` | idem, + le lundi 03:17 UTC, + à la main | la gate trouve quelque chose au seuil ou au-dessus (HIGH par défaut) dans Gitleaks, Semgrep ou Trivy |
 | **BCWEB DAST** | `dast.yml` | pull requests touchant l'API, le web, les packages, Caddy ou les fichiers DAST ; le mardi 04:41 UTC ; à la main | la gate trouve quelque chose au seuil ou au-dessus dans ZAP ou Nuclei, ou le scan n'a pas pu tourner correctement |
-| **BCWEB deploy (production)** | `deploy.yml` | à la main sur `master`, ou après une **BCWEB CI** verte sur `master` quand `CD_AUTO_DEPLOY` = `true` | le déploiement SSH via la gate du serveur échoue |
+| **BCWEB deploy (production)** | `deploy.yml` | à la main sur `master`, ou après une **BCWEB CI** verte sur `master` quand `CD_AUTO_DEPLOY` = `true` | **BCWEB security** n'est pas passé pour ce commit (après jusqu'à 20 min d'attente), ou le déploiement SSH via la gate du serveur échoue |
 
 Chaque job demande ses propres permissions et rien d'autre (`contents: read` presque partout) ;
 les seuls jobs qui peuvent écrire sont nommés plus bas. Chaque action est épinglée par SHA de
@@ -45,7 +45,7 @@ avec des valeurs factices.
 
 | Job | Outil | Bloque par défaut sur | Artifact |
 |---|---|---|---|
-| Security gate + DAST scope (self-tests) | node --test | une gate ou un contrôle de périmètre cassé | — |
+| Security gate + DAST scope (self-tests) | node --test | une gate, un contrôle de périmètre ou le verdict de déploiement (`security-verdict.mjs`) cassé | — |
 | Secrets in git history | Gitleaks | tout secret non revu (push/PR : ses commits ; planifié/manuel : tout l'historique) | `security-gitleaks` |
 | SAST | Semgrep (règles épinglées) | ERROR | `security-semgrep` |
 | Dependencies + Dockerfiles | Trivy fs | HIGH / CRITICAL | `security-trivy-fs` |
@@ -92,6 +92,29 @@ Déploie la pointe de `master` sur le VPS de production par **une seule commande
    ancien ou présent seulement sur une branche ne peut pas partir en production avec cette clé.
 3. Elle lance ensuite `infra/deploy.sh` (sauvegarde, pull, build, attente de `/ready`, retour
    arrière du code s'il ne démarre jamais), puis le job demande `status` et garde le log.
+
+**Avant tout cela**, avant même que la clé de déploiement soit écrite sur le disque du runner, le
+job vérifie que **BCWEB security** est passé pour le commit exact qu'il déploie :
+
+- il liste les runs de workflow de ce commit par l'API (`gh api`, avec le jeton du job lui-même
+  et les droits en lecture `actions: read` / `checks: read`, accordés à ce seul job) et les
+  passe à `.github/scripts/security-verdict.mjs` ;
+- un run nommé *BCWEB security*, pour ce SHA exact, issu d'un événement `push`,
+  `workflow_dispatch` ou `schedule`, terminé en `success` → le déploiement continue. Un run
+  `pull_request` ne compte pas : il a testé la fusion d'une branche, pas ce commit ;
+- pas encore de run, ou un run en file / en cours → il redemande toutes les 30 secondes,
+  pendant **20 minutes** au plus, puis échoue avec « no successful BCWEB security run for it
+  after 20 minutes » ;
+- tous les runs du commit sont terminés et aucun n'a réussi (échec, annulé, délai dépassé) → il
+  échoue tout de suite. Corrigez les constats (ou relancez le workflow si c'était un raté) et
+  redéployez.
+
+**Le DAST reste consultatif pour le déploiement.** *BCWEB DAST* ne tourne pas sur le push vers
+`master` (il tourne sur les pull requests, chaque semaine et à la main), il lui faut dix minutes
+et toute une instance en marche, et ce qu'il juge, ce sont les en-têtes et le comportement du
+site plutôt que le code d'un commit. L'attendre voudrait dire soit plus de déploiement
+automatique, soit un déploiement conditionné au scan de mardi dernier. Ses constats se lisent
+sur la pull request et dans le run hebdomadaire.
 4. **Interrupteur d'arrêt :** tant que `/srv/BetterCommunity/deploy-gate.disabled` existe sur le
    serveur, tout déploiement est refusé (status répond toujours).
 
@@ -100,8 +123,9 @@ Déploie la pointe de `master` sur le VPS de production par **une seule commande
   si la variable `CD_AUTO_DEPLOY` vaut exactement `true`. Les deux passent par l'environnement
   `production` : ajoutez-y des relecteurs obligatoires pour que chaque déploiement attende une
   approbation.
-- **Gate :** le code de sortie de la commande SSH. **À noter :** il attend *BCWEB CI*
-  seulement, pas les workflows de sécurité ou DAST (voir « Décisions » à la fin).
+- **Gate :** un run *BCWEB security* vert pour le commit (ci-dessus), puis le code de sortie de
+  la commande SSH. Démarrer après une *BCWEB CI* verte est le déclencheur ; l'attente de la
+  sécurité est une étape.
 - **Artifact :** `deploy-log-<id du run>`, 90 jours.
 - **En local :** `ssh -i <clé> -p <port> <user>@<hôte> status` (ou `deploy <sha> --dry-run`) ;
   le côté serveur est décrit dans [DEPLOY_FR.md](DEPLOY_FR.md), section 9, « Depuis GitHub (CD) ».
@@ -178,10 +202,11 @@ constat : cela désactive le contrôle pour tous les constats suivants.
 
 ## Décisions encore ouvertes
 
-- `deploy.yml` attend *BCWEB CI* seulement. Faire aussi attendre une *BCWEB security* (et DAST)
-  verte tient en une ligne dans son déclencheur `workflow_run` ; ce n'est pas fait, parce que le
-  workflow de sécurité échoue aujourd'hui sur des constats qui demandent d'abord une décision
-  ([SECURITY_CI_FR.md](SECURITY_CI_FR.md#6-ce-que-les-scans-ont-trouvé-le-2026-09-25-et-ce-qui-a-été-fait)).
+- *Décidé le 2026-09-25 :* un déploiement attend un run *BCWEB security* vert pour son commit
+  (ci-dessus) ; le DAST reste consultatif. Tant que les constats de
+  [SECURITY_CI_FR.md](SECURITY_CI_FR.md#6-ce-que-les-scans-ont-trouvé-le-2026-09-25-et-ce-qui-a-été-fait)
+  ne sont pas tous fermés, le workflow de sécurité peut être rouge, et alors **aucun
+  déploiement ne passe** : c'est l'effet voulu, pas un bug du déploiement.
 - Les artifacts de rapports d'un dépôt public peuvent être téléchargés par tout utilisateur
   GitHub connecté. Le rapport Gitleaks est masqué ; les autres décrivent le code (public de toute
   façon) et une instance jetable. Un DAST contre un vrai staging publierait ses constats de la

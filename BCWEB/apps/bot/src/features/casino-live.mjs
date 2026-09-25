@@ -130,6 +130,7 @@ function lobbyCard(L) {
   const t = L.t;
   const need = minPlayers(L.game);
   const have = L.players.size;
+  // nosemgrep: html-in-template-string -- Discord message text (<#channel> mention), never parsed as HTML
   const status = have >= need ? t('live.startsAt', { t: `<t:${Math.floor(L.startAt / 1000)}:R>` }) : t('live.waiting', { n: need - have });
   const buttons = [
     ui.btn(`cl:join:${L.id}`, t('live.join'), ButtonStyle.Primary, { emoji: 'casino' }),

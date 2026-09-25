@@ -118,6 +118,7 @@ async function ownersOf(p, targets) {
 // ── mail ───────────────────────────────────────────────────────────────────────────────
 async function mailNotice(to, subject, lines, code, mailId) {
   if (!emailEnabled() || !to) return;
+  // nosemgrep: html-in-template-string -- each line passes escapeHtml()
   const html = lines.map((l) => `<p>${escapeHtml(l)}</p>`).join('');
   const cta = { label: 'Follow your notice', url: `${SITE_URL}/report?code=${encodeURIComponent(code)}` };
   await sendMail({ to, mailId, subject, html: mailShell(subject, html, cta, { mailId }), text: `${lines.join('\n\n')}\n\n${cta.url}` }).catch(() => {});

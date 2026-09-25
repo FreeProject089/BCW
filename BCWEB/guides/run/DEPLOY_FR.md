@@ -243,6 +243,18 @@ porte) est réglé par ce que cette clé a le droit de faire : **une seule comma
   vers `master`, seulement si la variable du dépôt `CD_AUTO_DEPLOY` vaut exactement `true`. Les
   deux passent par l'environnement GitHub `production` : ajoute-y des relecteurs obligatoires
   pour que chaque déploiement attende ton accord.
+- **La sécurité d'abord.** Avant même d'écrire la clé sur le runner, le job vérifie que
+  *BCWEB security* (Gitleaks, Semgrep, Trivy) **est passé pour le commit exact** qu'il déploie :
+  `gh api` liste les runs de ce commit avec le jeton du job, en lecture seule (`actions: read`,
+  `checks: read`, sur ce seul job), et `.github/scripts/security-verdict.mjs` décide. Pas
+  encore lancé ou en cours : il redemande toutes les 30 s pendant 20 minutes au plus, puis
+  échoue (« no successful BCWEB security run for it after 20 minutes » : lance ce workflow à la
+  main sur `master`, puis redéploie). Échoué ou annulé : il échoue tout de suite. Un run de pull
+  request ne compte pas (il a testé une fusion, pas ce commit). *BCWEB DAST* n'est **pas**
+  attendu : il ne tourne pas sur le push vers `master`, il lui faut toute une instance en marche
+  et dix minutes, et il juge les en-têtes du site plutôt qu'un commit ; il reste donc
+  consultatif, à lire sur la PR et dans le run hebdomadaire. Détails :
+  [CI_CD_FR.md](CI_CD_FR.md#bcweb-deploy-deployyml--le-cd).
 - **Configuration** (Settings > Secrets and variables > Actions) : secret `DEPLOY_SSH_KEY` (la
   clé privée) ; variables `DEPLOY_HOST`, `DEPLOY_PORT`, `DEPLOY_USER`, `DEPLOY_KNOWN_HOSTS` (la
   ligne de clé d'hôte du serveur, obligatoire : pas de confiance au premier contact) et, au

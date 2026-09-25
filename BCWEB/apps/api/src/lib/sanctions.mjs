@@ -90,14 +90,20 @@ export async function mailSanction(p, s) {
     ? `${KIND_LABEL[s.kind] || s.kind} — ${s.targetName}`
     : (KIND_LABEL[s.kind] || s.kind);
   const until = s.expiresAt
+    // nosemgrep: html-in-template-string -- reason/request/name pass escapeHtml(); code is server-generated, expiresAt a Date
     ? `<p style="margin-top:12px">It ends on <b>${s.expiresAt.toUTCString()}</b>.</p>`
     : (s.kind === 'warning' ? '' : '<p style="margin-top:12px">No end date has been set.</p>');
+  // Hoisted out of the body: a template nested inside another starts inside the outer one's
+  // text, where no nosemgrep can be written.
+  // nosemgrep: html-in-template-string -- the request passes escapeHtml()
+  const asked = s.request ? `<p style="margin-top:12px"><b>What we are asking you to do:</b><br>${escapeHtml(s.request)}</p>` : '';
+  // nosemgrep: html-in-template-string -- name, text and reason pass escapeHtml(); code is server-generated, escaped anyway; `until` is built above from a Date
   const body = `
     <p>Hi ${escapeHtml(u.displayName || '')},</p>
     <p>${escapeHtml(what)}.</p>
-    <p style="margin-top:12px"><b>Reference:</b> <code>${s.code}</code><br>
+    <p style="margin-top:12px"><b>Reference:</b> <code>${escapeHtml(s.code)}</code><br>
        <b>Reason:</b> ${escapeHtml(s.reason)}</p>
-    ${s.request ? `<p style="margin-top:12px"><b>What we are asking you to do:</b><br>${escapeHtml(s.request)}</p>` : ''}
+    ${asked}
     ${until}
     <p style="margin-top:16px">If you think this is wrong, you can contest it — quote the reference above.</p>`;
   const text = `${what}. Reference: ${s.code}. Reason: ${s.reason}${s.request ? ` Asked of you: ${s.request}` : ''}${s.expiresAt ? ` Ends: ${s.expiresAt.toISOString()}` : ''} Contest: ${SITE_URL}/sanctions/${s.code}`;

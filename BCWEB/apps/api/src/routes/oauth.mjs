@@ -378,6 +378,7 @@ export default async function oauthRoutes(app) {
           const sent = await sendMail({
             to: sameEmail.email,
             subject: `Link ${label} to your BetterCommunity account`,
+            // nosemgrep: html-in-template-string, raw-html-format -- label is from the LABEL map of configured providers, code a 6-digit number
             html: mailShell('Link a sign-in method', `Someone — most likely you — just signed in with ${label} using this address. To link it to your existing BetterCommunity account, enter this code on the page that is waiting for it:<br><br><b style="font-size:22px;letter-spacing:.25em">${code}</b><br><br>It expires in 15 minutes. If this wasn't you, ignore this e-mail: nothing is linked without the code or your password.`, null),
             text: `Your BetterCommunity link code: ${code} (valid 15 minutes). If this wasn't you, ignore this e-mail.`,
           }).catch(() => false);

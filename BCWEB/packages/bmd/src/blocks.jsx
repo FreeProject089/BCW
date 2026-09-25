@@ -14,6 +14,7 @@ import { openapiToBmd } from './openapi.js';
 export function MissingBlock({ name }) {
   return (
     <div className="doc-roadmap doc-roadmap-empty text-sm text-[var(--faint)] rounded-xl border border-dashed border-[var(--line)] p-4">
+      {/* nosemgrep: html-in-template-string -- a React text child, escaped by React */}
       {`This page uses a :::${name} block, and no ${name} component was provided to <Markdown>.`}
     </div>
   );

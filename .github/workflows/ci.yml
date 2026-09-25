@@ -238,8 +238,9 @@ jobs:
       fail-fast: false
       matrix:
         # Everything that ships: the three apps, the provisioner, and the telemetry dashboard's web
-        # (built into its image). Not audited: the telemetry root package.json and loadtest (not
-        # deployed), native/ (devDependencies only), packages/* (peer deps, resolved by apps/web).
+        # (built into its image). Not audited: loadtest (not deployed), native/ (devDependencies
+        # only), packages/* (peer deps, resolved by apps/web). (The telemetry dashboard's old root
+        # package.json went with the deprecated Express version it served, deleted 2026-09-25.)
         dir:
           - BCWEB/apps/api
           - BCWEB/apps/web

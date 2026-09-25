@@ -4,14 +4,36 @@
 # Format, one rule per line, TAB-separated:   <plugin id>	<IGNORE|WARN|FAIL|INFO>	(<reason>)
 #
 # Only IGNORE changes what the gate counts, and the gate REFUSES an IGNORE without a reason.
-# Add one only for a reviewed false positive: say what ZAP saw, why it is not a vulnerability
-# here, who reviewed it and when. A real finding is fixed, or left failing for the owner to
-# decide; it is never ignored here to make the job green.
+# Add one only for a reviewed false positive or a risk the owner accepted: say what ZAP saw, why
+# it is not a vulnerability here (or why it is accepted), who reviewed it, when, and when the
+# decision expires. A real finding is fixed, or left failing for the owner to decide; it is
+# never ignored here to make the job green.
 #
 # Pass/fail is NOT decided by this file: the gate reads ZAP's risk (High / Medium / Low /
 # Informational) against SECURITY_GATE_SEVERITY_ZAP / SECURITY_GATE_SEVERITY. WARN/FAIL here
 # only change what ZAP prints in its own summary.
 #
-# Reviewed 2026-09-25 against the CI-local instance: no false positive found, nothing ignored.
-# What ZAP reported then (all below the default "high" threshold) is listed in
-# BCWEB/guides/run/SECURITY_CI_EN.md, "What the scans found on 2026-09-25".
+# The id may be a plugin id, or an ALERT REF (`10055-6`): ZAP files every CSP problem under the
+# one plugin 10055, so an IGNORE on 10055 would hide every CSP alert, including the next real
+# one. Ignore the alertRef. (zap-baseline.py only matches plugin ids with -c; an alertRef line
+# changes nothing in ZAP's own summary, only in the gate, which is the one that decides.)
+# End the reason with `expires YYYY-MM-DD`: from that day the gate counts the alert again
+# (a note in the gate table says so) and it has to be judged again.
+#
+# Reviewed 2026-09-25 against the CI-local instance (owner decisions, delegated). Everything
+# else ZAP reported then is listed in BCWEB/guides/run/SECURITY_CI_EN.md section 6.
+#
+# 10055-6 "CSP: style-src unsafe-inline", MEDIUM. Accepted risk: React renders `style={...}`
+# as inline style ATTRIBUTES (hundreds of them), and the theme engine sets CSS variables at
+# run time; neither a nonce nor a hash can cover an attribute. script-src stays strict (no
+# unsafe-inline, apps/web/scripts/check-csp.mjs), which is what stops markup injection from
+# becoming script execution; inline CSS alone is a much smaller surface.
+10055-6	IGNORE	(Accepted risk, reviewed 2026-09-25: style-src unsafe-inline is required by React style attributes and the runtime theme variables; script-src stays without unsafe-inline, enforced by apps/web/scripts/check-csp.mjs. expires 2027-03-31)
+#
+# 10055-4 "CSP: Wildcard Directive", MEDIUM. Accepted risk: img-src, media-src and font-src
+# allow `https:` because avatars, markdown images, videos and theme fonts come from any host a
+# member links; the wildcard only ever lets the page LOAD such a resource, never run it.
+# connect-src (where data leaves) and script-src are host lists, checked by check-csp.mjs.
+# The same alert also fires on the two OAuth pages' form-action (`https:`), which is how a
+# consent or logout form reaches a client's registered redirect URI (infra/caddy/Caddyfile).
+10055-4	IGNORE	(Accepted risk, reviewed 2026-09-25: img-src/media-src/font-src https: for member-linked avatars, images, videos and fonts, and form-action https: on the two OAuth redirect pages only; connect-src and script-src stay host lists, enforced by apps/web/scripts/check-csp.mjs. expires 2027-03-31)

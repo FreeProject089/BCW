@@ -7,8 +7,9 @@ name: BCWEB DAST
 # Two targets, and production is neither:
 #   local    (default) an instance started INSIDE this job: Postgres service, the checked-in
 #            migrations, the demo seed, the API as `node src/server.mjs` with NODE_ENV=production
-#            and dummy secrets generated for this run, the built web served by nginx with the
-#            repository's nginx.conf, and the repository's REAL Caddyfile in front — so the
+#            and dummy secrets generated for this run, the built web served by the web image's
+#            unprivileged nginx (port 8080) with the repository's nginx.conf, and the
+#            repository's REAL Caddyfile in front — so the
 #            headers, CSP and edge rules ZAP judges are the ones production sends. No bot, no
 #            Stripe, no Discord, no mail, no object storage (their variables are left unset and
 #            the API runs without them). Nothing is published on the runner: the scanners join
@@ -75,10 +76,12 @@ env:
   # nuclei-templates v10.4.9 (a lightweight tag, so this is its commit). Fetched by hash.
   NUCLEI_TEMPLATES_SHA: 893122ffce8ebf8e264f15d2cd3960cb1dd36d6c
   # The system under test, NOT tools: the same references the stack itself uses
-  # (infra/compose/docker-compose.yml runs caddy:2-alpine, apps/web/Dockerfile serves with
-  # nginx:alpine), so the scan sees the edge production runs.
+  # (infra/compose/docker-compose.yml runs caddy:2-alpine, apps/web/Dockerfile serves with the
+  # pinned nginx-unprivileged below, on 8080 as apps/web/nginx.conf says), so the scan sees the
+  # edge production runs. BCWEB/apps/api/test/container-images.test.mjs fails if NGINX_IMAGE and
+  # the web Dockerfile's final FROM ever differ.
   CADDY_IMAGE: caddy:2-alpine
-  NGINX_IMAGE: nginx:alpine
+  NGINX_IMAGE: nginxinc/nginx-unprivileged:1.31.6-alpine3.24@sha256:6a23acdfca2b9cfbcec61419e3f1426bcbedb91362f2f19306a8567423bb4612
   SECURITY_GATE_SEVERITY: ${{ vars.SECURITY_GATE_SEVERITY }}
   SECURITY_GATE_SEVERITY_ZAP: ${{ vars.SECURITY_GATE_SEVERITY_ZAP }}
   SECURITY_GATE_SEVERITY_NUCLEI: ${{ vars.SECURITY_GATE_SEVERITY_NUCLEI }}

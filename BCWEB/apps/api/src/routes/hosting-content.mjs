@@ -735,7 +735,9 @@ function renderAutoindex(displayPath, entries) {
     // mode and Chrome logs a warning naming the URL. nginx's own autoindex omits it, and
     // this page copies nginx — but copying a 1990s quirk is not a feature. It changes
     // nothing for BMM, whose parser walks the <pre> lines and never looks at the head.
+    // nosemgrep: html-in-template-string -- directory index: names and path through htmlEscape(), hrefs through encodeURIComponent(), sizes/dates/sha256 are server values
     `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Index of ${htmlEscape(displayPath)}</title></head><body>`,
+    // nosemgrep: html-in-template-string -- directory index: names and path through htmlEscape(), hrefs through encodeURIComponent(), sizes/dates/sha256 are server values
     `<h1>Index of ${htmlEscape(displayPath)}</h1><hr><pre><a href="../">../</a>`,
   ];
   for (const e of entries) {
@@ -753,6 +755,7 @@ function renderAutoindex(displayPath, entries) {
     // nginx itself shows no checksum; this is a superset of its format, kept parseable on
     // purpose so a client written for a plain file server still reads it.
     const sha = (!e.isDir && e.sha) ? `  ${e.sha}` : '';
+    // nosemgrep: html-in-template-string -- directory index: names and path through htmlEscape(), hrefs through encodeURIComponent(), sizes/dates/sha256 are server values
     rows.push(`<a href="${href}">${htmlEscape(link)}</a>${pad}${nginxDate(e.mtime)} ${size.padStart(19)}${sha}`);
   }
   rows.push('</pre><hr></body></html>');

@@ -42,6 +42,7 @@ function wikiLinks(s, pageMap) {
     const label = String(text || target || hash || '').trim();
     if (!target) return hash ? `[${label}](#${hash.trim()})` : whole;
     const href = index.get(target.toLowerCase()) || (target.startsWith('/') ? target : null);
+    // nosemgrep: html-in-template-string -- markdown pre-pass: its output goes through rehype-sanitize before rendering
     if (!href) return `<span class="doc-ref doc-ref-missing" title="No page called “${esc(target)}”">${esc(label)}</span>`;
     return `[${label}](${href}${hash ? `#${hash.trim()}` : ''})`;
   });
@@ -73,12 +74,14 @@ export function preprocessMd(md, opts = {}) {
   const parts = s.split(/(```[\s\S]*?```|`[^`]*`)/g);
   // Outside code only, like the chips: `==marked==` → <mark>, and the `[[wiki links]]`.
   s = parts.map((part, i) => (i % 2 === 1 ? part
+    // nosemgrep: html-in-template-string -- markdown pre-pass: its output goes through rehype-sanitize before rendering
     : wikiLinks(part.replace(/==([^=\n]+?)==/g, (mm, inner) => `<mark>${inner}</mark>`), opts.pageMap))).join('');
   const parts2 = s.split(/(```[\s\S]*?```|`[^`]*`)/g);
   s = parts2.map((part, i) => (i % 2 === 1 ? part : part.replace(/\[([A-ZÀ-Ÿ]+)\]/g, (mm, w, at, whole) =>
     // `…:badge` or `…:::note` immediately before the bracket: this is a label, not a chip.
     (/:[a-zA-Z][\w-]*$/.test(whole.slice(0, at))
       ? mm
+      // nosemgrep: html-in-template-string -- markdown pre-pass: its output goes through rehype-sanitize before rendering
       : (BADGES[w] ? `<span class="md-badge md-badge-${BADGES[w]}">${esc(w)}</span>` : mm))))).join('');
   return s;
 }

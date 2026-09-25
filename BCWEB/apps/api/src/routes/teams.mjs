@@ -422,6 +422,7 @@ export default async function teamRoutes(app) {
       // admin gave this inbox something else (own caps, no limit), the team does not undo it
       // by saving its screen: those fields are simply not sent from here.
       const input = { ...(b.data.attachments ? { attachments: b.data.attachments } : {}) };
+      // nosemgrep: express-data-exfiltration -- Object.assign of named, zod-validated fields (or constants) into a Prisma data object, not a request body
       if (b.data.storage) Object.assign(input, { mode: b.data.storage.mode, poolId: b.data.storage.poolId ?? null, quotaMB: b.data.storage.quotaMB ?? 0 });
       const own = new Set((await teamPools(p, got.t, req.user.uid)).map((g) => g.id));
       const r = await saveHosting(p, 'team-contact', got.t.id, input, { actorId: req.user.uid, canUsePool: async (id) => own.has(id) || isStaff(req.user) });

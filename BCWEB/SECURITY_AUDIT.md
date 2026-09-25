@@ -1262,7 +1262,13 @@ Left, all requiring a major bump — **proposed, not applied**:
 - `react-router-dom` 7.17 -> 7.18.4, moderate open redirect via a backslash in `<Link>`/
   `useNavigate`. Reachable only where a route target comes from data; admin-only.
 
-### F10-16 — `bmm/telemetry-dashboard` root: two advisories in code that is not deployed (OWNER)
+### F10-16 — `bmm/telemetry-dashboard` root: two advisories in code that is not deployed (FIXED 2026-09-25: deleted)
+
+**Closed 2026-09-25 (owner decision, delegated):** `server.mjs`, `db.mjs`, `stats.mjs`,
+`public/app.js`, `public/index.html`, the root `package.json` and its lockfile are deleted.
+Nothing referenced them (no Dockerfile, compose file, script, test or CI job); the same code
+carried 44 Semgrep ERROR findings in `.github/workflows/security.yml`
+(`BCWEB/guides/run/SECURITY_CI_EN.md` section 6). The history below is kept as it was written.
 
 `adm-zip` <= 0.6.0 and `qs` in `bmm/telemetry-dashboard/package.json` (express + better-sqlite3 +
 adm-zip, entry `server.mjs`). That is the **old Node/SQLite collector**, superseded by the

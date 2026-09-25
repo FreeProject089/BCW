@@ -12,6 +12,10 @@
 // Run before the server:  node src/boot-migrate.mjs && node src/server.mjs
 import { execSync } from 'node:child_process';
 import { PrismaClient } from '@prisma/client';
+import { prismaShell } from './lib/prisma-cli.mjs';
+
+// `node <prisma CLI>`, never `npx prisma`: the image has no npm at runtime (lib/prisma-cli.mjs).
+const PRISMA = prismaShell();
 
 const SCHEMA = process.env.PRISMA_SCHEMA || 'prisma/schema.prisma'; // container path; override locally
 const BASELINE = process.env.PRISMA_BASELINE || '0_init';
@@ -39,7 +43,7 @@ const shCapture = (cmd) => {
 // cannot skip work that was never done. If there IS a difference we touch nothing.
 const schemaAlreadyMatches = () => {
   try {
-    execSync(`npx prisma migrate diff --from-schema-datasource "${SCHEMA}" --to-schema-datamodel "${SCHEMA}" --exit-code`,
+    execSync(`${PRISMA} migrate diff --from-schema-datasource "${SCHEMA}" --to-schema-datamodel "${SCHEMA}" --exit-code`,
       { stdio: ['ignore', 'pipe', 'pipe'] });
     return true;   // exit 0 = no difference
   } catch { return false; }
@@ -63,11 +67,11 @@ try {
 
 if (!hasMigrations && hasApp) {
   console.log(`[migrate] adopting an existing (db push) database — baselining ${BASELINE} as applied`);
-  try { sh(`npx prisma migrate resolve --applied ${BASELINE} ${schemaArg}`); }
+  try { sh(`${PRISMA} migrate resolve --applied ${BASELINE} ${schemaArg}`); }
   catch (e) { console.log('[migrate] baseline resolve skipped:', String(e.message).split('\n')[0]); }
 }
 console.log('[migrate] applying migrations…');
-let res = shCapture(`npx prisma migrate deploy ${schemaArg}`);
+let res = shCapture(`${PRISMA} migrate deploy ${schemaArg}`);
 
 // ── The restart loop this exists to prevent ─────────────────────────────────────
 // A database that was ever synced with `db push` has the OBJECTS a later migration
@@ -84,7 +88,7 @@ let res = shCapture(`npx prisma migrate deploy ${schemaArg}`);
 if (!res.ok) {
   if (!schemaAlreadyMatches()) {
     console.error('[migrate] deploy failed and the schema does NOT match the models — not touching anything.');
-    console.error('[migrate] fix the migration, or resolve it by hand: npx prisma migrate resolve --applied <name>');
+    console.error('[migrate] fix the migration, or resolve it by hand: node node_modules/prisma/build/index.js migrate resolve --applied <name> --schema prisma/schema.prisma');
     process.exit(1);
   }
   console.log('[migrate] deploy failed, but the database already matches the models.');
@@ -106,9 +110,9 @@ if (!res.ok) {
     }
     previous = name;
     console.log(`[migrate]   • ${name}`);
-    try { execSync(`npx prisma migrate resolve --applied "${name}" ${schemaArg}`, { stdio: ['ignore', 'pipe', 'pipe'] }); }
+    try { execSync(`${PRISMA} migrate resolve --applied "${name}" ${schemaArg}`, { stdio: ['ignore', 'pipe', 'pipe'] }); }
     catch { break; }
-    res = shCapture(`npx prisma migrate deploy ${schemaArg}`);
+    res = shCapture(`${PRISMA} migrate deploy ${schemaArg}`);
   }
   if (!res.ok) {
     console.error('[migrate] could not recover automatically — see the error above.');

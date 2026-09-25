@@ -30,6 +30,7 @@ export async function sendVerificationEmail(p, user, opts = {}) {
   // the line every service sends and nobody acts on; the sentence that gets acted on is the
   // one that says what happens if you do not.
   const deadline = user.verifyDeadline ? new Date(user.verifyDeadline) : null;
+  // nosemgrep: html-in-template-string -- the only value is a Date formatted by toUTCString()
   const by = deadline ? ` If it is not confirmed by <b>${deadline.toUTCString().slice(0, 16)}</b>, the account is released and the address becomes free to sign up with again.` : '';
   const lead = opts.reminder
     ? `You created a BetterCommunity account a week ago and this address was never confirmed, so the account cannot publish anything yet.${by}`

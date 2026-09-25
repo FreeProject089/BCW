@@ -35,6 +35,7 @@ export function seasonCard(t, { seasonNo, affected, points, next, cur }) {
     title: t('season.title', { n: ended }), color: ui.BRAND,
     body: [
       t('season.body', { n: ended, m: Number(affected || 0).toLocaleString('en-US'), p: Number(points || 0).toLocaleString('en-US'), cur: cur || 'points' }),
+      // nosemgrep: html-in-template-string -- Discord message text (<t:…> timestamp), never parsed as HTML
       next ? t('season.next', { when: `<t:${Math.floor(new Date(next).getTime() / 1000)}:R>` }) : t('season.noNext'),
       '', t('season.foot', { n: seasonNo }),
     ],
@@ -68,8 +69,10 @@ export function seasonStatusCard(t, { seasonNo = 1, next = null, since = null, l
   return {
     title: t('season.now.title', { n: Number(seasonNo) || 1 }), color: ui.BRAND,
     body: [
+      // nosemgrep: html-in-template-string -- Discord message text (<t:…> timestamp), never parsed as HTML
       Number.isFinite(at) ? t('season.now.left', { r: `<t:${at}:R>`, d: `<t:${at}:F>` }) : t('season.now.none'),
       t('season.now.every', { v: seasonEveryLabel(t, season) }),
+      // nosemgrep: html-in-template-string -- Discord message text (<t:…> timestamp), never parsed as HTML
       Number.isFinite(started) ? t('season.now.started', { when: `<t:${started}:R>` }) : null,
       '', season.resetXp ? t('season.now.wipes') : t('season.now.keeps'),
     ].filter((l) => l !== null),

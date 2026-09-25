@@ -20,7 +20,8 @@ payant de Server-Repos.
 
 ## 1. Stack (choisie pour la cohérence + l'auto-hébergement facile)
 
-Le telemetry-dashboard existant est en Node + Docker, donc on reste dans ce monde.
+Le telemetry-dashboard existant était alors en Node + Docker, donc on est resté dans ce monde. (Il a
+depuis été réécrit en Rust/Axum + React ; l'ancienne version Node a été supprimée en septembre 2026.)
 
 | Couche | Techno | Pourquoi |
 |---|---|---|

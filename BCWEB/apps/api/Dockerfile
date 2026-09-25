@@ -13,27 +13,57 @@ COPY native/src ./src
 COPY native/core ./core
 RUN npx napi build --platform --release
 
-# ── Stage 2: the API runtime ──
-FROM node:22-alpine
+# ── The Node base, pinned by tag AND digest (every stage below uses this exact image) ──
+# node:22.23.3-alpine3.24, the current node:22-alpine on 2026-09-25. To bump:
+#   docker buildx imagetools inspect node:22-alpine   (the Digest line, the index digest)
+# and change the tag and digest together in apps/api, apps/bot, apps/provisioner and apps/web.
+# A floating `node:22-alpine` meant two builds of one commit could get two different bases,
+# and nothing recorded which one production ran.
+
+# ── Stage 2: install and generate (npm lives here, and only here) ──
+FROM node:22.23.3-alpine3.24@sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402 AS deps
 WORKDIR /app
-
-# openssl → Prisma query engine on alpine/musl. fontconfig + DejaVu give @napi-rs/canvas
-# real fonts so the welcome-banner preview text ("sans-serif") actually renders.
-# git → the Advanced Server Management file/DB-edit backup system shells out to
-# the real `git` CLI (see gitbackup.mjs) rather than a JS git implementation.
-RUN apk upgrade --no-cache && apk add --no-cache openssl fontconfig font-dejavu git
-
-# Full install (incl. the `prisma` CLI) — needed for `generate` at build and for
-# `migrate deploy` at runtime (boot-migrate.mjs shells out to the CLI).
+# openssl BEFORE `npm ci`: prisma's postinstall picks the engine build for the openssl it
+# finds (linux-musl-openssl-3.0.x), and the runtime stage has the same openssl.
+RUN apk add --no-cache openssl
+# Full install (incl. the `prisma` CLI) — needed for `generate` below and for
+# `migrate deploy` at runtime (boot-migrate.mjs runs the CLI through lib/prisma-cli.mjs).
 # `npm ci`, not `npm install`, and the lockfile is COPYed so it means something: with only
 # package.json in the image every `^` range was re-resolved at BUILD time, so a compromised
 # patch release of any transitive package shipped to production without a lockfile diff to
 # review (CWE-1357), and two builds of one commit could differ. Not `--omit=dev`: the
 # `prisma` CLI is needed by `generate` below and by boot-migrate.mjs at runtime.
 COPY apps/api/package.json apps/api/package-lock.json ./
-RUN npm ci
-
+RUN npm ci --no-audit --no-fund
 # Schema at the conventional ./prisma so the CLI finds it + this project's package.json.
+COPY packages/db ./prisma
+RUN npx prisma generate
+
+# ── Stage 3: the API runtime (no npm, npx, corepack or yarn) ──
+FROM node:22.23.3-alpine3.24@sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402
+WORKDIR /app
+
+# openssl → Prisma query engine on alpine/musl. fontconfig + DejaVu give @napi-rs/canvas
+# real fonts so the welcome-banner preview text ("sans-serif") actually renders.
+# git → the Advanced Server Management file/DB-edit backup system shells out to
+# the real `git` CLI (see gitbackup.mjs) rather than a JS git implementation.
+# `apk upgrade` pulls Alpine's security fixes published after the base image (libexpat, which
+# git and fontconfig bring in, was one on 2026-09-25).
+#
+# Then the package managers go. The npm bundled with node:22-alpine carried HIGH/CRITICAL
+# advisories in its own dependencies (tar, brace-expansion, cross-spawn, … — Trivy image,
+# 2026-09-25) in code the API never runs; and an `npx` in a production container is a way to
+# fetch and execute a package nobody reviewed. Nothing at runtime needs them: the prisma CLI
+# runs as `node node_modules/prisma/build/index.js` (src/lib/prisma-cli.mjs), and the
+# one-off commands are `node src/<script>.mjs` (`docker compose exec api node src/setup.mjs`).
+# test/container-images.test.mjs fails if any of this comes back.
+RUN apk upgrade --no-cache && apk add --no-cache openssl fontconfig font-dejavu git \
+ && rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+      /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
+      /usr/local/bin/yarn /usr/local/bin/yarnpkg /opt/yarn-v*
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY apps/api/package.json ./
 COPY packages/db ./prisma
 COPY apps/api/src ./src
 # The studio document package (validateDoc, the same module the web renders with). The API
@@ -41,15 +71,14 @@ COPY apps/api/src ./src
 # from /app/src/lib those four steps up end at the filesystem root, so the package sits at
 # /packages/studio and the one import line works unchanged here and in a checkout.
 COPY packages/studio /packages/studio
-RUN npx prisma generate
 
 # Native addon next to the app root (lib/native.mjs looks in ../../native from src/lib).
 # Optional: if this were ever missing the app just uses the JS fallback.
 COPY --from=native /native/index.js /native/index.d.ts /native/*.node ./native/
 
 # Not root at runtime (SECURITY_SUMMARY §9 #10, F10-12): an RCE in the API was root in the
-# container. Everything above ran as root on purpose (npm ci, prisma generate, the native
-# copy), so node_modules/ and native/ stay root-owned and READ-ONLY to the process: a
+# container. Everything above ran as root on purpose (node_modules from the deps stage, where
+# npm ci and prisma generate ran; the native copy), so node_modules/ and native/ stay root-owned and READ-ONLY to the process: a
 # compromised API cannot rewrite its own dependencies.
 #
 # What `node` must be able to write, and nothing more:

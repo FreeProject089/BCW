@@ -198,10 +198,13 @@ export function embedFor(category, ev = {}) {
     }
     case 'members': {
       lines.push(userLine(ev.user));
+      // nosemgrep: html-in-template-string -- Discord message text (<@user>/<t:…> tokens), never parsed as HTML
       if (ev.accountCreatedAt) lines.push(`Account created <t:${Math.floor(ev.accountCreatedAt / 1000)}:R>`);
+      // nosemgrep: html-in-template-string -- Discord message text (<@user>/<t:…> tokens), never parsed as HTML
       if (ev.joinedAt) lines.push(`Joined <t:${Math.floor(ev.joinedAt / 1000)}:R>`);
       if (category === 'members.nick') e.fields.push(diffField('Nickname', ev.before, ev.after, 100));
       if (category === 'members.roles') { if (ev.added?.length) e.fields.push({ name: 'Added', value: ev.added.map((r) => `<@&${r}>`).join(' ') }); if (ev.removed?.length) e.fields.push({ name: 'Removed', value: ev.removed.map((r) => `<@&${r}>`).join(' ') }); }
+      // nosemgrep: html-in-template-string -- Discord message text (<@user>/<t:…> tokens), never parsed as HTML
       if (category === 'members.timeout') e.fields.push({ name: 'Until', value: ev.until ? `<t:${Math.floor(ev.until / 1000)}:f>` : 'lifted' });
       if (ev.reason) e.fields.push({ name: 'Reason', value: clip(ev.reason, 500) });
       if (ev.actor) e.fields.push({ name: 'By', value: userLine(ev.actor) });
@@ -220,6 +223,7 @@ export function embedFor(category, ev = {}) {
       if (ev.raid) {
         e.title = ev.action === 'lockdown' ? [ic('lock'), 'Raid lockdown'].filter(Boolean).join(' ') : 'Raid lockdown ended';
         lines.push(ev.reason || '');
+        // nosemgrep: html-in-template-string -- Discord message text (<@user>/<t:…> tokens), never parsed as HTML
         if (ev.until) lines.push(`Until <t:${Math.floor(ev.until / 1000)}:f>`);
         break;
       }

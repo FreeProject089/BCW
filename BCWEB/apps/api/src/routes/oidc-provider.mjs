@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import querystring from 'node:querystring';
 import jwt from 'jsonwebtoken';
 import { db, requireRole, optionalAuth, clearSession, logAudit, clientIp, notify, safeEqual, httpUrl } from '../lib/lib.mjs';
-import { jwks, issuer, signRs256, verifyRs256, verifyPkce, validateAuthorizeRequest } from '../lib/oidc.mjs';
+import { jwks, issuer, signRs256, verifyRs256, verifyPkce, validateAuthorizeRequest, logoutTarget } from '../lib/oidc.mjs';
 import { flagEnabled } from '../lib/flags.mjs';
 
 const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
@@ -90,6 +90,7 @@ async function mintTokens(p, { client, user, scope, nonce, authTime }) {
   return { access_token, token_type: 'Bearer', expires_in: 3600, id_token, refresh_token: refresh, scope };
 }
 // Minimal, self-contained HTML pages (no SPA dependency) — brand-tinted.
+// nosemgrep: html-in-template-string -- every client/request value passes esc(); issuer() is SITE_URL
 const shell = (title, inner) => `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>
   body{margin:0;background:#0e0c09;color:#f3efe9;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;display:grid;place-items:center;min-height:100vh}
   .card{background:#15120d;border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:28px;max-width:420px;width:92%;box-shadow:0 20px 60px -12px rgba(0,0,0,.6)}
@@ -100,6 +101,7 @@ const shell = (title, inner) => `<!doctype html><html><head><meta charset="utf-8
   .row{display:flex;gap:10px;margin-top:18px} button{flex:1;padding:11px;border-radius:11px;font-size:14px;font-weight:600;cursor:pointer;border:1px solid transparent}
   .approve{background:linear-gradient(120deg,#f97316,#f59e0b);color:#fff} .deny{background:transparent;border-color:rgba(255,255,255,.16);color:#a39b8f}
 </style></head><body><div class="card">${inner}</div></body></html>`;
+// nosemgrep: html-in-template-string -- every client/request value passes esc(); issuer() is SITE_URL
 const errPage = (msg) => shell('Error', `<h1>Authorization error</h1><p>${esc(msg)}</p>`);
 
 export default async function oidcProviderRoutes(app) {
@@ -584,40 +586,55 @@ export default async function oidcProviderRoutes(app) {
     if (q.client_id) client = await p.oAuthClient.findUnique({ where: { id: String(q.client_id) } }).catch(() => null);
     const want = String(q.post_logout_redirect_uri || '');
     const allowed = !!want && !!client && client.redirectUris.includes(want);
-    const back = allowed ? want : '';
     const state = q.state ? String(q.state) : '';
-    const target = back ? `${back}${back.includes('?') ? '&' : '?'}${state ? `state=${encodeURIComponent(state)}` : ''}` : `${issuer()}/`;
-    return reply.type('text/html').send(shell('Sign out', `
-      <h1>Sign out of <span class="brand">BetterCommunity</span>?</h1>
-      <p>${client ? `${esc(client.name)} asked to end your session.` : 'This will end your session on this site.'}</p>
-      ${want && !allowed ? '<p>The return address it supplied is not registered, so you will be returned here instead.</p>' : ''}
-      <div class="row">
-        <form method="POST" action="${issuer()}/oauth2/logout" style="flex:1;display:flex">
-          <input type="hidden" name="redirect" value="${esc(target)}">
-          <button class="approve" type="submit">Sign out</button>
-        </form>
-        <!-- A plain GET to the site, not onclick="history.back()": the site CSP has no
-             'unsafe-inline' in script-src (SECURITY_SUMMARY §9 #5), so an inline handler
-             is a button that does nothing. -->
-        <form method="GET" action="${issuer()}/" style="flex:1;display:flex">
-          <button class="deny" type="submit">Cancel</button>
-        </form>
-      </div>`));
+    // The form carries the INPUTS, not the finished URL: the POST recomputes the destination
+    // with the same rule (logoutTarget), so nothing it redirects to comes from the body as-is.
+    // One element per line so each can carry its nosemgrep (a multi-line template is reported
+    // at a line inside it). Every client and request value passes esc().
+    // nosemgrep: raw-html-join -- every client/request value passes esc(); issuer() is SITE_URL
+    const hidden = allowed ? [
+      // nosemgrep: raw-html-format, html-in-template-string -- the client id passes esc()
+      `<input type="hidden" name="client_id" value="${esc(client.id)}">`,
+      // nosemgrep: raw-html-format, html-in-template-string -- a registered redirect URI, passed through esc()
+      `<input type="hidden" name="post_logout_redirect_uri" value="${esc(want)}">`,
+      // nosemgrep: raw-html-format, html-in-template-string -- state passes esc()
+      state ? `<input type="hidden" name="state" value="${esc(state)}">` : '',
+    ].join('') : '';
+    return reply.type('text/html').send(shell('Sign out', [
+      '<h1>Sign out of <span class="brand">BetterCommunity</span>?</h1>',
+      // nosemgrep: raw-html-format, html-in-template-string -- the client name passes esc()
+      `<p>${client ? `${esc(client.name)} asked to end your session.` : 'This will end your session on this site.'}</p>`,
+      want && !allowed ? '<p>The return address it supplied is not registered, so you will be returned here instead.</p>' : '',
+      '<div class="row">',
+      // nosemgrep: raw-html-format, html-in-template-string -- issuer() is SITE_URL; the hidden inputs are escaped above
+      `<form method="POST" action="${issuer()}/oauth2/logout" style="flex:1;display:flex">${hidden}<button class="approve" type="submit">Sign out</button></form>`,
+      // A plain GET to the site, not onclick="history.back()": the site CSP has no
+      // 'unsafe-inline' in script-src (SECURITY_SUMMARY §9 #5), so an inline handler is a
+      // button that does nothing.
+      // nosemgrep: html-in-template-string -- issuer() is SITE_URL
+      `<form method="GET" action="${issuer()}/" style="flex:1;display:flex"><button class="deny" type="submit">Cancel</button></form>`,
+      '</div>',
+    ].join('\n')));
   });
 
   app.post('/oauth2/logout', { preHandler: optionalAuth() }, async (req, reply) => {
-    const p = await db();
     if (req.user?.uid) {
+      const p = await db();
       // End the BCWEB session AND every OAuth refresh token the user holds: "sign out"
       // that leaves a 30-day refresh token alive has not signed anyone out of anything.
       await p.oAuthRefreshToken.updateMany({ where: { userId: req.user.uid, revokedAt: null }, data: { revokedAt: new Date() } }).catch(() => {});
       await p.session.updateMany({ where: { userId: req.user.uid, revokedAt: null }, data: { revokedAt: new Date() } }).catch(() => {});
     }
     clearSession(reply);
-    const to = String((req.body || {}).redirect || `${issuer()}/`);
-    // Re-validated rather than trusted from the form: the GET built it, but a POST body
-    // is just as forgeable as a query string.
-    return reply.redirect(to.startsWith(issuer()) || /^https?:\/\//i.test(to) ? to : `${issuer()}/`);
+    // Recomputed from the inputs, with the GET's rule — a POST body is as forgeable as a query
+    // string, and this one needs no cookie: a cross-site form carries none, so the CSRF guard
+    // has nothing to refuse. It used to redirect to the body's `redirect` whenever that was
+    // ANY http(s) URL, which made this an open redirect to any site (test/oidc-logout-redirect).
+    const b = req.body || {};
+    const want = String(b.post_logout_redirect_uri || '');
+    let client = null;
+    if (want && b.client_id) client = await (await db()).oAuthClient.findUnique({ where: { id: String(b.client_id) }, select: { redirectUris: true } }).catch(() => null);
+    return reply.redirect(logoutTarget({ client, want, state: b.state, legacy: b.redirect }));
   });
 
   // ── The user's own view: which apps can reach their account ─────────────────

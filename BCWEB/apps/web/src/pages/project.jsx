@@ -1195,6 +1195,7 @@ function RequestListing() {
       // A paid request answers with a checkout URL. Following it is the whole point, so it
       // happens here rather than behind a second button somebody has to find.
       draft.clear();
+      // nosemgrep: js-open-redirect-from-function -- the URL is the Stripe Checkout / portal URL our own API returned, not page input
       if (r?.checkoutUrl) { window.location.href = r.checkoutUrl; return; }
       toast.success(t('rl.sent2', 'Sent \u2014 we will reply either way. If we need more detail, you will find a thread in your dashboard under Reports & contact.'));
       setOpen(false);
@@ -1664,6 +1665,7 @@ function Marketplace({ pkey, products = [], onChanged }) {
     try {
       if (pr.priceCents > 0) {
         const r = await api.post(`/marketplace/products/${pr.id}/checkout`, {});
+        // nosemgrep: js-open-redirect-from-function -- the URL is the Stripe Checkout / portal URL our own API returned, not page input
         if (r.url) { window.location.href = r.url; return; }
         toast.error(t('common.failed', 'Failed.'));
       } else {

@@ -263,7 +263,7 @@ services:
       # A dedicated volume mounted OUTSIDE /app so neither the DB viewer nor the
       # /app-confined file manager can reach it — closes the end-truncation gap.
       # The first-install seed reads these. They lived in .env and were NEVER passed in, so
-      # `docker compose exec api npm run setup` created the admin as change-me-now — or, with
+      # `docker compose exec api node src/setup.mjs` created the admin as change-me-now — or, with
       # NODE_ENV=production (which IS passed), refused to seed at all, because seed.mjs fails
       # closed on a missing password. Either way the documented first-install path could not
       # complete inside Docker, and the operator had to re-run it by hand with `-e`.
@@ -333,9 +333,10 @@ services:
     depends_on: [api]
     # What the rolling deploy (infra/zdd.sh) waits on before it stops the old container.
     # nginx serving a baked-in dist is ready almost instantly, but "almost instantly" is not
-    # a thing a script can wait for — a health state is. busybox wget ships in nginx:alpine.
+    # a thing a script can wait for — a health state is. busybox wget ships in the image
+    # (nginxinc/nginx-unprivileged, Alpine). Port 8080: nginx runs unprivileged (apps/web/nginx.conf).
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:80/ || exit 1"]
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/ || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 6

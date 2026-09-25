@@ -12,7 +12,7 @@ The security scans have their own detailed guide: [SECURITY_CI_EN.md](SECURITY_C
 | **BCWEB CI** | `ci.yml` | push / pull request touching `BCWEB/**` or `.github/**` | a build, lint, test, schema, Caddyfile, secret or dependency check fails |
 | **BCWEB security** | `security.yml` | same, + Mondays 03:17 UTC, + by hand | the security gate finds something at or above the threshold (default HIGH) in Gitleaks, Semgrep or Trivy |
 | **BCWEB DAST** | `dast.yml` | pull requests touching the API, web, packages, Caddy or the DAST files; Tuesdays 04:41 UTC; by hand | the gate finds something at or above the threshold in ZAP or Nuclei, or the scan could not run properly |
-| **BCWEB deploy (production)** | `deploy.yml` | by hand on `master`, or after a green **BCWEB CI** on `master` when `CD_AUTO_DEPLOY` = `true` | the SSH deploy through the server's gate fails |
+| **BCWEB deploy (production)** | `deploy.yml` | by hand on `master`, or after a green **BCWEB CI** on `master` when `CD_AUTO_DEPLOY` = `true` | **BCWEB security** has not passed for that commit (after waiting up to 20 min), or the SSH deploy through the server's gate fails |
 
 Every job asks for its own permissions and nothing else (`contents: read` almost everywhere);
 the only jobs that may write are named below. Every action is pinned by commit SHA, every
@@ -44,7 +44,7 @@ dummy values.
 
 | Job | Tool | Blocks by default on | Artifact |
 |---|---|---|---|
-| Security gate + DAST scope (self-tests) | node --test | a broken gate or scope check | — |
+| Security gate + DAST scope (self-tests) | node --test | a broken gate, scope check or deploy verdict (`security-verdict.mjs`) | — |
 | Secrets in git history | Gitleaks | any unreviewed secret (push/PR: its commits; schedule/manual: all history) | `security-gitleaks` |
 | SAST | Semgrep (pinned rules) | ERROR | `security-semgrep` |
 | Dependencies + Dockerfiles | Trivy fs | HIGH / CRITICAL | `security-trivy-fs` |
@@ -91,6 +91,26 @@ Deploys the tip of `master` to the production VPS through **one forced SSH comma
    branch-only commit cannot be pushed to production with that key.
 3. It then runs `infra/deploy.sh` (backup, pull, build, wait for `/ready`, roll the code back
    if it never comes up), then the job asks for `status` and keeps the log.
+
+**Before any of that**, before the deploy key is even written to the runner's disk, the job
+checks that **BCWEB security** passed for the very commit it deploys:
+
+- it lists the workflow runs of that commit through the API (`gh api`, with the job's own
+  token and read-only `actions: read` / `checks: read`, granted to that job only) and hands
+  them to `.github/scripts/security-verdict.mjs`;
+- a run named *BCWEB security*, for that exact SHA, from a `push`, `workflow_dispatch` or
+  `schedule` event, concluded `success` → the deploy goes on. A `pull_request` run does not
+  count: it tested the merge of a branch, not this commit;
+- no such run yet, or one queued / in progress → it asks again every 30 seconds, for up to
+  **20 minutes**, then fails with "no successful BCWEB security run for it after 20 minutes";
+- every run for the commit finished and none succeeded (failure, cancelled, timed out) → it
+  fails at once. Fix the findings (or re-run the workflow if it was a flake) and deploy again.
+
+**DAST stays advisory for the deploy.** *BCWEB DAST* does not run on the push to `master` (it
+runs on pull requests, weekly and by hand), it needs ten minutes and a whole running instance,
+and what it judges is the headers and behaviour of the site rather than one commit's code.
+Waiting for it would mean either no automatic deploy at all or a deploy gated on last
+Tuesday's scan. Its findings are read on the pull request and in the weekly run.
 4. **Kill switch:** while `/srv/BetterCommunity/deploy-gate.disabled` exists on the server,
    every deploy is refused (status still answers).
 
@@ -98,8 +118,8 @@ Deploys the tip of `master` to the production VPS through **one forced SSH comma
   available); or automatically after a green *BCWEB CI* on a push to `master`, only if the
   variable `CD_AUTO_DEPLOY` is exactly `true`. Both go through the `production` environment:
   add required reviewers there to make every deploy wait for an approval.
-- **Gate:** the SSH command's exit code. **Note:** it waits for *BCWEB CI* only, not for the
-  security or DAST workflows (see "Decisions" at the end).
+- **Gate:** a green *BCWEB security* run for the commit (above), then the SSH command's exit
+  code. Starting after a green *BCWEB CI* is the trigger; the security wait is a step.
 - **Artifact:** `deploy-log-<run id>`, 90 days.
 - **Locally:** `ssh -i <key> -p <port> <user>@<host> status` (or `deploy <sha> --dry-run`);
   the server side is described in [DEPLOY_EN.md](DEPLOY_EN.md), section 9, "From GitHub (CD)".
@@ -175,10 +195,11 @@ the check off for every finding after it.
 
 ## Decisions still open
 
-- `deploy.yml` waits for *BCWEB CI* only. Making a deploy also wait for a green *BCWEB security*
-  (and DAST) is one line in its `workflow_run` trigger; it is not done, because the security
-  workflow currently fails on findings that need a decision first
-  ([SECURITY_CI_EN.md](SECURITY_CI_EN.md#6-what-the-scans-found-on-2026-09-25-and-what-was-done)).
+- *Decided 2026-09-25:* a deploy waits for a green *BCWEB security* run for its commit (above);
+  DAST stays advisory. Until the findings of
+  [SECURITY_CI_EN.md](SECURITY_CI_EN.md#6-what-the-scans-found-on-2026-09-25-and-what-was-done)
+  are all closed, the security workflow can be red, and then **no deploy goes through**: that
+  is the intended effect, not a bug of the deploy.
 - The report artifacts of a public repository can be downloaded by any signed-in GitHub user.
   Gitleaks' report is redacted; the others describe the code (public anyway) and a throw-away
   instance. A DAST run against a real staging site would publish its findings the same way.

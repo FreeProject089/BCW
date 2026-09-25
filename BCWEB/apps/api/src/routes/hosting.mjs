@@ -334,6 +334,7 @@ async function announcePriceChange(p, plan, fromCents, toCents, at, applyToExist
     : (up ? `Price change for ${plan.name} on ${day}` : `${plan.name} is getting cheaper on ${day}`);
   // Says the four things the policy promises and nothing else: what it is now, what it
   // becomes, WHEN, and that cancelling before then is enough to decline it.
+  // nosemgrep: html-in-template-string -- plan name and dates pass escapeHtml(); money() formats a number
   const body = `
     <p>The monthly price of <b>${escapeHtml(plan.name)}</b> hosting is changing.</p>
     <table style="margin:14px 0;font-size:15px">
@@ -364,6 +365,7 @@ async function announcePriceCancelled(p, plan) {
   if (!users.length) return 0;
   const day = plan.pendingPriceAt ? new Date(plan.pendingPriceAt).toISOString().slice(0, 10) : '';
   const subject = `${plan.name}: the announced price change is cancelled`;
+  // nosemgrep: html-in-template-string -- plan name and dates pass escapeHtml(); money() formats a number
   const body = `<p>The change we announced for <b>${escapeHtml(plan.name)}</b>${day ? ` on ${escapeHtml(day)}` : ''} will not happen.
                 Your price stays <b>${money(plan.priceMonthlyCents)}/month</b>. Nothing to do.</p>`;
   let sent = 0;

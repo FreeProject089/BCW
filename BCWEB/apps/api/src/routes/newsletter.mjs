@@ -27,6 +27,7 @@ const tok = () => crypto.randomBytes(24).toString('hex');
  * INSIDE the body.
  */
 export function newsletterHtml({ title, body, url, unsubUrl }) {
+  // nosemgrep: html-in-template-string -- title escaped, body rendered by mdToEmailHtml(); unsubUrl = SITE_URL + a server token; page() bodies are constants
   const footer = `<p class="bc-faint bc-hr" style="font-size:12px;color:#918a80;margin:28px 0 0;padding-top:18px;border-top:1px solid #eae4da">You receive this because you subscribed to BetterCommunity updates. <a href="${unsubUrl}" style="color:#c2410c">Unsubscribe in one click</a>.</p>`;
   // Body may contain markdown (incl. BetterCommunity custom blocks) — render it to HTML.
   const safeBody = mdToEmailHtml(body);
@@ -62,7 +63,13 @@ function page(title, body, opts = {}) {
     : '<path d="M20 6 9 17l-5-5"/>');                                     // ✓
   // href is always an internal (SITE_URL/token) link, but escape it anyway — attribute
   // context, defence-in-depth (CWE-79). `body`/`extra` are trusted internal HTML.
+  // nosemgrep: html-in-template-string -- title escaped, body rendered by mdToEmailHtml(); unsubUrl = SITE_URL + a server token; page() bodies are constants
   const cta = opts.cta ? `<a class="btn" href="${escapeHtml(opts.cta.href)}">${escapeHtml(opts.cta.label)}</a>` : '';
+  // Hoisted: a template nested inside another starts inside the outer one's text, where no
+  // nosemgrep can be written.
+  // nosemgrep: html-in-template-string -- extra is internal HTML from this file (the unsubscribe link: SITE_URL + a server token)
+  const extra = opts.extra ? `<div class="extra">${opts.extra}</div>` : '';
+  // nosemgrep: html-in-template-string -- title escaped, body rendered by mdToEmailHtml(); unsubUrl = SITE_URL + a server token; page() bodies are constants
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)} — BetterCommunity</title>
 <style>
   :root{--tone:${tone};--bg:#faf8f5;--card:#ffffff;--line:#eae4da;--text:#1a1714;--muted:#5d5750;--faint:#918a80;--link:#c2410c;--glowa:rgba(249,115,22,.14);--glowb:rgba(245,158,11,.12);--shadow:rgba(30,20,5,.22)}
@@ -90,7 +97,7 @@ function page(title, body, opts = {}) {
   <h1>${escapeHtml(title)}</h1>
   <p>${body}</p>
   ${cta}
-  ${opts.extra ? `<div class="extra">${opts.extra}</div>` : ''}
+  ${extra}
   <div><a class="home" href="${SITE_URL}">← Back to BetterCommunity</a></div>
 </div></body></html>`;
 }
@@ -145,6 +152,7 @@ export default async function newsletterRoutes(app) {
     return page('You’re subscribed', "You'll now get BetterCommunity blog updates in your inbox.", {
       tone: 'ok',
       cta: { href: `${SITE_URL}/blog`, label: 'Read the blog' },
+      // nosemgrep: raw-html-format, html-in-template-string -- title escaped, body rendered by mdToEmailHtml(); unsubUrl = SITE_URL + a server token; page() bodies are constants
       extra: `Changed your mind? <a href="${unsubUrl}">Unsubscribe in one click</a> — the link is also in every email.`,
     });
   });

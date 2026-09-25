@@ -207,6 +207,7 @@ function minify(svg) {
     }
     a = a.replace(/\s(?:width|height)="[^"]*"/g, '');
     if (!/\sxmlns="/.test(a)) a = ` xmlns="http://www.w3.org/2000/svg"${a}`;
+    // nosemgrep: html-in-template-string -- build script writing SVG from its own constants
     return `<svg${a}>`;
   });
   return s.replace(/>\s+</g, '><').replace(/\s{2,}/g, ' ').trim();

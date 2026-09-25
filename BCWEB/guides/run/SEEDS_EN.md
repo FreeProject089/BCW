@@ -11,7 +11,7 @@ usable as repair tools and not only as a bootstrap.
 Run them inside the API container:
 
 ```bash
-docker compose -f infra/compose/docker-compose.yml exec api npm run seed
+docker compose -f infra/compose/docker-compose.yml exec api node src/seed.mjs
 ```
 
 Or from `apps/api/` with `DATABASE_URL` set, if you are running the API on the host.

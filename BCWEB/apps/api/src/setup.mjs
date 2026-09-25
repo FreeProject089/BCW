@@ -9,12 +9,16 @@
 //   npm run setup -- --demo  ... and the demo fixtures (sample repos, catalogs, users)
 //   npm run setup -- --skip-migrate
 //
+// In the container there is no npm (apps/api/Dockerfile removes it from the runtime image):
+//   docker compose exec api node src/setup.mjs [--demo] [--skip-migrate]
+//
 // Every step is idempotent, so running it on an existing database is safe: the core seed
 // upserts projects/plans/settings and only creates the admin account when it is missing.
 import { spawnSync } from 'node:child_process';
 import { existsSync, cpSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
+import { prismaSpawn } from './lib/prisma-cli.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const API = resolve(HERE, '..');
@@ -47,7 +51,9 @@ const fail = (msg, extra) => {
 };
 
 const run = (cmd, cmdArgs, label) => {
-  const r = spawnSync(cmd, cmdArgs, { cwd: API, stdio: 'inherit', shell: process.platform === 'win32' });
+  // No shell for an absolute path (the prisma CLI runs as process.execPath): a Windows shell
+  // would split "C:\Program Files\nodejs\node.exe" at the space.
+  const r = spawnSync(cmd, cmdArgs, { cwd: API, stdio: 'inherit', shell: process.platform === 'win32' && !isAbsolute(cmd) });
   if (r.status !== 0) fail(`${label} exited with code ${r.status}`);
 };
 
@@ -60,10 +66,16 @@ if (!skipMigrate && !process.env.DIRECT_DATABASE_URL) {
 
 if (!skipMigrate) {
   say('applying migrations');
-  run('npx', ['prisma', 'migrate', 'deploy', '--schema', SCHEMA], 'prisma migrate deploy');
+  run(...prismaSpawn(['migrate', 'deploy', '--schema', SCHEMA]), 'prisma migrate deploy');
+}
 
+// Inside the image the client was generated at BUILD time (apps/api/Dockerfile), and
+// node_modules is root-owned and read-only to the `node` user the API runs as, so a generate
+// here could only fail. Only a checkout (the repo layout, packages/db beside apps/) needs it.
+const inImage = !existsSync(resolve(API, '../../packages/db/schema.prisma'));
+if (!skipMigrate && !inImage) {
   say('generating the Prisma client');
-  run('npx', ['prisma', 'generate', '--schema', SCHEMA], 'prisma generate');
+  run(...prismaSpawn(['generate', '--schema', SCHEMA]), 'prisma generate');
 
   // The generate above resolves its output from the SCHEMA's location. packages/db has no
   // package.json and BCWEB has no root one, so Prisma walks up and writes the client into the

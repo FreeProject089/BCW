@@ -392,6 +392,7 @@ export default function CodeMap({ graph, t = (k, d) => d }) {
                                             {(fnByFile[f.id] || []).map((fn, k) => (
                                                 <text key={fn.name} x="14" y={FILE_H + 11 + k * FN_H} fontSize="9.5"
                                                     fill="var(--muted)" style={{ fontFamily: 'ui-monospace, monospace' }}>
+                                                    {/* nosemgrep: raw-html-format -- a React text child (escaped by React); `fn` is a code-map entry, not an Express request — the rule reads (fn, k) => as (req, res) */}
                                                     <title>{`${fn.name}(${fn.params})${fn.line ? ` — line ${fn.line}` : ''}`}</title>
                                                     {`${fn.name}(${fn.params.length > 14 ? '…' : fn.params})`.slice(0, 30)}
                                                 </text>

@@ -280,7 +280,7 @@ printf '%s  Written: %s%s\n' "$B" "$OUT" "$R"
 echo
 echo "  Next:"
 echo "    docker compose -f infra/compose/docker-compose.yml up -d --build"
-echo "    docker compose -f infra/compose/docker-compose.yml exec api npm run setup"
+echo "    docker compose -f infra/compose/docker-compose.yml exec api node src/setup.mjs"
 echo
 echo '  setup migrates and seeds projects, the admin account, plans, docs and the FAQ.'
 echo "  It is idempotent, so re-running it later is how you pick up new docs and FAQ entries."

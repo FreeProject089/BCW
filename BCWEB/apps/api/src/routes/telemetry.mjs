@@ -218,20 +218,25 @@ export default async function telemetryRoutes(app) {
     const fr = String(locale || '').toLowerCase().startsWith('fr');
     const site = (process.env.SITE_URL || 'http://localhost:5176').replace(/\/+$/, '');
     const short = escapeHtml(d.creatorId.slice(0, 12)) + '…';
+    // nosemgrep: html-in-template-string -- short and the row keys pass escapeHtml(), counts are Number(); the rest are constants
     const rows = (obj) => Object.entries(obj || {}).filter(([, v]) => Number(v) > 0).map(([k, v]) => `<li>${escapeHtml(k)}: ${Number(v)}</li>`).join('');
     let subject, title, body;
     if (d.outcome === 'rejected') {
       subject = fr ? 'BMM telemetry — demande non traitée' : 'BMM telemetry — request not processed';
       title = fr ? 'Votre demande n’a pas pu être traitée' : 'Your request could not be processed';
       body = fr
+        // nosemgrep: raw-html-format, html-in-template-string -- short and the row keys pass escapeHtml(), counts are Number(); the rest are constants
         ? `<p>Votre demande (${d.kind === 'delete' ? 'effacement' : 'export'}) concernant l’installation BMM <code>${short}</code> a été refusée par un administrateur. Si vous pensez qu’il s’agit d’une erreur, répondez à ce message.</p>`
+        // nosemgrep: raw-html-format, html-in-template-string -- short and the row keys pass escapeHtml(), counts are Number(); the rest are constants
         : `<p>Your ${d.kind === 'delete' ? 'erasure' : 'export'} request for the BMM install <code>${short}</code> was declined by an administrator. If you believe this is a mistake, reply to this message.</p>`;
     } else if (d.kind === 'delete') {
       subject = fr ? 'BMM telemetry — vos données ont été effacées' : 'BMM telemetry — your data has been erased';
       title = fr ? 'Effacement effectué' : 'Erasure completed';
       const list = rows(d.erased);
       body = fr
+        // nosemgrep: raw-html-format, html-in-template-string -- short and the row keys pass escapeHtml(), counts are Number(); the rest are constants
         ? `<p>Toutes les données de télémétrie liées à l’installation BMM <code>${short}</code>${(d.creatorIds || []).length > 1 ? ` (et ${d.creatorIds.length - 1} autre(s) installation(s) liée(s) à votre compte)` : ''} ont été supprimées de notre collecteur.</p>${list ? `<p>Lignes supprimées :</p><ul>${list}</ul>` : ''}<p>Seule une trace anonymisée de cette demande est conservée (journal d’audit).</p>`
+        // nosemgrep: raw-html-format, html-in-template-string -- short and the row keys pass escapeHtml(), counts are Number(); the rest are constants
         : `<p>Every telemetry row tied to the BMM install <code>${short}</code>${(d.creatorIds || []).length > 1 ? ` (and ${d.creatorIds.length - 1} other install(s) linked to your account)` : ''} has been deleted from our collector.</p>${list ? `<p>Rows removed:</p><ul>${list}</ul>` : ''}<p>Only an anonymised trace of this request is kept (audit log).</p>`;
     } else {
       subject = fr ? 'BMM telemetry — votre export de données' : 'BMM telemetry — your data export';
@@ -240,7 +245,9 @@ export default async function telemetryRoutes(app) {
       const attached = d.attachment ? (fr ? '<p>Le paquet (zip : un JSON par table, vos replays, un README) est joint à ce message.</p>' : '<p>The package (zip: one JSON per table, your replays, a README) is attached to this message.</p>')
         : (fr ? '<p>Le paquet est trop volumineux pour être joint ; un administrateur vous le transmettra par un autre canal.</p>' : '<p>The package is too large to attach; an administrator will hand it to you through another channel.</p>');
       body = fr
+        // nosemgrep: raw-html-format, html-in-template-string -- short and the row keys pass escapeHtml(), counts are Number(); the rest are constants
         ? `<p>Voici les données de télémétrie que nous détenons pour l’installation BMM <code>${short}</code>.</p>${list ? `<ul>${list}</ul>` : ''}${attached}`
+        // nosemgrep: raw-html-format, html-in-template-string -- short and the row keys pass escapeHtml(), counts are Number(); the rest are constants
         : `<p>Here is the telemetry data we hold for the BMM install <code>${short}</code>.</p>${list ? `<ul>${list}</ul>` : ''}${attached}`;
     }
     const attachments = d.attachment ? [{ filename: d.attachment.filename, content: Buffer.from(d.attachment.base64, 'base64'), contentType: 'application/zip' }] : undefined;

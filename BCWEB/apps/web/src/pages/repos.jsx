@@ -542,6 +542,7 @@ function PoolsPanel({ groups, onAddRepo, t, reload, toast, dialog }) {
   // Execute consolidation → Stripe Checkout for the single bigger plan (webhook cancels the
   // old subs on payment). Redirects to the hosted checkout page.
   const consolidate = async (g) => {
+    // nosemgrep: js-open-redirect-from-function -- the URL is the Stripe Checkout / portal URL our own API returned, not page input
     try { const r = await api.post(`/me/hosting/groups/${g.id}/consolidate`, {}); if (r.url) location.href = r.url; }
     catch (x) { toast.error(x.data?.error === 'no_saving' ? t('pools.consol.nosave', 'No saving available right now.') : t('repos.failed', 'Failed.')); }
   };
@@ -1174,6 +1175,7 @@ function RepoUpgrade({ repo }) {
     try {
       const body = { storageGB: sGB, ...(sUp > curUp ? { uploadMbps: sUp } : {}) };
       const res = await api.post(`/me/repos/${repo.id}/upgrade`, body);
+      // nosemgrep: js-open-redirect-from-function -- the URL is the Stripe Checkout / portal URL our own API returned, not page input
       if (res.url || res.checkoutUrl) { window.location.href = res.url || res.checkoutUrl; return; }
       if (res.free) toast.success(t('repos.upgraded.free', 'Upgraded to {n} GB, free tier, no charge.').replace('{n}', sGB));
     } catch (x) {

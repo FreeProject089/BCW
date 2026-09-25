@@ -127,6 +127,7 @@ export async function dispatchStripeEvent({ p, stripe, event, log = console }) {
                   // id. A gift nobody is told about is a gift nobody receives.
                   const to = l.gift.token.startsWith('email:') ? l.gift.token.slice(6) : null;
                   const subject = 'Somebody bought you hosting';
+                  // nosemgrep: html-in-template-string -- plan name and gift code pass escapeHtml(); months is a number
                   const body = `<p>Somebody bought you <b>${escapeHtml(plan.name)}</b> hosting for <b>${l.months} month${l.months > 1 ? 's' : ''}</b>.</p>
                     <p>Redeem it with this code:</p>
                     <p style="font-size:20px;font-family:monospace;letter-spacing:2px"><b>${escapeHtml(code.code)}</b></p>

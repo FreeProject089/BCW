@@ -20,7 +20,8 @@ hosting.
 
 ## 1. Stack (chosen for consistency + easy self-host)
 
-The existing telemetry-dashboard is Node + Docker, so we stay in that world.
+The existing telemetry-dashboard was Node + Docker at the time, so we stayed in that world. (It has
+since been rewritten in Rust/Axum + React; the old Node version was deleted in September 2026.)
 
 | Layer | Tech | Why |
 |---|---|---|

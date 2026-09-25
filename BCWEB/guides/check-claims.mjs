@@ -107,6 +107,7 @@ const apiVars = new Set([
 
 const scripts = {};
 for (const ws of ['apps/api', 'apps/web', 'loadtest']) {
+    // nosemgrep: insecure-object-assign -- dev script merging package.json scripts of the repo's own workspaces
     try { Object.assign(scripts, JSON.parse(read(join(ROOT, ws, 'package.json'))).scripts || {}); }
     catch { /* workspace may not exist */ }
 }

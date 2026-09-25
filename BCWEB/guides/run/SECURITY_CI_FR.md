@@ -70,7 +70,7 @@ commentaire, mis à jour sur place ([CI_CD_FR.md](CI_CD_FR.md#lire-les-résultat
 La gate est testée avant tout le reste (job `gate-selftest`) :
 
 ```bash
-node --test .github/scripts/security-gate.test.mjs .github/scripts/dast-scope.test.mjs
+node --test .github/scripts/security-gate.test.mjs .github/scripts/dast-scope.test.mjs .github/scripts/security-verdict.test.mjs
 ```
 
 ---
@@ -136,16 +136,15 @@ docker run --rm -v "$PWD:/src:ro" -v /tmp/semgrep-rules:/rules:ro -v "$PWD/repor
 ### Trivy fs — lockfiles et Dockerfiles
 
 `--scanners vuln,misconfig` sur le checkout. Deux choses sont volontairement partagées avec
-l'audit de `ci.yml`, pour qu'ils ne puissent pas diverger en silence : le périmètre (le lockfile
-**racine** du tableau de bord télémétrie appartient à l'ancienne version Express qu'aucune image
-ne construit ; `npm-audit` l'ignore pour cette raison) et l'exception revue
+l'audit de `ci.yml`, pour qu'ils ne puissent pas diverger en silence : le périmètre (les mêmes
+lockfiles ; l'ancien lockfile racine du tableau de bord télémétrie, que les deux ignoraient, a
+été supprimé avec l'ancienne version Express le 2026-09-25) et l'exception revue
 (`GHSA-jrc7-96c5-q579` / `CVE-2026-85061`, maplibre, jugée dans `.github/audit-ignore.json` et
 reportée dans `.github/security/trivyignore.yaml` avec une date d'expiration).
 
 ```bash
 docker run --rm -v "$PWD:/src:ro" -v "$PWD/reports:/reports" -v trivy-cache:/root/.cache/trivy -w /src \
   "$TRIVY_IMAGE" fs --scanners vuln,misconfig \
-  --skip-files BCWEB/bmm/telemetry-dashboard/package-lock.json \
   --ignorefile .github/security/trivyignore.yaml --show-suppressed \
   --format json --output /reports/trivy-fs.json --exit-code 0 .
 ```
@@ -159,8 +158,10 @@ changement de code.
 Chaque image est construite comme `infra/compose/docker-compose.yml` la construit (`--pull` :
 l'image de base du jour), sauvegardée dans une archive et scannée depuis celle-ci (le scanner
 n'a jamais le socket Docker), pour les vulnérabilités (paquets OS et tous les paquets de langage
-de l'image, y compris le `npm` livré dans `node:22-alpine`) et pour les secrets laissés dans une
-couche.
+de l'image) et pour les secrets laissés dans une couche. Les images node (api, bot,
+provisioner) ne portent plus le `npm` livré dans `node:22-alpine` : leur étape d'exécution
+supprime npm, npx, corepack et yarn, et la base est épinglée par tag et digest
+(`apps/api/test/container-images.test.mjs` y veille).
 
 ```bash
 docker build --pull -t bcweb-api:scan -f BCWEB/apps/api/Dockerfile BCWEB
@@ -224,7 +225,9 @@ fait tourner, et scanne celle-ci :
    le réglage d'exploitation documenté — sinon une seule adresse de scanner mesurerait le
    limiteur ; les limites par route restent (quelques centaines de 429 sont normales et
    signalées) ;
-4. le web construit, servi par `nginx:alpine` avec le `nginx.conf` du dépôt, et **le Caddyfile
+4. le web construit, servi par le nginx non privilégié de l'image web
+   (`nginxinc/nginx-unprivileged`, l'épinglage de `dast.yml`, sur le port 8080) avec le
+   `nginx.conf` du dépôt, et **le Caddyfile
    du dépôt** devant (`caddy:2-alpine`, l'image de compose). Les en-têtes, la CSP, les
    redirections et les règles de bord que ZAP juge sont donc ceux de la production. Les scanners
    rejoignent le réseau du conteneur de bord et scannent `http://localhost` ; rien n'est publié
@@ -242,14 +245,15 @@ env DATABASE_URL=postgresql://secci:<aléatoire>@127.0.0.1:5432/bcweb_secci DIRE
 # 3. construire le web :  cd BCWEB/apps/web && npm run build
 # 4. web + bord, depuis la racine du dépôt :
 docker network create dast
-docker run -d --name web --network dast --network-alias web -v "$PWD/BCWEB/apps/web/dist:/usr/share/nginx/html:ro" -v "$PWD/BCWEB/apps/web/nginx.conf:/etc/nginx/conf.d/default.conf:ro" nginx:alpine
+docker run -d --name web --network dast --network-alias web -v "$PWD/BCWEB/apps/web/dist:/usr/share/nginx/html:ro" -v "$PWD/BCWEB/apps/web/nginx.conf:/etc/nginx/conf.d/default.conf:ro" "$NGINX_IMAGE"   # celle de dast.yml
 docker run -d --name edge --network dast --add-host api:host-gateway -v "$PWD/BCWEB/infra/caddy:/etc/caddy:ro" caddy:2-alpine caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
 # 5. les commandes de la section 2 (ZAP et Nuclei)
 # 6. ranger : docker rm -f web edge ; docker network rm dast ; arrêter l'API ;
 #    DROP DATABASE bcweb_secci ; DROP ROLE secci
 ```
 
-Les upstreams du Caddyfile sont `api:3000` et `web:80` : le port 3000 doit être libre pour l'API.
+Les upstreams du Caddyfile sont `api:3000` et `web:8080` (nginx tourne sans privilège, donc pas
+80) : le port 3000 doit être libre pour l'API.
 
 **Pourquoi la production ne peut pas être touchée**, de trois façons indépendantes, toutes avant
 la première requête :
@@ -301,7 +305,7 @@ en attendant une décision ; il n'est jamais exclu pour faire passer un build.
 | Gitleaks | `.github/security/.gitleaksignore` | une **empreinte** = un commit, un fichier, une règle, une ligne. La même valeur recommitée échoue à nouveau |
 | Semgrep | sur la ligne : `// nosemgrep: <id-de-règle> -- <raison>` | une règle, une ligne |
 | Trivy | `.github/security/trivyignore.yaml` | un avis ou un contrôle, limité par `paths:`, avec un `statement:` et une date `expired_at:` (il revient à cette date) |
-| ZAP | `.github/security/zap-rules.tsv` : `<id du plugin>` TAB `IGNORE` TAB `(<raison>)` | un plugin ; la gate **refuse** une ligne IGNORE sans raison |
+| ZAP | `.github/security/zap-rules.tsv` : `<id du plugin ou alertRef>` TAB `IGNORE` TAB `(<raison> … expires AAAA-MM-JJ)` | un **alertRef** (`10055-6`) quand le plugin signale plusieurs problèmes (10055 = toutes les alertes CSP), sinon un plugin ; la gate **refuse** une ligne IGNORE sans raison, et cesse de l'appliquer à sa date `expires` |
 | Nuclei | `-et <modèle>` dans `.github/scripts/dast-scan.sh`, avec un commentaire | un modèle |
 
 `npm audit` / `cargo audit` gardent leur propre liste, `.github/audit-ignore.json` (inchangée).
@@ -328,11 +332,33 @@ Lancés localement avec les versions épinglées, sur ce dépôt et sur une inst
 | Trivy / Semgrep | `Dockerfile` de la télémétrie : pas de `USER` (la base distroless `:nonroot` tourne déjà en uid 65532) | rendu explicite (`USER nonroot`, aucun changement à l'exécution) |
 | Semgrep | 8 faux positifs (SQL construit avec des identifiants vérifiés contre `pg_class` ; sondes serveur vers les services compose) | `nosemgrep` sur chaque ligne, avec la raison |
 | Gitleaks | 25 faux positifs dans l'historique (fixtures de test contenant FAKE/TEST, exemples de doc, noms de clés localStorage) | `.gitleaksignore`, par empreinte |
-| Gitleaks | valeur de `TELEMETRY_API_KEY` dans l'historique de `infra/compose/.env.example` (2 commits) | **non exclu** — décision du propriétaire (clé d'ingestion publique par conception ?) |
-| Semgrep | 44 ERROR dans l'ancienne version Express de la télémétrie (`bmm/telemetry-dashboard/*.mjs`, `public/app.js`), construite dans aucune image | **non exclu** — décision du propriétaire (supprimer les fichiers hérités ?) |
-| Trivy fs | `DS-0002` : `apps/web/Dockerfile` lance nginx en root | **non exclu** — décision du propriétaire (nginx non privilégié = un autre port dans le Caddyfile) |
-| Trivy image | api, bot, provisioner : HIGH/CRITICAL dans le `npm` livré avec `node:22-alpine` (tar, brace-expansion, pacote, sigstore…) ; libexpat dans plusieurs images | **non exclu** — décision du propriétaire (monter l'image de base, ou retirer npm des images d'exécution) |
-| ZAP | MEDIUM : CSP `style-src 'unsafe-inline'`, sources joker, pas de `form-action` ; LOW : COEP/COOP/CORP absents | sous le seuil par défaut ; listés pour le propriétaire |
+| Gitleaks | valeur de `TELEMETRY_API_KEY` dans l'historique de `infra/compose/.env.example` (commits `63ecc8c6`, `9abfe0e3`, ligne 115) | **revu, exclu par empreinte** (décision du propriétaire, déléguée) : la clé d'INGESTION de la télémétrie, publique par conception : elle est livrée dans chaque client BMM (`links-config.ts` `analytics_key`) et permet seulement d'envoyer de la télémétrie opt-in ; la valeur de `9abfe0e3` est celle du client actuel, celle de `63ecc8c6` la précédente. Rien à faire tourner |
+| Gitleaks | `.github/security/.gitleaksignore` lui-même, commit `6c571764` ligne 39 : un commentaire écrivait un exemple de clé de test Stripe | **exclu par empreinte** (un commentaire, pas une clé) ; le commentaire n'écrit plus cette forme |
+| Semgrep | 44 ERROR dans l'ancienne version Express de la télémétrie (`bmm/telemetry-dashboard/*.mjs`, `public/app.js`), construite dans aucune image | **corrigé par suppression** (décision du propriétaire, déléguée) : les `.mjs`, `public/`, et le `package.json` racine + son lockfile qui ne servaient qu'à eux. Rien ne les référençait ; le `--skip-files` de ce lockfile a quitté le job Trivy fs |
+| Trivy fs | `DS-0002` : `apps/web/Dockerfile` lance nginx en root | **corrigé** : `nginxinc/nginx-unprivileged` (tag + digest épinglés), uid 101, port **8080** : `nginx.conf`, le `web_upstream` du Caddyfile, le healthcheck compose et l'instance DAST suivent ; `apps/api/test/container-images.test.mjs` échoue si l'un d'eux diverge |
+| Trivy image | api, bot, provisioner : HIGH/CRITICAL dans le `npm` livré avec `node:22-alpine` (tar, brace-expansion, pacote, sigstore…) ; libexpat dans plusieurs images | **corrigé** : images multi-étapes, npm/npx/corepack/yarn supprimés de l'étape d'exécution, `node:22.23.3-alpine3.24` épinglé par digest, `apk upgrade` (libexpat 2.8.5-r0). Rien à l'exécution n'utilisait npm sauf `boot-migrate.mjs` / `setup.mjs` (`npx prisma`) : ils lancent la CLI avec node (`src/lib/prisma-cli.mjs`), et les guides disent `docker compose exec api node src/setup.mjs` |
+| ZAP | MEDIUM : CSP sans `form-action` (10055-13) | **corrigé** : `form-action 'self'`, élargi seulement sur les deux pages OAuth dont le formulaire aboutit à l'URL enregistrée d'un client (`/authorize`, `/oauth2/logout`), par un `map` Caddy ; `check-csp.mjs` échoue s'il disparaît ou s'élargit ailleurs |
+| ZAP | MEDIUM : CSP `style-src 'unsafe-inline'` (10055-6), sources joker (10055-4) | **risque accepté** (décision du propriétaire, déléguée), IGNORE par **alertRef** dans `zap-rules.tsv` avec la raison, expire le 2027-03-31 : attributs style de React et variables de thème à l'exécution ; avatars, images, vidéos et polices liés par les membres. La gate lit maintenant les alertRef, donc le reste du plugin 10055 compte toujours |
+| ZAP | LOW : COEP/COOP/CORP absents | laissés tels quels, sous le seuil : CORP/COEP empêcheraient l'app BMM et d'autres sites de charger les images du site, COOP demande d'abord une revue de chaque flux en popup |
+
+Les lignes marquées *décision du propriétaire, déléguée* ont été tranchées le 2026-09-25 et
+re-scannées le jour même avec les images épinglées, « avant » = le commit d'avant, « après » =
+l'arbre modifié, tous deux tels qu'un checkout Linux les aurait (LF, sans `node_modules`), même
+base d'avis :
+
+| Scan | Avant | Après |
+|---|---|---|
+| Gitleaks, tout l'historique | 3 constats | **0** (2024 commits scannés) |
+| Semgrep | 44 HIGH (tous dans les fichiers Express supprimés) | **0 HIGH** |
+| Trivy fs | 1 HIGH (`DS-0002`) | **0 HIGH** |
+| Trivy image api / bot / provisioner | 8 HIGH chacune (toutes dans le npm embarqué) | **0** chacune ; plus de npm, npx, corepack ni yarn dans l'image |
+| Trivy image web | 0 | 0, et nginx tourne en uid 101 |
+| ZAP baseline, instance locale | 3 MEDIUM (10055-13, -4, -6) | **0 MEDIUM compté** : 10055-13 disparu, 10055-4 et 10055-6 ignorés par leurs règles alertRef revues ; les 3 LOW inchangés |
+
+Les images ont aussi été lancées : l'image API a appliqué les 141 migrations sur une base jetable
+vide avec `node src/boot-migrate.mjs` (sans npx), et exécuté `node src/setup.mjs` ; l'image web a
+répondu à son healthcheck compose sur 8080 derrière le vrai Caddyfile (`caddy validate` passe),
+qui envoyait `form-action 'self'` sur `/` et la liste élargie sur `/authorize` et `/oauth2/logout`.
 
 ---
 

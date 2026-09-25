@@ -220,7 +220,7 @@ Write-Host ("  Written: " + $Out) -ForegroundColor White
 Write-Host ''
 Write-Host '  Next (on the server):'
 Write-Host '    docker compose -f infra/compose/docker-compose.yml up -d --build'
-Write-Host '    docker compose -f infra/compose/docker-compose.yml exec api npm run setup'
+Write-Host '    docker compose -f infra/compose/docker-compose.yml exec api node src/setup.mjs'
 Write-Host ''
 Write-Host '  setup migrates and seeds projects, the admin account, plans, docs and the FAQ.'
 Write-Host '  It is idempotent, so re-running it later is how you pick up new docs and FAQ entries.'

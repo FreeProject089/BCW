@@ -48,7 +48,7 @@ docker compose up -d
 Then seed the database (projects, the admin account, plans, docs, FAQ):
 
 ```bash
-docker compose exec api npm run setup
+docker compose exec api node src/setup.mjs
 ```
 
 Set `SEED_ADMIN_EMAIL` and `SEED_ADMIN_PASSWORD` in `.env` **before that first run**, or

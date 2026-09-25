@@ -1879,6 +1879,7 @@ export default async function miscRoutes(app) {
     // Every <loc> is XML-escaped: slugs and admin-set extra paths are data, and an unescaped
     // `&` (or a crafted extra path) would corrupt the feed for every crawler or inject a <loc>.
     const xesc = (v) => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    // nosemgrep: html-in-template-string -- every sitemap value goes through xesc(); lastmod is an ISO date
     const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${keep.map((u) => `  <url><loc>${xesc(u.loc)}</loc>${u.lastmod ? `<lastmod>${new Date(u.lastmod).toISOString().slice(0, 10)}</lastmod>` : ''}</url>`).join('\n')}\n</urlset>`;
     return reply.header('Content-Type', 'application/xml').header('Cache-Control', 'public, max-age=3600').send(xml);
   });
@@ -3911,6 +3912,7 @@ export default async function miscRoutes(app) {
       await notify(p, target.id, 'account', 'Your account has been reactivated — welcome back.').catch(() => {});
       if (emailEnabled()) sendMail({ to: target.email, subject: 'Your BetterCommunity account has been reactivated',
         mailId: 'reactivated',
+        // nosemgrep: html-in-template-string, raw-html-format -- the display name passes escapeHtml(); the rest is constant text
         html: mailShell('Account reactivated', `<p>Hi ${escapeHtml(target.displayName)},</p><p>Your account has been reactivated. You can sign in again.</p>`, { url: `${SITE_URL}/auth`, label: 'Sign in' }),
         text: `Your BetterCommunity account has been reactivated. Sign in: ${SITE_URL}/auth` }).catch(() => {});
       return { ok: true, status: 'active' };
@@ -3993,6 +3995,7 @@ export default async function miscRoutes(app) {
     await logAudit(p, req.user.uid, 'user.2fa_reset', `${target.displayName} (${target.email})`, clientIp(req));
     await notify(p, target.id, 'account', 'An administrator reset the two-factor authentication on your account. 2FA is now OFF — please re-enable it from Settings.').catch(() => {});
     if (emailEnabled()) sendMail({ to: target.email, mailId: 'twofa-reset', subject: 'Two-factor authentication was reset on your BetterCommunity account',
+      // nosemgrep: html-in-template-string, raw-html-format -- the display name passes escapeHtml(); the rest is constant text
       html: mailShell('Two-factor authentication reset', `<p>Hi ${escapeHtml(target.displayName)},</p><p>An administrator has <b>reset the two-factor authentication</b> on your account — for example, to help you recover after losing your authenticator app. Two-factor is now <b>disabled</b>, so you can sign in with just your password.</p><p style="margin-top:12px">For your security, please sign in and re-enable two-factor authentication right away. If you did <b>not</b> request this, change your password immediately.</p>`, { url: `${SITE_URL}/settings`, label: 'Re-enable 2FA' }),
       text: `An administrator reset the two-factor authentication on your BetterCommunity account. 2FA is now disabled; sign in with your password and re-enable it: ${SITE_URL}/settings . If you did not request this, change your password immediately.` }).catch(() => {});
     return { ok: true, wasEnabled: true };

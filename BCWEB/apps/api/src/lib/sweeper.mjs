@@ -399,13 +399,19 @@ export async function sweepEndedSuspensions(p, log) {
         .catch(() => {});
 
       if (emailEnabled()) {
+        // nosemgrep: html-in-template-string -- the plan name passes escapeHtml(); the price is a number
         const rows = cancelled.map((c) => `<li>${escapeHtml(c.planName || 'Hosting')}${c.priceCents ? ` — ${(c.priceCents / 100).toFixed(2)}/month` : ''}</li>`).join('');
+        // Hoisted out of the body: a template nested inside another starts inside the outer
+        // one's text, where no nosemgrep can be written.
+        // nosemgrep: html-in-template-string -- rows are escaped above; the rest is constant text
+        const cancelledHtml = cancelled.length ? `<p style="margin-top:12px">These subscriptions were cancelled while you were suspended, because their term ended before the suspension did:</p><ul>${rows}</ul><p>Nothing was taken out again on your behalf — you decide.</p>` : '';
         await sendMail({
           to: u.email, subject: open ? `[${open.code}] Your ${word} has ended` : `Your ${word} has ended`,
+          // nosemgrep: html-in-template-string -- the name passes escapeHtml(); back is a count; cancelledHtml is built above from escaped rows
           html: mailShell(`Your ${word} has ended`, `
             <p>Hi ${escapeHtml(u.displayName || '')},</p>
             <p>Your account is active again and ${back} item(s) have been put back exactly as they were.</p>
-            ${cancelled.length ? `<p style="margin-top:12px">These subscriptions were cancelled while you were suspended, because their term ended before the suspension did:</p><ul>${rows}</ul><p>Nothing was taken out again on your behalf — you decide.</p>` : ''}`,
+            ${cancelledHtml}`,
             cancelled.length ? { url: `${SITE_URL}/dashboard?s=billing`, label: 'Take them out again' } : { url: `${SITE_URL}/dashboard`, label: 'Open your dashboard' }),
           text: `Your ${word} has ended. ${back} item(s) restored.${cancelled.length ? ` ${cancelled.length} subscription(s) can be taken out again: ${SITE_URL}/dashboard?s=billing` : ''}`,
         }).catch(() => {});
@@ -591,6 +597,7 @@ export async function sweepHostingWaitlist(p, log) {
             text: `${line}\n\n${caveat}\n\n${site}/hosting`,
             // POSITIONAL — (title, bodyHtml, cta). mail.mjs throws if you hand it an options
             // object, because that mistake sends a mail titled "[object Object]" with no body.
+            // nosemgrep: html-in-template-string -- mail HTML: every user, request or database string passes escapeHtml(); the rest are numbers, dates, enums, server tokens or constants
             html: mailShell(subject, `<p>${escapeHtml(line)}</p><p>${escapeHtml(caveat)}</p>`,
               { url: `${site}/hosting`, label: 'Go to hosting' }),
           });

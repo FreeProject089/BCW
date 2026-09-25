@@ -120,6 +120,7 @@ export function checkPort(v) {
 export function checkUpstream(v) {
     const s = String(v || '').trim().toLowerCase();
     const m = RE.upstream.exec(s);
+    // nosemgrep: html-in-template-string -- CLI error message, not HTML
     if (!m) die(`"${v}" is not <name>:<port> (e.g. myapp:3000 — the container's name and the port it listens on INSIDE the container)`);
     checkPort(m[2]);
     return s;

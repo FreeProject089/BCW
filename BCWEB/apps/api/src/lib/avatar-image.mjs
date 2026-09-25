@@ -100,6 +100,7 @@ export async function loadLucideIcon(name, color = '#ffffff', size = 48) {
     const svgPath = require.resolve(`lucide-static/icons/${file}.svg`);
     let svg = await readFile(svgPath, 'utf8');
     svg = svg.replace(/currentColor/g, color).replace(/<svg\b([^>]*?)\swidth="[^"]*"/, '<svg$1').replace(/<svg\b([^>]*?)\sheight="[^"]*"/, '<svg$1')
+      // nosemgrep: html-in-template-string -- SVG from the bundled lucide/phosphor packages, recoloured with a hex-validated colour (bot-emoji HEX, og #ffffff) and a numeric size; rasterised, never served as HTML
       .replace('<svg', `<svg width="${size}" height="${size}"`);
     const { loadImage } = await import('@napi-rs/canvas');
     img = await loadImage(Buffer.from(svg));
@@ -125,6 +126,7 @@ export async function loadPhosphorIcon(name, color = '#ffffff', size = 48) {
   try {
     const svgPath = require.resolve(`@phosphor-icons/core/assets/${file}.svg`);
     let svg = await readFile(svgPath, 'utf8');
+    // nosemgrep: html-in-template-string -- SVG from the bundled lucide/phosphor packages, recoloured with a hex-validated colour (bot-emoji HEX, og #ffffff) and a numeric size; rasterised, never served as HTML
     svg = svg.replace(/currentColor/g, color).replace('<svg', `<svg width="${size}" height="${size}"`);
     const { loadImage } = await import('@napi-rs/canvas');
     img = await loadImage(Buffer.from(svg));

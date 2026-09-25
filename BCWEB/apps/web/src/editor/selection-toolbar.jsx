@@ -98,6 +98,7 @@ export default function SelectionToolbar({ taRef, value, onChange }) {
       ta.selectionStart = start; ta.selectionEnd = start + next.length;
     });
   };
+  // nosemgrep: html-in-template-string -- markdown SOURCE inserted into the author's textarea; B.MD sanitises on render (rehype-sanitize)
   const color = (c) => apply((sel) => ({ text: `<span style="color:${c}">${sel}</span>` }));
 
   /**
@@ -133,6 +134,7 @@ export default function SelectionToolbar({ taRef, value, onChange }) {
     const { text, link: lk, img, video } = cmt.current;
     if (!text.trim() && !lk && !img && !video) { setSub(null); return; }
     const attrs = [`data-comment="${esc(text)}"`, lk ? `data-link="${esc(lk)}"` : '', img ? `data-img="${esc(img)}"` : '', video ? `data-video="${esc(video)}"` : ''].filter(Boolean).join(' ');
+    // nosemgrep: html-in-template-string -- markdown SOURCE inserted into the author's textarea; B.MD sanitises on render (rehype-sanitize)
     apply((sel) => ({ text: `<doc-comment ${attrs}>${sel}</doc-comment>` }));
     cmt.current = { text: '', link: '', img: '', video: '' };
   };

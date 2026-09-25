@@ -158,7 +158,7 @@ wait_ready() {
 
 if [ "$DRY" = 1 ]; then
   echo "  would wait up to ${READY_TIMEOUT}s for $READY_URL"
-  [ "$DO_SEED" = 1 ] && echo "  would run: docker compose exec api npm run setup"
+  [ "$DO_SEED" = 1 ] && echo "  would run: docker compose exec api node src/setup.mjs"
   say "Dry run — nothing changed."
   exit 0
 fi
@@ -179,8 +179,8 @@ printf '\033[1;32m✓ the API is up and can reach the database\033[0m\n'
 # re-running never resets a password that has since been changed.
 if [ "$DO_SEED" = 1 ]; then
   say "Seeding (projects, admin account, plans, docs, FAQ)"
-  docker compose -f "$COMPOSE_DIR/docker-compose.yml" exec -T api npm run setup \
-    || warn "seed failed — the site is up but empty. Re-run: docker compose exec api npm run setup"
+  docker compose -f "$COMPOSE_DIR/docker-compose.yml" exec -T api node src/setup.mjs \
+    || warn "seed failed — the site is up but empty. Re-run: docker compose exec api node src/setup.mjs"
 fi
 
 # ── 5. What is left for a human ─────────────────────────────────────────────

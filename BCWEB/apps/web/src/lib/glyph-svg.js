@@ -41,9 +41,11 @@ export function colourSvg(text, color, { brand = false } = {}) {
     .replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*')/gi, '')
     .replace(/\s(?:xlink:)?href\s*=\s*("(?!#)[^"]*"|'(?!#)[^']*')/gi, '');
   // A fixed size for the file; the drawing scales from its viewBox.
+  // nosemgrep: html-in-template-string -- SVG from the pinned icon CDN, colour checked against ^#[0-9a-f]{6}$, uploaded and shown as an <img>
   s = s.replace(/<svg\b([^>]*)>/i, (m, attrs) => `<svg${attrs.replace(/\s(width|height)\s*=\s*("[^"]*"|'[^']*')/gi, '')} width="512" height="512">`);
   if (!brand && /^#[0-9a-f]{6}$/i.test(color || '')) {
     if (/currentColor/.test(s)) s = s.replace(/currentColor/g, color);
+    // nosemgrep: html-in-template-string -- SVG from the pinned icon CDN, colour checked against ^#[0-9a-f]{6}$, uploaded and shown as an <img>
     else s = s.replace(/<svg\b/i, `<svg fill="${color}"`);
   }
   return s;

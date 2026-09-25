@@ -77,6 +77,7 @@ export async function pollPayments(client) {
         const when = p.createdAt ? new Date(p.createdAt) : new Date();
         const embed = ui.card({
           title: `${kindEmoji(p.kind)}  ${money(p.amountCents, p.currency)}`, color: 0x22c55e,
+          // nosemgrep: html-in-template-string -- Discord message text (<t:…> timestamp), never parsed as HTML
           body: [clean(p.description, 300) || '—', '', `**Type** ${kindLabel(p.kind)} · **Customer** ${customer} · **Invoice №** \`${p.invoiceNo || '—'}\``, `**Date** <t:${Math.floor(when.getTime() / 1000)}:f>`],
           footer: 'BetterCommunity · Payment received',
         });
@@ -99,6 +100,7 @@ export async function pollPayments(client) {
         const embed = ui.card({
           title: `${ui.icx('refund')}−${money(r.amountCents, r.currency)}`, color: 0xef4444,
           body: `A refund was issued${r.email ? ` to **${maskEmail(r.email)}**` : ''}.`,
+          // nosemgrep: html-in-template-string -- Discord message text (<t:…> timestamp), never parsed as HTML
           footer: `BetterCommunity · Refund issued · <t:${Math.floor((r.at ? new Date(r.at) : new Date()).getTime() / 1000)}:f>`,
         });
         if (await sendToAll(refundTargets, embed)) marks.refundIds.push(r.id);
