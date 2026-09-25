@@ -127,6 +127,9 @@ const RepoDashboard = named(() => import('./pages/repo-dashboard.jsx'), 'RepoDas
 const ProjectPage = lazyChunk(() => import('./pages/project.jsx'));
 const OtherProjects = named(() => import('./pages/project.jsx'), 'OtherProjects');
 const ShowcaseProjectPage = named(() => import('./pages/project.jsx'), 'ShowcaseProjectPage');
+// prerelease (agent-prerelease): early access, the list and one pre-release.
+const PrereleasesPage = named(() => import('./pages/prereleases.jsx'), 'PrereleasesPage');
+const PrereleasePage = named(() => import('./pages/prereleases.jsx'), 'PrereleasePage');
 const Profile = lazyChunk(() => import('./pages/profile.jsx'));
 const PublicProfile = lazyChunk(() => import('./pages/publicprofile.jsx'));
 const UserSearch = named(() => import('./pages/publicprofile.jsx'), 'UserSearch');
@@ -1846,6 +1849,8 @@ export default function App() {
               <Route path="/p/:key" element={<ProjectPage />} />
               <Route path="/projects" element={<OtherProjects />} />
               <Route path="/project/:slug" element={<ShowcaseProjectPage />} />
+              <Route path="/prereleases" element={<PrereleasesPage />} />
+              <Route path="/prereleases/:slug" element={<PrereleasePage />} />
               <Route path="/profile" element={<Protected><Profile /></Protected>} />
               <Route path="/users" element={<UserSearch />} />
               <Route path="/u/:id" element={<PublicProfile />} />

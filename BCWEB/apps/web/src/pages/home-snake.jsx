@@ -21,6 +21,7 @@ import { Marker, HandNote } from '../ui/marker.jsx';
 import { heroCtas, heroNote } from '../lib/home-ctas.js';
 import { ProductRows, NewsGrid, Kicker, ClosingBand } from './home-sections.jsx';
 import StatusBanner from './status-banner.jsx';
+import { PrereleaseStrip } from '../ui/prerelease-bits.jsx'; // prerelease (agent-prerelease)
 
 /**
  * @param steps  [{ key, icon, title, desc, to, cta, done }]
@@ -151,6 +152,7 @@ export function HomeSnake(ctx) {
         <section>
           <Kicker label={t('home.k.products', 'The suite')} />
           <ProductRows products={products} style="cards" />
+          {/* prerelease (agent-prerelease) */}<PrereleaseStrip />
         </section>
       )}
 

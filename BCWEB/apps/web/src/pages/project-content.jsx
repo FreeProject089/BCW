@@ -18,6 +18,9 @@ import { useI18n } from '../i18n.jsx';
 import Markdown, { IconGlyph } from '../ui/md.jsx';
 import { Badge, Button, Card, EmptyState, Spinner, useToast, formatBytes, copyText } from '../ui/ui.jsx';
 
+// prerelease (agent-prerelease): announcing a version (blog post, bell, newsletter), managers only.
+import AnnounceButton from '../ui/release-announce.jsx';
+
 const Editors = lazy(() => import('../editor/project-content-editors.jsx'));
 
 /** Which language of a per-language entry a reader gets: theirs, else English, else the first. */
@@ -252,6 +255,7 @@ export function ProjectVersions({ base, onOpenSnapshot }) {
                         : <a href={safeHref(e.links.blog)} target="_blank" rel="noopener noreferrer"><Button size="sm" variant="ghost"><Newspaper size={13} /> {t('pcv.blog', 'Announcement')}</Button></a>)}
                       {e.links?.github && <a href={safeHref(e.links.github)} target="_blank" rel="noopener noreferrer"><Button size="sm" variant="ghost"><Github size={13} /> {t('pcv.github', 'GitHub release')}</Button></a>}
                       {e.snapshot && onOpenSnapshot && <Button size="sm" variant="ghost" onClick={() => onOpenSnapshot(e.version)}><Eye size={13} /> {t('pcv.snapshot', 'The page at this version')}</Button>}
+                      {canEdit && <AnnounceButton base={base} entry={e} onDone={reload} />}
                       {canEdit && (
                         <span className="ms-auto flex gap-1">
                           <Button size="sm" variant="ghost" onClick={() => setEditing(e)} title={t('pcv.edit', 'Edit this version')} aria-label={t('pcv.edit', 'Edit this version')}><Pencil size={13} /></Button>

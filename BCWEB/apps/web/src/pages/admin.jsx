@@ -15,6 +15,8 @@ import { Bug as BugIcon } from 'lucide-react';
 // The `all` sub-tab on Hosting settings; nothing else here needs a plain list glyph.
 import { List } from 'lucide-react';
 import { LayoutTemplate } from 'lucide-react'; // studio phase 2: the manage_studio capability
+import { FlaskConical as PrereleaseIcon, MessagesSquare as ProjectReviewsIcon } from 'lucide-react'; // prerelease (agent-prerelease)
+import { AdminPrereleases, AdminProjectReviews } from './admin-prereleases.jsx'; // prerelease (agent-prerelease)
 import { Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, EmptyState, Spinner, Modal, ActionBar, ByteSize, formatBytes, useDialog, useToast, copyText, ColorInput, Explain } from '../ui/ui.jsx';
 import { PointsHistoryTable } from '../ui/points-history.jsx';
 import { AppLogo } from '../ui/brand.jsx';
@@ -326,6 +328,8 @@ export function Admin() {
         // subsystem rather than as the second kind of project it is.
         canShowcaseTab && { id: 'showcase', label: t('adm.tab.showcase', 'Other projects'), icon: Sparkles },
         isAdmin && { id: 'marketplace', label: t('adm.tab.marketplace', 'Marketplace'), icon: ShoppingBag },
+        // prerelease (agent-prerelease): the server scopes the list to the projects this viewer edits.
+        { id: 'prereleases', label: t('adm.tab.prereleases', 'Early access'), icon: PrereleaseIcon },
       ].filter(Boolean) },
     (isAdmin || can('manage_catalogs') || can('manage_assets')) && { id: 'catalogs', label: t('adm.tab.catalogs', 'Catalogs'), icon: Boxes,
       sub: [
@@ -343,6 +347,8 @@ export function Admin() {
         isAdmin && { id: 'reviews', label: t('adm.tab.reviews', 'Reviews'), icon: Star },
         can('manage_polls') && { id: 'polls', label: t('adm.tab.polls', 'Polls'), icon: BarChart3 },
         can('manage_announcements') && { id: 'reactions', label: t('adm.tab.reactions', 'Reader feedback'), icon: ThumbsUp },
+        // prerelease (agent-prerelease): the moderation queue of every project's reviews.
+        { id: 'projectreviews', label: t('adm.tab.projectreviews', 'Project reviews'), icon: ProjectReviewsIcon },
       ].filter(Boolean) },
     isAdmin && { id: 'badges', label: t('adm.tab.badges', 'Badges'), icon: BadgeCheck },
 
@@ -569,6 +575,8 @@ export function Admin() {
         {s === 'assets' && <AdminAssets />}
         {s === 'showcase' && <AdminShowcase />}
         {s === 'reviews' && <AdminReviews />}
+        {s === 'prereleases' && <AdminPrereleases />}
+        {s === 'projectreviews' && <AdminProjectReviews />}
         {s === 'navui' && <AdminNav />}
         {s === 'footer' && <AdminFooter />}
         {s === 'guide' && <AdminGuide />}

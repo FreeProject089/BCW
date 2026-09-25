@@ -40,6 +40,9 @@ import { Marker, HandNote } from '../ui/marker.jsx';
 import { SnakeSteps, HomeSnake } from './home-snake.jsx';
 // N7: "Why BetterCommunity", four pillars.
 import WhySection from './home-why.jsx';
+// prerelease (agent-prerelease): open pre-releases under the suite, and the landing's review entry point.
+import { PrereleaseStrip } from '../ui/prerelease-bits.jsx';
+import LandingReviewCta from '../ui/landing-feedback.jsx';
 
 /* ─────────────────────────  Home  ───────────────────────── */
 function useScrollReveal() {
@@ -613,6 +616,9 @@ export function Home({ draft: draftProp = null }) {
             so somebody outside the team can have a page here, and the only way anybody found
             out was by wandering to /projects. */}
         <YourProjectHere />
+        {/* prerelease (agent-prerelease): the pre-releases whose sign-ups are open. Draws nothing
+            when there are none. */}
+        <PrereleaseStrip />
       </section>
       )}
 
@@ -704,6 +710,9 @@ export function Home({ draft: draftProp = null }) {
           </div>
         </section>
       )}
+      {/* prerelease (agent-prerelease): "Give your opinion", under the reviews (or in their place
+          while there are none yet). Only while the landing's reviews section is on. */}
+      {show('reviews') && reviewsData?.enabled && <LandingReviewCta />}
 
       {/* A pinned poll, when there is one.
           The schema has said "optionally pinned to the home page" since polls shipped, and

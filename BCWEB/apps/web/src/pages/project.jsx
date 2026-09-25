@@ -42,6 +42,10 @@ import { ProjectContactBar } from '../ui/project-contact.jsx';
 import { useFramedDraft, canvasTabsFor } from '../lib/studio-preview.js';
 // G2 + G3: the version timeline, the project's own docs and its legal pages (PLAN-SEPT23).
 import { ProjectVersions, ProjectPages, ProjectLegalTab, useProjectContent } from './project-content.jsx';
+// prerelease (agent-prerelease): the Early access and Reviews tabs.
+import { ProjectEarlyTab, useProjectExtras } from './prereleases.jsx';
+import ProjectReviewsTab from '../ui/project-reviews.jsx';
+import { FlaskConical as EarlyIcon, MessagesSquare as ReviewsIcon } from 'lucide-react';
 
 // Which tab is actually shown. A `?tab=` naming one that is switched OFF must not render it:
 // hiding the link while still serving the content means an admin who turns a tab off has not
@@ -350,6 +354,7 @@ export default function ProjectPage({ preview: previewProp = null }) {
   // renders a draft config, and these live in their own tables.
   const extra = useProjectContent(preview ? null : `/projects/${key}`);
   const ex = extra.data || {};
+  const pex = useProjectExtras(preview ? null : key); // prerelease (agent-prerelease)
   if (loading) return <div className="flex items-center gap-2 text-[var(--muted)] py-10"><Spinner /> {t('common.loading')}</div>;
   if (err?.status === 403) return <EmptyState icon={Lock} title={t('proj.notAvailable', 'Not available')} sub={t('proj.noAccess', "You don't have access to this page.")}
     action={{ label: t('proj.err.a', 'See the projects'), to: '/projects', icon: Boxes }} />;
@@ -379,6 +384,9 @@ export default function ProjectPage({ preview: previewProp = null }) {
     marketProducts.length > 0 && ['market', t('proj.market', 'Marketplace'), ShoppingBag],
     (c.releaseNotes || c.links?.github || c.timeline?.length) && ['activity', t('proj.activity', 'Activity'), CalendarDays],
     ['legal', t('proj.legal'), ShieldCheck],
+    // prerelease (agent-prerelease): offered when there is something, or to whoever can add it.
+    pex.showEarly && ['early', t('proj.early', 'Early access'), EarlyIcon],
+    pex.showReviews && ['reviews', t('proj.reviews', 'Reviews'), ReviewsIcon],
     // Last, so adding one never moves a tab somebody has already linked to.
     ...customTabs.map((ct) => [`x-${ct.id}`, ct.title, tabIcon(ct.icon)]),
     ...canvasTabs.map((cv) => [`c-${cv.id}`, cv.title, LayoutTemplate]),
@@ -468,6 +476,8 @@ export default function ProjectPage({ preview: previewProp = null }) {
         </>
       )}
       {tab === 'blog' && <ProjectBlogTab project={key} />}
+      {tab === 'early' && <ProjectEarlyTab data={pex.early} />}
+      {tab === 'reviews' && <ProjectReviewsTab projectRef={key} data={pex.reviews} onChanged={pex.reloadReviews} />}
       {tab === 'market' && <Marketplace pkey={key} products={marketProducts} onChanged={market.refetch} />}
       {tab === 'legal' && (preview ? <Legal c={c} />
         : <ProjectLegalTab base={`/projects/${key}`}><Legal c={c} quiet={ex.legal > 0} /></ProjectLegalTab>)}
@@ -1490,6 +1500,7 @@ export function ShowcaseProjectPage({ preview: previewProp = null }) {
   // G2 + G3, as on the fixed projects. Waits for the page, so a countdown takeover asks nothing.
   const extra = useProjectContent(!previewProject && data?.project ? `/project/${slug}` : null);
   const ex = extra.data || {};
+  const pex = useProjectExtras(!previewProject && data?.project ? `sc:${slug}` : null); // prerelease (agent-prerelease)
   if (loading) return <div className="flex items-center gap-2 text-[var(--muted)] py-10"><Spinner /> {t('common.loading')}</div>;
   if (err?.status === 403) return <EmptyState icon={Lock} title={t('proj.notAvailable', 'Not available')} sub={t('proj.noAccess', "You don't have access to this page.")}
     action={{ label: t('proj.err.a', 'See the projects'), to: '/projects', icon: Boxes }} />;
@@ -1528,6 +1539,9 @@ export function ShowcaseProjectPage({ preview: previewProp = null }) {
     stackTabEnabled(cfg.stack, T) && ['stack', cfg.stack.title || t('proj.stack', 'How it runs'), Network],
     (cfg.releaseNotes?.owner || cfg.links?.github || cfg.timeline?.length) && ['activity', t('proj.activity', 'Activity'), CalendarDays],
     (T.legal || ex.legal > 0 || ex.canEdit) && ['legal', t('proj.legal'), ShieldCheck],
+    // prerelease (agent-prerelease)
+    pex.showEarly && ['early', t('proj.early', 'Early access'), EarlyIcon],
+    pex.showReviews && ['reviews', t('proj.reviews', 'Reviews'), ReviewsIcon],
     // Custom tabs. The eight above are the ones the platform knows how to build; these are the
     // ones a project needs and nobody anticipated — a title, an icon and a B.MD document. They
     // come last so adding one never moves a tab somebody has linked to, and an empty one is not
@@ -1580,6 +1594,8 @@ export function ShowcaseProjectPage({ preview: previewProp = null }) {
       {activeTab === 'activity' && <ProjectActivity endpoint={`/showcase/${slug}/activity`} timeline={cfg.timeline} />}
       {activeTab === 'community' && <ShowcaseCommunity cfg={cfg} c={c} slug={slug} />}
       {activeTab === 'blog' && <ProjectBlogTab page={slug} />}
+      {activeTab === 'early' && <ProjectEarlyTab data={pex.early} />}
+      {activeTab === 'reviews' && <ProjectReviewsTab projectRef={`sc:${slug}`} data={pex.reviews} onChanged={pex.reloadReviews} />}
       {/* A showcase page has no code snapshot of its own — those are keyed on the fixed
           projects, so the map is only offered there. */}
       {activeTab === 'stack' && <StackMap stack={cfg.stack} t={t} />}

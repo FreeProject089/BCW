@@ -97,6 +97,9 @@ import onboardingRoutes from './routes/onboarding.mjs';
 import configTransferRoutes from './routes/config-transfer.mjs';
 import jwt from 'jsonwebtoken';
 import connectionRoutes from './routes/connections.mjs';
+import prereleaseRoutes from './routes/prereleases.mjs'; // prerelease (agent-prerelease): early access
+import projectReviewRoutes from './routes/project-reviews.mjs'; // prerelease (agent-prerelease): per-project reviews
+import releaseAnnounceRoutes from './routes/release-announce.mjs'; // prerelease (agent-prerelease): announcing a release
 import { recordRequest } from './lib/monitor.mjs';
 import { registerApiUsageHook, flushApiUsage } from './lib/apiusage.mjs';
 import { installAbuseGuards } from './lib/abuse.mjs';
@@ -460,6 +463,9 @@ await app.register(onboardingRoutes); // /me/onboarding + /admin/onboarding: the
 await app.register(configTransferRoutes); // /admin/config-transfer: the custom seed v2 (lib/config-transfer.mjs)
 await app.register(rightsRoutes); // rights notices (copyright & co.), the queue, the protected-works registry
 await app.register(connectionRoutes); // social profile connections (youtube/twitch/github/steam)
+await app.register(prereleaseRoutes); // prerelease (agent-prerelease)
+await app.register(projectReviewRoutes); // prerelease (agent-prerelease)
+await app.register(releaseAnnounceRoutes); // prerelease (agent-prerelease)
 await app.register(statusRoutes); // public status page: service uptime, incidents, alert sign-up
 await app.register(codeWebhookRoutes); // encapsulated: raw-body for the GitHub HMAC
 await app.register(stripeWebhook); // encapsulated: raw-body for Stripe signature

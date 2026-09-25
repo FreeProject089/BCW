@@ -46,6 +46,7 @@ const SUBMIT_INIT = { projectKey: 'bmm', kind: 'PLUGIN', name: '', description: 
 import { NOTIF, NOTIF_FALLBACK } from '../ui/notif.js';
 import { lazyNamed } from '../lib/lazy-chunk.js';
 import { MyReviewCard } from '../ui/review-form.jsx'; // M11: a member's own landing review
+import { MyPrereleasesCard } from './prereleases.jsx'; // prerelease (agent-prerelease): the member's early access
 export { NOTIF, NOTIF_FALLBACK };
 
 // The member's Discord level, XP progress and spendable points — from /me/economy. Renders
@@ -1056,6 +1057,10 @@ export function Dashboard() {
             {/* M11: titles its own card, and renders null when the landing shows no reviews
                 and the member has none. */}
             <MyReviewCard />
+
+            {/* prerelease (agent-prerelease): the member's sign-ups and their status; renders
+                nothing for somebody who never signed up. */}
+            <MyPrereleasesCard />
           </div>}
           {s === 'items' && <div>
             <div className="flex items-center justify-between mb-3">

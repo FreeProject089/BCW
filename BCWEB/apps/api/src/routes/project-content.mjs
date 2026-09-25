@@ -83,6 +83,9 @@ async function editTarget(p, req, reply, scope) {
 const serRelease = (r) => ({
   version: r.version, channel: r.channel, date: r.date, content: r.content || {}, assets: r.assets || [],
   links: r.links || {}, published: r.published, source: r.source || null, updatedAt: r.updatedAt,
+  // prerelease (agent-prerelease): whether and where it was announced (routes/release-announce.mjs).
+  // Not `announcement.by`: who pressed the button is the audit log's, not the public's.
+  announcedAt: r.announcedAt || null, announcedBlog: r.announcement?.blogSlug || null,
 });
 const serPageHead = (r) => {
   const langs = {};

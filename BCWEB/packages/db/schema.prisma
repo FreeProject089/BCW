@@ -294,6 +294,10 @@ model User {
   pendingDismissals    PendingDismissal[]
   webhooks             WebhookEndpoint[]
   botWarnsIssued       BotWarn[]            @relation("BotWarnIssuer")
+  // prerelease (agent-prerelease): early-access sign-ups and per-project reviews. Theirs, so
+  // erased with the account (closure.mjs anonymiseAccount deletes both explicitly).
+  prereleaseSignups    PreReleaseSignup[]
+  projectReviews       ProjectReview[]
 
   @@index([status])
   @@index([closedEmailHash])
@@ -2671,6 +2675,10 @@ model ProjectRelease {
   published   Boolean  @default(true)
   /// "github" when imported from GitHub releases, null when written here.
   source      String?
+  /// prerelease (agent-prerelease): when the release was ANNOUNCED (routes/release-announce.mjs),
+  /// and how: { blogSlug, notified (accounts), newsletter (sent), by }. Null = never announced.
+  announcedAt  DateTime?
+  announcement Json     @default("{}")
   updatedById String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -5138,3 +5146,125 @@ model TeamContactSettings {
   maxOpenAnon    Int      @default(0)
   updatedAt      DateTime @updatedAt
 }
+
+// ── prerelease (agent-prerelease) ─────────────────────────────────────────────────────────
+// Early access to a project's next version (routes/prereleases.mjs, rules in lib/prerelease.mjs).
+//
+// A project opens a sign-up window; members sign up (an account, and a confirmed address where
+// the site confirms addresses); the project's editors then SELECT who gets it, by hand, by a
+// draw, first come first served, or everybody. Only a selected member is ever handed the file:
+// the page never carries its URL, and GET /prereleases/:slug/download checks the selection on
+// every request before redirecting to a presigned GET that lives two minutes.
+//
+// `target` is the ProjectRelease convention: a project key, or `sc:<showcaseId>`.
+//
+// THE DRAW is commit-reveal. `seed` is 32 random bytes drawn when the pre-release is created and
+// `seedHash` (its SHA-256) is public from that moment, so the seed cannot be chosen after the
+// sign-ups are known. The seed itself is secret until the first selection round, then public.
+// Each round is recorded in `draws` with the entrants and the winners as SIGN-UP ids (opaque, and
+// meaningless once a sign-up is erased), the algorithm and the round number, so anyone holding
+// the record recomputes the same winners (lib/prerelease.mjs drawWinners). Every round also
+// writes an audit-chain entry.
+model PreRelease {
+  id                String    @id @default(cuid())
+  slug              String    @unique
+  target            String
+  version           String    @default("")
+  title             String
+  titleFr           String    @default("")
+  /// The short pitch shown on cards. Plain text.
+  pitch             String    @default("")
+  pitchFr           String    @default("")
+  /// The details, B.MD, rendered by the sanitising renderer.
+  body              String    @default("")
+  bodyFr            String    @default("")
+  published         Boolean   @default(false)
+  opensAt           DateTime?
+  closesAt          DateTime?
+  /// The most sign-ups accepted. Null = no cap.
+  capacity          Int?
+  /// manual | draw | first | all. `all` selects every sign-up the moment it is made.
+  mode              String    @default("manual")
+  /// How many a draw / first-come round selects, when the editor does not say.
+  selectCount       Int?
+  /// Whether a round also mails the sign-ups it did not select ("not this time").
+  notifyNotSelected Boolean   @default(false)
+  /// The file: an object key under prerelease/<id>/ (never served by the public media proxy),
+  /// or an external https URL. Neither is ever serialised to a reader.
+  downloadKey       String?
+  downloadUrl       String?
+  downloadName      String    @default("")
+  downloadSize      Int?
+  seed              String
+  seedHash          String
+  /// The selection rounds: [{ round, mode, at, by, n, entrants[], winners[], entrantsHash, algo }].
+  draws             Json      @default("[]")
+  selectedAt        DateTime?
+  closedAt          DateTime?
+  createdById       String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  signups           PreReleaseSignup[]
+
+  @@index([target])
+  @@index([published, closedAt])
+}
+
+/// One member's sign-up. `status`: pending (waiting for a selection) | selected | not_selected.
+/// Withdrawing deletes the row: a withdrawn member holds nothing, access included.
+model PreReleaseSignup {
+  id           String     @id @default(cuid())
+  prerelease   PreRelease @relation(fields: [prereleaseId], references: [id], onDelete: Cascade)
+  prereleaseId String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId       String
+  status       String     @default("pending")
+  /// An optional word to the team ("I test on Linux"). Plain text, staff and editors only.
+  message      String     @default("")
+  decidedAt    DateTime?
+  /// When the "not selected this time" mail went, so a second round never sends it twice.
+  notifiedAt   DateTime?
+  createdAt    DateTime   @default(now())
+
+  @@unique([prereleaseId, userId])
+  @@index([userId])
+  @@index([prereleaseId, status, createdAt])
+}
+
+/// A member's review of ONE project. A sibling of Review rather than Review with a target
+/// column: Review.userId is @unique (one landing review per account) and every reader of it
+/// (/reviews, /me/review, the admin list, closure, the content backup) assumes that, so scoping
+/// it would have meant a new composite key under five callers and a landing feed that must learn
+/// to exclude project rows. The rules are shared instead (lib/review-rules.mjs).
+/// `target` is the ProjectRelease convention. One per account per project.
+model ProjectReview {
+  id         String   @id @default(cuid())
+  target     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String
+  /// A copy of the display name at writing time, like Review.author.
+  author     String
+  role       String   @default("")
+  body       String
+  lang       String   @default("en")
+  rating     Int?
+  /// pending | approved | rejected, exactly as Review.
+  status     String   @default("pending")
+  /// public | private (for the project's team and the moderators only).
+  visibility String   @default("public")
+  anonymous  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([userId, target])
+  @@index([target, status])
+}
+
+/// Whether a project takes reviews. No row = off: a project opts in, by a manager.
+model ProjectReviewSettings {
+  target    String   @id
+  enabled   Boolean  @default(false)
+  updatedBy String?
+  updatedAt DateTime @updatedAt
+}
+// ── fin prerelease (agent-prerelease) ─────────────────────────────────────────────────────

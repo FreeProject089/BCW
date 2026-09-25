@@ -34,6 +34,7 @@ import { heroCtas, heroNote, closingCta } from '../lib/home-ctas.js';
 // The same marker stroke and handwritten aside v1 draws on its title (ui/marker.jsx), so the
 // three landing pages share one hand.
 import { Marker, HandNote } from '../ui/marker.jsx';
+import { PrereleaseStrip } from '../ui/prerelease-bits.jsx'; // prerelease (agent-prerelease)
 
 /** The posts a landing page shows, oldest concern first: is there anything at all. */
 const postsOf = (ctx) => (ctx.data?.posts || []).slice(0, 6);
@@ -89,6 +90,7 @@ export function HomeV2(ctx) {
                   asking the reader to work out what they were looking at. */}
               <Kicker label={t('home.k.products', 'The suite')} />
               <ProductRows products={products} />
+              {/* prerelease (agent-prerelease) */}<PrereleaseStrip />
             </div>
           )}
         </div>
@@ -215,6 +217,7 @@ export function HomeV3(ctx) {
               <div className="mt-3">
                 <Kicker label={t('home.k.products', 'The suite')} />
                 <ProductRows products={products.slice(0, 4)} />
+                {/* prerelease (agent-prerelease) */}<PrereleaseStrip />
               </div>
             )}
           </div>

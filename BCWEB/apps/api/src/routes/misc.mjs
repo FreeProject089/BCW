@@ -42,6 +42,7 @@ import { userBcId, itemFingerprint, repoFingerprint, loadOwnerIdentities, looksL
 import { telemetryDb } from './server-control.mjs';
 import { issueSanction, splitSubscriptionsByTerm, cancelSubscriptionList } from '../lib/sanctions.mjs';
 import { sceneTransitions, transitionsBody } from '../lib/scene-transitions.mjs'; // D4 (agent-admin-D)
+import { memberReviewSchema, REVIEW_HAS_LINK, REVIEW_MIN_ACCOUNT_AGE_MS } from '../lib/review-rules.mjs'; // prerelease (agent-prerelease): shared with project reviews
 
 // The real client IP as observed by our trusted proxy (Caddy appends it last).
 const clientIp = (req) => ipOf(req);
@@ -1344,17 +1345,10 @@ export default async function miscRoutes(app) {
   // it, and editing an approved one sends it back to pending: what visitors read is always
   // something a person looked at. Plain text only, and no links at all: a review with a URL
   // in it is an advert, and refusing the shape is simpler than judging each one.
-  const memberReview = z.object({
-    body: z.string().trim().min(20).max(600),
-    rating: z.number().int().min(1).max(5).nullish(),
-    role: z.string().trim().max(60).optional(),
-    lang: z.enum(['en', 'fr']).optional(),
-    // N10: public = may reach the landing after approval; private = for the team only.
-    visibility: z.enum(['public', 'private']).default('public'),
-    anonymous: z.boolean().default(false),
-  });
-  const HAS_LINK = /(https?:\/\/|www\.|\b[a-z0-9-]+\.(com|net|org|io|gg|xyz|ru|cn|ch|fr|de|me|app|dev)\b)/i;
-  const REVIEW_MIN_ACCOUNT_AGE_MS = 24 * 60 * 60 * 1000;
+  // The rules live in lib/review-rules.mjs, shared with a project's reviews (agent-prerelease).
+  // N10: visibility public = may reach the landing after approval; private = for the team only.
+  const memberReview = memberReviewSchema;
+  const HAS_LINK = REVIEW_HAS_LINK;
   const ownView = (r) => r && ({ id: r.id, body: r.lang === 'fr' ? (r.bodyFr || r.body) : r.body, rating: r.rating, role: r.role, lang: r.lang, status: r.status, visibility: r.visibility, anonymous: !!r.anonymous, updatedAt: r.updatedAt });
 
   app.get('/me/review', { preHandler: requireRole() }, async (req) => {

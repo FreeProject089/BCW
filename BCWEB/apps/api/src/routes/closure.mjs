@@ -545,6 +545,11 @@ export async function anonymiseAccount(p, user, { removeObject = deleteObject } 
     // A landing review (M11) carries a COPY of the display name in `author` and is public once
     // approved: anonymising the user row would leave it on the home page under the old name.
     p.review.deleteMany({ where: { userId: user.id } }).catch(() => {}),
+    // prerelease (agent-prerelease): the same for a project review (a copy of the name, public
+    // once approved), and early-access sign-ups: a closed account neither waits for a draw nor
+    // keeps access. A draw's record names sign-ups by id only, which then name nobody.
+    p.projectReview.deleteMany({ where: { userId: user.id } }).catch(() => {}),
+    p.preReleaseSignup.deleteMany({ where: { userId: user.id } }).catch(() => {}),
     // Outstanding reset and confirmation tokens (F23-2 residual). Hashed and single-use, but a
     // row that outlives the account is a way back in written down; nothing needs them now.
     p.passwordReset.deleteMany({ where: { userId: user.id } }).catch(() => {}),

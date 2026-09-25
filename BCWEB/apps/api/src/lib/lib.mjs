@@ -1211,6 +1211,10 @@ export const NOTIF_CATEGORIES = {
   // switch covers both the in-app notice and the e-mail; a preference that silences the bell
   // and not the inbox is a rule written twice.
   logins: { match: (k) => /^login_/.test(k), label: 'New sign-ins' },
+  // prerelease (agent-prerelease): a project's new release, and early access (sign-up answers,
+  // "not selected this time"). Mutable. The one early-access message that ignores this switch is
+  // the selection MAIL: it answers a request the member made (lib/prerelease-mail.mjs).
+  releases: { match: (k) => /^release_|^prerelease_/.test(k), label: 'Releases & early access' },
   // Not switchable, and deliberately so: these are the ones you would most regret muting —
   // a ban, a revoked key, an app losing access, a closure. An account that can silence its
   // own security notices is one that finds out too late.
@@ -1280,13 +1284,15 @@ export async function notify(p, userId, kind, body, opts) {
  *  user table and so were the only writers a preference could not reach — the switch would
  *  have been decorative for exactly the notifications that arrive unasked.
  */
-export async function notifyAll(p, kind, body, bodyFr) {
+export async function notifyAll(p, kind, body, bodyFr, opts = {}) {
   const cat = notifCategory(kind);
   const locked = !!NOTIF_CATEGORIES[cat]?.locked;
   const users = await p.user.findMany({ select: { id: true, notifPrefs: true } });
   const targets = locked ? users : users.filter((u) => !(u.notifPrefs && u.notifPrefs[cat] === false));
   if (!targets.length) return 0;
-  const write = (list) => p.notification.createMany({ data: list.map((u) => ({ userId: u.id, kind, body, ...(bodyFr ? { bodyFr } : {}) })) });
+  // prerelease (agent-prerelease): an optional in-app destination, held to the same rule as notify().
+  const href = safeNotifHref(opts?.href);
+  const write = (list) => p.notification.createMany({ data: list.map((u) => ({ userId: u.id, kind, body, ...(bodyFr ? { bodyFr } : {}), ...(href ? { href } : {}) })) });
   try {
     await write(targets);
   } catch (e) {
