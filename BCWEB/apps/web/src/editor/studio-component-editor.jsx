@@ -19,7 +19,7 @@
 //   · ExposedFields        component mode only: which fields of the selected block the copies
 //                          may change, with the key and the label they are shown under
 import { useState } from 'react';
-import { Puzzle, RotateCcw, Unlink, RefreshCw, PencilRuler, Plus, Trash2, AlertTriangle } from 'lucide-react';
+import { Puzzle, RotateCcw, Unlink, RefreshCw, PencilRuler, Plus, Trash2, AlertTriangle, Download } from 'lucide-react';
 import { Button, Field, Input, Textarea, Modal } from '../ui/ui.jsx';
 import {
   overridesOf, divergence, fieldValue, instancesOfComponent, snapshotDiffers, exposableFor, EXPOSED_KEY, MAX_EXPOSED,
@@ -224,7 +224,7 @@ export function PageComponents({ t, canvas, sourceOf, onUpdate, onSelect }) {
 }
 
 /** The components of the libraries this studio reads: place a copy, or edit the component. */
-export function LibraryComponents({ t, entries, onInsert, onOpen }) {
+export function LibraryComponents({ t, entries, onInsert, onOpen, onExport = null }) {
   if (!entries.length) return null;
   return (
     <div className="space-y-1.5" data-library-components>
@@ -238,6 +238,7 @@ export function LibraryComponents({ t, entries, onInsert, onOpen }) {
           </span>
           <Button size="sm" variant="ghost" className="!px-2" onClick={() => onInsert(e)} data-cmp-insert={e.id} title={t('cst.cmp7.insert', 'Place a linked copy')} aria-label={t('cst.cmp7.insert', 'Place a linked copy')}><Plus size={14} /></Button>
           {onOpen && <Button size="sm" variant="ghost" className="!px-2" onClick={() => onOpen(e)} data-cmp-open={e.id} title={t('cst.cmp7.open', 'Edit the component')} aria-label={t('cst.cmp7.open', 'Edit the component')}><PencilRuler size={14} /></Button>}
+          {onExport && <Button size="sm" variant="ghost" className="!px-2" onClick={() => onExport(e)} data-cmp-export={e.id} title={t('cst.io.export.cmp', 'Export {name} as a file').replace('{name}', e.name)} aria-label={t('cst.io.export.cmp', 'Export {name} as a file').replace('{name}', e.name)}><Download size={14} /></Button>}
         </div>
       ))}
     </div>

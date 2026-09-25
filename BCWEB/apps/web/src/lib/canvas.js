@@ -18,3 +18,5 @@ export * from '../../../../packages/studio/src/scene.js';
 export * from '../../../../packages/studio/src/tree.js';
 // Components (phase 7b): instances, their expansion, overrides, "update the copies".
 export * from '../../../../packages/studio/src/components.js';
+// Studio files (phase 7c): the .bcwstudio.json format, one reader for an import and a paste.
+export * from '../../../../packages/studio/src/io.js';

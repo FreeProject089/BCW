@@ -16,6 +16,7 @@
     "./patterns": "./src/patterns.js",
     "./scene": "./src/scene.js",
     "./components": "./src/components.js",
+    "./io": "./src/io.js",
     "./package.json": "./package.json"
   },
   "files": [

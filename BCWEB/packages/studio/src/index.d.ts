@@ -379,3 +379,44 @@ export function definitionFromBlocks(blocks: unknown, ids: string[], pageMap?: u
 export function replaceWithInstance<T>(blocks: T[], ids: string[], map: unknown, cid: string, snap: unknown, def: unknown, uid: () => string): { blocks: T[]; components: Record<string, unknown>; id: string };
 export function newInstance(cid: string, at: { x: number; y: number }, z: number, uid: () => string): Record<string, unknown>;
 export function definitionTreeProblems(doc: unknown): Array<{ index: number; field: string; reason: string }>;
+/** Names never used as a component id, an exposed key or an override key (phase 7c). */
+export const RESERVED_NAMES: readonly string[];
+
+// ── Studio files (io.js, phase 7c) ──────────────────────────────────────────────────────
+export type StudioFileKind = 'page' | 'component' | 'preset:page' | 'preset:section' | 'preset:background' | 'preset:component';
+export interface FileProblem { path: string; reason: string }
+/** A `.bcwstudio.json` file (see io.js for the format). */
+export interface StudioFile {
+  format: 'bcw-studio'; version: 1; kind: StudioFileKind;
+  id?: string; name?: string; origin?: string; exportedAt?: string;
+  doc: Record<string, unknown>;
+  components?: Record<string, unknown>;
+  exposed?: ExposedField[];
+  assets: string[];
+}
+export const STUDIO_FILE_FORMAT: 'bcw-studio';
+export const STUDIO_FILE_VERSION: 1;
+export const STUDIO_FILE_EXT: string;
+export const STUDIO_FILE_KINDS: readonly StudioFileKind[];
+export const MAX_FILE_BYTES: number;
+export const MAX_JSON_DEPTH: number;
+export const MAX_FILE_ASSETS: number;
+export const PRESET_ENTRY_SORTS: readonly string[];
+export function utf8Bytes(s: string): number;
+export function entrySortOf(kind: unknown): string;
+export function assetPath(raw: unknown): string;
+export function assetRefs(doc: unknown, components?: unknown): Array<{ path: string; value: string }>;
+export function assetProblems(doc: unknown, components?: unknown): FileProblem[];
+export function assetList(doc: unknown, components?: unknown): string[];
+export function libraryEntryProblems(entry: unknown, at?: string, opts?: { links?: unknown }): FileProblem[];
+export function parseGuardedJson(text: unknown, maxBytes?: number): { ok: true; value: unknown } | { ok: false; problems: FileProblem[] };
+export function studioFileProblems(file: unknown, opts?: { links?: unknown }): FileProblem[];
+export function parseStudioFile(text: unknown, opts?: { links?: unknown }): { ok: true; file: StudioFile } | { ok: false; problems: FileProblem[] };
+export function freshStudioFile(file: StudioFile, opts?: { uid?: () => string; componentUid?: () => string; taken?: Iterable<string>; keepComponents?: boolean }): {
+  doc: Record<string, unknown>; exposed?: ExposedField[];
+  idMap: { blocks: Map<string, string>; components: Map<string, string>; defs: Record<string, Map<string, string>> };
+};
+export function exportStudioFile(input: { kind: StudioFileKind; doc: unknown; id?: string; name?: string; exposed?: ExposedField[] | null; origin?: string; exportedAt?: string }, opts?: { links?: unknown }): { file: StudioFile; problems: FileProblem[] };
+export function studioFileText(file: StudioFile): string;
+export function studioFileName(name: unknown, fallback?: string): string;
+export function parseBlocksPaste(input: unknown, pageComponents?: unknown, opts?: { links?: unknown }): { ok: true; file: StudioFile; dropped: number } | { ok: false; problems: FileProblem[] };

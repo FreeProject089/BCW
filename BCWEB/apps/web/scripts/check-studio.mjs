@@ -78,6 +78,10 @@ try {
     'export const renderComponentMode = (value, exposed) => renderToStaticMarkup(',
     '  <I18nProvider><CanvasStudio layout="page" value={value} onChange={() => {}} componentMode={{ exposed, onExposed() {} }}',
     '    chrome={{ title: "Component", state: "saved", canSave: false, onSave() {}, onBack() {} }} /></I18nProvider>);',
+    // Studio phase 7c: the export buttons of a library component and of a preset card.
+    "import { LibraryComponents } from '../src/editor/studio-component-editor.jsx';",
+    'export const libraryIO = (entries) => renderToStaticMarkup(<I18nProvider><LibraryComponents t={tt} entries={entries} onInsert={() => {}} onOpen={null} onExport={() => {}} /></I18nProvider>);',
+    'export const galleryIO = (entries) => renderToStaticMarkup(<I18nProvider><PresetGallery t={tt} lang="en" entries={entries} onUse={() => {}} onExport={() => {}} /></I18nProvider>);',
     'export const renderLoose = (value) => renderToStaticMarkup(',
     '  <I18nProvider><CanvasStudio layout="page" value={value} onChange={() => {}}',
     '    chrome={{ title: "Doc", state: "dirty", canSave: true, onSave() {}, onBack() {} }} /></I18nProvider>);',
@@ -108,8 +112,8 @@ try {
 }
 
 let render; let page; let renderPage; let renderLoose; let stack; let setStudioLinks;
-let pagesPanel; let gallery; let thumb; let renderWithPages; let renderComponentMode; let toolbar; let inspector;
-try { ({ render, page, renderPage, renderLoose, stack, setStudioLinks, pagesPanel, gallery, thumb, renderWithPages, renderComponentMode, toolbar, inspector } = await import(pathToFileURL(bundle).href)); }
+let pagesPanel; let gallery; let thumb; let renderWithPages; let renderComponentMode; let toolbar; let inspector; let libraryIO; let galleryIO;
+try { ({ render, page, renderPage, renderLoose, stack, setStudioLinks, pagesPanel, gallery, thumb, renderWithPages, renderComponentMode, toolbar, inspector, libraryIO, galleryIO } = await import(pathToFileURL(bundle).href)); }
 catch (e) { console.error(`✗ the studio would not load: ${e?.message || e}`); cleanup(); process.exit(1); }
 
 const problems = [];
@@ -826,6 +830,92 @@ try {
   const appSrc7 = (await import('node:fs')).readFileSync('src/App.jsx', 'utf8');
   must(/path="\/studio\/component\/:scope\/:id"/.test(appSrc7), 'there is no component mode route');
 } catch (e) { problems.push(`the phase 7b render threw: ${e?.message || e}`); }
+
+// ── Import / export (PLAN-STUDIO-2026, phase 7c). ────────────────────────────────────
+// A page, a component and a preset each carry an Export in their own menu (the page list, the
+// library list, the gallery card); the page list and the preset gallery carry an Import; the
+// studio takes a dropped file anywhere on it; Ctrl+V is read by the SAME package function as a
+// file. What a static render and the source can prove:
+//   · the buttons are there, one per page, component and preset, and not on the page chooser
+//     outside the studio (it has no studio to import into);
+//   · a page exported then imported RENDERS the same for a reader, id for id (the markup of the
+//     original and of the import, the import's ids put back, are identical);
+//   · a stored document carrying the reserved names an import refuses (__proto__, constructor)
+//     renders without throwing, draws nothing of the hostile definition and pollutes nothing;
+//   · the paste handler has no reader of its own any more.
+// Each assertion was checked by breaking what it guards (phase 7c report).
+try {
+  const io = await import(pathToFileURL(join(process.cwd(), 'src/lib/canvas.js')).href);
+  const { codedPresets: coded7 } = await import(pathToFileURL(join(process.cwd(), 'src/lib/studio-components.js')).href);
+  const noop = () => {};
+  const PAGES7 = {
+    kind: 'project', currentId: 'pb', canEditList: true, busy: false,
+    list: [{ id: 'pa', title: 'Alpha', hidden: false, blocks: 1, dirty: false }, { id: 'pb', title: 'Beta', hidden: false, blocks: 1, dirty: false }],
+    select: noop, create: noop, duplicate: noop, move: noop, remove: noop, rename: noop, setHidden: noop, docOf: () => null,
+    library: { entries: [], canWrite: { site: false, project: true }, save: noop, remove: noop },
+  };
+  const DOC7 = { v: 2, id: 'pb', title: 'Beta', frames: { desktop: { w: 1200, fit: 'content' }, phone: { w: 390, fit: 'content', mode: 'stack' } },
+    blocks: [{ id: 'b1', kind: 'text', x: 40, y: 40, w: 400, h: 120, z: 0, props: { md: '## Hello' } }] };
+  const st = withWindow(mq(true, false), () => renderWithPages(DOC7, PAGES7));
+  must(tagWith(st, 'data-page-act="export"').length === 2, `the page list offers ${tagWith(st, 'data-page-act="export"').length} Export button(s) for 2 pages`);
+  must(tagWith(st, 'data-io-import').length >= 2, 'the page list or the preset gallery offers no Import in the studio');
+  const chooser = pagesPanel(PAGES7);
+  must(!/data-page-act="export"|data-io-import/.test(chooser), 'the page chooser outside the studio offers export or import, which it cannot run');
+  const lib7 = libraryIO([{ id: 'cp1', name: 'Card', sort: 'component', scope: 'project', doc: DOC7 }, { id: 'cp2', name: 'Hero', sort: 'component', scope: 'site', doc: DOC7 }]);
+  must(tagWith(lib7, 'data-cmp-export=').length === 2, 'a library component has no Export in its row');
+  const g7 = galleryIO(coded7());
+  must(tagWith(g7, 'data-preset-export').length === tagWith(g7, 'data-preset-use').length && tagWith(g7, 'data-preset-export').length >= 7, 'a preset card has no Export');
+  must(/aria-label="Export the preset [^"]+ as a file"/.test(g7), 'a preset\'s Export has no accessible name');
+
+  // The round trip, as a READER gets it.
+  const RT = {
+    v: 2, id: 'rt', title: 'Round trip', frames: DOC7.frames, background: { type: 'color', color: '#112233' },
+    blocks: [
+      { id: 'grp', kind: 'group', x: 40, y: 40, w: 600, h: 300, z: 0 },
+      { id: 'in1', kind: 'text', x: 16, y: 16, w: 300, h: 80, z: 1, parent: 'grp', props: { md: 'RT-IN-GROUP' } },
+      { id: 'tbs', kind: 'tabs', x: 40, y: 400, w: 600, h: 300, z: 2, props: { tabs: ['One', 'Two'] } },
+      { id: 'in2', kind: 'text', x: 16, y: 16, w: 300, h: 80, z: 3, parent: 'tbs', slot: 1, props: { md: 'RT-TAB-TWO' } },
+      { id: 'dlg', kind: 'modal', x: 1400, y: 40, w: 400, h: 240, z: 4, props: { title: 'RT-DIALOG' } },
+      { id: 'pic', kind: 'image', x: 700, y: 40, w: 300, h: 200, z: 5, props: { src: '/uploads/rt.png', alt: 'RT' } },
+      { id: 'btn', kind: 'button', x: 700, y: 300, w: 200, h: 56, z: 6, props: { label: 'RT-GO' }, action: [{ type: 'reveal', target: 'grp' }, { type: 'tab', target: 'tbs', index: 1 }, { type: 'modal', target: 'dlg' }] },
+    ],
+  };
+  const stored7 = io.serializeDoc(io.normalizeDoc(RT));
+  const ex = io.exportStudioFile({ kind: 'page', doc: stored7, id: 'rt' });
+  must(!ex.problems.length, `a valid page was refused at export: ${JSON.stringify(ex.problems)}`);
+  const parsed = io.parseStudioFile(io.studioFileText(ex.file));
+  must(parsed.ok, `a page's own export was refused at import: ${JSON.stringify(parsed.problems)}`);
+  if (parsed.ok) {
+    let k = 0;
+    const fresh = io.freshStudioFile(parsed.file, { uid: () => `zqx${String(k++).padStart(3, '0')}qz` });
+    const imported = { ...fresh.doc, id: 'rt' };
+    must(!imported.blocks.some((b) => RT.blocks.some((o) => o.id === b.id)), 'an imported block kept its id from the file');
+    const putBack = (html) => { let h = html; for (const [o, n] of fresh.idMap.blocks) h = h.split(n).join(o); return h; };
+    for (const [name, a, b] of [['scaled', page(stored7, 'light'), page(imported, 'light')], ['stacked', stack(stored7), stack(imported)]]) {
+      must(a.includes('RT-IN-GROUP') && a.includes('RT-GO'), `${name}: the round-trip page did not render at all`);
+      must(putBack(b) === a, `${name}: the imported page does not render as the exported one (ids put back)`);
+    }
+  }
+
+  // Stored anyway: the reserved names an import refuses are inert in the renderer.
+  const HOSTILE7 = JSON.parse('{"v":2,"id":"h7","frames":{"desktop":{"w":1200,"fit":"content"},"phone":{"w":390,"fit":"content","mode":"stack"}},'
+    + '"blocks":[{"id":"i1","kind":"instance","x":0,"y":0,"w":8,"h":8,"component":{"id":"__proto__"}},{"id":"i2","kind":"instance","x":0,"y":100,"w":8,"h":8,"component":{"id":"constructor","overrides":{"__proto__":{"polluted":1}}}},'
+    + '{"id":"t1","kind":"text","x":0,"y":300,"w":200,"h":60,"props":{"md":"H7-VISIBLE"}}],'
+    + '"components":{"__proto__":{"name":"P","scope":"site","doc":{"v":2,"blocks":[{"id":"x","kind":"text","x":0,"y":0,"w":10,"h":10,"props":{"md":"H7-PWN"}}]},"exposed":[]}}}');
+  for (const [name, fn] of [['scaled', () => page(HOSTILE7, 'light')], ['stacked', () => stack(HOSTILE7)]]) {
+    let out = '';
+    try { out = fn(); } catch (e) { problems.push(`${name}: a stored document with reserved names threw: ${e?.message || e}`); continue; }
+    must(out.includes('H7-VISIBLE'), `${name}: the page around the reserved names was not drawn`);
+    must(!out.includes('H7-PWN'), `${name}: a definition stored under __proto__ was drawn`);
+  }
+  must(({}).polluted === undefined, 'rendering a stored document polluted Object.prototype');
+
+  // One reader: the paste has no normaliser of its own, the studio takes a dropped file.
+  const cs7 = (await import('node:fs')).readFileSync('src/editor/canvas-studio.jsx', 'utf8');
+  must(/io\.pasteBlocks\(/.test(cs7) && !/normalizeCanvas\(\{\s*blocks:\s*list/.test(cs7), 'the paste reads the clipboard with its own normaliser again, not the import\'s reader');
+  must(/\{\.\.\.io\.dropProps\}/.test(cs7) && /<DropOverlay\b/.test(cs7), 'the studio no longer takes a dropped file');
+  must(/<StudioIODialog\b/.test(cs7), 'the studio no longer says why a file was refused');
+} catch (e) { problems.push(`the phase 7c render threw: ${e?.message || e}`); }
 
 // ── Finishing (PLAN-STUDIO-2026, phase 8). ───────────────────────────────────────────
 // One surface (D1), a CONTEXTUAL tool bar, panels and inspector that adapt to what is edited.

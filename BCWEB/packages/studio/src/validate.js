@@ -38,6 +38,19 @@ import {
 /** A page, serialised, may not be larger than this. */
 export const MAX_DOC_BYTES = LIMITS.bytes;
 
+/**
+ * Names that are never a component id, an exposed key or an override key (phase 7c). Each of
+ * those becomes a KEY of a plain object somewhere (a page's map of definitions, an instance's
+ * overrides), and `obj['__proto__'] = v` does not add a key, it replaces the object's
+ * prototype; `constructor` and `prototype` name what every object already inherits. An
+ * imported file is the obvious carrier, so the file reader refuses them anywhere as a key
+ * (io.js); here they are refused where a save would store them as one.
+ */
+export const RESERVED_NAMES = ['__proto__', 'constructor', 'prototype'];
+const reserved = (s) => RESERVED_NAMES.includes(s);
+/** `map[key]` when the map OWNS it (never what every object inherits, like `map.__proto__`). */
+const own = (map, key) => (isObj(map) && typeof key === 'string' && Object.prototype.hasOwnProperty.call(map, key) ? map[key] : undefined);
+
 /** The fields a document may have at the top, by version. */
 // `hidden` (phase 6): a page kept in the studio and out of the public page's tabs.
 // `components` (phase 7b): the definitions the page's instances copy (components.js).
@@ -103,7 +116,8 @@ export function pinsToViewport(css) {
  * `too_short`, and for the tree of containers (tree.js, phase 7a): `unknown_parent`,
  * `self_parent`, `not_container`, `cycle`, `too_deep`, `modal_nested`, `outside_parent`, and for
  * components (phase 7b, components.js): `unknown_component`, `not_exposed`, `component_cycle`,
- * `instance_too_deep`, `too_many_expanded`, `unknown_block`, `duplicate`, `required`, `not_allowed`.
+ * `instance_too_deep`, `too_many_expanded`, `unknown_block`, `duplicate`, `required`, `not_allowed`, and
+ * (phase 7c) `duplicate_id` for two blocks under one id.
  *
  * @param {unknown} doc
  * @param {string} [prefix]  prepended to every path, e.g. `canvases[2]`
@@ -176,6 +190,14 @@ export function validateDoc(doc, prefix = '', opts = {}) {
     containers: expanded ? new Map([...containerInfo(expanded.blocks), ...containerInfo(blocks)]) : containerInfo(blocks),
   };
   blocks.forEach((b, i) => blockProblems(b, i, add, actx));
+  // Two blocks under one id (phase 7c): the normaliser would rename the second, and whatever
+  // named it (a container link, a step's target) would silently point at the first.
+  const seenIds = new Set();
+  blocks.forEach((b, i) => {
+    if (!isObj(b) || typeof b.id !== 'string' || !b.id) return;
+    if (seenIds.has(b.id)) add(`blocks[${i}].id`, 'duplicate_id', b.id, b.id);
+    else seenIds.add(b.id);
+  });
   if (c.components != null) {
     if (nested) add('components', 'not_allowed', null);
     else mapProblems(c.components, pre, out, add, opts);
@@ -397,7 +419,7 @@ export function exposedProblems(raw, blocks, push, at = 'exposed') {
     const p = `${at}[${j}]`;
     if (!isObj(e)) { push(p, 'bad_type', null); return; }
     keysOnly(e, EXPOSED_KEYS, p, push);
-    if (typeof e.key !== 'string' || !EXPOSED_KEY.test(e.key)) push(`${p}.key`, 'bad_id', e.key);
+    if (typeof e.key !== 'string' || !EXPOSED_KEY.test(e.key) || reserved(e.key)) push(`${p}.key`, 'bad_id', e.key);
     else if (seen.has(e.key)) push(`${p}.key`, 'duplicate', e.key);
     else seen.add(e.key);
     if (typeof e.block !== 'string' || !kinds.has(e.block)) push(`${p}.block`, 'unknown_block', e.block);
@@ -416,7 +438,7 @@ function mapProblems(raw, pre, out, add, opts) {
   for (const cid of ids.slice(0, MAX_DOC_COMPONENTS + 1)) {
     const at = `components.${cid}`;
     const push = (path, reason, value) => add(path ? `${at}.${path}` : at, reason, value, cid);
-    if (!ID_SHAPE.test(cid)) { add(at, 'bad_id', cid); continue; }
+    if (!ID_SHAPE.test(cid) || reserved(cid)) { add(at, 'bad_id', cid); continue; }
     const s = raw[cid];
     if (!isObj(s)) { push('', 'bad_type', null); continue; }
     keysOnly(s, SNAPSHOT_KEYS, '', push);
@@ -446,7 +468,7 @@ function instanceProblems(blocks, map, add, links) {
     const bid = typeof b.id === 'string' ? b.id : '';
     const at = `blocks[${i}].component`;
     const cid = b.component.id;
-    const snap = typeof cid === 'string' && isObj(map) && isObj(map[cid]) ? map[cid] : null;
+    const snap = isObj(own(map, cid)) ? own(map, cid) : null;
     if (typeof cid === 'string' && ID_SHAPE.test(cid) && !snap) add(`${at}.id`, 'unknown_component', cid, bid);
     const ov = b.component.overrides;
     if (ov == null) return;
@@ -462,7 +484,7 @@ function instanceProblems(blocks, map, add, links) {
     };
     for (const k of keys.slice(0, MAX_EXPOSED + 1)) {
       const kp = `${at}.overrides.${k}`;
-      const e = EXPOSED_KEY.test(k) ? exposed.find((x) => isObj(x) && x.key === k) : null;
+      const e = EXPOSED_KEY.test(k) && !reserved(k) ? exposed.find((x) => isObj(x) && x.key === k) : null;
       const db = e ? defBlocks.find((x) => x.id === e.block) : null;
       if (!e || !db || !exposableFor(db.kind).includes(e.field)) { add(kp, 'not_exposed', k, bid); continue; }
       const probe = withFieldValue(db, e.field, ov[k]);

@@ -14,3 +14,5 @@ export * from './patterns.js';
 export * from './scene.js';
 export * from './tree.js';
 export * from './components.js';
+// Studio files (phase 7c): the .bcwstudio.json format, its reader and its fresh ids.
+export * from './io.js';

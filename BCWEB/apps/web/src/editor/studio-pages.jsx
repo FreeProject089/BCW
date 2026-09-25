@@ -16,11 +16,13 @@
 // Enter commits and Escape abandons; the gallery's sorts are a tablist with arrow keys.
 import { useMemo, useRef, useState } from 'react';
 import {
-  FileText, Plus, ChevronUp, ChevronDown, Copy, Eye, EyeOff, Trash2, Pencil, Check, X, LayoutTemplate, Save,
+  FileText, Plus, ChevronUp, ChevronDown, Copy, Eye, EyeOff, Trash2, Pencil, Check, X, LayoutTemplate, Save, Download,
 } from 'lucide-react';
 import { Button, Field, Input, Select, Modal } from '../ui/ui.jsx';
 import CanvasThumb from '../ui/canvas-thumb.jsx';
 import { PRESET_SORTS } from '../lib/studio-components.js';
+// Phase 7c: export a page or a preset, import a studio file (editor/studio-io.js).
+import { ImportButton } from './studio-io-panel.jsx';
 
 /** Literal keys (i18n-check reads literals only). */
 function sortName(t, sort) {
@@ -46,7 +48,7 @@ function scopeName(t, scope) {
  *   blocks, dirty }], currentId, canEditList, busy, select(id), rename(id, title),
  *   move(id, dir), duplicate(id), setHidden(id, bool), remove(id), create(entry) , library }
  */
-export function PagesPanel({ t, lang, pages }) {
+export function PagesPanel({ t, lang, pages, onImport = null, onExport = null }) {
   const [editing, setEditing] = useState(null);   // { id, value }
   const [newOpen, setNewOpen] = useState(false);
   if (!pages) {
@@ -108,8 +110,13 @@ export function PagesPanel({ t, lang, pages }) {
                   )}
                 </div>
               )}
-              {canEditList && editing?.id !== pg.id && (
-                <div className="flex items-center gap-1 mt-1 pl-5">
+              {(canEditList || onExport) && editing?.id !== pg.id && (
+                <div className="flex items-center gap-1 mt-1 pl-5 flex-wrap">
+                  {onExport && (
+                    <Button size="sm" variant="ghost" className="!px-1.5 !py-0.5 text-[11px]" onClick={() => onExport(pg.id)}
+                      aria-label={t('cst.io.export.page', 'Export {page} as a file').replace('{page}', label)} title={t('cst.io.export.page', 'Export {page} as a file').replace('{page}', label)} data-page-act="export"><Download size={12} /> {t('cst.io.export.s', 'Export')}</Button>
+                  )}
+                  {canEditList && (<>
                   <Button size="sm" variant="ghost" className="!px-1.5 !py-0.5 text-[11px]" disabled={busy} onClick={() => pages.duplicate(pg.id)}
                     aria-label={t('cst.pages.dup', 'Duplicate {page}').replace('{page}', label)} data-page-act="duplicate"><Copy size={12} /> {t('cst.pages.dup.s', 'Duplicate')}</Button>
                   <Button size="sm" variant="ghost" className="!px-1.5 !py-0.5 text-[11px]" disabled={busy} onClick={() => pages.setHidden(pg.id, !pg.hidden)}
@@ -118,6 +125,7 @@ export function PagesPanel({ t, lang, pages }) {
                   </Button>
                   <Button size="sm" variant="ghost" className="!px-1.5 !py-0.5 text-[11px] !text-[var(--error)]" disabled={busy} onClick={() => pages.remove(pg.id)}
                     aria-label={t('cst.pages.del', 'Delete {page}').replace('{page}', label)} data-page-act="delete"><Trash2 size={12} /> {t('cst.pages.del.s', 'Delete')}</Button>
+                  </>)}
                 </div>
               )}
             </li>
@@ -129,6 +137,7 @@ export function PagesPanel({ t, lang, pages }) {
           <Plus size={14} /> {t('cst.pages.new', 'New page')}
         </Button>
       )}
+      <ImportButton t={t} onImport={onImport} label={canEditList ? t('cst.io.import.page', 'Import a page from a file') : ''} />
       {newOpen && (
         <Modal open onClose={() => setNewOpen(false)} title={t('cst.pages.new.title', 'Start a page from…')} icon={LayoutTemplate} width="max-w-3xl">
           <PresetGallery t={t} lang={lang} entries={(pages.library?.entries || []).filter((e) => e.sort === 'page')} sorts={['page']}
@@ -143,7 +152,7 @@ export function PagesPanel({ t, lang, pages }) {
  * The gallery: tabs per sort, a filter per scope, a card per preset with its thumbnail.
  * `onUse(entry)`; `onDelete(entry)` for an entry of a library the author may write.
  */
-export function PresetGallery({ t, lang, entries, sorts = PRESET_SORTS, onUse, onDelete = null, canDelete = () => false }) {
+export function PresetGallery({ t, lang, entries, sorts = PRESET_SORTS, onUse, onDelete = null, canDelete = () => false, onExport = null }) {
   const [sort, setSort] = useState(sorts[0]);
   const [scope, setScope] = useState('all');
   const tabs = useRef([]);
@@ -196,6 +205,10 @@ export function PresetGallery({ t, lang, entries, sorts = PRESET_SORTS, onUse, o
               <div className="flex items-center gap-1">
                 <Button size="sm" variant="ghost" className="flex-1 justify-center !py-0.5 text-[11px]" onClick={() => onUse(e)}
                   aria-label={t('cst.pr.use', 'Use {name}').replace('{name}', name)} data-preset-use>{t('cst.pr.use.s', 'Use')}</Button>
+                {onExport && (
+                  <Button size="sm" variant="ghost" className="!px-1.5 !py-0.5" onClick={() => onExport(e)} data-preset-export
+                    aria-label={t('cst.io.export.preset', 'Export the preset {name} as a file').replace('{name}', name)} title={t('cst.io.export.preset', 'Export the preset {name} as a file').replace('{name}', name)}><Download size={12} /></Button>
+                )}
                 {onDelete && canDelete(e) && (
                   <Button size="sm" variant="ghost" className="!px-1.5 !py-0.5 !text-[var(--error)]" onClick={() => onDelete(e)}
                     aria-label={t('cst.pr.delete', 'Delete the preset {name}').replace('{name}', name)} title={t('cst.pr.delete', 'Delete the preset {name}').replace('{name}', name)}><Trash2 size={12} /></Button>
@@ -214,19 +227,20 @@ export function PresetGallery({ t, lang, entries, sorts = PRESET_SORTS, onUse, o
  * preset" into a library the author may write (the page's own, and the site's with
  * manage_studio; the server checks both again).
  */
-export function PresetsPanel({ t, lang, library, onApply, onSaveAs, canSection, canComponent, sorts = PRESET_SORTS }) {
+export function PresetsPanel({ t, lang, library, onApply, onSaveAs, canSection, canComponent, sorts = PRESET_SORTS, onImport = null, onExport = null }) {
   const [saveOpen, setSaveOpen] = useState(false);
   if (!library) return <p className="text-[11px] text-[var(--muted)]">{t('cst.pages.none', 'This page is edited on its own: open it from a project to see its other pages.')}</p>;
   const scopes = [library.canWrite?.project && 'project', library.canWrite?.site && 'site'].filter(Boolean);
   return (
     <div className="space-y-2" data-tour="presets">
       {library.error && <p className="text-[11px] text-warning" role="status">{t('cst.pr.loadfail', 'The shared presets could not be loaded; the built-in ones are shown.')}</p>}
-      <PresetGallery t={t} lang={lang} entries={library.entries} onUse={onApply} sorts={sorts}
+      <PresetGallery t={t} lang={lang} entries={library.entries} onUse={onApply} sorts={sorts} onExport={onExport}
         onDelete={(e) => library.remove(e)} canDelete={(e) => (e.scope === 'site' && library.canWrite?.site) || (e.scope === 'project' && library.canWrite?.project)} />
       <Button size="sm" variant="ghost" className="w-full justify-center" disabled={!scopes.length} onClick={() => setSaveOpen(true)} data-preset-save
         title={scopes.length ? undefined : t('cst.pr.save.no', 'You cannot write to a preset library here.')}>
         <Save size={13} /> {t('cst.pr.save', 'Save as preset')}
       </Button>
+      {scopes.length > 0 && <ImportButton t={t} onImport={onImport} label={t('cst.io.import.preset', 'Import a preset from a file')} />}
       {saveOpen && (
         <SavePresetModal t={t} scopes={scopes} canSection={canSection} canComponent={canComponent}
           onClose={() => setSaveOpen(false)} onSave={async (name, sort, scope) => { const ok = await onSaveAs(name, sort, scope); if (ok) setSaveOpen(false); }} />

@@ -24,9 +24,10 @@
 import {
   validateDoc, safeLink, cssValueOk, pinsToViewport, ID_SHAPE, MAX_DOC_BYTES,
   migrateDocActions, normalizeLinkPolicy, linkPolicyProblems, DEFAULT_LINK_POLICY, exposedProblems,
+  libraryEntryProblems,
 } from '../../../../packages/studio/src/index.js';
 
-export { safeLink, cssValueOk, pinsToViewport, ID_SHAPE, MAX_DOC_BYTES, normalizeLinkPolicy, linkPolicyProblems, exposedProblems };
+export { safeLink, cssValueOk, pinsToViewport, ID_SHAPE, MAX_DOC_BYTES, normalizeLinkPolicy, linkPolicyProblems, exposedProblems, libraryEntryProblems };
 
 // ── The link policy (PLAN-STUDIO-2026 decision D7, phase 5) ────────────────────────────
 // Which hosts a studio `external` step may open: `{ mode: 'block' | 'allow', hosts }`, an

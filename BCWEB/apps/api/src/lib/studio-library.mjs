@@ -19,7 +19,7 @@
 // pages, so a `javascript:` button, a CSS value that fetches or an unknown field is refused here
 // with its path. No legacy tolerance: a library is new in phase 6, nothing old is in it.
 import { createHash } from 'node:crypto';
-import { studioDocProblems, studioDocError, exposedProblems, ID_SHAPE, MAX_DOC_BYTES } from './studio-doc.mjs';
+import { studioDocError, libraryEntryProblems } from './studio-doc.mjs';
 
 export const PRESET_SORTS = ['page', 'section', 'background', 'component'];
 export const LIBRARY_LIMITS = { entries: 60, name: 60, bytes: 1_500_000 };
@@ -50,9 +50,8 @@ export function readLibrary(value) {
   return list.filter((e) => e && typeof e === 'object' && typeof e.id === 'string' && PRESET_SORTS.includes(e.sort) && e.doc && typeof e.doc === 'object');
 }
 
-// `exposed` (phase 7b): the fields an instance of a COMPONENT may change (validate.js
-// exposedProblems); no other sort has any.
-const ENTRY_KEYS = ['id', 'name', 'sort', 'doc', 'createdAt', 'exposed'];
+// An entry's fields (`exposed`, phase 7b: a COMPONENT's fields a copy may change) are checked by
+// the studio package's libraryEntryProblems (io.js), below.
 
 /**
  * Validate a PUT body `{ entries, base }`. Returns `{ ok: true, entries, base }` or
@@ -71,32 +70,18 @@ export function parseLibrary(body, opts = {}) {
   const problems = [];
   b.entries.forEach((e, i) => {
     const at = `entries[${i}]`;
-    const bad = (path, reason) => problems.push({ path: `${at}${path ? `.${path}` : ''}`, reason });
-    if (!e || typeof e !== 'object' || Array.isArray(e)) return bad('', 'bad_type');
-    for (const k of Object.keys(e)) if (!ENTRY_KEYS.includes(k)) bad(k, 'unknown_field');
-    if (typeof e.id !== 'string' || !ID_SHAPE.test(e.id)) bad('id', 'bad_id');
-    else if (seen.has(e.id)) bad('id', 'duplicate');
-    else seen.add(e.id);
-    const name = typeof e.name === 'string' ? e.name.trim() : '';
-    if (!name || name.length > LIBRARY_LIMITS.name || /[\x00-\x1f\x7f]/.test(name)) bad('name', 'bad_value');
-    if (!PRESET_SORTS.includes(e.sort)) bad('sort', 'bad_value');
+    // One entry's rule is the studio package's (io.js libraryEntryProblems), the SAME function
+    // an imported component or preset is checked by before it is offered here (phase 7c): the
+    // fields, the name, the sort, the doc through validateDoc (a COMPONENT as the definition of
+    // itself, so an instance of it inside is `component_cycle`), the exposed fields, the blocks a
+    // sort needs or may not have, the size. The list's own rule (ids unique) stays here.
+    for (const p of libraryEntryProblems(e, at, opts)) problems.push({ path: p.path, reason: p.reason });
+    if (!e || typeof e !== 'object' || Array.isArray(e)) return;
+    if (typeof e.id === 'string' && seen.has(e.id)) problems.push({ path: `${at}.id`, reason: 'duplicate' });
+    else if (typeof e.id === 'string') seen.add(e.id);
     const doc = e.doc;
-    if (!doc || typeof doc !== 'object' || Array.isArray(doc)) return bad('doc', 'bad_type');
-    // The doc is checked as a page whose id is the entry's (a preset's doc has no page id). A
-    // COMPONENT is checked as the definition of itself (phase 7b): an instance of it inside it,
-    // directly or through the components it uses, is a loop (`component_cycle`, with the path).
-    const selfId = typeof e.id === 'string' && ID_SHAPE.test(e.id) ? e.id : 'preset';
-    for (const p of studioDocProblems({ ...doc, id: selfId }, `${at}.doc`, e.sort === 'component' ? { ...opts, selfComponent: selfId } : opts)) problems.push({ path: p.path, reason: p.reason });
-    if (e.sort === 'component') exposedProblems(e.exposed, Array.isArray(doc.blocks) ? doc.blocks : [], (path, reason) => problems.push({ path: `${at}.${path}`, reason }), 'exposed');
-    else if (e.exposed != null) bad('exposed', 'not_allowed');
-    const blocks = Array.isArray(doc.blocks) ? doc.blocks.length : 0;
-    if (e.sort === 'background' && blocks) bad('doc.blocks', 'not_allowed');
-    if ((e.sort === 'section' || e.sort === 'component') && !blocks) bad('doc.blocks', 'required');
-    if (e.sort === 'component' && blocks > 40) bad('doc.blocks', 'too_many');
-    let bytes = Infinity;
-    try { bytes = JSON.stringify(doc).length; } catch { /* refused */ }
-    if (bytes > MAX_DOC_BYTES) bad('doc', 'too_large');
-    if (e.createdAt != null && !(typeof e.createdAt === 'string' && e.createdAt.length <= 40)) bad('createdAt', 'bad_value');
+    if (!doc || typeof doc !== 'object' || Array.isArray(doc)) return;
+    const name = typeof e.name === 'string' ? e.name.trim() : '';
     out.push({ id: e.id, name, sort: e.sort, doc: { ...doc, id: e.id }, ...(e.createdAt ? { createdAt: e.createdAt } : {}),
       ...(e.sort === 'component' && Array.isArray(e.exposed) ? { exposed: e.exposed } : {}) });
   });

@@ -35,6 +35,17 @@ Also exported: the layout rules (`layoutFor`, `inFrame`, `phoneBoardBlocks`), th
 `buttonTarget`), the CSS scoper (`scopeCss`, `safeCssValue`) and the SVG sanitiser
 (`sanitizeSvg`). Types are in `src/index.d.ts`.
 
+## Studio files (`.bcwstudio.json`)
+
+`src/io.js` is the exchange format for a page, a component or a preset: `{ format: 'bcw-studio',
+version: 1, kind, doc, components?, exposed?, assets }`, pictures and files by address only (this
+site's `/uploads/...` or `/api/media/...`, never another host's). `parseStudioFile(text, { links })`
+reads one with the SAME checks as a save (`validateDoc`, and `libraryEntryProblems` for a
+component or a preset) plus a size cap (2 MB), a nesting cap and a refusal of `__proto__`,
+`constructor` and `prototype` as keys; `freshStudioFile` gives every block and component a new id;
+`exportStudioFile` refuses what an import would refuse. A paste of copied blocks is read by the same
+function (`parseBlocksPaste`).
+
 ## Limits
 
 A page is at most 300 KB of JSON and 500 blocks; `props` are an allow-list per block kind. See

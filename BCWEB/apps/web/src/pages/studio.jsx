@@ -474,8 +474,11 @@ export default function StudioPage() {
       setHidden: (pid, hidden) => setMeta(pid, { hidden }),
       library,
       openComponent: kind === 'home' ? null : openComponent,
+      // Phase 7c: a page's document as this tab has it (its draft, else the stored one), for
+      // "Export" in the page list (editor/studio-io.js).
+      docOf: (pid) => drafts[pid]?.canvas || canvasById(target.config, pid, kind),
     };
-  }, [target, kind, dirtyIds, pendingDel, pageId, busy, select, create, duplicate, move, remove, setMeta, library, openComponent]);
+  }, [target, kind, dirtyIds, pendingDel, pageId, busy, select, create, duplicate, move, remove, setMeta, library, openComponent, drafts]);
 
   // The whole public page, with THIS canvas in its tab: the REAL route, framed at a device
   // width, fed the draft (editor/studio-page-frame.jsx, lib/studio-preview.js).

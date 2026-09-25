@@ -1607,6 +1607,22 @@ html[data-studio-open="1"], html[data-studio-open="1"] body { overflow: hidden; 
   border: 1px solid var(--line); border-radius: 18px; text-align: center;
 }
 
+/* A studio file dragged over the studio (phase 7c, editor/studio-io-panel.jsx). The layer never
+   takes the pointer: the drop lands on .cst-page, which owns the handlers, whatever is under
+   the pointer. The card is opaque (a popup over a translucent surface would show the panel
+   behind through its text), and nothing moves: no animation to switch off for reduced motion. */
+.cst-io-drop {
+  position: absolute; inset: 0; z-index: 60; pointer-events: none;
+  display: grid; place-items: center;
+  background: color-mix(in srgb, var(--bg-solid) 55%, transparent);
+  outline: 2px dashed var(--accent-ink); outline-offset: -10px;
+}
+.cst-io-drop-card {
+  max-width: 22rem; padding: 20px 24px; text-align: center;
+  border: 1px solid var(--line-strong); border-radius: 16px;
+  background: var(--bg-solid); box-shadow: 0 10px 40px -18px rgba(0,0,0,.45);
+}
+
 /* A hosting plan under the pointer.
 
    Four price cards sit still while you read across them, so nothing says which one you are

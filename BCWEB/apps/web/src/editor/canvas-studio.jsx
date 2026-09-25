@@ -11,7 +11,7 @@ import {
   ArrowLeft, X, MonitorSmartphone,
 } from 'lucide-react';
 import { createPortal } from 'react-dom';
-import { Button, Modal, useToast } from '../ui/ui.jsx';
+import { Button, Modal, useToast, useDialog } from '../ui/ui.jsx';
 import { useI18n } from '../i18n.jsx';
 import { api } from '../lib/api.js';
 import { stepZoom } from '../lib/studio-page.js';
@@ -57,6 +57,9 @@ import { BoardBlock } from './studio-board.jsx';
 import { PagePanel } from './studio-page-panel.jsx';
 import { Toolbar } from './studio-toolbar.jsx';
 import { Inspector, ComponentSection } from './studio-inspector.jsx';
+// Studio phase 7c: export and import (.bcwstudio.json), a dropped file, and the paste, one reader.
+import { useStudioIO } from './studio-io.js';
+import { StudioIODialog, DropOverlay, ImportButton } from './studio-io-panel.jsx';
 
 const uid = () => `b${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
 
@@ -129,6 +132,7 @@ const NEW_BLOCK = {
 export default function CanvasStudio({ value, onChange, chrome = null, renderPage = null, pages = null, componentMode = null }) {
   const { t, lang } = useI18n();
   const toast = useToast();
+  const dialog = useDialog();
   const canvas = useMemo(() => normalizeCanvas(value), [value]);
   // A SET of ids. Everything that was written for one block still works — `sel` is the single
   // selection when there is exactly one — and the group operations read the whole set.
@@ -549,6 +553,8 @@ export default function CanvasStudio({ value, onChange, chrome = null, renderPag
     setRevealId(tops[0].id);
     if (!wide) setPane('canvas');
   };
+  // Phase 7c: export, import and paste (studio-io.js); every rule is the package's (io.js).
+  const io = useStudioIO({ t, toast, dialog, canvas, emit, addBlocks, pages, componentMode, uid });
   /**
    * Add a block. Inside a container being edited (phase 7a) it lands in that container (in the
    * tab the board shows), when the container can take one more level; otherwise on the page. A
@@ -1209,33 +1215,23 @@ export default function CanvasStudio({ value, onChange, chrome = null, renderPag
           const { parent: _p, slot: _s, treeError: _e, ...rest } = b;
           return { ...rest, x: v.x, y: v.y };
         });
-        clip.current = picked;
-        try { navigator.clipboard?.writeText(JSON.stringify({ bcwBlocks: picked })); } catch { /* no clipboard: the ref still works */ }
+        // As STORED (serializeDoc): what the paste reads back is checked like a saved page, and a
+        // normalised block carries fields no stored one has.
+        clip.current = serializeDoc(canvas, { blocks: picked }).blocks;
+        // A refusal (an unfocused document, no permission) is a REJECTED promise, not a throw.
+        try { navigator.clipboard?.writeText(JSON.stringify({ bcwBlocks: clip.current }))?.catch?.(() => {}); } catch { /* no clipboard: the ref still works */ }
         return;
       }
       if (mod && e.key.toLowerCase() === 'v' && !typing) {
-        const paste = (list) => {
-          if (!Array.isArray(list) || !list.length) return;
-          // Through the normaliser first: the clipboard is outside input, and a pasted block
-          // used to keep every field it came with until the next save (S8). Offset on the
-          // desktop plane, then placed on the board being edited.
-          const clean = normalizeCanvas({ blocks: list.slice(0, 200) }).blocks;
-          // Fresh ids, and a container's blocks pointed at the copy of their container (phase
-          // 7a); a block whose container was not copied lands on the page.
-          const idMap = new Map(clean.map((b) => [b.id, uid()]));
-          // Offset, not clamped (v2): a block copied from beside the page lands beside it.
-          addBlocks(clean.map((b) => {
-            const { parent: p, slot, treeError: _e, ...rest } = b;
-            const np = p && !b.treeError && idMap.has(p) ? idMap.get(p) : '';
-            // A linked copy (phase 7b) stays linked when its component is on this page.
-            const keep = b.kind === 'instance' && b.component && canvas.components?.[b.component.id] ? b.component : null;
-            return np
-              ? { ...rest, id: idMap.get(b.id), parent: np, ...(slot ? { slot } : {}), component: keep }
-              : { ...rest, id: idMap.get(b.id), x: b.x + GRID * 3, y: b.y + GRID * 3, component: keep };
-          }).filter((b) => b.kind !== 'instance' || b.component));
-        };
+        // The clipboard is outside input (S8): it goes through the SAME reader as an imported
+        // file (phase 7c, io.js parseBlocksPaste: size, reserved keys, validateDoc, off-site
+        // pictures), then gets fresh ids, a copied container's blocks inside the copy of it. A
+        // text that is not a paste of blocks falls back to what this tab copied.
         e.preventDefault();
-        navigator.clipboard?.readText?.().then((txt) => { try { const j = JSON.parse(txt); if (Array.isArray(j?.bcwBlocks)) return paste(j.bcwBlocks); } catch { /* not ours */ } paste(clip.current); }).catch(() => paste(clip.current));
+        const fromTab = () => { if (clip.current.length) io.pasteBlocks(clip.current); };
+        const read = navigator.clipboard?.readText?.();
+        if (!read) { fromTab(); return; }
+        read.then(async (txt) => { if (!(await io.pasteBlocks(txt))) fromTab(); }).catch(fromTab);
         return;
       }
       if (!selIds.length) return;
@@ -1294,6 +1290,7 @@ export default function CanvasStudio({ value, onChange, chrome = null, renderPag
       </Modal>
     )}
     {compOpen && <SaveComponentDialog t={t} count={chosen.length} destinations={componentDestinations} onSave={saveComponent} onClose={() => setCompOpen(false)} />}
+    <StudioIODialog t={t} refusal={io.refusal} onClose={io.closeRefusal} />
   </>);
   const inspector = (<>
     <Inspector {...{ t, sel, patch, canvas, emit, setSelId, hasDark, onOpenMd: setMdFor, pageList: pages ? pages.list.filter((x) => x.id !== pages.currentId) : null, instanceTools }}
@@ -1476,16 +1473,19 @@ export default function CanvasStudio({ value, onChange, chrome = null, renderPag
         <div className="space-y-3">
           <PageComponents t={t} canvas={canvas} sourceOf={sourceOf} onUpdate={updateCopiesOf} onSelect={(id) => { const b = canvas.blocks.find((x) => x.id === id); setScope(b?.parent || ''); setSelIds([id]); }} />
           <LibraryComponents t={t} entries={(lib?.entries || []).filter((e) => e.sort === 'component' && e.scope !== 'coded')} onInsert={insertLinked}
-            onOpen={pages?.openComponent ? (e) => pages.openComponent(e.scope === 'site' ? 'site' : (lib?.targetScope || 'project'), e.scope === 'site' ? '' : (lib?.targetRef || ''), e.id) : null} />
+            onOpen={pages?.openComponent ? (e) => pages.openComponent(e.scope === 'site' ? 'site' : (lib?.targetScope || 'project'), e.scope === 'site' ? '' : (lib?.targetRef || ''), e.id) : null}
+            onExport={(e) => io.exportEntry(e)} />
           <ComponentsPanel {...{ t, components, insertComponent, deleteComponent }} />
+          {lib && (lib.canWrite?.project || lib.canWrite?.site) && <ImportButton t={t} onImport={io.pick} label={t('cst.io.import.cmp', 'Import a component from a file')} />}
         </div>
       ),
     },
     // Phase 6: the target's pages, and the preset gallery.
-    pages: { title: t('cst.pages', 'Pages'), icon: FileText, render: () => <PagesPanel t={t} lang={lang} pages={pages} /> },
+    pages: { title: t('cst.pages', 'Pages'), icon: FileText, render: () => <PagesPanel t={t} lang={lang} pages={pages} onImport={io.pick} onExport={io.exportPage} /> },
     presets: {
       title: t('cst.presets', 'Presets'), icon: LayoutTemplate,
       render: () => <PresetsPanel t={t} lang={lang} library={pages?.library || null} onApply={applyPreset} onSaveAs={saveAsPreset}
+        onImport={io.pick} onExport={(e) => io.exportEntry(e, true)}
         canSection={chosen.length > 0} canComponent={chosen.length > 0 && chosen.length <= COMPONENT_LIMITS.blocks}
         // The home page cannot make a page, so it is offered no page preset (phase 8).
         sorts={pages?.canEditList === false ? PRESET_SORTS.filter((x) => x !== 'page') : PRESET_SORTS} />,
@@ -1539,7 +1539,10 @@ export default function CanvasStudio({ value, onChange, chrome = null, renderPag
       // are caught here, at the one ancestor both ends of the gesture are inside.
       onPointerMove={dockDrag.drag ? dockDrag.move : undefined}
       onPointerUp={dockDrag.drag ? dockDrag.end : undefined}
-      onPointerCancel={dockDrag.drag ? dockDrag.end : undefined}>
+      onPointerCancel={dockDrag.drag ? dockDrag.end : undefined}
+      // A studio file dropped anywhere on the studio is imported (phase 7c, studio-io.js).
+      {...io.dropProps}>
+      <DropOverlay t={t} on={io.dragging} />
       <PageTopBar {...{ t, chrome, hist, doUndo, doRedo, preview, setPreview, themeSwitch, hasPage: !!renderPage,
         wide, onKeys: () => setKeysOpen(true), onTour: tour.start, panelsMenu, setPanelsMenu, dock, panels, applyDock, resetDock,
         board: editTheme, title: canvas.title || '', offerPage: !componentMode,
