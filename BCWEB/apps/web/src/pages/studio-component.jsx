@@ -179,7 +179,6 @@ export default function StudioComponentPage() {
   return (
     <CanvasStudio
       key={where.cid}
-      layout="page"
       value={doc}
       onChange={(next) => change({ doc: { ...next, id: stored.entry.id } })}
       componentMode={componentMode}

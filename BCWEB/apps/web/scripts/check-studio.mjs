@@ -43,9 +43,20 @@ try {
     "export const stack = (value) => renderToStaticMarkup(",
     '  <I18nProvider><CanvasView canvas={value} stackPreview /></I18nProvider>);',
     // Rendered inside the real provider, the way the app mounts it. Its network fetch lives in
-    // an effect, which renderToStaticMarkup never runs.
+    // an effect, which renderToStaticMarkup never runs. With no props beyond the document: since
+    // studio phase 8 (decision D1) there is ONE form, the full-viewport studio, whatever the caller.
     'export const render = (value) => renderToStaticMarkup(',
     '  <I18nProvider><CanvasStudio value={value} onChange={() => {}} /></I18nProvider>);',
+    // Studio phase 8: the tool bar and the inspector, rendered alone in the states a static
+    // render of the whole studio cannot reach (a selection lives in state).
+    "import { Toolbar } from '../src/editor/studio-toolbar.jsx';",
+    "import { Inspector } from '../src/editor/studio-inspector.jsx';",
+    'const nop = () => {};',
+    'export const toolbar = (selCount, extra = {}) => renderToStaticMarkup(<I18nProvider><Toolbar t={(k, f) => f} zoom="fit" setZoom={nop} zoomBy={nop} fitScale={0.5}',
+    '  onShowAll={nop} frameFit="content" onFitContent={nop} setPanMode={nop} snapOn setSnapOn={nop} showGrid setShowGrid={nop} grid={8} setGrid={nop}',
+    '  selCount={selCount} selBlocks={Array.from({ length: selCount }, (_v, i) => ({ id: "s" + i }))} duplicate={nop} remove={nop} onSaveComponent={nop}',
+    '  doZ={nop} toggleFlag={nop} doAlign={nop} doDistribute={nop} matchSize={nop} stagger={nop} {...extra} /></I18nProvider>);',
+    'export const inspector = (sel) => renderToStaticMarkup(<I18nProvider><Inspector t={(k, f) => f} sel={sel} patch={nop} canvas={{ blocks: [sel] }} emit={nop} setSelId={nop} /></I18nProvider>);',
     // The full-viewport form (/studio/:kind/:id/:index — pages/studio.jsx), with the top bar
     // the page hands it and a page renderer, so the "page preview" button exists.
     'export const renderPage = (value) => renderToStaticMarkup(',
@@ -97,8 +108,8 @@ try {
 }
 
 let render; let page; let renderPage; let renderLoose; let stack; let setStudioLinks;
-let pagesPanel; let gallery; let thumb; let renderWithPages; let renderComponentMode;
-try { ({ render, page, renderPage, renderLoose, stack, setStudioLinks, pagesPanel, gallery, thumb, renderWithPages, renderComponentMode } = await import(pathToFileURL(bundle).href)); }
+let pagesPanel; let gallery; let thumb; let renderWithPages; let renderComponentMode; let toolbar; let inspector;
+try { ({ render, page, renderPage, renderLoose, stack, setStudioLinks, pagesPanel, gallery, thumb, renderWithPages, renderComponentMode, toolbar, inspector } = await import(pathToFileURL(bundle).href)); }
 catch (e) { console.error(`✗ the studio would not load: ${e?.message || e}`); cleanup(); process.exit(1); }
 
 const problems = [];
@@ -136,44 +147,25 @@ try { must(render({ id: 'c2', title: '', height: 400, blocks: [] }).length > 0, 
 catch (e) { problems.push(`an empty canvas threw: ${e?.message || e}`); }
 
 // ── The phone. ───────────────────────────────────────────────────────────────────────────
-// Below 700px the PUBLIC page abandons the canvas and stacks the blocks in reading order, so
-// the studio does too: at 390px the board is drawn at 0.32 and a 12px handle is 4px of glass —
-// an editor for a property (placement) that no phone reader will ever be shown.
+// Below 768px the studio REFUSES, and says why (the site's own tab bar sits exactly where the
+// studio's controls would be, and a 1200px board drawn at 0.3 is not an editor). The compact
+// form's phone list went with the compact form (studio phase 8, decision D1: one surface). What
+// must hold: no board at all (not a shrunken one), the reason in words, and the way back.
 //
 // The mode is decided by matchMedia during the first render, which is exactly what lets it be
-// checked here: stub the query and the component renders the branch a phone gets. Nothing
-// else can reach it — the browser harness cannot mount this component at all, and a resize in
-// the preview pane fires no ResizeObserver because the tab never paints.
+// checked here: stub the query and the component renders the branch a phone gets.
 const priorWindow = globalThis.window;
 globalThis.window = { matchMedia: () => ({ matches: true, addEventListener() {}, removeEventListener() {} }) };
 let phone = '';
-try { phone = render(CANVAS); }
+try { phone = renderPage(CANVAS); }
 catch (e) { problems.push(`the studio threw at phone width: ${e?.message || e}`); }
 finally { if (priorWindow === undefined) delete globalThis.window; else globalThis.window = priorWindow; }
 
 if (phone) {
-  // The board is GONE — not merely shrunk. If it renders here, the phone got the 0.32 plane.
-  must(!/cursor:move/.test(phone), 'at phone width the studio still draws the draggable board instead of the reading-order list');
-  // Every block is present, painted with the same component the public page uses, and in
-  // reading order — b1 (y=32) before b2 (y=240).
-  must(phone.indexOf('Title') >= 0, 'the phone list did not render the blocks');
-  // Reorder + delete per row, and each of the two blocks carries them.
-  // Either language: which one this renders in depends on the provider's default, and the
-  // control is the thing being asserted, not the wording.
-  for (const [label, n] of [['Monter|Move up', 1], ['Descendre|Move down', 1], ['Supprimer|Delete', CANVAS.blocks.length]]) {
-    const got = (phone.match(new RegExp(`title="(?:${label})"`, 'g')) || []).length;
-    // Up is disabled on the first row and down on the last, but both still render; what must
-    // not happen is a row with no way to move at all.
-    must(got >= n, `the phone list shows ${got} "${label}" control(s); a row you cannot reorder is the whole point of this mode`);
-  }
-  must(/aria-disabled|disabled=""/.test(phone), 'nothing is disabled in the phone list — the first row must not offer "move up"');
-  const empty = (() => {
-    globalThis.window = { matchMedia: () => ({ matches: true, addEventListener() {}, removeEventListener() {} }) };
-    try { return render({ id: 'c3', title: '', height: 400, blocks: [] }); }
-    catch (e) { problems.push(`an empty canvas threw at phone width: ${e?.message || e}`); return ''; }
-    finally { if (priorWindow === undefined) delete globalThis.window; else globalThis.window = priorWindow; }
-  })();
-  must(empty.length > 0, 'an empty canvas rendered nothing at phone width');
+  must(!/cursor:move/.test(phone), 'at phone width the studio still draws the draggable board instead of refusing');
+  must(/data-studio-too-small/.test(phone), 'at phone width the studio does not say it needs a bigger window');
+  must(/(?:Back|Retour)<\/button>/.test(phone), 'at phone width the refusal offers no way back');
+  must(!/class="cst-page"/.test(phone), 'at phone width the full-screen studio is still drawn over the site');
 }
 
 // ── The studio as a PAGE. ────────────────────────────────────────────────────────────
@@ -204,7 +196,8 @@ if (wideHtml) {
   must((wideHtml.match(/cursor:move/g) || []).length === CANVAS.blocks.length, 'the page form did not draw every block as draggable');
   must(/aria-label="(?:Zoom in|Zoom avant)"/.test(wideHtml) && /aria-label="(?:Zoom out|Zoom arrière)"/.test(wideHtml), 'the page toolbar has no zoom +/- pair');
   must(/aria-label="(?:Show the grid|Afficher la grille)"/.test(wideHtml), 'the page toolbar has no grid toggle');
-  must(/(?:Save as component|Enregistrer comme composant)/.test(wideHtml), 'the page toolbar cannot save the selection as a component');
+  // Phase 8: a selection command is drawn with a selection only (the phase 8 section below).
+  must(/(?:Save as component|Enregistrer comme composant)/.test(toolbar(1)), 'the tool bar cannot save the selection as a component');
   must(/(?:Components|Composants)/.test(wideHtml), 'the left pane has no Components tab');
   must(/title="(?:The whole project page, with this block in place|La page projet entière, avec ce bloc en place)"/.test(wideHtml), 'the page preview button is missing although a page renderer was given');
   // The tour is OFFERED but never auto-runs here: under node there is no localStorage, and
@@ -834,12 +827,142 @@ try {
   must(/path="\/studio\/component\/:scope\/:id"/.test(appSrc7), 'there is no component mode route');
 } catch (e) { problems.push(`the phase 7b render threw: ${e?.message || e}`); }
 
+// ── Finishing (PLAN-STUDIO-2026, phase 8). ───────────────────────────────────────────
+// One surface (D1), a CONTEXTUAL tool bar, panels and inspector that adapt to what is edited.
+// What a static render can prove, on the markup a browser gets:
+//   · no command in the tool bar is ever disabled: without a selection there is no selection
+//     group at all, with one block no group operation, with two no distribute (it needs three);
+//   · every command appears ONCE across the top bar and the tool bar, by name AND by glyph
+//     (the generalisation of the "two lucide-smartphone" check of 26c7a612), in every state;
+//   · every command has a name (aria-label, title or text) a person and a probe can find it by;
+//   · in the top bar, the only commands ever disabled are the document's (undo, redo, save:
+//     history and saving, never the selection), and the page preview of a document that has
+//     no page (the reason is on it, see above);
+//   · the panels follow the kind: a component has no Pages, Presets or Page panel, and no page
+//     preview; a page has them all;
+//   · the inspector shows a field only where the block's kind paints it, and not front/back
+//     (the tool bar's);
+//   · every studio animation is switched off under prefers-reduced-motion.
+// elementFromPoint at the centre of each command (the plan's third measure) needs a layout
+// engine: it is measured in the browser (phase 8 report), not here. What stands in for it here
+// is the one property it depends on that markup and CSS can show: the bars do not scroll.
+// Each assertion was checked by breaking what it guards (phase 8 report).
+const rfs = (await import('node:fs')).readFileSync;
+try {
+  /** The balanced element starting at `at` (a `<div` or `<header`), as markup. */
+  const element = (html, at) => {
+    const tag = /^<([a-z]+)/.exec(html.slice(at))?.[1];
+    if (!tag) return '';
+    const re = new RegExp(`<${tag}\\b|</${tag}>`, 'g');
+    re.lastIndex = at;
+    let depth = 0; let m;
+    while ((m = re.exec(html))) {
+      depth += m[0].startsWith('</') ? -1 : 1;
+      if (!depth) return html.slice(at, m.index + m[0].length);
+    }
+    return html.slice(at);
+  };
+  const stripTags = (h) => decodeAttr(h.replace(/<[^>]*>/g, ' ')).replace(/\s+/g, ' ').trim();
+  /** Every command in a piece of markup: its name, its glyph, whether it is disabled. */
+  const commands = (html) => [...html.matchAll(/<(button|select)\b([^>]*)>([\s\S]*?)<\/\1>/g)].map((m) => {
+    const attrs = m[2];
+    // A command's name as a person gets it: its aria-label, else its visible text, else its title.
+    const name = decodeAttr((/\saria-label="([^"]*)"/.exec(attrs) || [])[1] || '') || (m[1] === 'button' ? stripTags(m[3]) : '')
+      || decodeAttr((/\stitle="([^"]*)"/.exec(attrs) || [])[1] || '');
+    const icon = (/class="lucide lucide-([a-z0-9-]+)/.exec(m[3]) || [])[1] || '';
+    return { tag: m[1], name, icon, disabled: /\sdisabled=""/.test(attrs), attrs };
+  });
+  const dupes = (list) => [...new Set(list.filter((x, i) => x && list.indexOf(x) !== i))];
+  const PAGES8 = {
+    kind: 'project', currentId: 'pb', canEditList: true, busy: false,
+    list: [{ id: 'pb', title: 'Beta', hidden: false, blocks: 2, dirty: false }],
+    select() {}, create() {}, duplicate() {}, move() {}, remove() {}, rename() {}, setHidden() {},
+    library: { entries: [], canWrite: { site: false, project: true }, save() {}, remove() {} },
+  };
+  const full = withWindow(mq(true, false), () => renderWithPages(CANVAS, PAGES8));
+  const topAt = full.indexOf('<header class="cst-topbar"');
+  const barAt = full.indexOf('<div class="cst-toolbar"');
+  const top = topAt >= 0 ? element(full, topAt) : '';
+  const bar = barAt >= 0 ? element(full, barAt) : '';
+  must(!!top && !!bar, 'the studio has no top bar or no tool bar');
+  must(/role="toolbar"/.test(bar) && /data-sel="0"/.test(bar), 'the tool bar is not a named toolbar that says how many blocks are selected');
+
+  // The tool bar alone, in the four states a selection can be in.
+  const states = [[0, {}], [1, {}], [2, {}], [3, { onGroup: () => {} }]].map(([n, extra]) => [n, toolbar(n, extra)]);
+  for (const [n, html] of states) {
+    const cmds = commands(html);
+    must(cmds.length > 0, `the tool bar with ${n} selected drew no command`);
+    const off = cmds.filter((c) => c.disabled);
+    must(!off.length, `the tool bar with ${n} selected shows ${off.length} disabled command(s): ${off.map((c) => c.name).join(', ')} (a command that cannot run is not drawn)`);
+    const nameless = cmds.filter((c) => !c.name);
+    must(!nameless.length, `the tool bar with ${n} selected has ${nameless.length} command(s) with no name: ${nameless.map((c) => c.attrs.slice(0, 80)).join(' | ')}`);
+    // Once, across both bars: the top bar's commands plus this state's tool bar.
+    const both = [...commands(top), ...cmds];
+    const byName = dupes(both.map((c) => c.name));
+    must(!byName.length, `with ${n} selected a command appears twice across the two bars: ${byName.join(', ')}`);
+    const byIcon = dupes(both.map((c) => c.icon));
+    must(!byIcon.length, `with ${n} selected two commands of the bars share a glyph (lucide-${byIcon.join(', lucide-')}), so one idea has two controls`);
+    must(/data-tools="view"/.test(html), `the view group is missing with ${n} selected`);
+    must(/data-tools="selection"/.test(html) === n > 0, `the selection group is ${n > 0 ? 'missing with' : 'drawn with'} ${n} selected`);
+    must(/data-tools="multi"/.test(html) === n > 1, `the group operations are ${n > 1 ? 'missing with' : 'drawn with'} ${n} selected`);
+    must(/aria-label="Even gaps across"/.test(html) === n > 2, `distributing is ${n > 2 ? 'missing with' : 'offered with'} ${n} selected (it needs three blocks)`);
+  }
+  // The whole studio, nothing selected: the same, on the real tree.
+  const barCmds = commands(bar);
+  must(!barCmds.some((c) => c.disabled), `with nothing selected the studio's tool bar shows a disabled command: ${barCmds.filter((c) => c.disabled).map((c) => c.name).join(', ')}`);
+  must(!/data-tools="selection"/.test(bar), 'with nothing selected the studio draws the selection commands');
+  const topOff = commands(top).filter((c) => c.disabled).map((c) => c.name);
+  must(topOff.every((n) => /^(?:Undo|Annuler|Redo|Rétablir|Save|Enregistrer)$/.test(n)),
+    `the top bar shows a disabled command that is not undo, redo or save: ${topOff.join(', ')}`);
+  const allOnce = dupes([...commands(top), ...barCmds].map((c) => c.name));
+  must(!allOnce.length, `a command appears twice across the studio's two bars: ${allOnce.join(', ')}`);
+  // The phone board: the board switch and the preview both think about phones, one glyph.
+  const css8 = rfs('src/index.css', 'utf8');
+  // Neither bar scrolls sideways (a scrolled-away command is out of reach of a pointer).
+  const rulesFor = (sel) => [...css8.matchAll(new RegExp(`(^|[},\\s])${sel.replace('.', '\\.')}\\s*\\{([^}]*)\\}`, 'g'))].map((m) => m[2]).join(';');
+  must(!/overflow(?:-x)?:\s*(?:auto|scroll)/.test(rulesFor('.cst-toolbar')) && /flex-wrap:\s*wrap/.test(rulesFor('.cst-toolbar')), 'the tool bar scrolls sideways instead of wrapping');
+  must(!/overflow(?:-x)?:\s*(?:auto|scroll)/.test(rulesFor('.cst-tabs')), 'the tab row scrolls sideways, so its last tabs are off screen at 768px');
+
+  // One surface (D1): the config editor links to the studio and embeds none.
+  const studioSrc = rfs('src/editor/canvas-studio.jsx', 'utf8');
+  must(!/layout\s*=\s*'modal'|layout === 'modal'|pageMode/.test(studioSrc), 'the studio still has a second (modal) form');
+  must(!/canvas-studio/.test(rfs('src/editor/project-config-editor.jsx', 'utf8')), 'the config editor embeds the studio again instead of linking to it');
+  must(/class="cst-page"/.test(withWindow(mq(true, false), () => render(CANVAS))), 'the studio rendered without props is not the full-page studio');
+
+  // Panels per kind: a page has them all; a component has no pages, presets or page settings.
+  must(/data-studio-pages/.test(full) && /data-preset-gallery/.test(full) && /data-page-panel/.test(full), 'a page in the studio lost its Pages, Presets or Page panel');
+  const comp = withWindow(mq(true, false), () => renderComponentMode({ v: 2, id: 'k8', frames: { desktop: { w: 1200, h: 400, fit: 'fixed' }, phone: { w: 390, fit: 'content', mode: 'stack' } }, blocks: CANVAS.blocks }, []));
+  must(!/data-studio-pages/.test(comp), 'component mode shows a Pages panel, but a component has no pages');
+  must(!/data-page-panel/.test(comp), 'component mode shows the Page panel, but a copy never draws a component\'s background or stylesheet');
+  must(!/data-preset-gallery|data-tour="presets"/.test(comp), 'component mode shows the page presets');
+  must(!/title="(?:The whole project page|La page projet entière|This document is not part of a page yet|Ce document ne fait pas encore partie)/.test(comp), 'component mode offers a page preview, but a component is never a page');
+  must(/data-tour="blocks"/.test(comp) && /data-tour="props"|Select a block to edit it|Sélectionne un bloc/.test(comp), 'component mode lost its Blocks or Properties panel');
+
+  // The inspector, by kind.
+  const insButton = inspector({ id: 'ib', kind: 'button', x: 0, y: 0, w: 200, h: 56, props: { label: 'Go' } });
+  const insBox = inspector({ id: 'ix', kind: 'box', x: 0, y: 0, w: 200, h: 56, props: {} });
+  must(/data-inspector-kind="button"/.test(insButton) && />Button</.test(insButton), 'the inspector does not name the kind of block in words');
+  must(!/>Background</.test(insButton), 'the inspector offers a background to a button, which paints its own colour');
+  must(/>Background</.test(insBox), 'the inspector lost the background of a box');
+  must(!/title="(?:Bring to front|Send to back)"/.test(insBox), 'the inspector repeats front and back, which the tool bar has');
+
+  // Motion: every studio animation has its reduced-motion "none".
+  const animated = [...css8.matchAll(/\.(cst-[\w-]+)\s*\{[^}]*\banimation:\s*cst-/g)].map((m) => m[1]);
+  must(animated.length >= 4, `only ${animated.length} studio animation(s) found in index.css, the check cannot be trusted`);
+  const reduced = [...css8.matchAll(/@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{([\s\S]*?)\}\s*\}/g)].map((m) => m[1]).join('\n');
+  for (const cls of animated) {
+    must(new RegExp(`\\.${cls}\\b[^{]*\\{[^}]*animation:\\s*none`).test(reduced), `.${cls} keeps its animation under prefers-reduced-motion`);
+  }
+  must(/\.cst-sel-outline\b[^{]*\{[^}]*transition:\s*none/.test(reduced), 'the selection outline keeps its transition under prefers-reduced-motion');
+} catch (e) { problems.push(`the phase 8 render threw: ${e?.message || e}`); }
+
 cleanup();
 
 // The handle hit area is CSS, so it is checked where it lives. The class has to exist on both
 // sides or the media query in index.css styles nothing.
 const { readFileSync } = await import('node:fs');
-must(readFileSync(REL, 'utf8').includes('cst-handle'), 'the resize handles no longer carry .cst-handle');
+// The board's blocks live in editor/studio-board.jsx since studio phase 8 split the file.
+must(readFileSync('src/editor/studio-board.jsx', 'utf8').includes('cst-handle'), 'the resize handles no longer carry .cst-handle');
 const css = readFileSync('src/index.css', 'utf8');
 must(/\.cst-handle[^{]*\{/.test(css), 'index.css has no .cst-handle rule — the touch hit area is gone');
 must(/@media\s*\(pointer:\s*coarse\)/.test(css), 'the .cst-handle rule is not behind a coarse-pointer query, so it would grow the handle for a mouse too');
@@ -865,4 +988,4 @@ if (problems.length) {
   for (const p of problems) console.error(`    ${p}`);
   process.exit(1);
 }
-console.log(`✓ studio OK — rendered through the real component, ${movable} draggable block(s), touch-action on the canvas and each block, handles keep their touch target, at phone width it renders the reading-order list instead of the board, the page form draws three panes wide and a tab row narrow, every block kind is served, an off-list embed is a link and not a frame, and a dark overlay changes only what it names`);
+console.log(`✓ studio OK — rendered through the real component, ${movable} draggable block(s), touch-action on the canvas and each block, handles keep their touch target, at phone width it refuses instead of drawing a board, the page form draws three panes wide and a tab row narrow, the tool bar is contextual (nothing disabled, every command once), every block kind is served, an off-list embed is a link and not a frame, and a dark overlay changes only what it names`);

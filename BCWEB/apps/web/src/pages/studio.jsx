@@ -570,7 +570,6 @@ export default function StudioPage() {
   return (
     <CanvasStudio
       key={pageId}
-      layout="page"
       value={canvas}
       onChange={onChange}
       renderPage={renderPage}

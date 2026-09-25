@@ -38,7 +38,17 @@ export function shortcutGroups(t) {
         ['mod+A', t('cst.keys.all', 'Select every block')],
         ['Shift+' + t('cst.keys.click', 'click'), t('cst.keys.add', 'Add a block to the selection, or take it out')],
         [t('cst.keys.drag', 'Drag on empty canvas'), t('cst.keys.marquee', 'Select everything the rubber band touches')],
-        ['Escape', t('cst.keys.none', 'Select nothing')],
+        ['Escape', t('cst.keys.none2', 'Leave the container you are in, then select nothing')],
+      ],
+    },
+    // Containers (studio phase 7a), written down in phase 8: the keys existed, the sheet did not
+    // say so.
+    {
+      title: t('cst.keys.g.box', 'Containers'),
+      rows: [
+        ['mod+G', t('cst.keys.group', 'Put the selection in a group')],
+        ['mod+Shift+G', t('cst.keys.ungroup', 'Take the blocks out of the selected group')],
+        ['Enter', t('cst.keys.enter', 'Go into the selected container (a double-click does the same)')],
       ],
     },
     {

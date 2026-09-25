@@ -1216,8 +1216,8 @@ label:has(> input[type="radio"]) {
   .cst-handle::after { content: ""; position: absolute; inset: -9px; border-radius: 50%; }
 }
 
-/* The studio as a page (/studio/:kind/:id/:index — pages/studio.jsx, canvas-studio.jsx in
-   layout="page"). It draws OVER the site shell: nav (z-40) and the mobile tab bar (z-40) are
+/* The studio (/studio/:kind/:id/:page — pages/studio.jsx, canvas-studio.jsx; its only form
+   since studio phase 8 removed the one the config editor embedded). It draws OVER the site shell: nav (z-40) and the mobile tab bar (z-40) are
    under it, modals (z-50), menus (z-60+) and toasts stay above. Opaque on purpose: it is a
    workspace, not a card, and a translucent one would show the page it covers.
    Three panes side by side from 1024px; below that the canvas takes the width and the two
@@ -1374,17 +1374,31 @@ label:has(> input[type="radio"]) {
 }
 .cst-mobile-body { min-height: 0; overflow: auto; padding: 8px; }
 .cst-mobile-body > * { margin-top: 0 !important; }
-/* Six 48px targets do not fit across a 375px screen. Squeezing them would put a control out
-   of a thumb reach; scrolling the row keeps every one of them hittable and none of them off
-   the page. */
-.cst-tabs { flex-shrink: 0; overflow-x: auto; scrollbar-width: none; scroll-snap-type: x proximity; }
-.cst-tabs::-webkit-scrollbar { display: none; }
-.cst-tabs button { flex: 0 0 auto; padding-inline: 14px; scroll-snap-align: start; }
-/* The board own toolbar, on a narrow screen: one scrolling row instead of four wrapped ones,
-   for the same reason as the tab row above it. */
-.cst-strip { display: flex; align-items: center; gap: 6px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
-.cst-strip::-webkit-scrollbar { display: none; }
-.cst-strip > * { flex: 0 0 auto; }
+/* The tab row, from 768 to 1023px (the studio refuses anything narrower, so the 375px phone
+   this row used to scroll for never gets it). Scrolled, eight tabs put the last two off the
+   edge at 768px: a tab you have to find by swiping is a tab elementFromPoint (and a person)
+   does not reach. So they SHARE the width, the icon over a short label, and nothing is off
+   screen. Studio phase 8. */
+.cst-tabs { flex-shrink: 0; overflow: hidden; }
+.cst-tabs button {
+  flex: 1 1 0; min-width: 0; flex-direction: column; gap: 2px; min-height: 52px;
+  padding: 4px 2px; font-size: 11px;
+}
+.cst-tabs button > span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* The board's tool bar (editor/studio-toolbar.jsx). Contextual: the view group is always
+   there, the selection group appears with a selection and the group operations with two
+   blocks or more, so nothing in it is ever disabled. It WRAPS rather than scrolling sideways:
+   a command scrolled out of sight is a command nobody reaches. Studio phase 8. */
+.cst-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-bottom: 8px; }
+.cst-tools { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px; }
+.cst-tools + .cst-tools { border-inline-start: 1px solid var(--line); padding-inline-start: 8px; }
+.cst-tools-sep { width: 1px; height: 20px; background: var(--line); margin: 0 4px; }
+.cst-select { background: transparent; color: var(--text); font-size: 12px; }
+.cst-grid-pair {
+  display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px 2px 2px;
+  border: 1px solid var(--line); border-radius: 8px;
+}
 
 /* A key cap in the shortcut sheet. */
 .cst-kbd {
@@ -2167,6 +2181,24 @@ html[data-studio-open="1"], html[data-studio-open="1"] body { overflow: hidden; 
   border: 1px solid var(--line-strong); border-radius: 14px;
   box-shadow: 0 22px 50px -20px rgba(0, 0, 0, 0.55);
   color: var(--text);
+}
+/* Studio phase 8: sober motion. A panel's body, a sheet, a menu and the tool groups that come
+   with a selection arrive with a short fade and a 2 to 8px travel; a selection outline and
+   its handles ease in. Nothing loops, nothing is longer than 180ms, and ALL of it is off
+   under prefers-reduced-motion (the block below), where things simply appear. Only these
+   named classes: a blanket rule over .cst-page would also stop the spinners. */
+@keyframes cst-in { from { opacity: 0; transform: translateY(-2px); } to { opacity: 1; transform: none; } }
+@keyframes cst-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes cst-pop { from { opacity: 0; transform: scale(.5); } to { opacity: 1; transform: none; } }
+.cst-tools-in { animation: cst-in 140ms ease-out; }
+.cst-dock-body { animation: cst-in 160ms ease-out; }
+.cst-mobile-pane { animation: cst-rise 180ms cubic-bezier(.2, .8, .2, 1); }
+.cst-menu { animation: cst-in 120ms ease-out; }
+.cst-handle { animation: cst-pop 120ms ease-out; }
+.cst-sel-outline { transition: outline-color 120ms ease; }
+@media (prefers-reduced-motion: reduce) {
+  .cst-tools-in, .cst-dock-body, .cst-mobile-pane, .cst-menu, .cst-handle { animation: none; }
+  .cst-sel-outline { transition: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .cst-tour-ring { transition: none; }

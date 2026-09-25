@@ -9457,6 +9457,26 @@ const DICT = {
     'cst.save.why.required': 'une copie sans son composant',
     'cst.save.why.not_allowed': 'un champ qui n’a rien à faire là',
     // fin studio-7b (agent-studio-7b)
+    // studio-8 (agent-studio-8) : finition du studio (plan studio, phase 8) : une seule surface (le mode modal retiré), la barre d’outils contextuelle (editor/studio-toolbar.jsx), la feuille des raccourcis (conteneurs) et la visite guidée refaite.
+    'cst.toolbar': 'Outils',
+    'cst.tools.sel': 'Sélection',
+    'cst.tools.multi': 'Plusieurs blocs',
+    'cst.dup.h': 'Dupliquer la sélection (Ctrl+D)',
+    'cst.keys.none2': 'Sortir du conteneur où tu es, puis ne rien sélectionner',
+    'cst.keys.g.box': 'Conteneurs',
+    'cst.keys.group': 'Mettre la sélection dans un groupe',
+    'cst.keys.ungroup': 'Sortir les blocs du groupe sélectionné',
+    'cst.keys.enter': 'Entrer dans le conteneur sélectionné (un double-clic fait pareil)',
+    'cst.tour8.1.b': 'Une page se construit en posant des blocs sur une planche. {n} étapes courtes, et tu peux partir quand tu veux.',
+    'cst.tour8.left.t': 'À gauche : ce dont la page est faite',
+    'cst.tour8.left.b': 'Ses pages, les blocs à ajouter, les calques et les composants. Un panneau se replie, passe d’un autre côté ou se ferme ; le menu Panneaux, en haut, le fait revenir.',
+    'cst.tour8.tools.t': 'Des outils qui suivent la sélection',
+    'cst.tour8.tools.b': 'Le zoom, la main et la grille sont toujours là. Sélectionne un bloc et ses commandes les rejoignent : dupliquer, supprimer, devant et derrière, verrouiller et masquer. Sélectionnes-en deux ou plus et les outils d’alignement et de répartition apparaissent aussi.',
+    'cst.tour8.props.t': 'À droite : le bloc sélectionné',
+    'cst.tour8.props.b': 'Tout sur lui, et seulement ce que son type utilise : le contenu, la taille, le clic, l’animation. Le panneau Page, en dessous, règle le fond et la feuille de style.',
+    'cst.tour8.top.t': 'En haut : la page elle-même',
+    'cst.tour8.top.b': 'Son nom, annuler et rétablir, la planche sur laquelle tu dessines (clair, sombre ou téléphone), les aperçus, et Enregistrer : rien n’est publié tant que tu n’enregistres pas.',
+    // fin studio-8 (agent-studio-8)
   },
 };
 

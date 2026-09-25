@@ -214,14 +214,14 @@ export function PresetGallery({ t, lang, entries, sorts = PRESET_SORTS, onUse, o
  * preset" into a library the author may write (the page's own, and the site's with
  * manage_studio; the server checks both again).
  */
-export function PresetsPanel({ t, lang, library, onApply, onSaveAs, canSection, canComponent }) {
+export function PresetsPanel({ t, lang, library, onApply, onSaveAs, canSection, canComponent, sorts = PRESET_SORTS }) {
   const [saveOpen, setSaveOpen] = useState(false);
   if (!library) return <p className="text-[11px] text-[var(--muted)]">{t('cst.pages.none', 'This page is edited on its own: open it from a project to see its other pages.')}</p>;
   const scopes = [library.canWrite?.project && 'project', library.canWrite?.site && 'site'].filter(Boolean);
   return (
     <div className="space-y-2" data-tour="presets">
       {library.error && <p className="text-[11px] text-warning" role="status">{t('cst.pr.loadfail', 'The shared presets could not be loaded; the built-in ones are shown.')}</p>}
-      <PresetGallery t={t} lang={lang} entries={library.entries} onUse={onApply}
+      <PresetGallery t={t} lang={lang} entries={library.entries} onUse={onApply} sorts={sorts}
         onDelete={(e) => library.remove(e)} canDelete={(e) => (e.scope === 'site' && library.canWrite?.site) || (e.scope === 'project' && library.canWrite?.project)} />
       <Button size="sm" variant="ghost" className="w-full justify-center" disabled={!scopes.length} onClick={() => setSaveOpen(true)} data-preset-save
         title={scopes.length ? undefined : t('cst.pr.save.no', 'You cannot write to a preset library here.')}>

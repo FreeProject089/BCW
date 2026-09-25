@@ -1,4 +1,4 @@
-// The studio's first-run tour: six steps, once, skippable.
+// The studio's first-run tour: eight steps, once, skippable.
 //
 // WHY it exists. The studio is a three-pane editor behind the admin, behind 2FA, behind a
 // per-page switch — so the first person to open it is somebody who has never seen it and has
@@ -42,35 +42,47 @@ const writeSeen = () => {
  * centred, with no ring — rather than being skipped, because a panel you cannot see is
  * exactly the one worth being told about.
  */
+/*
+ * Studio phase 8: the tour follows the studio's fixed placement, the way an author scans it:
+ * the left (what the page is made of), the board and its tools, the right (the inspector),
+ * the top (the document, its previews and Save). The tool bar step is new: its commands now
+ * appear with a selection, and a bar that changes under you is worth one sentence.
+ */
 export function tourSteps(t) {
-  return [
+  const steps = [
     { id: 'welcome', anchor: null,
       title: t('cst.tour.1.t', 'This is the studio'),
-      body: t('cst.tour.1.b', 'A page is built by placing blocks on a 1200px board. Six short steps, and you can leave at any point.') },
+      body: t('cst.tour8.1.b', 'A page is built by placing blocks on a board. {n} short steps, and you can leave at any point.') },
+    { id: 'left', anchor: 'pages',
+      title: t('cst.tour8.left.t', 'On the left: what the page is made of'),
+      body: t('cst.tour8.left.b', 'Its pages, the blocks you can add, the layers and the components. A panel folds, moves to another side or closes; the Panels menu at the top brings it back.') },
     { id: 'blocks', anchor: 'blocks',
       title: t('cst.tour.2.t', 'Add something'),
       body: t('cst.tour.2.b', 'Text, images, video, buttons, shapes and SVG. Pick one and it lands on the board, where you drag it and pull its handles.') },
     { id: 'board', anchor: 'board',
       title: t('cst.tour.3.t', 'The board'),
       body: t('cst.tour.3.b', 'Drag to move, pull a handle to resize, drag on empty space to pick several at once. Blocks snap to the grid and to each other.') },
+    { id: 'tools', anchor: 'tools',
+      title: t('cst.tour8.tools.t', 'Tools that follow the selection'),
+      body: t('cst.tour8.tools.b', 'Zoom, the hand and the grid are always here. Select a block and its commands join them: duplicate, delete, front and back, lock and hide. Select two or more and the align and distribute tools appear too.') },
     { id: 'props', anchor: 'props',
-      title: t('cst.tour.4.t', 'Everything about one block'),
-      body: t('cst.tour.4.b', 'Content, size, link, shadow, hover and the animation: its kind, when it starts, how long it takes and its curve.') },
+      title: t('cst.tour8.props.t', 'On the right: the selected block'),
+      body: t('cst.tour8.props.b', 'Everything about it, and only what its kind uses: content, size, the click, the animation. The Page panel under it sets the background and the stylesheet.') },
     { id: 'components', anchor: 'components',
       title: t('cst.tour.5.t', 'Keep a group and use it again'),
       body: t('cst.tour.5.b', 'Pick several blocks, save them as a component, and insert copies on any page you edit. Copies stay linked until you detach them.') },
     { id: 'preview', anchor: 'preview',
-      title: t('cst.tour.6.t', 'See what a reader gets'),
-      body: t('cst.tour.6.b', 'Desktop, tablet and phone, and the whole page with this one in place. Then save: nothing is published until you do.') },
+      title: t('cst.tour8.top.t', 'At the top: the page itself'),
+      body: t('cst.tour8.top.b', 'Its name, undo and redo, the board you draw on (light, dark or phone), the previews, and Save: nothing is published until you save.') },
   ];
+  return steps.map((st) => ({ ...st, body: st.body.replace('{n}', String(steps.length)) }));
 }
 
 /**
  * Whether the tour should be up, and how to start it again.
  *
- * `enabled` is false in the modal form: the tour names three panes and a top bar that only
- * the full-page studio has, so running it inside somebody's settings column would describe a
- * screen that is not there.
+ * `enabled` is false while the window is too small for the studio (below 768px it is refused):
+ * the tour names panes and bars that are not on screen then.
  */
 export function useStudioTour(enabled) {
   const [open, setOpen] = useState(false);
