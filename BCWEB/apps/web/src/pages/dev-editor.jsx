@@ -21,7 +21,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { PenLine, RotateCcw, ExternalLink, Package } from 'lucide-react';
-import { Button, Badge } from '../ui/ui.jsx';
+import { Button } from '../ui/ui.jsx';
 import { CodeSnippet } from '../ui/dev-snippet.jsx';
 import { BmdNpmBlock, BMD_PACKAGES } from '../ui/bmd-npm.jsx';
 import { useI18n } from '../i18n.jsx';
@@ -85,25 +85,25 @@ export default function DevEditor() {
   useEffect(() => { try { localStorage.setItem(KEY, md); } catch { /* private mode */ } }, [md]);
   return (
     <div className="max-w-6xl mx-auto py-8 sm:py-12 space-y-6 min-w-0">
+      {/* bcwvisual (agent-bcw-visual) : en-tête allégé. Plus d'icône en dégradé avec halo ni de
+          rangée de quatre pastilles : un titre, une phrase, une ligne de métadonnées. */}
       <header className="max-w-2xl">
-        <span className="inline-grid place-items-center w-12 h-12 rounded-2xl bg-gradient-to-br from-brand to-brand-2 text-[var(--on-primary)] shadow-lg shadow-orange-500/25 mb-4"><PenLine size={22} /></span>
-        <h1 className="text-3xl sm:text-4xl font-extrabold leading-tight">{t('dve.title', 'The B.MD editor')}</h1>
+        <p className="text-[13px] font-medium text-[var(--muted)] flex items-center gap-1.5 mb-2"><PenLine size={14} aria-hidden="true" /> {BMD_PACKAGES.editor.name}</p>
+        <h1 className="text-3xl sm:text-4xl font-extrabold leading-tight tracking-tight">{t('dve.title', 'The B.MD editor')}</h1>
         <p className="mt-3 text-[15px] leading-relaxed text-[var(--muted)]">
-          {t('dve.lede', 'The editor that ships as @bettercommunity/bmd-editor: a block menu that knows every directive, a live preview through the real renderer, a link checker, an outline, the syntax tree, and an HTML export. Your draft stays in this browser.')}
+          {t('dve.lede2', 'A block menu, a live preview through the real renderer, a link checker and an HTML export. Your draft stays in this browser.')}
         </p>
-        <div className="mt-4 flex flex-wrap gap-2">
-          <Badge>@bettercommunity/bmd-editor {BMD_PACKAGES.editor.version}</Badge>
-          <Badge tone="green">{t('bmdpub.published', 'Published on npm')}</Badge>
-          <Badge>{t('dve.b2', 'Phone and desktop')}</Badge>
-          <Badge>{t('dve.b3', 'Nothing is sent')}</Badge>
-        </div>
+        <p className="mt-3 text-[12.5px] text-[var(--faint)] tabular-nums">
+          v{BMD_PACKAGES.editor.version} · {t('bmdpub.published', 'Published on npm')} · {t('dve.b2', 'Phone and desktop')} · {t('dve.b3', 'Nothing is sent')}
+        </p>
       </header>
+      {/* fin bcwvisual */}
       <div className="flex items-center gap-2 flex-wrap">
         {/* The same document in both, so switching compares the two rather than restarting. */}
-        <div className="inline-flex rounded-lg border border-[var(--line)] p-0.5 text-xs">
+        <div className="inline-flex rounded-lg border border-[var(--line)] p-0.5 text-[13px]" role="group">
           {[['site', t('dve.m.site', 'As BetterCommunity uses it')], ['pkg', t('dve.m.pkg', 'The package')]].map(([k, label]) => (
-            <button key={k} type="button" onClick={() => setWhich(k)}
-              className={`px-2.5 py-1 rounded-md font-medium ${which === k ? 'bg-[var(--surface-2)] text-[var(--text)]' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{label}</button>
+            <button key={k} type="button" onClick={() => setWhich(k)} aria-pressed={which === k}
+              className={`px-3 min-h-[36px] rounded-md font-medium ${which === k ? 'bg-[var(--surface-2)] text-[var(--text)] shadow-sm' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{label}</button>
           ))}
         </div>
         <button type="button" onClick={() => setMd(SAMPLE)} className="text-xs text-[var(--muted)] hover:text-[var(--text)] inline-flex items-center gap-1"><RotateCcw size={12} /> {t('devmd.reset', 'Reset')}</button>

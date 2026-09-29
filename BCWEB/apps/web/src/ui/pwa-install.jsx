@@ -116,7 +116,7 @@ export function InstallAppCard() {
   const [busy, setBusy] = useState(false);
   const install = async () => { setBusy(true); try { await promptInstall(); } finally { setBusy(false); } };
   return (
-    <Card className="p-4 sm:p-5" id="install-app">
+    <Card className="p-4 sm:p-5 scroll-mt-24" id="install-app">
       <div className="flex items-center gap-2.5 mb-2 pb-2.5 border-b border-[var(--line)]">
         <span className="grid place-items-center w-7 h-7 rounded-lg tint-primary border b-primary shrink-0"><MonitorSmartphone size={14} className="text-[var(--accent-ink)]" /></span>
         <span className="text-sm font-semibold">{t('pwa.set.t', 'Install the app')}</span>

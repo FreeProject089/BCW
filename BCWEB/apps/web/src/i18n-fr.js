@@ -9722,6 +9722,20 @@ const DICT = {
     // landing2 (agent-landing) : étapes « Commencer » sans serpentin (ui/steps-track.jsx), démo « Catalogue » supprimée, invitation à installer l’appli dès l’arrivée.
     'home.st.progress': 'Étapes faites : {n} sur {total}', 'home.st.done': 'Fait', 'home.st.next': 'Prochaine étape',
     // fin landing2 (agent-landing)
+    // bcwvisual (agent-bcw-visual) : étapes « Commencer » plus sobres, étiquette « Dernier article », réglages, offres et pages dev.
+    'home.st.next2': 'Étape suivante', 'home.news.latest': 'Dernier article',
+    'set.sub2': 'Enregistré sur ce navigateur uniquement.', 'set.nav': 'Sections des réglages', 'set.nav.os': 'Mode OS',
+    'set.texture.d5': 'Un léger grain sur quelques grandes cartes, jamais derrière du texte.',
+    'hosting.reco': 'Recommandé', 'hosting.tbl.t': 'Côte à côte', 'hosting.tbl.plan': 'Offre', 'hosting.tbl.yes': 'Inclus', 'hosting.tbl.no': 'Non inclus',
+    'hosting.tbl.price': 'Par mois', 'hosting.tbl.price.n': 'Pour {n} mois payés aujourd’hui', 'hosting.tbl.price.n1': 'Pour un mois',
+    'hosting.tbl.space': 'Espace', 'hosting.tbl.speed': 'Vitesse de téléchargement', 'hosting.tbl.boosts': 'Mises en avant',
+    'hosting.tbl.boostsp': '{n} tous les {m} mois', 'hosting.tbl.boostsm': '{n} par mois', 'hosting.tbl.bot': 'Offre bot Discord', 'hosting.tbl.bot.n': '{n} serveur(s)',
+    'hosting.tbl.domain': 'Ton propre domaine', 'hosting.tbl.loyal': 'Remise fidélité', 'hosting.tbl.loyal.v': 'Jusqu’à {pct} %',
+    'bmdpub.prov2': 'Provenance vérifiée sur npm', 'dve.lede2': 'Un menu de blocs, un aperçu en direct par le vrai moteur de rendu, un vérificateur de liens et un export HTML. Ton brouillon reste dans ce navigateur.',
+    'dvb2.lede2': 'Du Markdown avec des blocs, en un seul composant React : encadrés, onglets, étapes, fiches d’API, intégrations, valeurs en direct, diagrammes. Chaque page de ce site est écrite avec.',
+    'dvb2.toc': 'Sur cette page', 'dvb2.install.short': 'N’importe quel client npm convient (npm, pnpm, yarn, bun). La chaîne Markdown est incluse ; tu fournis React 18 ou 19.',
+    'dev.hub.kicker': 'Développeurs',
+    // fin bcwvisual
     // hosting2 (agent-hosting) : la durée prépayée redevient un champ (minimum, maximum, pas de l’admin), le récapitulatif en direct (prix, remise de durée, remise fidélité, date de fin, ce qui se passe à la fin), le tableau fidélité, le statut fidélité du membre (Facturation), la carte admin « Durée prépayée » et les nouveaux choix de la remise fidélité.
     'hosting.term2.label': 'Durée, en mois',
     'hosting.term2.unit': 'mois',

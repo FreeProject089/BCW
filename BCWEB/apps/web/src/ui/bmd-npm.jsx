@@ -10,7 +10,7 @@
 // The provenance link points at the npm page's own Provenance section: npm shows there which
 // workflow run built the tarball and from which commit, and that is what "verified" means.
 import { Package, ShieldCheck, ExternalLink, CheckCircle2 } from 'lucide-react';
-import { Button, Badge } from './ui.jsx';
+import { Button } from './ui.jsx';
 import { useI18n } from '../i18n.jsx';
 import { SnippetTabs } from './dev-snippet.jsx';
 import { name as BMD_NAME, version as BMD_VERSION, license as BMD_LICENSE } from '../../../../packages/bmd/package.json';
@@ -38,25 +38,23 @@ export function installTabs(names) {
 export function NpmPackageCard({ pkg, install = null, children = null }) {
   const { t } = useI18n();
   return (
+    // bcwvisual (agent-bcw-visual) : plus de rangée de pastilles. Le nom, puis une ligne de
+    // métadonnées en gris (version · licence), le lien npm en bouton discret à droite, et la
+    // provenance en une ligne courte.
     <div className="rounded-xl border border-[var(--line)] p-4 min-w-0 flex flex-col gap-3" style={{ background: 'var(--surface)' }}>
-      <div className="flex flex-wrap items-center gap-1.5">
-        <code className="font-mono font-semibold text-[13.5px] break-all">{pkg.name}</code>
-        <Badge tone="green"><CheckCircle2 size={11} className="inline -mt-px" /> {t('bmdpub.published', 'Published on npm')}</Badge>
-        <Badge>v{pkg.version}</Badge>
-        <Badge>{pkg.license}</Badge>
+      <div className="flex items-start gap-3 min-w-0">
+        <div className="min-w-0 flex-1">
+          <code className="block font-mono font-semibold text-[14px] break-all">{pkg.name}</code>
+          <div className="mt-0.5 text-[12px] text-[var(--muted)] tabular-nums">v{pkg.version} · {pkg.license}</div>
+        </div>
+        <a href={pkg.npm} target="_blank" rel="noopener noreferrer" className="shrink-0"><Button size="sm"><Package size={13} /> npm <ExternalLink size={11} /></Button></a>
       </div>
       <SnippetTabs tabs={install || installTabs([pkg.name])} />
       {children}
-      <div className="flex flex-wrap items-center gap-2">
-        <a href={pkg.npm} target="_blank" rel="noopener noreferrer"><Button size="sm" variant="primary"><Package size={13} /> {t('bmdpub.view', 'View on npm')} <ExternalLink size={11} /></Button></a>
-      </div>
-      <p className="text-[12px] text-[var(--muted)] flex items-start gap-1.5">
-        <ShieldCheck size={14} className="text-[var(--accent-ink)] shrink-0 mt-px" />
-        <span>
-          <a className="text-[var(--accent-ink)] underline" href={`${pkg.npm}#provenance`} target="_blank" rel="noopener noreferrer">{t('bmdpub.prov', 'Verified provenance (built by GitHub Actions)')}</a>
-          {' '}{t('bmdpub.prov.d', 'npm shows which workflow run built this version, and from which commit.')}
-        </span>
-      </p>
+      <a className="text-[12px] text-[var(--muted)] hover:text-[var(--text)] inline-flex items-center gap-1.5 w-fit" href={`${pkg.npm}#provenance`} target="_blank" rel="noopener noreferrer"
+        title={t('bmdpub.prov.d', 'npm shows which workflow run built this version, and from which commit.')}>
+        <ShieldCheck size={14} className="text-success shrink-0" /> {t('bmdpub.prov2', 'Provenance verified on npm')}
+      </a>
     </div>
   );
 }
@@ -94,10 +92,8 @@ export function BmdNpmCompact() {
   const { bmd, editor } = BMD_PACKAGES;
   return (
     <div className="mt-3 space-y-2 min-w-0">
-      <div className="flex flex-wrap items-center gap-1.5">
-        <Badge tone="green"><CheckCircle2 size={11} className="inline -mt-px" /> {t('bmdpub.published', 'Published on npm')}</Badge>
-        <Badge>{bmd.license}</Badge>
-      </div>
+      {/* bcwvisual (agent-bcw-visual) : une ligne de texte à la place des pastilles. */}
+      <p className="text-[12px] text-[var(--muted)] flex items-center gap-1.5"><CheckCircle2 size={13} className="text-success shrink-0" aria-hidden="true" /> {t('bmdpub.published', 'Published on npm')} · {bmd.license}</p>
       <ul className="text-[12px] space-y-0.5">
         {[bmd, editor].map((p) => (
           <li key={p.name} className="flex items-center gap-1.5 min-w-0">

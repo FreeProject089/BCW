@@ -10,7 +10,7 @@
 .st-list { list-style: none; margin: 0; padding: 0; display: grid; }
 
 .st-step {
-  --st-b: 2.25rem;             /* badge size */
+  --st-b: 2rem;                /* badge size */
   --st-top: 1.15rem;           /* phone: badge offset from the card's top edge */
   --st-gap: 1rem;              /* phone: space between two cards */
   position: relative;
@@ -29,28 +29,29 @@
   margin-top: var(--st-top);
   display: grid; place-items: center;
   width: var(--st-b); height: var(--st-b); border-radius: 9999px;
-  font-weight: 800; font-size: .95rem; font-variant-numeric: tabular-nums;
+  font-weight: 700; font-size: .875rem; font-variant-numeric: tabular-nums;
   background: var(--bg-solid); color: var(--muted);
-  border: 2px solid var(--line-strong);
+  border: 1px solid var(--line-strong);
 }
+/* bcwvisual (agent-bcw-visual) : pastilles plus sobres. L'étape en cours est pleine, sans halo ;
+   une étape faite garde un fond neutre et une coche verte fine, elle ne crie plus. */
 .st-step.is-current .st-badge {
-  background: var(--grad-primary, linear-gradient(120deg, var(--primary), var(--primary-2)));
-  color: var(--on-primary); border-color: transparent;
-  box-shadow: 0 0 0 5px color-mix(in srgb, var(--primary) 18%, transparent);
+  background: var(--primary); color: var(--on-primary); border-color: var(--primary);
 }
-.st-step.is-done .st-badge { background: var(--success); border-color: var(--success); color: var(--bg-solid); }
+.st-step.is-done .st-badge { background: var(--bg-solid); border-color: var(--success-border, var(--line-strong)); color: var(--success); }
+/* fin bcwvisual */
 
 /* ── The connector: phone, down the rail ─────────────────────────────────────────────── */
 .st-step:not(:last-child)::before {
   content: ""; position: absolute; z-index: 0; pointer-events: none;
-  inset-inline-start: calc(var(--st-b) / 2 - 1px);
-  width: 2px; border-radius: 2px;
+  inset-inline-start: calc(var(--st-b) / 2 - .5px);
+  width: 1px; border-radius: 1px;
   /* from 6px under this badge to 6px above the next one (which sits --st-top into the next row) */
   top: calc(var(--st-top) + var(--st-b) + 6px);
   bottom: calc(6px - var(--st-top));
-  background: repeating-linear-gradient(to bottom, var(--line-strong) 0 5px, transparent 5px 10px);
+  background: var(--line-strong);
 }
-.st-step.is-walked:not(:last-child)::before { background: var(--success); }
+.st-step.is-walked:not(:last-child)::before { background: var(--success-border, var(--success)); }
 
 /* ── The card: the whole thing is the link ───────────────────────────────────────────── */
 .st-card {
@@ -62,13 +63,20 @@
   color: inherit; text-decoration: none;
   transition: border-color .2s ease, transform .2s ease, box-shadow .2s ease;
 }
-.st-card:hover { border-color: color-mix(in srgb, var(--primary) 45%, var(--line)); transform: translateY(-2px); box-shadow: var(--shadow); }
+.st-card:hover { border-color: var(--line-strong); transform: translateY(-2px); box-shadow: var(--shadow); }
 .st-card:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
+/* bcwvisual (agent-bcw-visual) : la carte en cours est la seule avec un bord d'accent, sans
+   lueur colorée ; une carte faite recule (pas de fond différent, titre et texte atténués). */
 .st-step.is-current .st-card {
-  border-color: color-mix(in srgb, var(--primary) 50%, var(--line));
-  box-shadow: 0 14px 34px -22px var(--primary-glow);
+  border-color: color-mix(in srgb, var(--primary) 55%, var(--line));
+  box-shadow: 0 1px 2px rgb(0 0 0 / .06), 0 8px 24px -16px rgb(0 0 0 / .35);
 }
-.st-step.is-done .st-card { background: color-mix(in srgb, var(--surface-2) 55%, var(--bg-solid)); }
+.st-step.is-current .st-card:hover { border-color: var(--primary); }
+.st-step.is-done .st-card { box-shadow: none; }
+.st-step.is-done .st-ico { opacity: .75; }
+.st-step.is-done .st-title { color: var(--muted); font-weight: 700; }
+.st-step.is-done .st-desc { color: var(--faint, var(--muted)); }
+/* fin bcwvisual */
 
 .st-head { display: flex; align-items: center; gap: .6rem; min-width: 0; }
 .st-ico {
@@ -77,13 +85,17 @@
   background: color-mix(in srgb, var(--primary) 12%, transparent); color: var(--accent-ink);
 }
 .st-step.is-done .st-ico { background: var(--surface-2); color: var(--muted); }
-.st-chip {
+/* bcwvisual (agent-bcw-visual) : l'état de l'étape, en texte calme (plus de pastille à contour). */
+.st-state {
   margin-inline-start: auto; flex-shrink: 0;
-  font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
-  padding: .2rem .55rem; border-radius: 9999px; line-height: 1.4;
+  display: inline-flex; align-items: center; gap: .35rem;
+  font-size: 13px; font-weight: 600; line-height: 1.3;
 }
-.st-chip.is-done { color: var(--success); background: var(--success-bg); border: 1px solid var(--success-border); }
-.st-chip.is-next { color: var(--accent-ink); background: color-mix(in srgb, var(--primary) 12%, transparent); border: 1px solid color-mix(in srgb, var(--primary) 30%, transparent); }
+.st-state.is-done { color: var(--muted); }
+.st-state.is-done svg { color: var(--success); }
+.st-state.is-next { color: var(--text); }
+.st-dot { width: 6px; height: 6px; border-radius: 9999px; background: var(--primary); }
+/* fin bcwvisual */
 
 .st-title { margin: .8rem 0 0; font-size: 1.0625rem; font-weight: 800; line-height: 1.3; overflow-wrap: anywhere; }
 .st-desc { display: block; margin-top: .4rem; font-size: .875rem; line-height: 1.55; color: var(--muted); }
@@ -96,10 +108,9 @@
 }
 .st-step.is-done .st-cta { color: var(--muted); }
 .st-cta.is-primary {
-  padding: .55rem 1.05rem; border-radius: 9999px;
-  background: var(--grad-primary, linear-gradient(120deg, var(--primary), var(--primary-2)));
+  padding: .55rem 1.05rem; border-radius: var(--r-md, .6rem);
+  background: var(--primary);
   color: var(--on-primary);
-  box-shadow: 0 8px 22px -10px var(--primary-glow);
 }
 .st-arrow { flex-shrink: 0; transition: transform .2s ease; }
 .st-card:hover .st-arrow { transform: translateX(3px); }
@@ -111,7 +122,7 @@
   margin: 0 0 1.25rem; font-size: 13px; font-weight: 600; color: var(--muted);
 }
 .st-progress-bar { display: inline-flex; gap: 4px; }
-.st-progress-bar > span { width: 1.5rem; height: 6px; border-radius: 9999px; background: var(--line-strong); }
+.st-progress-bar > span { width: 1.25rem; height: 3px; border-radius: 9999px; background: var(--line-strong); }
 .st-progress-bar > span.is-done { background: var(--success); }
 
 /* ── lg+: a row ───────────────────────────────────────────────────────────────────────
@@ -130,13 +141,13 @@
   /* across the badge strip: from 8px after this badge to 8px before the next one, which
      starts one column gap (1.5rem) past this column's end */
   .st-step:not(:last-child)::before {
-    top: calc(var(--st-b) / 2 - 1px); bottom: auto;
-    width: auto; height: 2px;
+    top: calc(var(--st-b) / 2 - .5px); bottom: auto;
+    width: auto; height: 1px;
     inset-inline-start: calc(var(--st-b) + 8px);
     inset-inline-end: calc(8px - 1.5rem);
-    background: repeating-linear-gradient(to right, var(--line-strong) 0 5px, transparent 5px 10px);
+    background: var(--line-strong);
   }
-  .st-step.is-walked:not(:last-child)::before { background: var(--success); }
+  .st-step.is-walked:not(:last-child)::before { background: var(--success-border, var(--success)); }
   .st-card { padding: 1.35rem 1.35rem 1.25rem; }
 }
 

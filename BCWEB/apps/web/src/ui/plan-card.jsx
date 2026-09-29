@@ -50,15 +50,19 @@ export default function PlanCard({ name, tagline, pill, featured = false, disabl
   const [cur, whole, cents, tail] = splitPrice(price.now);
   const band = accent || (forward ? 'var(--primary)' : 'var(--line-strong)');
   return (
-    <div className={`card plan-hover plan-card relative flex flex-col min-w-0 overflow-hidden ${disabled ? 'plan-dead opacity-60' : ''} ${forward ? 'plan-reco z-10 lg:scale-[1.03]' : ''}`}
+    // bcwvisual (agent-bcw-visual) : la carte recommandée ne grossit plus (lg:scale retiré) ;
+    // elle se distingue par sa bande, son fond chaud et son libellé, pas par sa taille.
+    <div className={`card plan-hover plan-card relative flex flex-col min-w-0 overflow-hidden ${disabled ? 'plan-dead opacity-60' : ''} ${forward ? 'plan-reco' : ''}`}
       style={{ '--plan-accent': band }}>
       <div aria-hidden className="plan-band" />
       <div className="p-5 sm:p-6 flex flex-col flex-1 min-w-0">
         <div className="flex items-baseline justify-between gap-3 min-w-0">
           <div className="text-[17px] font-bold tracking-tight truncate min-w-0" title={name}>{name}</div>
-          <span className={`plan-flag shrink-0 text-[11px] font-semibold uppercase tracking-[0.08em] ${forward && pill ? '' : 'invisible'}`} aria-hidden={!(forward && pill)}>
-            {pill || ' '}
+          {/* bcwvisual (agent-bcw-visual) : libellé en casse normale précédé d'un point, plus de capitales espacées. */}
+          <span className={`plan-flag shrink-0 inline-flex items-center gap-1.5 text-[12.5px] font-semibold ${forward && pill ? '' : 'invisible'}`} aria-hidden={!(forward && pill)}>
+            {forward && pill && <span className="plan-dot" aria-hidden="true" />}{pill || ' '}
           </span>
+          {/* fin bcwvisual */}
         </div>
         {/* The slot exists only when the grid uses taglines at all (a caller passes '' for a
             plan without one), so the rows still line up across the cards of one grid. */}

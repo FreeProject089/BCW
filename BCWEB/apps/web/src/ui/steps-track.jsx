@@ -54,13 +54,17 @@ export function StepsTrack({ steps, className = '' }) {
           return (
             <li key={s.key} className={`st-step ${state} ${s.done ? 'is-walked' : ''}`} aria-current={i === firstOpen ? 'step' : undefined}>
               <span className="st-badge" aria-hidden="true">
-                {s.done ? <Check size={17} strokeWidth={3} /> : i + 1}
+                {s.done ? <Check size={15} strokeWidth={2.75} /> : i + 1}
               </span>
               <Link to={s.to} className="st-card group">
                 <span className="st-head">
                   <span className="st-ico" aria-hidden="true"><I size={18} /></span>
-                  {s.done && <span className="st-chip is-done">{t('home.st.done', 'Done')}</span>}
-                  {!s.done && i === firstOpen && <span className="st-chip is-next">{t('home.st.next', 'Next step')}</span>}
+                  {/* bcwvisual (agent-bcw-visual) : plus de pastilles « FAIT » / « PROCHAINE ÉTAPE »
+                      en contour néon. Fait = une coche discrète et un mot en gris ; suivante = un
+                      point d'accent et un mot, sans majuscules ni bordure. */}
+                  {s.done && <span className="st-state is-done"><Check size={14} strokeWidth={2.5} aria-hidden="true" />{t('home.st.done', 'Done')}</span>}
+                  {!s.done && i === firstOpen && <span className="st-state is-next"><span className="st-dot" aria-hidden="true" />{t('home.st.next2', 'Up next')}</span>}
+                  {/* fin bcwvisual */}
                 </span>
                 <h3 className="st-title">
                   <span className="sr-only">{t('home.step.n', 'Step {n}').replace('{n}', String(i + 1))}{'. '}</span>

@@ -39,10 +39,10 @@ export default function WhySection() {
 
   const tracks = [
     { I: BadgeCheck, tone: 'text-success', label: t('home.why2.official', 'The official catalogue'),
-      tag: t('home.why2.official.tag', 'Reviewed before publishing'), tagCls: 'badge badge-green',
+      tag: t('home.why2.official.tag', 'Reviewed before publishing'), tagCls: 'text-success',
       d: t('home.why2.official.d', 'A submission stays out of sight until someone on the team has opened and approved it, and a refusal comes with its reason.') },
     { I: Users, tone: 'text-[var(--accent-ink)]', label: t('home.why2.community', 'Community catalogues and repositories'),
-      tag: t('home.why2.community.tag', 'Reportable by anyone'), tagCls: 'badge',
+      tag: t('home.why2.community.tag', 'Reportable by anyone'), tagCls: 'text-[var(--muted)]',
       d: t('home.why2.community.d', 'Published by their author straight away, with the account behind them shown. Anyone can report a problem, and we suspend what breaks the rules.') },
   ];
 
@@ -96,7 +96,9 @@ export default function WhySection() {
                     <I size={16} className={`${tone} shrink-0 mt-[3px]`} aria-hidden="true" />
                     <div className="min-w-0 flex-1 flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
                       <span className="font-semibold text-[15px] leading-snug min-w-0">{label}</span>
-                      <span className={`${tagCls} sm:ms-auto`}>{tag}</span>
+                      {/* bcwvisual (agent-bcw-visual) : l'étiquette n'est plus une pastille à contour, juste un texte court. */}
+                      <span className={`${tagCls} text-[12px] font-medium sm:ms-auto`}>{tag}</span>
+                      {/* fin bcwvisual */}
                     </div>
                   </div>
                   <p className="mt-2 text-sm text-[var(--muted)] leading-relaxed">{d}</p>

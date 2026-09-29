@@ -11,3 +11,6 @@
   flex: none;
 }
 .plan-card .plan-flag { color: var(--accent-ink); }
+/* bcwvisual (agent-bcw-visual) : le point devant « Recommandé » (un aplat, jamais du texte). */
+.plan-card .plan-dot { width: 6px; height: 6px; border-radius: 9999px; background: var(--primary); flex: none; }
+/* fin bcwvisual */

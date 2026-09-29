@@ -42,12 +42,13 @@ export function CopyButton({ text, className = '' }) {
 
 export function CodeSnippet({ code, lang = 'bash', label = null, className = '' }) {
   return (
+    // bcwvisual (agent-bcw-visual) : en-tête séparé du code par un filet, libellé en casse normale, code un peu plus grand.
     <div className={`rounded-xl border border-[var(--line)] bg-[var(--surface-2)] overflow-hidden min-w-0 ${className}`}>
-      <div className="flex items-center gap-2 px-3 pt-2">
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)] select-none">{label || LANG_LABEL[lang] || lang}</span>
+      <div className="flex items-center gap-2 ps-3 pe-1.5 py-1.5 border-b border-[var(--line)]">
+        <span className="text-[11.5px] font-medium font-mono text-[var(--faint)] select-none">{label || LANG_LABEL[lang] || lang}</span>
         <CopyButton text={code} className="ms-auto" />
       </div>
-      <pre className="text-[12px] leading-relaxed px-3 pb-3 pt-2 overflow-x-auto m-0"><code dangerouslySetInnerHTML={{ __html: highlightCode(code, PRISM[lang] || lang) }} /></pre>
+      <pre className="text-[12.5px] leading-relaxed px-3.5 py-3 overflow-x-auto m-0"><code dangerouslySetInnerHTML={{ __html: highlightCode(code, PRISM[lang] || lang) }} /></pre>
     </div>
   );
 }
@@ -59,10 +60,11 @@ export function SnippetTabs({ tabs, initial = null, className = '' }) {
   if (!tab) return null;
   return (
     <div className={`min-w-0 ${className}`}>
-      <div className="flex gap-1 overflow-x-auto pb-1.5 -mx-0.5 px-0.5" role="tablist">
+      {/* bcwvisual (agent-bcw-visual) : onglets soulignés au lieu de boutons orange pleins. */}
+      <div className="flex gap-4 overflow-x-auto mb-2 border-b border-[var(--line)] -mx-0.5 px-0.5" role="tablist">
         {tabs.map((x) => (
           <button key={x.id} type="button" role="tab" aria-selected={x.id === tab.id} onClick={() => setCur(x.id)}
-            className={`shrink-0 px-3 py-1.5 rounded-lg text-[13px] border ${x.id === tab.id ? 'bg-[var(--primary)] text-[var(--on-primary)] border-transparent' : 'border-[var(--line)] hover:bg-[var(--surface-2)]'}`}>
+            className={`shrink-0 -mb-px py-2 text-[13px] border-b-2 transition-colors ${x.id === tab.id ? 'border-[var(--primary)] text-[var(--text)] font-semibold' : 'border-transparent text-[var(--muted)] hover:text-[var(--text)]'}`}>
             {x.label}
           </button>
         ))}

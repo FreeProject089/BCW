@@ -156,10 +156,12 @@ function releases(src) {
   }).filter((r) => r.body);
 }
 
+// bcwvisual (agent-bcw-visual) : chaque section commence par un filet et un titre plus net ;
+// l'icône passe en gris (l'accent reste pour les actions).
 function Section({ id, icon: Icon, title, children, lede = null }) {
   return (
-    <section id={id} className="space-y-3 scroll-mt-20 min-w-0">
-      <h2 className="text-lg sm:text-xl font-semibold flex items-center gap-2"><Icon size={17} className="text-[var(--accent-ink)] shrink-0" /> {title}</h2>
+    <section id={id} className="space-y-3 scroll-mt-24 min-w-0 pt-8 border-t border-[var(--line)] first:pt-0 first:border-0">
+      <h2 className="text-xl sm:text-2xl font-bold tracking-tight flex items-center gap-2.5"><Icon size={18} className="text-[var(--muted)] shrink-0" aria-hidden="true" /> {title}</h2>
       {lede && <p className="text-sm text-[var(--muted)] max-w-2xl">{lede}</p>}
       {children}
     </section>
@@ -173,7 +175,7 @@ function Playground({ value, onChange, boxRef }) {
     <div ref={boxRef} className="grid lg:grid-cols-2 gap-3 scroll-mt-20">
       <div className="min-w-0 flex flex-col">
         <div className="flex items-center gap-2 mb-1.5">
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t('dvb2.pg.src', 'Source')}</span>
+          <span className="text-[12.5px] font-medium text-[var(--muted)]">{t('dvb2.pg.src', 'Source')}</span>
           <Button size="sm" variant="ghost" className="ms-auto" onClick={() => onChange(SAMPLE)}><RotateCcw size={13} /> {t('dvb2.pg.reset', 'Reset')}</Button>
           <CopyButton text={value} />
         </div>
@@ -182,7 +184,7 @@ function Playground({ value, onChange, boxRef }) {
           className="font-mono text-[12.5px] leading-relaxed min-h-[260px] lg:min-h-[420px] flex-1 w-full" />
       </div>
       <div className="min-w-0 flex flex-col">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 py-1">{t('dvb2.pg.out', 'Preview')}</span>
+        <span className="text-[12.5px] font-medium text-[var(--muted)] mb-1.5 py-1">{t('dvb2.pg.out', 'Preview')}</span>
         <div className="rounded-xl border border-[var(--line)] p-4 overflow-auto min-h-[260px] lg:min-h-[420px] lg:max-h-[640px] flex-1" style={{ background: 'var(--bg-solid)' }}>
           <Markdown>{shown}</Markdown>
         </div>
@@ -216,7 +218,7 @@ function DirectiveList({ onTry }) {
         <div className="flex gap-1 overflow-x-auto pb-1 min-w-0">
           {[{ id: 'all', label: { en: 'All', fr: 'Tout' } }, ...DIRECTIVE_GROUPS].map((g) => (
             <button key={g.id} type="button" onClick={() => setGroup(g.id)} aria-pressed={group === g.id}
-              className={`shrink-0 px-2.5 py-1 rounded-lg text-[12px] border ${group === g.id ? 'bg-[var(--primary)] text-[var(--on-primary)] border-transparent' : 'border-[var(--line)] hover:bg-[var(--surface-2)]'}`}>
+              className={`shrink-0 px-2.5 min-h-[32px] rounded-lg text-[12.5px] border ${group === g.id ? 'bg-[var(--surface-2)] text-[var(--text)] font-semibold border-[var(--line-strong)]' : 'border-transparent text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)]'}`}>
               {fr ? g.label.fr : g.label.en}
             </button>
           ))}
@@ -261,29 +263,38 @@ export default function DevBmd() {
   const own = SIZE?.own || {};
 
   return (
-    <div className="max-w-5xl mx-auto py-8 sm:py-12 space-y-12 min-w-0">
+    <div className="max-w-6xl mx-auto py-8 sm:py-12 space-y-10 min-w-0">
+      {/* bcwvisual (agent-bcw-visual) : en-tête allégé (plus d'icône en dégradé ni de sept
+          pastilles : une ligne de métadonnées), deux actions au lieu de quatre, et un sommaire
+          collant à gauche dès lg pour une page aussi longue. */}
       <header className="max-w-2xl">
-        <span className="inline-grid place-items-center w-12 h-12 rounded-2xl bg-gradient-to-br from-brand to-brand-2 text-[var(--on-primary)] shadow-lg shadow-orange-500/25 mb-4"><Package size={22} /></span>
-        <h1 className="text-3xl sm:text-4xl font-extrabold leading-tight">B.MD</h1>
+        <p className="text-[13px] font-medium text-[var(--muted)] flex items-center gap-1.5 mb-2"><Package size={14} aria-hidden="true" /> @bettercommunity/bmd</p>
+        <h1 className="text-3xl sm:text-4xl font-extrabold leading-tight tracking-tight">B.MD</h1>
         <p className="mt-3 text-[15px] leading-relaxed text-[var(--muted)]">
-          {t('dvb2.lede', 'Markdown with blocks, as one React component: callouts, cards, tabs, steps, API cards drawn from OpenAPI, embeds, live values, diagrams. The renderer every page of this site is written in, published on npm.')}
+          {t('dvb2.lede2', 'Markdown with blocks, as one React component: callouts, tabs, steps, API cards, embeds, live values, diagrams. Every page of this site is written in it.')}
         </p>
-        <div className="mt-4 flex flex-wrap gap-2">
-          <Badge>@bettercommunity/bmd {BMD_VERSION}</Badge>
-          <Badge tone="green">{t('bmdpub.published', 'Published on npm')}</Badge>
-          <Badge>{t('dvb2.b.blocks', '{n} blocks').replace('{n}', String(DIRECTIVES.length))}</Badge>
-          <Badge>{t('dvb2.b.names', '{n} directive names').replace('{n}', String(names))}</Badge>
-          <Badge>MIT</Badge>
-          <Badge>{t('dvb2.b.types', 'TypeScript types')}</Badge>
-          <Badge>React 18 / 19</Badge>
-        </div>
-        <div className="mt-5 flex flex-wrap gap-2">
+        <p className="mt-3 text-[12.5px] text-[var(--faint)] tabular-nums">
+          v{BMD_VERSION} · {t('dvb2.b.blocks', '{n} blocks').replace('{n}', String(DIRECTIVES.length))} · {t('dvb2.b.names', '{n} directive names').replace('{n}', String(names))} · MIT · {t('dvb2.b.types', 'TypeScript types')} · React 18 / 19
+        </p>
+        <div className="mt-5 flex flex-wrap items-center gap-2">
           <a href={NPM} target="_blank" rel="noopener noreferrer"><Button variant="primary"><Package size={15} /> {t('dvb2.npm', 'On npm')} <ExternalLink size={12} /></Button></a>
           <a href="#playground"><Button><Play size={15} /> {t('dvb2.cta.pg', 'Playground')}</Button></a>
-          <a href="#directives"><Button><Puzzle size={15} /> {t('dvb2.cta.dir', 'Every directive')}</Button></a>
-          <a href={SOURCE} target="_blank" rel="noopener noreferrer"><Button variant="ghost"><Github size={15} /> {t('dvb2.src', 'Source')}</Button></a>
+          <a href={SOURCE} target="_blank" rel="noopener noreferrer" className="text-sm text-[var(--muted)] hover:text-[var(--text)] inline-flex items-center gap-1.5 px-2 min-h-[40px]"><Github size={15} aria-hidden="true" /> {t('dvb2.src', 'Source')}</a>
         </div>
       </header>
+
+      <div className="lg:grid lg:grid-cols-[11rem_minmax(0,1fr)] lg:gap-10 min-w-0">
+        <nav aria-label={t('dvb2.toc', 'On this page')} className="hidden lg:block min-w-0">
+          <ul className="sticky top-24 space-y-0.5 text-[13px]">
+            {[['npm', t('bmdpub.title', 'Published on npm')], ['install', t('dvb.install', 'Install')], ['quick-start', t('devp.qs', 'Quick start')], ['playground', t('dvb2.pg', 'Playground')],
+              ['directives', t('dvb2.dir', 'Every directive')], ['frameworks', t('dvb.fw', 'Your framework')], ['security', t('dvb2.sec', 'Security model')],
+              ...(SIZE?.component ? [['size', t('dvb2.size', 'Bundle size')]] : []), ['changelog', t('dvb2.cl', 'Version and changelog')]].map(([id, label]) => (
+              <li key={id}><a href={`#${id}`} className="block rounded-md px-2.5 py-1.5 text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)]">{label}</a></li>
+            ))}
+          </ul>
+        </nav>
+        <div className="space-y-10 min-w-0">
+      {/* fin bcwvisual */}
 
       <Section id="npm" icon={Package} title={t('bmdpub.title', 'Published on npm')}
         lede={t('bmdpub.lede', 'Both packages are on the public npm registry, built and published by GitHub Actions with provenance. The versions below are read from each package.json when this site is built.')}>
@@ -291,8 +302,9 @@ export default function DevBmd() {
       </Section>
 
       <Section id="install" icon={Package} title={t('dvb.install', 'Install')}>
+        {/* bcwvisual (agent-bcw-visual) : une phrase au lieu d'un paragraphe. */}
         <p className="text-sm text-[var(--muted)] max-w-2xl">
-          {t('dvb2.install.pnpm', 'pnpm, yarn and bun install from the same npm registry: one package, every client. The Markdown pipeline comes with it; you bring React 18 or 19. Checked from the published tarball under pnpm’s strict node_modules, where an undeclared dependency would fail.')}
+          {t('dvb2.install.short', 'Any npm client works (npm, pnpm, yarn, bun). The Markdown pipeline comes with it; you bring React 18 or 19.')}
         </p>
         <p className="text-sm text-[var(--muted)] max-w-2xl">{t('dvb.install.opt', 'Optional, loaded only when a document needs them: syntax highlighting, maths, diagrams.')}</p>
         <CodeSnippet code={INSTALL_OPT} />
@@ -405,6 +417,9 @@ export default function DevBmd() {
         )}
         <a className="text-sm text-[var(--accent-ink)] underline inline-flex items-center gap-1" href={CHANGELOG_URL} target="_blank" rel="noopener noreferrer">CHANGELOG.md <ExternalLink size={12} /></a>
       </Section>
+
+        </div>
+      </div>
 
       <div className="flex flex-wrap gap-2 pt-2">
         <Link to="/dev/editor"><Button><PenLine size={15} /> {t('dvb.cta.editor', 'Try the editor')}</Button></Link>

@@ -756,7 +756,9 @@ export function Home({ draft: draftProp = null }) {
                   <div className="relative overflow-hidden">
                     {featured.cover ? <img src={thumb(featured.cover, 768)} alt="" className="w-full h-56 object-cover transition-transform duration-300 group-hover:scale-105" />
                       : <div className="w-full h-56 blog-nocover grid place-items-center"><Newspaper size={34} className="text-[var(--accent-ink)]" /></div>}
-                    <span className="absolute top-3 left-3 text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full scrim backdrop-blur text-[var(--accent-ink)] border border-[var(--line)]">Latest</span>
+                    {/* bcwvisual (agent-bcw-visual) : « Latest » traduit, étiquette pleine et discrète (plus de contour en majuscules). */}
+                    <span className="absolute top-3 start-3 text-[12px] font-semibold px-2 py-0.5 rounded-md bg-[var(--bg-solid)] text-[var(--text)] shadow-sm">{t('home.news.latest', 'Latest')}</span>
+                    {/* fin bcwvisual */}
                   </div>
                   <div className="p-6 flex flex-col flex-1">
                     <Badge tone="primary" className="self-start">{featured.project?.name}</Badge>

@@ -466,7 +466,7 @@ export function Hosting() {
           a long plan name is the one thing in here that can push a grid track wider than
           its column, and it is the one thing an admin types freely. */}
       {plans.loading ? <Loading /> : <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 lg:gap-6 items-stretch">
-        {paidPlans.map((pl, idx) => {
+        {paidPlans.map((pl) => {
           // A plan can be individually unavailable (not enough free space for ITS
           // size) even while the pool isn't fully soldOut — disable just that card.
           const planDisabled = soldOut || (!!c && pl.storageGB > c.freeGB);
@@ -518,11 +518,13 @@ export function Hosting() {
           // only and never on a card that cannot be bought): four cards where one is tinted is
           // four cards; one a few pixels in front is a choice the page has already made.
           return (
-            <PlanCard key={pl.id} name={pl.name} pill={recommended ? t('hosting.popular2', 'RECOMMENDED') : ''}
+            <PlanCard key={pl.id} name={pl.name} pill={recommended ? t('hosting.reco', 'Recommended') : ''}
               featured={recommended} disabled={planDisabled}
               // The band that tells the cards apart at a glance: the recommended one in the
               // brand colour, the others in the calmer status tones, in order of size.
-              accent={recommended ? 'var(--primary)' : PLAN_ACCENTS[idx % PLAN_ACCENTS.length]}
+              // bcwvisual (agent-bcw-visual) : une seule couleur de bande, celle de l'offre
+              // recommandée ; les autres restent neutres (l'arc-en-ciel faisait gabarit).
+              accent={recommended ? 'var(--primary)' : 'var(--line-strong)'}
               // The second door on every card: none of the four sizes has to be THE size, the
               // configurator further down builds any other one at the same rates.
               secondary={<a href="#custom" className="text-[var(--accent-ink)] font-medium hover:underline">{t('hosting.card.custom', 'Or pick another size')}</a>}
@@ -536,13 +538,21 @@ export function Hosting() {
               priceNote={months > 1
                 ? t('hosting.card.today', 'You pay {total} today for {n} months').replace('{total}', `$${(total / 100).toFixed(2)}`).replace('{n}', months)
                 : t('hosting.card.today1', 'You pay {total} today for one month').replace('{total}', `$${(total / 100).toFixed(2)}`)}
-              features={features.map(([icon, label, yes, note]) => ({ icon, label, yes, note }))}
+              // bcwvisual (agent-bcw-visual) : les cartes gardent la liste, sans la seconde ligne
+              // d'explication ; les explications vont dans le tableau « Côte à côte » dessous.
+              features={features.map(([icon, label, yes]) => ({ icon, label, yes }))}
               action={(
                 <Button variant={recommended && !planDisabled ? 'primary' : 'default'} disabled={planDisabled} className="w-full !whitespace-normal" onClick={() => addHosting({ planId: pl.id })}>
                   {planDisabled ? t('hosting.nospace', 'Not enough space') : <><ShoppingCart size={15} className="shrink-0" /> {t('cart.add', 'Add to cart')}</>}</Button>
               )} />
           ); })}
       </div>}
+      {/* bcwvisual (agent-bcw-visual) : le comparatif ligne à ligne des tailles. */}
+      {!plans.loading && paidPlans.length > 1 && (
+        <PlanCompareTable plans={paidPlans} recommendedId={samplePlan?.id} months={months} termTotal={termTotal}
+          loyalty={loyalty} loyaltyMax={loyaltyMax} />
+      )}
+      {/* fin bcwvisual */}
 
       {/* Free tier — a real $0 plan, called out on its own instead of blending into
           the paid grid below (it isn't really "one of the four tiers", it's the
@@ -970,8 +980,79 @@ function SubLead({ icon: Icon, title, sub }) {
 /** The sections a link can land on (`/hosting#domains` from the domain panel, and so on). */
 const HOSTING_ANCHORS = ['plans', 'custom', 'bot', 'domains', 'compare', 'faq', 'talk'];
 
-/** The coloured band on the plan cards that are not the recommended one, smallest first. */
-const PLAN_ACCENTS = ['var(--info)', 'var(--success)', 'color-mix(in srgb, var(--info) 55%, var(--primary))', 'var(--warning)'];
+// bcwvisual (agent-bcw-visual) : PLAN_ACCENTS (une couleur de bande par offre) retiré, les
+// offres non recommandées ont une bande neutre.
+
+/**
+ * bcwvisual (agent-bcw-visual) : les offres payantes côte à côte, une ligne par critère.
+ * Mêmes calculs que les cartes (termTotal, priceMult) ; l'explication de chaque critère, qui
+ * alourdissait chaque carte, est ici une fois, sous le nom de la ligne. Sur téléphone, le
+ * tableau défile dans son cadre (première colonne collante), jamais la page.
+ */
+function PlanCompareTable({ plans, recommendedId, months, termTotal, loyalty, loyaltyMax }) {
+  const { t } = useI18n();
+  const yes = <Check size={16} className="text-success inline" aria-label={t('hosting.tbl.yes', 'Included')} />;
+  const no = <span className="text-[var(--faint)]" aria-label={t('hosting.tbl.no', 'Not included')}>–</span>;
+  const cols = plans.map((pl) => {
+    const bytes = (pl.storageGB || 0) * (1024 ** 3); const u = bestByteUnit(bytes);
+    const total = termTotal(pl.priceMonthlyCents);
+    const hasBot = !!(pl.bot && ((pl.bot.features || []).length || Object.values(pl.bot.limits || {}).some((n) => n > 0)));
+    const boosts = pl.boostsPerPeriod > 0
+      ? (pl.boostPeriodMonths > 1
+        ? t('hosting.tbl.boostsp', '{n} every {m} months').replace('{n}', pl.boostsPerPeriod).replace('{m}', pl.boostPeriodMonths)
+        : t('hosting.tbl.boostsm', '{n} a month').replace('{n}', pl.boostsPerPeriod))
+      : null;
+    return {
+      id: pl.id, name: pl.name, reco: pl.id === recommendedId,
+      price: `$${(total / 100 / months).toFixed(2)}`,
+      space: `${Number(bytesInUnit(bytes, u).toFixed(2))} ${u}`,
+      speed: `${(pl.uploadLimitKbps / 1024).toFixed(0)} Mbps`,
+      boosts, bot: hasBot ? (pl.bot.guilds || 1) : 0,
+    };
+  });
+  const rows = [
+    [t('hosting.tbl.price', 'Per month'), months > 1 ? t('hosting.tbl.price.n', 'For {n} months paid today').replace('{n}', months) : t('hosting.tbl.price.n1', 'For one month'), (c) => <span className="font-semibold tabular-nums">{c.price}</span>],
+    [t('hosting.tbl.space', 'Space'), t('hosting.card.space.n', 'Repos, catalogues or both, as many as fit, split however you like'), (c) => <span className="tabular-nums">{c.space}</span>],
+    [t('hosting.tbl.speed', 'Download speed'), t('hosting.card.speed.n', 'A ceiling per download, not a promised average'), (c) => <span className="tabular-nums">{c.speed}</span>],
+    [t('hosting.tbl.boosts', 'Featured boosts'), t('hosting.card.boostis', 'At the top of the public lists, for as long as it lasts'), (c) => c.boosts || no],
+    ...(cols.some((c) => c.bot) ? [[t('hosting.tbl.bot', 'Discord bot plan'), null, (c) => (c.bot ? t('hosting.tbl.bot.n', '{n} server(s)').replace('{n}', c.bot) : no)]] : []),
+    [t('hosting.tbl.domain', 'Your own domain'), null, () => yes],
+    ...(loyalty && loyalty.appliesTo !== 'catalogs' ? [[t('hosting.tbl.loyal', 'Loyalty discount'), loyalty.lapseResets ? t('hosting.card.loyal.n', 'Counted while your subscription runs without a break') : t('hosting.card.loyal.n2', 'Counted in months paid for, a gap only pauses it'), () => t('hosting.tbl.loyal.v', 'Up to {pct}%').replace('{pct}', loyaltyMax)]] : []),
+  ];
+  return (
+    <div className="mt-10">
+      <h3 className="plate w-fit max-w-full font-bold text-[17px] mb-3">{t('hosting.tbl.t', 'Side by side')}</h3>
+      <div className="card p-0 overflow-x-auto min-w-0">
+        <table className="w-full text-[13.5px] border-collapse min-w-[36rem]">
+          <caption className="sr-only">{t('hosting.tbl.t', 'Side by side')}</caption>
+          <thead>
+            <tr className="border-b border-[var(--line)]">
+              <th scope="col" className="text-start font-medium text-[var(--muted)] px-4 py-3 sticky start-0 bg-[var(--bg-solid)] w-[9.5rem] sm:w-[38%]">{t('hosting.tbl.plan', 'Plan')}</th>
+              {cols.map((c) => (
+                <th key={c.id} scope="col" className={`text-start px-4 py-3 align-bottom ${c.reco ? 'bg-[var(--surface-2)]' : ''}`}>
+                  <span className="block font-bold truncate max-w-[10rem]" title={c.name}>{c.name}</span>
+                  {c.reco && <span className="text-[12px] font-semibold text-[var(--accent-ink)]">{t('hosting.reco', 'Recommended')}</span>}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(([label, note, cell]) => (
+              <tr key={label} className="border-b border-[var(--line)] last:border-0">
+                <th scope="row" className="text-start font-medium px-4 py-3 sticky start-0 bg-[var(--bg-solid)] align-top">
+                  {label}
+                  {note && <span className="block text-[12px] font-normal text-[var(--muted)] mt-0.5 leading-snug">{note}</span>}
+                </th>
+                {cols.map((c) => <td key={c.id} className={`px-4 py-3 align-top ${c.reco ? 'bg-[var(--surface-2)]' : ''}`}>{cell(c)}</td>)}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+// fin bcwvisual
 
 // N-hosting (agent-hosting-N): HostingNav (the row of links under the hero) was removed at
 // the owner's request; HOSTING_ANCHORS above still makes /hosting#plans and the rest land.

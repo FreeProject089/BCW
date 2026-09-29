@@ -270,7 +270,7 @@ export function ApiConsole() {
             give up. */}
         <div className="pt-3 mt-1 border-t border-[var(--line)]">
           <div className="flex items-center gap-2 mb-1.5">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Code2 size={12} /> {t('dev.snip', 'The same call, in code')}</span>
+            <span className="text-[12.5px] font-medium text-[var(--muted)] flex items-center gap-1.5"><Code2 size={13} aria-hidden="true" /> {t('dev.snip', 'The same call, in code')}</span>
             <div className="inline-flex rounded-[10px] bg-[var(--surface-2)] p-0.5 ms-auto">
               {LANGS.map((l) => (
                 <button key={l} onClick={() => setLang(l)}
@@ -509,8 +509,9 @@ export default function DevHub() {
           opens with a feature list is a brochure; the question people arrive with is "can I
           do the thing I came to do, and how long will it take". */}
       <div className="text-center max-w-2xl mx-auto mb-8 sm:mb-12">
-        <span className="inline-grid place-items-center w-14 h-14 rounded-2xl bg-gradient-to-br from-brand to-brand-2 text-[var(--on-primary)] shadow-lg shadow-orange-500/25 mb-4"><Code2 size={26} /></span>
-        <h1 className="text-3xl sm:text-4xl font-extrabold leading-tight">
+        {/* bcwvisual (agent-bcw-visual) : l'icône en dégradé avec halo orange est retirée ; le titre suffit. */}
+        <p className="text-[13px] font-medium text-[var(--muted)] inline-flex items-center gap-1.5 mb-3"><Code2 size={14} aria-hidden="true" /> {t('dev.hub.kicker', 'Developers')}</p>
+        <h1 className="text-3xl sm:text-4xl font-extrabold leading-tight tracking-tight">
           {hero.title || <>{t('dev.hub.h1a', 'Build on')} <span className="gradient-text">BetterCommunity</span></>}
         </h1>
         <p className="text-[var(--muted)] mt-3 text-base sm:text-lg">
@@ -554,19 +555,19 @@ export default function DevHub() {
           find the door yourself. */}
       {show.jobs !== false && (
         <div className="grid sm:grid-cols-2 gap-4 mb-10">
-          <Link to="/dev/config" className="group rounded-xl border border-[var(--line)] p-5 transition hover:border-[var(--primary)]" style={{ background: 'var(--surface)' }}>
+          <Link to="/dev/config" className="group rounded-xl border border-[var(--line)] p-5 transition hover:border-[var(--line-strong)] hover:shadow-[var(--shadow)]" style={{ background: 'var(--surface)' }}>
             <div className="flex items-center gap-2 mb-1">
               <KeyRound size={16} className="text-[var(--accent-ink)]" />
               <span className="font-semibold text-[15px] flex-1">{t('dev.hub.jobkey', 'Your program acts as YOU')}</span>
-              <ArrowRight size={14} className="shrink-0 opacity-0 group-hover:opacity-100 transition text-[var(--accent-ink)]" />
+              <ArrowRight size={14} className="shrink-0 text-[var(--faint)] group-hover:text-[var(--accent-ink)] transition rtl-mirror" />
             </div>
             <p className="text-[13px] text-[var(--muted)]">{t('dev.hub.jobkey.s', 'A script, a sync job, a bot you run. Use an API key.')}</p>
           </Link>
-          <Link to="/docs/sso" className="group rounded-xl border border-[var(--line)] p-5 transition hover:border-[var(--primary)]" style={{ background: 'var(--surface)' }}>
+          <Link to="/docs/sso" className="group rounded-xl border border-[var(--line)] p-5 transition hover:border-[var(--line-strong)] hover:shadow-[var(--shadow)]" style={{ background: 'var(--surface)' }}>
             <div className="flex items-center gap-2 mb-1">
               <Shield size={16} className="text-[var(--accent-ink)]" />
               <span className="font-semibold text-[15px] flex-1">{t('dev.hub.jobsso', 'Your app acts for OTHER people')}</span>
-              <ArrowRight size={14} className="shrink-0 opacity-0 group-hover:opacity-100 transition text-[var(--accent-ink)]" />
+              <ArrowRight size={14} className="shrink-0 text-[var(--faint)] group-hover:text-[var(--accent-ink)] transition rtl-mirror" />
             </div>
             <p className="text-[13px] text-[var(--muted)]">{t('dev.hub.jobsso.s', 'Anything with its own users. They authorise it, you never touch their password.')}</p>
           </Link>
@@ -580,7 +581,7 @@ export default function DevHub() {
       <h2 className="text-xl sm:text-2xl font-extrabold tracking-tight mb-4">{t('devp.surfaces', 'What you can build on')}</h2>
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-12">
         {SURFACES.map((s) => (
-          <div key={s.id} className="group rounded-xl border border-[var(--line)] p-5 min-w-0 flex flex-col transition hover:border-[var(--primary)]" style={{ background: 'var(--surface)' }}>
+          <div key={s.id} className="group rounded-xl border border-[var(--line)] p-5 min-w-0 flex flex-col transition hover:border-[var(--line-strong)]" style={{ background: 'var(--surface)' }}>
             <Link to={s.to} className="flex items-center gap-2 mb-1">
               <s.icon size={16} className="text-[var(--accent-ink)] shrink-0" />
               <span className="font-semibold text-[15px] flex-1 min-w-0">{t(s.titleKey, s.title)}</span>
@@ -588,9 +589,11 @@ export default function DevHub() {
             </Link>
             <p className="text-[13px] text-[var(--muted)] flex-1">{t(s.bodyKey, s.body)}</p>
             {s.npm && <BmdNpmCompact />}
-            <div className="flex flex-wrap gap-1.5 mt-3">
+            {/* bcwvisual (agent-bcw-visual) : les liens de la carte sont du texte souligné au survol,
+                plus des pastilles rondes à contour ; séparés par un filet en haut de carte. */}
+            <div className="flex flex-wrap gap-x-4 gap-y-1 mt-4 pt-3 border-t border-[var(--line)]">
               {s.links.map((l) => {
-                const cls = 'text-[11px] px-2 py-0.5 rounded-full border border-[var(--line)] text-[var(--muted)] hover:border-[var(--primary)] hover:text-[var(--text)] inline-flex items-center gap-1';
+                const cls = 'text-[12.5px] text-[var(--muted)] hover:text-[var(--text)] hover:underline underline-offset-2 inline-flex items-center gap-1 min-h-[28px]';
                 const label = t(l.key, l.label);
                 return l.href
                   ? <a key={l.key} href={l.href === 'DISCOVERY' ? `${base}/.well-known/openid-configuration` : l.href} target="_blank" rel="noopener noreferrer" className={cls}>{label} <ExternalLink size={10} /></a>
@@ -631,7 +634,7 @@ export default function DevHub() {
           is explicit here. */}
       {show.discovery !== false && (
         <div className="mt-8 rounded-xl border border-[var(--line)] p-4 flex flex-wrap items-center gap-x-3 gap-y-2">
-          <span className="text-[11px] uppercase tracking-wider text-[var(--faint)]">{t('dev.hub.discovery', 'Discovery')}</span>
+          <span className="text-[12.5px] font-medium text-[var(--muted)]">{t('dev.hub.discovery', 'Discovery')}</span>
           <code className="text-[11px] font-mono break-all bg-[var(--surface-2)] rounded px-2 py-1 flex-1 min-w-[240px]">{base}/.well-known/openid-configuration</code>
           <Button size="sm" variant="ghost" title={t('common.copy', 'Copy')} aria-label={t('common.copy', 'Copy')}
             onClick={() => { copyText(`${base}/.well-known/openid-configuration`); toast.success(t('common.copied', 'Copied.')); }}><Copy size={13} /></Button>
