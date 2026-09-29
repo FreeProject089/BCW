@@ -148,6 +148,31 @@ falls back to that token, so the same job serves both; delete the secret once th
 publishers are set. Provenance needs a public repository, which `FreeProject089/BCW` is, and a
 `repository.url` in each `package.json` that names it (checked by npm at publish time).
 
+### Status: 3.1.0 is published (2026-09-29)
+
+**`@bettercommunity/bmd@3.1.0`** and **`@bettercommunity/bmd-editor@3.1.0`** were published on
+**2026-09-29** by this workflow, through `NPM_TOKEN`, **with provenance** (the npm page of each
+package shows the workflow run and the commit it was built from). Steps 1 to 4 below are done;
+**step 5 is the one left**. The site says so too: `/dev/bmd`, `/dev/editor` and the B.MD card
+on `/dev` show a "Published on npm" block whose versions are read from each `package.json` at
+build time (`apps/web/src/ui/bmd-npm.jsx`), never fetched from the registry by the browser.
+
+**What the first release taught:**
+
+- **The token must be "Read and write"** on the packages, with *bypass two-factor
+  authentication* ticked. A token limited to **"stage only"** (staged publishing) is refused
+  for a direct `npm publish`, and a token without the 2FA bypass cannot publish from CI, which
+  cannot answer an OTP prompt.
+- **`./tarballs`, not `tarballs`.** The first run failed on a path: npm reads a bare
+  `tarballs/x.tgz` as a GitHub `owner/repo` shorthand and tried `git ls-remote
+  ssh://git@github.com/tarballs/...`. The publish loop now passes `./tarballs/*.tgz` (commit
+  08478530); keep the `./` if you ever touch that loop.
+- A re-run is safe: a version already on npm is skipped, so a half-finished release completes.
+
+**Next steps:** configure the npm **Trusted Publisher** on **both** packages (step 5), then
+**delete the `NPM_TOKEN` secret** of the `npm` environment and revoke the token on npmjs.com.
+From then on a release is only step 4, and no long-lived credential exists.
+
 ### What the owner does, once
 
 1. **The npm scope.** On npmjs.com, signed in: *Add Organization* → name **`bettercommunity`**
@@ -156,7 +181,8 @@ publishers are set. Provenance needs a public repository, which `FreeProject089/
 2. **The first-release token.** Account → *Access Tokens* → *Generate New Token* →
    *Granular Access Token*: packages and scopes **read and write**, limited to the
    `@bettercommunity` scope (or "all packages" of the org), expiry 7 days, and tick *bypass
-   two-factor authentication* (a CI run cannot answer a 2FA prompt).
+   two-factor authentication* (a CI run cannot answer a 2FA prompt). **Not "stage only"**:
+   that permission cannot publish directly (learned on the 3.1.0 release).
 3. **The GitHub environment.** Repository → Settings → Environments → *New environment*
    **`npm`**. Optionally add yourself as a required reviewer: every publish then waits for a
    click. Add the secret **`NPM_TOKEN`** there with the token from step 2.
@@ -203,7 +229,7 @@ Settings → Secrets and variables → Actions.
 | `DEPLOY_HOST`, `DEPLOY_PORT`, `DEPLOY_USER` | variable | deploy | the server |
 | `DEPLOY_KNOWN_HOSTS` | variable | deploy | the server's host key line(s); required, no trust-on-first-use |
 | `CD_AUTO_DEPLOY` | variable | deploy | `true` = deploy after every green CI on `master` |
-| `NPM_TOKEN` | **secret** (environment `npm`) | publish-bmd | a granular npm token for the FIRST B.MD release only; delete it once trusted publishing is configured |
+| `NPM_TOKEN` | **secret** (environment `npm`) | publish-bmd | a granular npm token ("Read and write", bypass 2FA) for the FIRST B.MD release only. 3.1.0 is out (2026-09-29): delete it once the trusted publishers are configured |
 
 The security and DAST workflows need **no secret**: they use the run's own token for the
 two writes above. The CI-local DAST instance generates its secrets at run time.

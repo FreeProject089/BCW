@@ -6,6 +6,8 @@
 //   · the directive list is `DIRECTIVES` from packages/bmd/src/registry.js, the same data the
 //     npm README table is generated from and that a test holds to the parser;
 //   · the version comes from packages/bmd/package.json, the changelog is CHANGELOG.md itself;
+//   · the "Published on npm" block (ui/bmd-npm.jsx) reads both packages' package.json at build
+//     time: 3.1.0 went to npm on 2026-09-29 with provenance, and no version is typed here;
 //   · the sizes are docs/size.json, written by packages/bmd/scripts/gen-readme.mjs from a real
 //     build, labelled with the version they were measured for.
 // The playground renders through the site's own <Markdown>, inside the site CSP (no inline
@@ -17,6 +19,7 @@ import { Button, Badge, Textarea, Input } from '../ui/ui.jsx';
 import { useI18n } from '../i18n.jsx';
 import Markdown from '../ui/md.jsx';
 import { CodeSnippet, SnippetTabs, CopyButton } from '../ui/dev-snippet.jsx';
+import { BmdNpmBlock } from '../ui/bmd-npm.jsx';
 import { DIRECTIVES, DIRECTIVE_GROUPS } from '@bettercommunity/bmd/registry';
 import { version as BMD_VERSION } from '../../../../packages/bmd/package.json';
 import changelogSrc from '../../../../packages/bmd/CHANGELOG.md?raw';
@@ -27,14 +30,7 @@ const NPM_EDITOR = 'https://www.npmjs.com/package/@bettercommunity/bmd-editor';
 const SOURCE = 'https://github.com/FreeProject089/BCW/tree/master/BCWEB/packages/bmd';
 const CHANGELOG_URL = 'https://github.com/FreeProject089/BCW/blob/master/BCWEB/packages/bmd/CHANGELOG.md';
 
-const INSTALL = [
-  { id: 'npm', label: 'npm', code: 'npm i @bettercommunity/bmd' },
-  { id: 'pnpm', label: 'pnpm', code: 'pnpm add @bettercommunity/bmd' },
-  { id: 'yarn', label: 'yarn', code: 'yarn add @bettercommunity/bmd' },
-  { id: 'bun', label: 'bun', code: 'bun add @bettercommunity/bmd' },
-];
 const INSTALL_OPT = 'npm i mermaid rehype-highlight remark-math rehype-katex katex';
-const INSTALL_EDITOR = 'npm i @bettercommunity/bmd @bettercommunity/bmd-editor';
 
 const QUICK = `import Markdown from '@bettercommunity/bmd';
 import '@bettercommunity/bmd/markdown.css';
@@ -274,6 +270,7 @@ export default function DevBmd() {
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
           <Badge>@bettercommunity/bmd {BMD_VERSION}</Badge>
+          <Badge tone="green">{t('bmdpub.published', 'Published on npm')}</Badge>
           <Badge>{t('dvb2.b.blocks', '{n} blocks').replace('{n}', String(DIRECTIVES.length))}</Badge>
           <Badge>{t('dvb2.b.names', '{n} directive names').replace('{n}', String(names))}</Badge>
           <Badge>MIT</Badge>
@@ -288,8 +285,12 @@ export default function DevBmd() {
         </div>
       </header>
 
+      <Section id="npm" icon={Package} title={t('bmdpub.title', 'Published on npm')}
+        lede={t('bmdpub.lede', 'Both packages are on the public npm registry, built and published by GitHub Actions with provenance. The versions below are read from each package.json when this site is built.')}>
+        <BmdNpmBlock />
+      </Section>
+
       <Section id="install" icon={Package} title={t('dvb.install', 'Install')}>
-        <SnippetTabs tabs={INSTALL} />
         <p className="text-sm text-[var(--muted)] max-w-2xl">
           {t('dvb2.install.pnpm', 'pnpm, yarn and bun install from the same npm registry: one package, every client. The Markdown pipeline comes with it; you bring React 18 or 19. Checked from the published tarball under pnpm’s strict node_modules, where an undeclared dependency would fail.')}
         </p>
@@ -298,8 +299,8 @@ export default function DevBmd() {
         <p className="text-sm text-[var(--muted)] max-w-2xl">
           {t('dvb.install.ed', 'The editor is its own package, so a site that only reads documents never ships it.')}{' '}
           <a className="text-[var(--accent-ink)] underline" href={NPM_EDITOR} target="_blank" rel="noopener noreferrer">@bettercommunity/bmd-editor</a>
+          {' · '}<Link className="text-[var(--accent-ink)] underline" to="/dev/editor#npm">{t('bmdpub.ed.docs', 'Its install, props and a live demo')}</Link>
         </p>
-        <CodeSnippet code={INSTALL_EDITOR} />
       </Section>
 
       <Section id="quick-start" icon={Play} title={t('devp.qs', 'Quick start')}

@@ -10039,6 +10039,21 @@ const DICT = {
     'th.st.held': 'en attente de relecture',
     'th.heldline': 'Ton message attend un modérateur. Le destinataire verra la conversation, et pourra y répondre, une fois qu’il aura été validé.',
     // fin followups
+    // bmdpub (agent-bmd-published) : @bettercommunity/bmd et bmd-editor 3.1.0 publiés sur npm le 2026-09-29
+    'bmdpub.published': 'Publié sur npm', 'bmdpub.view': 'Voir sur npm',
+    'bmdpub.prov': 'Provenance vérifiée (construit par GitHub Actions)',
+    'bmdpub.prov.d': 'npm indique quel run du workflow a construit cette version, et depuis quel commit.',
+    'bmdpub.ed.peer': 'S’installe avec {peer} à côté : le moteur de rendu est une dépendance pair, ton site n’en garde qu’une copie.',
+    'bmdpub.title': 'Publié sur npm',
+    'bmdpub.lede': 'Les deux paquets sont sur le registre npm public, construits et publiés par GitHub Actions avec provenance. Les versions ci-dessous sont lues dans chaque package.json à la construction du site.',
+    'bmdpub.ed.docs': 'Son installation, ses props et une démo en direct',
+    'bmdpub.ed.title': 'Installer l’éditeur',
+    'bmdpub.ed.lede': '{name} est sur npm. {bmd} {range} est une dépendance pair : installe les deux, et l’aperçu passe par le moteur de rendu que ton site a déjà.',
+    'bmdpub.ed.css': 'Deux feuilles de style, importées une fois : celle du moteur de rendu et celle de l’éditeur.',
+    'bmdpub.ed.use': 'La plus petite page qui édite un document : une valeur contrôlée, rien d’autre d’obligatoire.',
+    'bmdpub.ed.more': 'Les frameworks, le modèle de sécurité et toutes les directives sont sur la page B.MD.',
+    'bmdpub.ed.back': 'B.MD sur npm',
+    // fin bmdpub
   },
 };
 

@@ -17,6 +17,13 @@ desktop app and the BMM Docs site.
 
 **Try it in the browser:** [bettercommunity.ch/dev/bmd](https://bettercommunity.ch/dev/bmd) (install, live playground, every directive).
 
+**Published on npm** since 3.1.0 (2026-09-29), with
+[provenance](https://www.npmjs.com/package/@bettercommunity/bmd#provenance): every version is
+built and published by GitHub Actions from this repository, and the npm page names the workflow
+run and the commit it came from. The editor is its own package,
+[@bettercommunity/bmd-editor](https://www.npmjs.com/package/@bettercommunity/bmd-editor),
+published beside it with the same version.
+
 ## Install
 
 ```bash

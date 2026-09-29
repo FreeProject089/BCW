@@ -6,6 +6,7 @@
 
 The first release on the npm registry, for both packages (`@bettercommunity/bmd` and
 `@bettercommunity/bmd-editor`, versioned together).
+Published on npm on 2026-09-29 by `publish-bmd.yml`, with provenance.
 
 ### Packaging
 - **Built for npm**: the tarball ships `dist/` (plain ES modules, one file per entry, shared chunks beside them) instead of the JSX sources, so the package imports in Node, in Next.js without `transpilePackages`, and in any bundler. `prepack` builds it (`scripts/build.mjs`).

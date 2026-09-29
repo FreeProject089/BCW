@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Code2, Shield, KeyRound, BookOpen, Send, Copy, FlaskConical, ArrowRight, Puzzle, Webhook, Palette, Activity, ExternalLink } from 'lucide-react';
 import { SnippetTabs } from '../ui/dev-snippet.jsx';
+import { BmdNpmCompact } from '../ui/bmd-npm.jsx';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { useAsync } from './pages.jsx';
@@ -415,6 +416,9 @@ export const SURFACES = [
     ] },
   { id: 'bmd', icon: Puzzle, to: '/dev/bmd', titleKey: 'devp.s.bmd', title: 'B.MD, the markdown kit',
     bodyKey: 'devp.s.bmd.b', body: 'The block system this site is written in, as an npm package: callouts, cards, tabs, API cards, live values, diagrams. Works with npm, pnpm, yarn and bun.',
+    // bmdpub (agent-bmd-published): published on npm since 3.1.0; the card shows both packages
+    // (versions, npm links, install, provenance) through ui/bmd-npm.jsx.
+    npm: true,
     links: [
       { key: 'devp.l.install', label: 'Install and directives', to: '/dev/bmd' },
       { key: 'devp.l.play', label: 'Playground', to: '/dev/markdown' },
@@ -583,6 +587,7 @@ export default function DevHub() {
               <ArrowRight size={14} className="shrink-0 opacity-60 group-hover:opacity-100 transition text-[var(--accent-ink)]" />
             </Link>
             <p className="text-[13px] text-[var(--muted)] flex-1">{t(s.bodyKey, s.body)}</p>
+            {s.npm && <BmdNpmCompact />}
             <div className="flex flex-wrap gap-1.5 mt-3">
               {s.links.map((l) => {
                 const cls = 'text-[11px] px-2 py-0.5 rounded-full border border-[var(--line)] text-[var(--muted)] hover:border-[var(--primary)] hover:text-[var(--text)] inline-flex items-center gap-1';

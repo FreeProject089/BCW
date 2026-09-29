@@ -155,6 +155,34 @@ deux ; supprimez le secret une fois les éditeurs de confiance configurés. La p
 dépôt public, ce qu'est `FreeProject089/BCW`, et un `repository.url` qui le nomme dans chaque
 `package.json` (npm le vérifie à la publication).
 
+### État : 3.1.0 est publiée (2026-09-29)
+
+**`@bettercommunity/bmd@3.1.0`** et **`@bettercommunity/bmd-editor@3.1.0`** ont été publiés le
+**2026-09-29** par ce workflow, via `NPM_TOKEN`, **avec provenance** (la page npm de chaque paquet
+indique le run du workflow et le commit dont il est issu). Les étapes 1 à 4 ci-dessous sont
+faites ; **reste l'étape 5**. Le site le dit aussi : `/dev/bmd`, `/dev/editor` et la carte B.MD
+de `/dev` affichent un bloc « Publié sur npm » dont les versions sont lues dans chaque
+`package.json` au build (`apps/web/src/ui/bmd-npm.jsx`), jamais demandées au registre par le
+navigateur.
+
+**Ce que la première publication a appris :**
+
+- **Le jeton doit être « Read and write »** sur les paquets, avec *bypass two-factor
+  authentication* coché. Un jeton limité à **« stage only »** (publication différée) est refusé
+  pour un `npm publish` direct, et un jeton sans contournement 2FA ne peut pas publier depuis la
+  CI, qui ne sait pas répondre à une demande d'OTP.
+- **`./tarballs`, pas `tarballs`.** Le premier run a échoué sur un chemin : npm lit un
+  `tarballs/x.tgz` nu comme un raccourci GitHub `owner/repo` et a tenté `git ls-remote
+  ssh://git@github.com/tarballs/...`. La boucle de publication passe maintenant
+  `./tarballs/*.tgz` (commit 08478530) ; gardez le `./` si vous touchez à cette boucle.
+- Relancer est sans risque : une version déjà sur npm est sautée, une publication à moitié faite
+  se termine.
+
+**Prochaines étapes :** configurer le **Trusted Publisher** npm sur **les deux** paquets
+(étape 5), puis **supprimer le secret `NPM_TOKEN`** de l'environnement `npm` et révoquer le jeton
+sur npmjs.com. Ensuite une version, c'est seulement l'étape 4, et aucun identifiant durable
+n'existe.
+
 ### Ce que le propriétaire fait, une fois
 
 1. **Le scope npm.** Sur npmjs.com, connecté : *Add Organization* → nom **`bettercommunity`**
@@ -163,7 +191,8 @@ dépôt public, ce qu'est `FreeProject089/BCW`, et un `repository.url` qui le no
 2. **Le jeton de première version.** Compte → *Access Tokens* → *Generate New Token* →
    *Granular Access Token* : paquets et scopes en **lecture et écriture**, limité au scope
    `@bettercommunity`, expiration 7 jours, et cochez *bypass two-factor authentication* (un run
-   de CI ne peut pas répondre à une invite 2FA).
+   de CI ne peut pas répondre à une invite 2FA). **Pas « stage only »** : cette permission ne
+   peut pas publier directement (appris lors de la version 3.1.0).
 3. **L'environnement GitHub.** Dépôt → Settings → Environments → *New environment* **`npm`**.
    Ajoutez-vous éventuellement comme relecteur obligatoire : chaque publication attend alors un
    clic. Ajoutez-y le secret **`NPM_TOKEN`** avec le jeton de l'étape 2.
@@ -211,7 +240,7 @@ Settings → Secrets and variables → Actions.
 | `DEPLOY_HOST`, `DEPLOY_PORT`, `DEPLOY_USER` | variable | deploy | le serveur |
 | `DEPLOY_KNOWN_HOSTS` | variable | deploy | la ou les lignes de clé d'hôte du serveur ; obligatoire, pas de confiance au premier contact |
 | `CD_AUTO_DEPLOY` | variable | deploy | `true` = déployer après chaque CI verte sur `master` |
-| `NPM_TOKEN` | **secret** (environnement `npm`) | publish-bmd | un jeton npm granulaire pour la PREMIÈRE version de B.MD seulement ; à supprimer une fois la publication de confiance configurée |
+| `NPM_TOKEN` | **secret** (environnement `npm`) | publish-bmd | un jeton npm granulaire (« Read and write », contournement 2FA) pour la PREMIÈRE version de B.MD seulement. 3.1.0 est publiée (2026-09-29) : à supprimer une fois les éditeurs de confiance configurés |
 
 Les workflows de sécurité et DAST n'ont besoin d'**aucun secret** : ils utilisent le jeton du
 run pour les deux écritures ci-dessus. L'instance DAST locale génère ses secrets à l'exécution.

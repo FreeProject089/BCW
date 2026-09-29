@@ -8,6 +8,11 @@ desktop and Write / Preview tabs on a phone, a link checker, an outline, the AST
 It is a **separate package** on purpose: a site that only reads documents ships the renderer
 and nothing of this.
 
+**Published on npm** since 3.1.0 (2026-09-29), with
+[provenance](https://www.npmjs.com/package/@bettercommunity/bmd-editor#provenance): built and
+published by GitHub Actions from this repository, versioned together with
+`@bettercommunity/bmd`. Live demo and install: [bettercommunity.ch/dev/editor](https://bettercommunity.ch/dev/editor).
+
 ```bash
 npm i @bettercommunity/bmd-editor @bettercommunity/bmd
 pnpm add @bettercommunity/bmd-editor @bettercommunity/bmd

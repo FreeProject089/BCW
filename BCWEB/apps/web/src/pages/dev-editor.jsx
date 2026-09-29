@@ -14,13 +14,31 @@
 // Both, rather than replacing one with the other, because this page also says "Install it".
 // Showing the wrapper as though it were the package would promise things the tarball does not
 // contain: the image upload goes to this site's API, and the icon picker is the site's.
+//
+// Below the demo, #npm: the package as it is on npm since 3.1.0 (2026-09-29, with provenance).
+// Name, version, licence and the peer range come from packages/bmd-editor/package.json at build
+// time (ui/bmd-npm.jsx), so the page cannot advertise a version the registry does not have.
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { PenLine, RotateCcw, ExternalLink, Package } from 'lucide-react';
 import { Button, Badge } from '../ui/ui.jsx';
+import { CodeSnippet } from '../ui/dev-snippet.jsx';
+import { BmdNpmBlock, BMD_PACKAGES } from '../ui/bmd-npm.jsx';
 import { useI18n } from '../i18n.jsx';
 import BmdEditor from '@bettercommunity/bmd-editor';
 import { MarkdownEditor } from '../editor/markdown-editor.jsx';
+
+const USAGE = `import { useState } from 'react';
+import BmdEditor from '@bettercommunity/bmd-editor';
+import '@bettercommunity/bmd/markdown.css';
+import '@bettercommunity/bmd-editor/editor.css';
+
+export default function Compose() {
+  const [md, setMd] = useState('# Hello');
+  return <BmdEditor value={md} onChange={setMd} lang="en" />;
+}`;
+const CSS = `import '@bettercommunity/bmd/markdown.css';        // the renderer's styles (the preview)
+import '@bettercommunity/bmd-editor/editor.css';  // the editor's own`;
 
 const KEY = 'bcw.dev.editor.draft';
 const WHICH_KEY = 'bcw.dev.editor.which';
@@ -66,7 +84,7 @@ export default function DevEditor() {
   useEffect(() => { try { localStorage.setItem(WHICH_KEY, which); } catch { /* private mode */ } }, [which]);
   useEffect(() => { try { localStorage.setItem(KEY, md); } catch { /* private mode */ } }, [md]);
   return (
-    <div className="max-w-6xl mx-auto py-8 sm:py-12 space-y-6">
+    <div className="max-w-6xl mx-auto py-8 sm:py-12 space-y-6 min-w-0">
       <header className="max-w-2xl">
         <span className="inline-grid place-items-center w-12 h-12 rounded-2xl bg-gradient-to-br from-brand to-brand-2 text-[var(--on-primary)] shadow-lg shadow-orange-500/25 mb-4"><PenLine size={22} /></span>
         <h1 className="text-3xl sm:text-4xl font-extrabold leading-tight">{t('dve.title', 'The B.MD editor')}</h1>
@@ -74,7 +92,8 @@ export default function DevEditor() {
           {t('dve.lede', 'The editor that ships as @bettercommunity/bmd-editor: a block menu that knows every directive, a live preview through the real renderer, a link checker, an outline, the syntax tree, and an HTML export. Your draft stays in this browser.')}
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
-          <Badge>@bettercommunity/bmd-editor</Badge>
+          <Badge>@bettercommunity/bmd-editor {BMD_PACKAGES.editor.version}</Badge>
+          <Badge tone="green">{t('bmdpub.published', 'Published on npm')}</Badge>
           <Badge>{t('dve.b2', 'Phone and desktop')}</Badge>
           <Badge>{t('dve.b3', 'Nothing is sent')}</Badge>
         </div>
@@ -97,6 +116,22 @@ export default function DevEditor() {
       {which === 'site'
         ? <MarkdownEditor value={md} onChange={setMd} full minHeight={420} />
         : <BmdEditor value={md} onChange={setMd} lang={lang === 'fr' ? 'fr' : 'en'} pageMap={null} height="62vh" exportTitle="bmd-draft" />}
+      <section id="npm" className="space-y-3 scroll-mt-20 min-w-0 pt-4">
+        {/* bmdpub (agent-bmd-published): the package as npm serves it, read from its package.json. */}
+        <h2 className="text-lg sm:text-xl font-semibold flex items-center gap-2"><Package size={17} className="text-[var(--accent-ink)] shrink-0" /> {t('bmdpub.ed.title', 'Install the editor')}</h2>
+        <p className="text-sm text-[var(--muted)] max-w-2xl">
+          {t('bmdpub.ed.lede', '{name} is on npm. {bmd} {range} is a peer dependency: install both, and the preview goes through the renderer your site already has.').replace('{name}', BMD_PACKAGES.editor.name).replace('{bmd}', BMD_PACKAGES.bmd.name).replace('{range}', BMD_PACKAGES.editor.peer)}
+        </p>
+        <BmdNpmBlock only="editor" />
+        <p className="text-sm text-[var(--muted)] max-w-2xl">{t('bmdpub.ed.css', 'Two stylesheets, imported once: the renderer’s and the editor’s.')}</p>
+        <CodeSnippet code={CSS} lang="js" />
+        <p className="text-sm text-[var(--muted)] max-w-2xl">{t('bmdpub.ed.use', 'The smallest page that edits a document: a controlled value, and nothing else required.')}</p>
+        <CodeSnippet code={USAGE} lang="jsx" />
+        <p className="text-sm text-[var(--muted)] max-w-2xl">
+          {t('bmdpub.ed.more', 'Frameworks, the security model and every directive are on the B.MD page.')}{' '}
+          <Link className="text-[var(--accent-ink)] underline" to="/dev/bmd#npm">{t('bmdpub.ed.back', 'B.MD on npm')}</Link>
+        </p>
+      </section>
       <div className="flex flex-wrap gap-2 pt-2">
         <Link to="/dev/bmd"><Button variant="primary"><Package size={15} /> {t('dve.cta.install', 'Install it')}</Button></Link>
         <Link to="/dev/markdown"><Button><ExternalLink size={15} /> {t('dvb.cta.play', 'The playground')}</Button></Link>
