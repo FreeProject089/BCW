@@ -10054,6 +10054,25 @@ const DICT = {
     'bmdpub.ed.more': 'Les frameworks, le modèle de sécurité et toutes les directives sont sur la page B.MD.',
     'bmdpub.ed.back': 'B.MD sur npm',
     // fin bmdpub
+    // assetskey (agent-assets-key) : Admin > Téléchargements et assets, la clé de publication CI (scope assets:publish, emplacements cochés, expiration, affichée une fois).
+    'assetskey.title': 'Clé de publication CI',
+    'assetskey.sub': 'Permet à un workflow de release de remplacer les emplacements cochés ci-dessous, et rien d’autre. Enregistre-la comme secret BCWEB_ASSETS_TOKEN du dépôt.',
+    'assetskey.noslot': 'Coche au moins un emplacement.',
+    'assetskey.totp.t': 'Confirme avec ton code 2FA',
+    'assetskey.mint': 'Créer la clé',
+    'assetskey.adminonly': 'Seul un administrateur peut créer cette clé.',
+    'assetskey.toomany': 'Tu as déjà 5 clés CI actives. Révoques-en une d’abord.',
+    'assetskey.revoke.t': 'Révoquer cette clé CI ?',
+    'assetskey.revoke.m': 'Le prochain workflow qui utilise « {n} » échoue, et les emplacements miroirs gardent leurs fichiers actuels.',
+    'assetskey.revoke': 'Révoquer',
+    'assetskey.revoked': 'révoquée',
+    'assetskey.expired': 'expirée',
+    'assetskey.until': 'jusqu’au {d}',
+    'assetskey.max': '{n} max.',
+    'assetskey.label': 'Nom',
+    'assetskey.expiry': 'Expire après',
+    'assetskey.days': '{n} jour(s)',
+    // fin assetskey
   },
 };
 

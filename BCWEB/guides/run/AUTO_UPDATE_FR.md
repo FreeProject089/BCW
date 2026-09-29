@@ -72,6 +72,26 @@ joignables. Si tu héberges sur BCWEB et veux les updates incrémentales, héber
 fichiers en assets et pointe le manifeste dessus ; sinon omets le manifeste et BCWEB sert des
 updates **par installeur complet** (qui marchent toujours).
 
+### Publier les emplacements miroirs depuis la CI
+
+Les workflows de release de BMM poussent eux-mêmes `bmm-update-json`, `bmm-update-manifest` et
+le pack Laya hors ligne (`bmm-laya-offline`), avec une **clé de publication CI** :
+
+1. **Admin → Téléchargements et assets → Clé de publication CI.** Coche les emplacements,
+   choisis une expiration (90 jours au plus), confirme avec ton code 2FA. Seul un ADMIN ou
+   SUPERADMIN qui a `manage_assets` peut en créer une. La clé n'est montrée qu'une fois.
+2. Enregistre-la comme secret `BCWEB_ASSETS_TOKEN` du dépôt BMM. `scripts/publish-bcweb-asset.mjs`
+   l'envoie en `Authorization: Bearer`, pré-signe, envoie le fichier en flux vers le stockage,
+   puis confirme avec le SHA-256 du fichier.
+3. BCWEB ne bascule l'emplacement que si les octets stockés donnent ce SHA-256 et tiennent dans
+   le plafond de l'emplacement ; sinon l'envoi est supprimé et l'emplacement garde son ancien
+   fichier. Chaque publication, et chaque refus, est dans le journal d'audit.
+
+La clé n'ouvre que ces deux routes `/ci/assets/:slot`, pour ses propres emplacements : pas de
+liste, pas de suppression, aucune route admin. Elle cesse de marcher à son expiration, quand
+on la révoque, ou dès que son propriétaire perd `manage_assets`. Crée la suivante avant que
+l'ancienne expire.
+
 ## 4. Auto-updates BSM
 
 Les releases BSM sont sur **https://github.com/FreeProject089/Better-Sound.Maker/releases**.

@@ -18,6 +18,8 @@
 import { test, describe, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
+import { lockRow, unlockRow } from './row-lock.mjs';
+import { MODERATION_SETTINGS_LOCK } from './helpers/moderation-lock.mjs';
 
 delete process.env.REDIS_URL; // the in-process limits, as CI runs them
 process.env.JWT_SECRET ||= 'ai-provider-test-secret';
@@ -377,9 +379,14 @@ const MAIL = '@ai-provider.test';
 
 describe('routes/ai.mjs over HTTP', { skip }, () => {
   let app, p, jwt, user, admin, moder, cookieUser, cookieAdmin, cookieMod;
+  let savedAi = [];
   before(async () => {
     if (!RUN) return;
     p = await (await import('../src/lib/lib.mjs')).db();
+    // `ai.config` / `ai.killed` are singletons the moderation test files read too: hold the
+    // shared lock while they are ours, and put back what was there (helpers/moderation-lock.mjs).
+    await lockRow(p, MODERATION_SETTINGS_LOCK);
+    savedAi = await p.adminSetting.findMany({ where: { key: { in: [ai.AI_CONFIG_KEY, ai.AI_KILLED_KEY] } } });
     jwt = (await import('jsonwebtoken')).default;
     user = await p.user.create({ data: { email: `u-${Date.now()}${MAIL}`, displayName: 'ai user', role: 'USER', emailVerified: true, status: 'active' } });
     admin = await p.user.create({ data: { email: `a-${Date.now()}${MAIL}`, displayName: 'ai admin', role: 'ADMIN', totpEnabled: true, emailVerified: true, status: 'active' } });
@@ -401,11 +408,16 @@ describe('routes/ai.mjs over HTTP', { skip }, () => {
   after(async () => {
     if (!RUN) return;
     ai._setSettingsLoaderForTests(null);
-    await p.adminSetting.deleteMany({ where: { key: { in: [ai.AI_CONFIG_KEY, ai.AI_KILLED_KEY] } } });
-    await p.auditLogEntry.deleteMany({ where: { actor: { email: { endsWith: MAIL } } } }).catch(() => {});
-    await p.session.deleteMany({ where: { user: { email: { endsWith: MAIL } } } });
-    await p.user.deleteMany({ where: { email: { endsWith: MAIL } } });
-    await app?.close();
+    try {
+      await p.adminSetting.deleteMany({ where: { key: { in: [ai.AI_CONFIG_KEY, ai.AI_KILLED_KEY] } } });
+      for (const row of savedAi) await p.adminSetting.create({ data: row });
+      await p.auditLogEntry.deleteMany({ where: { actor: { email: { endsWith: MAIL } } } }).catch(() => {});
+      await p.session.deleteMany({ where: { user: { email: { endsWith: MAIL } } } });
+      await p.user.deleteMany({ where: { email: { endsWith: MAIL } } });
+    } finally {
+      await unlockRow(p, MODERATION_SETTINGS_LOCK);
+      await app?.close();
+    }
   });
   const post = (url, payload, cookie, headers = {}) => app.inject({ method: 'POST', url, payload, headers: { ...(cookie ? { cookie } : {}), ...headers } });
 

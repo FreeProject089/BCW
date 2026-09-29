@@ -19,6 +19,8 @@ import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import jwt from 'jsonwebtoken';
+import { lockRow, unlockRow } from './row-lock.mjs';
+import { MODERATION_SETTINGS_LOCK } from './helpers/moderation-lock.mjs';
 
 const RUN = !!process.env.DATABASE_URL;
 const skip = RUN ? false : 'set DATABASE_URL to a throwaway Postgres to run the moderation engine tests';
@@ -39,6 +41,10 @@ function policies(over = {}) {
   for (const s of ['contact', 'report', 'legal', 'crash', 'bug', 'suggestion', 'member_message', 'team_message', 'community', 'discord_automod', 'phishing']) out[s] = { ...base, mode: 'flag', ...(over[s] || {}) };
   return out;
 }
+// The moderation settings (`moderation.settings|policies|rules`) and `ai.killed` are singleton
+// AdminSetting rows that moderation-engine, moderation-followups and ai-provider all write, and
+// node --test runs the three files in parallel. Each takes the same row lock (./row-lock.mjs)
+// for as long as it owns them: from before its snapshot to after its restore.
 const setPolicies = (over) => cfgMod.saveSetting(p, 'moderation.policies', policies(over));
 
 before(async () => {
@@ -48,6 +54,7 @@ before(async () => {
   eng = await import('../src/lib/moderation/engine.mjs');
   cfgMod = await import('../src/lib/moderation/config.mjs');
   cases = await import('../src/lib/moderation/cases.mjs');
+  await lockRow(p, MODERATION_SETTINGS_LOCK);
   for (const k of KEYS_TO_SAVE) saved[k] = await p.adminSetting.findUnique({ where: { key: k } });
   await p.adminSetting.deleteMany({ where: { key: { in: KEYS_TO_SAVE } } });
   cfgMod.invalidateConfig();
@@ -88,6 +95,7 @@ after(async () => {
       else await p.adminSetting.deleteMany({ where: { key: k } });
     }
   } finally {
+    await unlockRow(p, MODERATION_SETTINGS_LOCK);
     eng?._setAiModule?.(null);
     await app?.close();
   }

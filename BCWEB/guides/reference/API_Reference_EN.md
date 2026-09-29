@@ -552,6 +552,11 @@ Hosted installers and JSON assets, and the GitHub-Releases-compatible update fee
 | POST | `/admin/assets/presign` | admin | Presign a file upload. |
 | PUT | `/admin/assets/file/:key` | admin | Register an uploaded file. |
 | DELETE | `/admin/assets/:key` | admin | Delete an asset. |
+| GET | `/admin/assets/ci-keys` | `manage_assets` | List CI publish keys (prefix, slots, expiry; never the secret) and the slots a key can be bound to. |
+| POST | `/admin/assets/ci-keys` | ADMIN/SUPERADMIN + `manage_assets` + TOTP code | Mint a CI publish key (`assets:publish`, `slots`, `expiresInDays` 1 to 90). The secret is returned once. |
+| POST | `/admin/assets/ci-keys/:id/revoke` | `manage_assets` | Revoke a CI publish key. |
+| POST | `/ci/assets/:slot/presign` | CI key (Bearer, slot bound to the key) | Presign an upload into one slot: `filename`, `contentType`, `size`, `sha256`. Size and type are capped per slot. |
+| PUT | `/ci/assets/:slot` | CI key (Bearer, slot bound to the key) | Switch the slot to the uploaded object once its bytes hash to the declared `sha256`; a mismatch deletes the upload and keeps the old file (422). Audit-chained. |
 | GET | `/updates/:app/latest` | — | Latest release (GitHub-Releases-compatible). |
 | GET | `/updates/:app/releases` | — | Release list. |
 | GET | `/assets/:key` | — | Fetch a hosted asset. |

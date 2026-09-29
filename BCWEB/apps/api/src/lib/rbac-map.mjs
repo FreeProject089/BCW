@@ -33,7 +33,8 @@ const GUARDS = [
   { kind: 'role', re: /requireRole\(\s*('[^']+'(?:\s*,\s*'[^']+')*)\s*\)/ },
   { kind: 'signed-in', re: /requireRole\(\s*\)/ },
   // Authenticated by an API key rather than a session — guarded, differently.
-  { kind: 'api-key', re: /apiAuth\(/ },
+  // assetPublishAuth (agent-assets-key) is the CI publish key: an API key, one scope, named slots.
+  { kind: 'api-key', re: /(?:apiAuth|assetPublishAuth)\(/ },
   { kind: 'oauth', re: /oauthBearer\(/ },
   // optionalAuth fills req.user when a session exists and allows the request either way.
   // NOT a guard: the route itself decides, which is why /me returns { user: null } rather

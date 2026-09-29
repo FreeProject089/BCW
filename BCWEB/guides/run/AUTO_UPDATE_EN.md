@@ -71,6 +71,25 @@ host on BCWEB and want incremental updates, host the loose files as assets too a
 manifest entries at them; otherwise omit the manifest and BCWEB serves **full-installer**
 updates (which always work).
 
+### Publishing the mirror slots from CI
+
+BMM's release workflows push `bmm-update-json`, `bmm-update-manifest` and the offline Laya
+pack (`bmm-laya-offline`) themselves, with a **CI publish key**:
+
+1. **Admin → Downloads & assets → CI publish key.** Tick the slots, pick an expiry (at most 90
+   days), confirm with your 2FA code. Only an ADMIN or SUPERADMIN holding `manage_assets` can
+   create one. The key is shown once.
+2. Save it as the `BCWEB_ASSETS_TOKEN` secret of the BMM repository. `scripts/publish-bcweb-asset.mjs`
+   sends it as `Authorization: Bearer`, presigns, streams the file to storage, then confirms
+   with the file's SHA-256.
+3. BCWEB switches the slot only when the stored bytes hash to that SHA-256 and fit the slot's
+   size cap; otherwise the upload is deleted and the slot keeps its old file. Every publish, and
+   every refusal, is in the audit log.
+
+The key opens those two `/ci/assets/:slot` routes for its own slots and nothing else: no list,
+no delete, no admin route. It stops working at its expiry, on revoke, or as soon as its owner
+loses `manage_assets`. Mint a new one before the old one expires.
+
 ## 4. BSM auto-updates
 
 BSM releases live at **https://github.com/FreeProject089/Better-Sound.Maker/releases**. Two

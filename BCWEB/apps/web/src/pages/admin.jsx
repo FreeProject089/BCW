@@ -18,6 +18,7 @@ import { LayoutTemplate } from 'lucide-react'; // studio phase 2: the manage_stu
 import { FlaskConical as PrereleaseIcon, MessagesSquare as ProjectReviewsIcon } from 'lucide-react'; // prerelease (agent-prerelease)
 import { AdminPrereleases, AdminProjectReviews } from './admin-prereleases.jsx'; // prerelease (agent-prerelease)
 import { AdminNotify, AdminBmmLaunch } from './admin-notify.jsx'; // notify (agent-notify)
+import AssetsCiKeyCard from './admin-assets-ci-key.jsx'; // assetskey (agent-assets-key)
 import { Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, EmptyState, Spinner, Modal, ActionBar, ByteSize, formatBytes, useDialog, useToast, copyText, ColorInput, Explain } from '../ui/ui.jsx';
 import { PointsHistoryTable } from '../ui/points-history.jsx';
 import { AppLogo } from '../ui/brand.jsx';
@@ -8935,6 +8936,9 @@ function AdminAssets() {
     <div>
       <h2 className="font-semibold mb-1 flex items-center gap-2"><Download size={16} className="text-[var(--accent-ink)]" /> {t('assets.title', 'Downloads & assets')}</h2>
       <p className="text-sm text-[var(--muted)] mb-4">{t('assets.sub', 'Host app installers, auto-update manifests and the JSON configs (links.json, contributors.json) at stable /api/assets/<key> URLs. The apps read BCWEB first, then GitHub, then their bundled copy.')}</p>
+
+      {/* assetskey (agent-assets-key): the CI key BMM's release workflows publish the mirror slots with. */}
+      <AssetsCiKeyCard />
 
       {/* Quick-create the standard slots that don't exist yet. */}
       <div className="flex flex-wrap gap-2 mb-4">

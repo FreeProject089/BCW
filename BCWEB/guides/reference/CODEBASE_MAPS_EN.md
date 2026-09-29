@@ -15,7 +15,7 @@ They exist because the answers below were all *derivable* from the code and none
     `apps/api/test/codebase-maps-doc.test.mjs` re-derives from the builders on every test run:
     if the code moves and this page does not, the suite goes red and names the row.
 
-    Everything else is a **snapshot**, written as "measured 2026-09-17" and true only of that
+    Everything else is a **snapshot**, written as "measured 2026-09-29" and true only of that
     day. A count of routes or models tells you the order of magnitude and nothing more, and an
     earlier version of this page quoted a route total that had drifted by four hundred while
     reading as current fact. Where a number was only ever decoration, this page now says what
@@ -28,10 +28,11 @@ They exist because the answers below were all *derivable* from the code and none
 Every `app.get|post|put|patch|delete('/path'` in `apps/api/src/routes`, read from the route
 files themselves, so it cannot drift from the code the way a document does. Seven guard forms
 are recognised (`requireRole`, `requireCap`, `optionalAuth`, `apiAuth`, `resolve`,
-`oauthBearer`, `requireEditor`). Measured 2026-09-17: 1080 routes across 71 files.
+`oauthBearer`, `requireEditor`; the CI publish key's `assetPublishAuth` reads as `apiAuth`).
+Measured 2026-09-29: 1298 routes across 88 files.
 
 The number to read is **suspicious**: an `/admin` or `/me` route with no guard and no entry
-in the public-by-design list. Measured 2026-09-17 it is **1**, and that one is `GET /me`,
+in the public-by-design list. Measured 2026-09-29 it is **1**, and that one is `GET /me`,
 which is `optionalAuth` and correct.
 
 It was 51 the same morning, and what changed was the parser rather than the code. The story
@@ -68,7 +69,7 @@ is worth keeping, because it is how a security report stops being read.
 
 Draws the widest models and the most depended-on ones, and — the part that matters — the
 **index drift**: an index created in raw SQL and never declared in `schema.prisma`. Measured
-2026-09-17: 162 models, 135 relations, 483 declared indexes against 329 created by migrations.
+2026-09-29: 186 models, 148 relations, 559 declared indexes against 382 created by migrations.
 
 That case is not cosmetic. The next generated migration proposes **dropping** it, because a
 `migrate diff` believes the schema. It is pinned as `indexDrift` below, and it is zero.
@@ -91,7 +92,7 @@ its three answers need a live database:
 And one the SQL answers alone: which migrations **lost data**. `DROP COLUMN`, `DROP TABLE` and
 `DELETE FROM` cannot be undone by another migration, and knowing which release contained one
 is the difference between a restore and a guess. Pinned as `dataLossMigrations` below, because
-it is the one figure here somebody would act on. There are three, out of 126 folders on disk:
+it is the one figure here somebody would act on. There are three, out of 145 folders on disk:
 
 | Migration | What it did |
 | --- | --- |
@@ -103,12 +104,12 @@ it is the one figure here somebody would act on. There are three, out of 126 fol
     `INSERT`/`UPDATE` migrations write ROWS rather than change shape: they cannot simply be
     re-run, and a restore has to think about them. They reported "no operations" until they
     were given their own category, an empty result that reads exactly like a clean one.
-    Measured 2026-09-17 there are nine such folders, carrying 3 `INSERT` and 8 `UPDATE`
+    Measured 2026-09-29 there are ten such folders, carrying 3 `INSERT` and 9 `UPDATE`
     statements between them; read `totals.insertData` and `totals.updateData` in the response
     rather than a figure from this page.
 
 A database failure degrades to the on-disk half rather than a 500, and `pending` stays empty
-in that case. "126 migrations pending" from an unreachable database is a lie that reads as an
+in that case. "145 migrations pending" from an unreachable database is a lie that reads as an
 emergency.
 
 ## The stack and its ports — `GET /admin/compose-map`
@@ -150,8 +151,8 @@ fact on a screen somebody looks at more than once.
 
 ## Secrets with a hardcoded fallback — `GET /admin/secrets-map`
 
-Reads every `process.env` access across every `.mjs` under `apps/api/src` (202 of them,
-measured 2026-09-17). `process.env.JWT_SECRET || 'dev'` means an instance deployed without
+Reads every `process.env` access across every `.mjs` under `apps/api/src` (219 of them,
+measured 2026-09-29). `process.env.JWT_SECRET || 'dev'` means an instance deployed without
 that variable does not fail — it signs tokens with a value anybody reading the repository
 knows. It fails open, silently, and looks fine.
 
@@ -163,10 +164,10 @@ It was not always zero. The first pass reported eighteen fallbacks and called fi
 live: `LINK_LOOKUP_SECRET` in four files and `SEED_ADMIN_PASSWORD` in `seed.mjs`. Those are
 fixed. `apps/api/src/lib/boot-guard.mjs` now declares three purposes (session tokens, Discord
 bot authentication, telemetry and link lookup) and `server.mjs` refuses to boot when any of
-them would run on the repository's own value. The count of fallbacks in the source has not
-changed much (eighteen occurrences, measured 2026-09-17: fourteen `JWT_SECRET`, three
-`LINK_LOOKUP_SECRET`, one `SEED_ADMIN_PASSWORD`); what changed is that all eighteen are now
-guarded, and the map tells the two apart so the unguarded ones would stand out.
+them would run on the repository's own value. The fallbacks left in the source
+have since shrunk (eighteen occurrences on 2026-09-17; five measured 2026-09-29: one `JWT_SECRET`,
+one `BOT_SHARED_SECRET`, two `LINK_LOOKUP_SECRET`, one `SEED_ADMIN_PASSWORD`); what changed first is
+that every one of them is guarded, and the map tells the two apart so the unguarded ones would stand out.
 
 !!! warning "One limit worth knowing"
     The boot guard only runs when `NODE_ENV=production` is actually set. An instance that
@@ -202,16 +203,16 @@ yours.
 
 ## Where the data goes — `GET /admin/data-flow`
 
-Route → model → read/write, joined with the guard. Measured 2026-09-17: 1080 routes, 156
-models, 1995 database calls, plus 406 calls sitting outside any route (sweepers, boot code,
+Route → model → read/write, joined with the guard. Measured 2026-09-29: 1298 routes, 176
+models, 2253 database calls, plus 498 calls sitting outside any route (sweepers, boot code,
 helpers) which are reported separately because attributing them to the nearest route would be
 a confident lie about who can reach them.
 
-The model to watch is not the one you would guess. `user` is touched by 136 routes, but the
-most touched model is `adminSetting`, at 126 routes and 184 calls: the settings table is read
+The model to watch is not the one you would guess. `user` is touched by 147 routes, but the
+most touched model is `adminSetting`, at 157 routes and 224 calls: the settings table is read
 on the way into almost everything, which is worth knowing before you change its shape.
 
-The list to read is **what an anonymous request can write**. Measured 2026-09-17 it is 32
+The list to read is **what an anonymous request can write**. Measured 2026-09-29 it is 34
 routes, and it is a list somebody can go through in a sitting. Most of it is deliberate and
 always was: analytics ingestion, sign-up, email verification, password reset, the OAuth and
 social callbacks, the Ko-fi webhook, newsletter double opt-in, Discord link codes, doc
@@ -230,7 +231,7 @@ never writable by a stranger.
     is the point: when it grows, either a new guard idiom has appeared or one has moved.
 
 !!! note "`selfRejects` is a fact, not a verdict"
-    5 of the 32 reply 401 or 403 somewhere in their own body, and the map says so without
+    6 of the 34 reply 401 or 403 somewhere in their own body, and the map says so without
     deciding what it means. `/webhooks/kofi` `safeEqual`s a token and 401s before writing;
     `/auth/login/2fa` also 401s, on a failed password check, on a genuinely public endpoint.
     Identical shape, opposite meaning. The row carries the fact and no verdict is invented.

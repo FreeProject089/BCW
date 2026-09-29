@@ -17,6 +17,8 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import jwt from 'jsonwebtoken';
+import { lockRow, unlockRow } from './row-lock.mjs';
+import { MODERATION_SETTINGS_LOCK } from './helpers/moderation-lock.mjs';
 
 const RUN = !!process.env.DATABASE_URL;
 const skip = RUN ? false : 'set DATABASE_URL to a throwaway Postgres to run the moderation follow-up tests';
@@ -39,20 +41,12 @@ function policies(over = {}) {
   for (const s of ['contact', 'report', 'legal', 'crash', 'bug', 'suggestion', 'member_message', 'team_message', 'community', 'discord_automod', 'phishing']) out[s] = { ...base, mode: 'flag', ...(over[s] || {}) };
   return out;
 }
-// The policies are ONE row every moderation test file writes, and node --test runs the files in
-// parallel. So after saving, the config is read fresh until it is ours and then left in this
-// process's 15-second cache, which another file's write cannot reach.
-async function setPolicies(over) {
-  const want = policies(over);
-  for (let i = 0; i < 40; i++) {
-    await cfgMod.saveSetting(p, 'moderation.policies', want);
-    const cfg = await cfgMod.loadConfig(p, { fresh: true });
-    const ok = Object.entries(over).every(([s, o]) => cfg.policies[s]?.mode === (o.mode || 'flag') && (!o.thresholds || cfg.policies[s]?.thresholds?.block === o.thresholds.block) && cfg.settings.enabled && !cfg.killSwitch?.killed);
-    if (ok) return;
-    await new Promise((r) => setTimeout(r, 50));
-  }
-  throw new Error('could not pin the moderation policies');
-}
+// The moderation settings (`moderation.settings|policies|rules`) and `ai.killed` are singleton
+// AdminSetting rows that moderation-engine, moderation-followups and ai-provider all write, and
+// node --test runs the three files in parallel. Each takes the same row lock (./row-lock.mjs)
+// for as long as it owns them: from before its snapshot to after its restore.
+// This file holds that lock, so what it saves is what it reads: no re-read, no retry.
+const setPolicies = (over) => cfgMod.saveSetting(p, 'moderation.policies', policies(over));
 // A held message (QUARANTINE), not a refused one (BLOCK): the block threshold out of reach.
 const HOLD = { mode: 'auto', thresholds: { flag: 10, review: 20, quarantine: 30, block: 1000 } };
 
@@ -65,6 +59,7 @@ before(async () => {
   cases = await import('../src/lib/moderation/cases.mjs');
   threads = await import('../src/routes/threads.mjs');
   threads.setThreadsConfigOverride({}); // the defaults, never the dev database's own config
+  await lockRow(p, MODERATION_SETTINGS_LOCK);
   for (const k of KEYS_TO_SAVE) saved[k] = await p.adminSetting.findUnique({ where: { key: k } });
   await p.adminSetting.deleteMany({ where: { key: { in: KEYS_TO_SAVE } } });
   cfgMod.invalidateConfig();
@@ -99,6 +94,7 @@ after(async () => {
     }
     cfgMod.invalidateConfig();
   } finally {
+    await unlockRow(p, MODERATION_SETTINGS_LOCK);
     threads?.setThreadsConfigOverride?.(null);
     eng?._setAiModule?.(null);
     await app?.close();

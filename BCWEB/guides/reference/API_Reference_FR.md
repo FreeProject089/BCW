@@ -560,6 +560,11 @@ Installateurs et ressources JSON hébergés, et le flux de mise à jour compatib
 | POST | `/admin/assets/presign` | admin | Pré-signer un envoi de fichier. |
 | PUT | `/admin/assets/file/:key` | admin | Enregistrer un fichier envoyé. |
 | DELETE | `/admin/assets/:key` | admin | Supprimer une ressource. |
+| GET | `/admin/assets/ci-keys` | `manage_assets` | Lister les clés de publication CI (préfixe, emplacements, expiration ; jamais le secret) et les emplacements autorisés. |
+| POST | `/admin/assets/ci-keys` | ADMIN/SUPERADMIN + `manage_assets` + code TOTP | Créer une clé de publication CI (`assets:publish`, `slots`, `expiresInDays` de 1 à 90). Le secret n'est renvoyé qu'une fois. |
+| POST | `/admin/assets/ci-keys/:id/revoke` | `manage_assets` | Révoquer une clé de publication CI. |
+| POST | `/ci/assets/:slot/presign` | clé CI (Bearer, emplacement lié à la clé) | Pré-signer un envoi vers un emplacement : `filename`, `contentType`, `size`, `sha256`. Taille et type plafonnés par emplacement. |
+| PUT | `/ci/assets/:slot` | clé CI (Bearer, emplacement lié à la clé) | Basculer l'emplacement sur l'objet envoyé une fois ses octets vérifiés contre le `sha256` déclaré ; un écart supprime l'envoi et garde l'ancien fichier (422). Journalisé dans la chaîne d'audit. |
 | GET | `/updates/:app/latest` | — | Dernière version (compatible GitHub Releases). |
 | GET | `/updates/:app/releases` | — | Liste des versions. |
 | GET | `/assets/:key` | — | Récupérer une ressource hébergée. |

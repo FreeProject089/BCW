@@ -18,7 +18,7 @@ se rappeler correctement.
     exécution des tests. Si le code bouge et que cette page ne bouge pas, la suite passe au
     rouge et nomme la ligne fautive.
 
-    Tout le reste est un **instantané**, écrit « mesuré le 2026-09-17 » et vrai de ce jour-là
+    Tout le reste est un **instantané**, écrit « mesuré le 2026-09-29 » et vrai de ce jour-là
     seulement. Un nombre de routes ou de modèles donne un ordre de grandeur et rien de plus, et
     une version antérieure de cette page citait un total de routes qui avait dérivé de quatre
     cents tout en se lisant comme un fait actuel. Là où un nombre n'était que décoratif, cette
@@ -31,11 +31,11 @@ se rappeler correctement.
 Chaque `app.get|post|put|patch|delete('/chemin'` de `apps/api/src/routes`, lu dans les fichiers
 de routes eux-mêmes : la carte ne peut pas dériver du code comme le ferait un document. Sept
 formes de garde sont reconnues (`requireRole`, `requireCap`, `optionalAuth`, `apiAuth`,
-`resolve`, `oauthBearer`, `requireEditor`). Mesuré le 2026-09-17 : 1080 routes dans 71
-fichiers.
+`resolve`, `oauthBearer`, `requireEditor` ; le `assetPublishAuth` de la clé de publication CI
+se lit comme `apiAuth`). Mesuré le 2026-09-29 : 1298 routes dans 88 fichiers.
 
 Le nombre à lire est **suspicious** : une route `/admin` ou `/me` sans garde et absente de la
-liste des routes publiques à dessein. Mesuré le 2026-09-17, il vaut **1**, et cette route est
+liste des routes publiques à dessein. Mesuré le 2026-09-29, il vaut **1**, et cette route est
 `GET /me`, qui est en `optionalAuth` et donc correcte.
 
 Il valait 51 le matin même, et ce qui a changé est l'analyseur, pas le code. L'histoire mérite
@@ -73,7 +73,7 @@ d'être gardée : c'est ainsi qu'un rapport de sécurité cesse d'être lu.
 
 Affiche les modèles les plus larges et les plus référencés, et — la partie qui compte —
 l'**écart d'index** : un index créé en SQL brut et jamais déclaré dans `schema.prisma`. Mesuré
-le 2026-09-17 : 162 modèles, 135 relations, 483 index déclarés contre 329 créés par les
+le 2026-09-29 : 186 modèles, 148 relations, 559 index déclarés contre 382 créés par les
 migrations.
 
 Ce cas n'est pas cosmétique. La prochaine migration générée proposera de le **supprimer**,
@@ -99,7 +99,7 @@ Et une à laquelle le SQL répond seul : quelles migrations ont **perdu des donn
 `DROP COLUMN`, `DROP TABLE` et `DELETE FROM` ne peuvent pas être défaits par une autre
 migration, et savoir quelle version en contenait une fait la différence entre une restauration
 et une supposition. C'est épinglé sous le nom `dataLossMigrations` plus bas, parce que c'est
-ici le seul chiffre sur lequel quelqu'un agirait. Il y en a trois, sur 126 dossiers sur disque :
+ici le seul chiffre sur lequel quelqu'un agirait. Il y en a trois, sur 145 dossiers sur disque :
 
 | Migration | Ce qu'elle a fait |
 | --- | --- |
@@ -111,12 +111,12 @@ ici le seul chiffre sur lequel quelqu'un agirait. Il y en a trois, sur 126 dossi
     Les migrations `INSERT`/`UPDATE` écrivent des LIGNES au lieu de changer la forme : elles ne
     peuvent pas être simplement rejouées, et une restauration doit en tenir compte. Elles
     annonçaient « aucune opération » avant d'avoir leur propre catégorie, un résultat vide qui
-    se lit exactement comme un résultat propre. Mesuré le 2026-09-17, neuf dossiers sont dans
-    ce cas, portant 3 `INSERT` et 8 `UPDATE` au total ; lisez `totals.insertData` et
+    se lit exactement comme un résultat propre. Mesuré le 2026-09-29, dix dossiers sont dans
+    ce cas, portant 3 `INSERT` et 9 `UPDATE` au total ; lisez `totals.insertData` et
     `totals.updateData` dans la réponse plutôt qu'un chiffre repris de cette page.
 
 Une panne de base se dégrade vers la moitié sur disque plutôt qu'en 500, et `pending` reste
-alors vide. « 126 migrations en attente » depuis une base injoignable est un mensonge qui se
+alors vide. « 145 migrations en attente » depuis une base injoignable est un mensonge qui se
 lit comme une urgence.
 
 ## La pile et ses ports — `GET /admin/compose-map`
@@ -159,8 +159,8 @@ sur un écran qu'on regarde plus d'une fois.
 
 ## Secrets avec une valeur de repli codée en dur — `GET /admin/secrets-map`
 
-Lit chaque accès `process.env` dans tous les `.mjs` sous `apps/api/src` (202 fichiers, mesuré
-le 2026-09-17). `process.env.JWT_SECRET || 'dev'` signifie qu'une instance déployée sans cette
+Lit chaque accès `process.env` dans tous les `.mjs` sous `apps/api/src` (219 lectures, mesuré
+le 2026-09-29). `process.env.JWT_SECRET || 'dev'` signifie qu'une instance déployée sans cette
 variable n'échoue pas — elle signe ses jetons avec une valeur que quiconque lit le dépôt
 connaît. Elle échoue en s'ouvrant, silencieusement, et tout a l'air normal.
 
@@ -173,10 +173,10 @@ Cela n'a pas toujours valu zéro. Le premier passage signalait dix-huit replis e
 cinq de vivants : `LINK_LOOKUP_SECRET` dans quatre fichiers et `SEED_ADMIN_PASSWORD` dans
 `seed.mjs`. Ils sont corrigés. `apps/api/src/lib/boot-guard.mjs` déclare désormais trois usages
 (jetons de session, authentification du bot Discord, télémétrie et recherche de lien) et
-`server.mjs` refuse de démarrer si l'un d'eux devait tourner sur la valeur du dépôt. Le nombre
-de replis présents dans les sources a peu bougé (dix-huit occurrences, mesuré le 2026-09-17 :
-quatorze `JWT_SECRET`, trois `LINK_LOOKUP_SECRET`, un `SEED_ADMIN_PASSWORD`) ; ce qui a changé,
-c'est que les dix-huit sont désormais gardées, et que la carte distingue les deux cas pour que
+`server.mjs` refuse de démarrer si l'un d'eux devait tourner sur la valeur du dépôt. Les replis
+encore présents dans les sources ont diminué depuis (dix-huit occurrences le 2026-09-17 ; cinq
+mesurées le 2026-09-29 : un `JWT_SECRET`, un `BOT_SHARED_SECRET`, deux `LINK_LOOKUP_SECRET`, un
+`SEED_ADMIN_PASSWORD`) ; ce qui a changé d'abord, c'est que tous sont désormais gardés, et que la carte distingue les deux cas pour que
 les non gardées ressortent.
 
 !!! warning "Une limite à connaître"
@@ -214,17 +214,17 @@ déploiement et serait lu comme décrivant le vôtre.
 
 ## Où vont les données — `GET /admin/data-flow`
 
-Route → modèle → lecture/écriture, joint à la garde. Mesuré le 2026-09-17 : 1080 routes, 156
-modèles, 1995 appels à la base, plus 406 appels hors de toute route (balayeurs, code de
+Route → modèle → lecture/écriture, joint à la garde. Mesuré le 2026-09-29 : 1298 routes, 176
+modèles, 2253 appels à la base, plus 498 appels hors de toute route (balayeurs, code de
 démarrage, utilitaires), signalés à part parce que les rattacher à la route la plus proche
 serait un mensonge assuré sur qui peut les atteindre.
 
-Le modèle à surveiller n'est pas celui qu'on croit. `user` est touché par 136 routes, mais le
-modèle le plus touché est `adminSetting`, avec 126 routes et 184 appels : la table des réglages
+Le modèle à surveiller n'est pas celui qu'on croit. `user` est touché par 147 routes, mais le
+modèle le plus touché est `adminSetting`, avec 157 routes et 224 appels : la table des réglages
 est lue à l'entrée de presque tout, ce qu'il vaut mieux savoir avant d'en changer la forme.
 
-La liste à lire est **ce qu'une requête anonyme peut écrire**. Mesurée le 2026-09-17, elle
-compte 32 routes, et c'est une liste qu'on peut parcourir d'une traite. L'essentiel est
+La liste à lire est **ce qu'une requête anonyme peut écrire**. Mesurée le 2026-09-29, elle
+compte 34 routes, et c'est une liste qu'on peut parcourir d'une traite. L'essentiel est
 délibéré et l'a toujours été : ingestion analytique, inscription, vérification d'e-mail,
 réinitialisation de mot de passe, les rappels OAuth et sociaux, le webhook Ko-fi, le double
 opt-in de la newsletter, les codes de liaison Discord, les retours sur la doc, les
@@ -244,7 +244,7 @@ liste, soit 51 routes qu'un inconnu n'a jamais pu écrire.
     c'est qu'une nouvelle manière de garder est apparue, ou qu'une ancienne a déménagé.
 
 !!! note "`selfRejects` est un fait, pas un verdict"
-    5 des 32 répondent 401 ou 403 quelque part dans leur propre corps, et la carte le dit sans
+    6 des 34 répondent 401 ou 403 quelque part dans leur propre corps, et la carte le dit sans
     décider de ce que cela signifie. `/webhooks/kofi` compare un jeton avec `safeEqual` et
     renvoie 401 avant d'écrire ; `/auth/login/2fa` renvoie 401 aussi, sur un mot de passe
     erroné, sur un point d'entrée réellement public. Forme identique, sens opposé. La ligne

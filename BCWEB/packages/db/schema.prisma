@@ -2772,6 +2772,9 @@ model PlatformAsset {
   /// image · video · audio · document · archive · other — derived from the content type at
   /// upload. Stored so a listing does not parse a MIME string per row.
   media       String   @default("")
+  /// assetskey (agent-assets-key): SHA-256 (hex) of the stored file, when the upload declared
+  /// one and the server verified it against the bytes in storage before switching the slot.
+  sha256      String?
   updatedById String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -3515,6 +3518,9 @@ model ApiKey {
   expiresAt  DateTime?
   revokedAt  DateTime?
   createdAt  DateTime  @default(now())
+  // assetskey (agent-assets-key): the platform-asset slots an `assets:publish` key may replace
+  // (lib/asset-publish.mjs). Empty on every other key, and read by nothing else.
+  assetSlots String[]  @default([])
 
   usageDays ApiUsageDay[]
   requests  ApiRequest[]
