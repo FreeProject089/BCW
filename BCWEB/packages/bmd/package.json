@@ -1,68 +1,153 @@
 {
   "name": "@bettercommunity/bmd",
-  "version": "3.0.0",
-  "description": "B.MD — better.markdown: a block system on GitHub-flavoured Markdown (callouts, cards, tabs, steps, timelines, stats, FAQ, API cards, embeds, live values, diagrams…) as one React component, with a public AST, a link checker and an HTML exporter. The renderer behind BetterCommunity's blog, docs and pages.",
+  "version": "3.1.0",
+  "description": "B.MD (better.markdown): 65 blocks on GitHub-flavoured Markdown (callouts, cards, tabs, steps, timelines, stats, FAQ, API cards from OpenAPI, embeds, live values, Mermaid diagrams) as one React component, with a public AST, a link checker, an HTML exporter and a sanitising URL policy.",
+  "keywords": [
+    "markdown",
+    "react",
+    "directives",
+    "remark",
+    "rehype",
+    "gfm",
+    "callouts",
+    "documentation",
+    "openapi",
+    "mermaid",
+    "mdx-alternative",
+    "bettercommunity"
+  ],
   "license": "MIT",
+  "author": "BetterCommunity (https://bettercommunity.ch)",
+  "homepage": "https://bettercommunity.ch/dev/bmd",
+  "bugs": {
+    "url": "https://github.com/FreeProject089/BCW/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/FreeProject089/BCW.git",
+    "directory": "BCWEB/packages/bmd"
+  },
   "type": "module",
-  "main": "./src/index.jsx",
-  "types": "./src/markdown.d.ts",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "typesVersions": {
+    "*": {
+      "config": [
+        "./dist/config.d.ts"
+      ],
+      "icons": [
+        "./dist/icons.d.ts"
+      ],
+      "brands": [
+        "./dist/brands.d.ts"
+      ],
+      "plugins": [
+        "./dist/plugins.d.ts"
+      ],
+      "openapi": [
+        "./dist/openapi.d.ts"
+      ],
+      "export": [
+        "./dist/export.d.ts"
+      ],
+      "ast": [
+        "./dist/ast.d.ts"
+      ],
+      "editor-blocks": [
+        "./dist/editor-blocks.d.ts"
+      ],
+      "links": [
+        "./dist/links.d.ts"
+      ],
+      "registry": [
+        "./dist/registry.d.ts"
+      ]
+    }
+  },
   "exports": {
-    ".": "./src/index.jsx",
-    "./config": "./src/config.js",
-    "./icons": "./src/icons.jsx",
-    "./brands": "./src/brands.jsx",
-    "./plugins": "./src/plugins.js",
-    "./openapi": "./src/openapi.js",
-    "./export": "./src/export.jsx",
-    "./ast": "./src/ast.js",
-    "./editor-blocks": "./src/editor-blocks.js",
-    "./links": "./src/links.js",
-    "./markdown.css": "./src/markdown.css",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./config": {
+      "types": "./dist/config.d.ts",
+      "default": "./dist/config.js"
+    },
+    "./icons": {
+      "types": "./dist/icons.d.ts",
+      "default": "./dist/icons.js"
+    },
+    "./brands": {
+      "types": "./dist/brands.d.ts",
+      "default": "./dist/brands.js"
+    },
+    "./plugins": {
+      "types": "./dist/plugins.d.ts",
+      "default": "./dist/plugins.js"
+    },
+    "./openapi": {
+      "types": "./dist/openapi.d.ts",
+      "default": "./dist/openapi.js"
+    },
+    "./export": {
+      "types": "./dist/export.d.ts",
+      "default": "./dist/export.js"
+    },
+    "./ast": {
+      "types": "./dist/ast.d.ts",
+      "default": "./dist/ast.js"
+    },
+    "./editor-blocks": {
+      "types": "./dist/editor-blocks.d.ts",
+      "default": "./dist/editor-blocks.js"
+    },
+    "./links": {
+      "types": "./dist/links.d.ts",
+      "default": "./dist/links.js"
+    },
+    "./registry": {
+      "types": "./dist/registry.d.ts",
+      "default": "./dist/registry.js"
+    },
+    "./markdown.css": "./dist/markdown.css",
     "./iso/icons.json": "./assets/iso/icons.json",
     "./assets/iso/*": "./assets/iso/*",
-    "./src/*": "./src/*",
     "./package.json": "./package.json"
   },
   "files": [
-    "src",
+    "dist",
     "assets",
     "docs",
-    "README.md",
-    "CHANGELOG.md",
-    "LICENSE"
+    "CHANGELOG.md"
   ],
   "sideEffects": [
     "*.css"
   ],
-  "keywords": [
-    "markdown",
-    "react",
-    "openapi",
-    "mermaid",
-    "directives",
-    "remark",
-    "blocks",
-    "docs",
-    "bettercommunity"
-  ],
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/BetterDCS/BCW.git",
-    "directory": "BCWEB/packages/bmd"
+  "engines": {
+    "node": ">=18.18"
   },
-  "homepage": "https://bettercommunity.ch/dev/markdown",
+  "scripts": {
+    "build": "node scripts/build.mjs bmd",
+    "prepack": "node scripts/build.mjs bmd",
+    "pack:check": "npm pack --dry-run",
+    "smoke": "node scripts/smoke.mjs",
+    "readme": "node scripts/gen-readme.mjs"
+  },
+  "dependencies": {
+    "lucide-react": ">=0.400.0 <1.0.0",
+    "react-markdown": "^9.0.1",
+    "rehype-raw": "^7.0.0",
+    "rehype-sanitize": "^6.0.0",
+    "remark-directive": "^3.0.1",
+    "remark-gfm": "^4.0.0",
+    "remark-parse": "^11.0.0",
+    "unified": "^11.0.5",
+    "unist-util-visit": "^5.1.0"
+  },
   "peerDependencies": {
-    "lucide-react": ">=0.400.0",
     "react": ">=18",
     "react-dom": ">=18",
-    "react-markdown": "^9",
-    "rehype-raw": "^7",
-    "rehype-sanitize": "^6",
-    "remark-directive": "^3",
-    "remark-gfm": "^4",
-    "unist-util-visit": "^5",
-    "unified": "^11",
-    "remark-parse": "^11",
     "mermaid": ">=10",
     "rehype-highlight": "^7",
     "remark-math": "^6",
@@ -86,10 +171,8 @@
       "optional": true
     }
   },
-  "scripts": {
-    "pack:check": "npm pack --dry-run"
-  },
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "provenance": true
   }
 }

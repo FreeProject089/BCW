@@ -1,0 +1,166 @@
+name: Publish B.MD
+
+# Publishes @bettercommunity/bmd and @bettercommunity/bmd-editor to the npm registry.
+# pnpm, yarn and bun install from that same registry: there is no separate pnpm publish, and the
+# verify job below installs the tarballs with pnpm (strict node_modules) as well as npm.
+#
+# How to release (BCWEB/guides/run/CI_CD_EN.md, "Publishing B.MD", has the one-time setup):
+#   1. bump "version" in BCWEB/packages/bmd/package.json AND packages/bmd-editor/package.json
+#      (versioned together) and cut a "## <version>" section in packages/bmd/CHANGELOG.md;
+#   2. push a tag `bmd-v<version>`, e.g. `git tag bmd-v3.1.0 && git push origin bmd-v3.1.0`.
+# The tag must match both versions or nothing is published. `workflow_dispatch` runs the same
+# verification by hand; it publishes only when `publish` is ticked (default: a dry run).
+#
+# Two jobs, so the credentials never meet the build:
+#   verify   no secret and a read-only token. Builds dist/, runs the B.MD gates, packs the two
+#            tarballs, installs them with npm and pnpm into empty projects, server-renders every
+#            directive, compiles a TypeScript consumer, runs publint, arethetypeswrong and
+#            npm audit, and uploads the tarballs.
+#   publish  downloads THOSE tarballs (what was tested is byte-for-byte what ships) and runs
+#            `npm publish <tarball> --provenance --access public`. It checks nothing out and
+#            runs no package script: nothing from the repository executes next to the token.
+#
+# Authentication: npm trusted publishing (OIDC) is the intended steady state; no long-lived
+# token exists anywhere, and provenance is generated automatically. A trusted publisher can only
+# be configured on a package that already exists, so the FIRST release needs a token: a granular
+# npm token, publish rights on @bettercommunity only, short expiry, stored as the NPM_TOKEN secret
+# of the `npm` environment. npm tries OIDC first and falls back to NODE_AUTH_TOKEN, so the same
+# job serves both; delete the secret once trusted publishing is configured.
+#
+# Every action is pinned to a full commit SHA, the tag in the comment (same convention as
+# ci.yml). To bump: `git ls-remote https://github.com/<owner>/<repo> refs/tags/<tag>` (peel an
+# annotated tag with `^{}`), read the diff, change both.
+
+on:
+  push:
+    tags: ['bmd-v*']
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish to npm (unticked = verify only)'
+        type: boolean
+        default: false
+
+# Nothing by default; each job asks for what it uses.
+permissions: {}
+
+concurrency:
+  group: publish-bmd
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Build, test, pack (npm + pnpm)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    defaults: { run: { working-directory: BCWEB/apps/web } }
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with: { node-version: '22' }
+      # A tag names a version. Both packages must carry it, and the changelog must say what it is.
+      - name: tag, versions and changelog agree
+        working-directory: BCWEB/packages
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          v=$(node -p "require('./bmd/package.json').version")
+          ev=$(node -p "require('./bmd-editor/package.json').version")
+          [ "$v" = "$ev" ] || { echo "::error::bmd is $v but bmd-editor is $ev: they are released together"; exit 1; }
+          if [ "$REF_TYPE" = "tag" ]; then
+            [ "$REF_NAME" = "bmd-v$v" ] || { echo "::error::tag $REF_NAME does not match package version $v (expected bmd-v$v)"; exit 1; }
+          fi
+          grep -q "^## $v " bmd/CHANGELOG.md || { echo "::error::packages/bmd/CHANGELOG.md has no '## $v' section"; exit 1; }
+          echo "Releasing $v"
+      # esbuild, react-dom/server and the pipeline the kit's gates render through.
+      - run: npm ci
+      - name: B.MD gates (the lint chain's B.MD half)
+        run: |
+          node scripts/lint-bmd.mjs
+          node scripts/check-md-kit.mjs
+          node scripts/check-md-types.mjs
+          node scripts/check-kit-markers.mjs
+          node scripts/check-md-renders.mjs
+          node scripts/check-md-security.mjs
+          node scripts/check-md-shorthand.mjs
+          node scripts/check-md-leaf-text.mjs
+          node scripts/check-block-canvas.mjs
+          node --test test/bmd-*.test.mjs test/block-ops.test.mjs
+          node ../../packages/bmd/scripts/gen-readme.mjs --check
+      - name: build dist/
+        run: node ../../packages/bmd/scripts/build.mjs
+      - name: exports, files and types resolve (after the build)
+        run: node scripts/check-bmd-publish.mjs
+      - name: pnpm (for the strict-node_modules install)
+        run: npm install -g pnpm@11.1.2
+      # Packs both, installs the tarballs with npm and with pnpm, renders every registry example
+      # from the INSTALLED package, compiles a TypeScript consumer (node16 and bundler) and
+      # audits the tree a consumer gets. Then once more on React 18, the low end of the peer range.
+      - name: smoke test from the tarballs (npm + pnpm, React 19)
+        run: node ../../packages/bmd/scripts/smoke.mjs --clients npm,pnpm --types --audit
+      - name: smoke test (npm, React 18)
+        run: node ../../packages/bmd/scripts/smoke.mjs --clients npm --react 18
+      - name: pack the tarballs that will be published
+        run: |
+          mkdir -p "$RUNNER_TEMP/tarballs"
+          for p in bmd bmd-editor; do (cd "../../packages/$p" && npm pack --pack-destination "$RUNNER_TEMP/tarballs"); done
+          ls -l "$RUNNER_TEMP/tarballs"
+      - name: publint
+        run: |
+          for t in "$RUNNER_TEMP"/tarballs/*.tgz; do npx --yes publint@0.3.24 "$t" --strict; done
+      # ESM-only on purpose (react-markdown and unified are ESM-only): the profile ignores the
+      # CommonJS rows. The stylesheets have no types to resolve.
+      - name: arethetypeswrong
+        run: |
+          for t in "$RUNNER_TEMP"/tarballs/*.tgz; do npx --yes @arethetypeswrong/cli@0.18.5 "$t" --profile esm-only --exclude-entrypoints markdown.css editor.css; done
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: bmd-tarballs
+          path: ${{ runner.temp }}/tarballs/*.tgz
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: npm publish (provenance)
+    needs: verify
+    if: github.ref_type == 'tag' || inputs.publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # The environment is where NPM_TOKEN lives (first release only) and what the npm trusted
+    # publisher is bound to. Add required reviewers to it to make every release a click.
+    environment: npm
+    # id-token: write is what OIDC trusted publishing and provenance both need; nothing else.
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+      # Trusted publishing needs npm 11.5.1 or later; Node 22 ships npm 10.
+      - name: npm with trusted-publishing support
+        run: npm install -g npm@11.9.0 && npm --version
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: bmd-tarballs
+          path: tarballs
+      # The renderer first: the editor declares it as a peer. A version already on the registry
+      # is skipped, so a re-run after a half-finished release completes it instead of failing.
+      - name: publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          for t in tarballs/bettercommunity-bmd-[0-9]*.tgz tarballs/bettercommunity-bmd-editor-*.tgz; do
+            version=$(tar -xOzf "$t" package/package.json | node -e "console.log(JSON.parse(require('fs').readFileSync(0,'utf8')).version)")
+            name=$(tar -xOzf "$t" package/package.json | node -e "console.log(JSON.parse(require('fs').readFileSync(0,'utf8')).name)")@$version
+            if npm view "$name" version >/dev/null 2>&1; then echo "$name is already on npm, skipped"; continue; fi
+            # A pre-release (3.2.0-beta.1) goes to `next`, never to `latest`.
+            tag=latest; case "$version" in *-*) tag=next ;; esac
+            npm publish "$t" --provenance --access public --tag "$tag"
+            echo "published $name (dist-tag $tag)" >> "$GITHUB_STEP_SUMMARY"
+          done

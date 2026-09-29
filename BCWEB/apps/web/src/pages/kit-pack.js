@@ -25,6 +25,8 @@ import openapiSrc from '../../../../packages/bmd/src/openapi.js?raw';
 import exportSrc from '../../../../packages/bmd/src/export.jsx?raw';
 import astSrc from '../../../../packages/bmd/src/ast.js?raw';
 import linksSrc from '../../../../packages/bmd/src/links.js?raw';
+// The directive list as data, read by /dev/bmd and the README table (see registry.js).
+import registrySrc from '../../../../packages/bmd/src/registry.js?raw';
 // The editor's lossless block model. In the kit since it was written, and never in this list —
 // so the /dev/markdown download shipped a folder whose editor imports a file that is not there.
 import editorBlocksSrc from '../../../../packages/bmd/src/editor-blocks.js?raw';
@@ -76,7 +78,7 @@ export const KIT_PARTS = [
 // builds here ships as a folder with nine missing imports.
 const CORE = ('index.jsx config.js url.js plugins.js sanitize.js directives.js blocks.jsx '
   + 'icons.jsx nesting.js shorthand.js markdown.css openapi.js export.jsx ast.js links.js '
-  + 'editor-blocks.js').split(' ');
+  + 'editor-blocks.js registry.js').split(' ');
 
 /**
  * The two flavours, and what actually differs.
@@ -168,6 +170,7 @@ export function buildKit(on, flavour = 'ts') {
     'export.jsx': exportSrc,
     'ast.js': astSrc,
     'links.js': linksSrc,
+    'registry.js': registrySrc,
     'editor-blocks.js': editorBlocksSrc,
     'markdown.css': cssSrc,
   };

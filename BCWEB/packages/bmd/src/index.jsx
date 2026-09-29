@@ -63,6 +63,7 @@ export { safeUrl, linkAttrs } from './url.js';
 export { openapiToBmd, openapiSummary } from './openapi.js';
 export { validateLinks } from './links.js';
 export { parseMarkdown, extractHeadings, extractLinks, extractText } from './ast.js';
+export { DIRECTIVES, DIRECTIVE_GROUPS, directiveNames, findDirective, directiveSyntax } from './registry.js';
 /* kit:injected:start */
 export { default as Roadmap } from './roadmap.jsx';
 export { default as Replay } from './replay.jsx';

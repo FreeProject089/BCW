@@ -1,6 +1,6 @@
 # @bettercommunity/bmd-editor
 
-The editor for [B.MD](../bmd/) documents, as one React component. A block menu that knows
+The editor for [B.MD](https://www.npmjs.com/package/@bettercommunity/bmd) documents, as one React component. A block menu that knows
 every directive, a live preview through the real renderer, a layout that is side-by-side on a
 desktop and Write / Preview tabs on a phone, a link checker, an outline, the AST, and an
 "Export HTML" button.
@@ -10,11 +10,17 @@ and nothing of this.
 
 ```bash
 npm i @bettercommunity/bmd-editor @bettercommunity/bmd
+pnpm add @bettercommunity/bmd-editor @bettercommunity/bmd
 ```
 
+`@bettercommunity/bmd` is a peer: the editor previews through the renderer your site already
+uses, so there is one copy of it. React 18 or 19.
+
 ```jsx
+import { useState } from 'react';
 import BmdEditor from '@bettercommunity/bmd-editor';
 import '@bettercommunity/bmd/markdown.css';
+import '@bettercommunity/bmd-editor/editor.css';
 
 function Compose() {
   const [md, setMd] = useState('# Hello');
@@ -52,3 +58,9 @@ substitution, so a host can reuse the list in a command palette.
 
 "Export HTML" fetches the renderer's stylesheet (`cssUrl`) and calls `documentHtml()` — a
 standalone page with the tokens, the CSS and the rendered document, downloaded as a file.
+
+## Try it
+
+Live, in the browser: <https://bettercommunity.ch/dev/editor>. Changelog (shared with the
+renderer, the two are versioned together):
+<https://github.com/FreeProject089/BCW/blob/master/BCWEB/packages/bmd/CHANGELOG.md>.

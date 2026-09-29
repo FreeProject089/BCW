@@ -488,3 +488,38 @@ export function tableSetAlign(src: string, at: number, how: '' | 'left' | 'cente
 export function countChildren(src: string, child: string): number;
 /** Append a child, using one fewer colon than the parent — the rule that makes these nest. */
 export function addChild(src: string, child: string, label?: string, body?: string): string;
+
+/* ── registry.js ───────────────────────────────────────────────────────── */
+
+/** A string in both languages the site ships. */
+export interface BmdLocalized { en: string; fr: string }
+
+/** One directive the parser understands, as data (what /dev/bmd and the README table read). */
+export interface BmdDirective {
+  /** The canonical name, lower-case. */
+  name: string;
+  /** Other names that render the same block. */
+  aliases: string[];
+  /** How it is written: `container` = `:::name … :::`, `leaf` = `::name{…}`, `text` = `:name[…]{…}`. */
+  forms: Array<'container' | 'leaf' | 'text'>;
+  /** A `DIRECTIVE_GROUPS` id. */
+  group: string;
+  /** The block it belongs inside, when it only makes sense there. */
+  parent?: string;
+  /** Reads or calls a URL at render time (through the URL policy, without cookies). */
+  fetches?: boolean;
+  /** The attributes it reads, besides the generic `radius=`, `variant=`, `class=`. */
+  attrs: string[];
+  summary: BmdLocalized;
+  /** A small document that uses it. */
+  example: string;
+}
+
+export const DIRECTIVE_GROUPS: ReadonlyArray<{ id: string; label: BmdLocalized }>;
+export const DIRECTIVES: ReadonlyArray<BmdDirective>;
+/** Every name the parser answers to, aliases included. */
+export function directiveNames(): string[];
+/** The entry for a name or an alias. */
+export function findDirective(name: string): BmdDirective | undefined;
+/** `:::name`, `::name` or `:name`, from the directive's first form. */
+export function directiveSyntax(d: BmdDirective | undefined): string;

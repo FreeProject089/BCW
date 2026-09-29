@@ -551,6 +551,7 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
             // The OIDC discovery URL and the scope table. A site not running OIDC was
             // publishing a /.well-known address on its developer landing page anyway.
             ['discovery', 'Show the discovery URL and scopes'],
+            ['quickstart', 'Show the quick-start snippets'],
           ].map(([k, label]) => (
             <label key={k} className="flex items-center gap-2 text-sm cursor-pointer">
               <input type="checkbox" checked={sections[k] !== false} onChange={(e) => setIn('sections', { [k]: e.target.checked })} />

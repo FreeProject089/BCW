@@ -1,0 +1,57 @@
+{
+  "version": "3.1.0",
+  "own": {
+    "ast": {
+      "min": 41340,
+      "gzip": 13669
+    },
+    "brands": {
+      "min": 11305,
+      "gzip": 5173
+    },
+    "config": {
+      "min": 2158,
+      "gzip": 965
+    },
+    "editor-blocks": {
+      "min": 5999,
+      "gzip": 2593
+    },
+    "export": {
+      "min": 116873,
+      "gzip": 41863
+    },
+    "icons": {
+      "min": 19542,
+      "gzip": 8805
+    },
+    "index": {
+      "min": 116542,
+      "gzip": 41525
+    },
+    "links": {
+      "min": 43151,
+      "gzip": 14391
+    },
+    "openapi": {
+      "min": 5467,
+      "gzip": 2269
+    },
+    "plugins": {
+      "min": 1564,
+      "gzip": 773
+    },
+    "registry": {
+      "min": 19652,
+      "gzip": 6304
+    }
+  },
+  "component": {
+    "min": 502062,
+    "gzip": 152952
+  },
+  "css": {
+    "raw": 59593,
+    "gzip": 13542
+  }
+}

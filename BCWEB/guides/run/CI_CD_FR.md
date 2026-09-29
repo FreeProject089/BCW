@@ -14,6 +14,7 @@ configurer, et comment faire la même chose sur votre machine. Les workflows son
 | **BCWEB security** | `security.yml` | idem, + le lundi 03:17 UTC, + à la main | la gate trouve quelque chose au seuil ou au-dessus (HIGH par défaut) dans Gitleaks, Semgrep ou Trivy |
 | **BCWEB DAST** | `dast.yml` | pull requests touchant l'API, le web, les packages, Caddy ou les fichiers DAST ; le mardi 04:41 UTC ; à la main | la gate trouve quelque chose au seuil ou au-dessus dans ZAP ou Nuclei, ou le scan n'a pas pu tourner correctement |
 | **BCWEB deploy (production)** | `deploy.yml` | à la main sur `master`, ou après une **BCWEB CI** verte sur `master` quand `CD_AUTO_DEPLOY` = `true` | **BCWEB security** n'est pas passé pour ce commit (après jusqu'à 20 min d'attente), ou le déploiement SSH via la gate du serveur échoue |
+| **Publish B.MD** | `publish-bmd.yml` | un tag `bmd-v<version>`, ou à la main (vérification seule sauf si *publish* est coché) | le tag et les deux versions de paquet ne concordent pas, un contrôle B.MD échoue, l'archive ne s'installe pas ou ne rend pas avec npm et pnpm, `publint` / `arethetypeswrong` / `npm audit` objectent, ou npm refuse la publication |
 
 Chaque job demande ses propres permissions et rien d'autre (`contents: read` presque partout) ;
 les seuls jobs qui peuvent écrire sont nommés plus bas. Chaque action est épinglée par SHA de
@@ -132,6 +133,67 @@ sur la pull request et dans le run hebdomadaire.
 
 ---
 
+## Publier B.MD (`publish-bmd.yml`)
+
+Publie **`@bettercommunity/bmd`** et **`@bettercommunity/bmd-editor`** (versionnés ensemble) sur
+le registre npm. pnpm, yarn et bun installent depuis ce même registre : il n'y a pas de seconde
+publication « pour pnpm ». Ce qui compte pour pnpm, c'est que le paquet s'installe dans son
+`node_modules` strict, et le workflow le prouve à chaque version.
+
+| Job | Permissions | Ce qu'il fait |
+|---|---|---|
+| Build, test, pack (npm + pnpm) | `contents: read`, aucun secret | contrôle tag = version, `npm ci` dans `apps/web`, les contrôles B.MD (lint, `check-md-*`, tests du registre et de la politique d'URL, tableau du README), construit `dist/` (`packages/bmd/scripts/build.mjs`), `check-bmd-publish`, puis `packages/bmd/scripts/smoke.mjs` : empaquette les deux paquets, installe les archives avec **npm et pnpm**, importe chaque export, rend côté serveur chaque exemple de directive, compile un consommateur TypeScript, `npm audit` ; de nouveau avec React 18 ; puis `publint` et `arethetypeswrong` sur les archives, envoyées comme artefact `bmd-tarballs` |
+| npm publish (provenance) | `contents: read`, `id-token: write`, environnement `npm` | télécharge ces archives et lance `npm publish <archive> --provenance --access public` (le moteur de rendu d'abord, puis l'éditeur) ; une version déjà sur npm est sautée, une pré-version part sur le dist-tag `next`. Aucun checkout, aucun script de paquet ne tourne à côté des identifiants |
+
+**Jeton ou publication de confiance.** Le job est écrit pour la **publication de confiance npm**
+(OIDC) : npm échange l'identité GitHub du run contre un identifiant de publication à usage
+unique, rien de durable n'est stocké nulle part, et la provenance est jointe automatiquement.
+C'est le régime cible. Un éditeur de confiance ne peut être ajouté qu'à un paquet qui existe
+déjà sur npm, donc la **première** version passe par un jeton (`NPM_TOKEN`, secret de
+l'environnement `npm`). npm essaie d'abord OIDC puis retombe sur ce jeton : le même job sert aux
+deux ; supprimez le secret une fois les éditeurs de confiance configurés. La provenance exige un
+dépôt public, ce qu'est `FreeProject089/BCW`, et un `repository.url` qui le nomme dans chaque
+`package.json` (npm le vérifie à la publication).
+
+### Ce que le propriétaire fait, une fois
+
+1. **Le scope npm.** Sur npmjs.com, connecté : *Add Organization* → nom **`bettercommunity`**
+   (l'offre gratuite suffit pour des paquets publics). Le scope n'existait pas le 2026-09-26.
+   Activez l'authentification à deux facteurs du compte si ce n'est pas déjà fait.
+2. **Le jeton de première version.** Compte → *Access Tokens* → *Generate New Token* →
+   *Granular Access Token* : paquets et scopes en **lecture et écriture**, limité au scope
+   `@bettercommunity`, expiration 7 jours, et cochez *bypass two-factor authentication* (un run
+   de CI ne peut pas répondre à une invite 2FA).
+3. **L'environnement GitHub.** Dépôt → Settings → Environments → *New environment* **`npm`**.
+   Ajoutez-vous éventuellement comme relecteur obligatoire : chaque publication attend alors un
+   clic. Ajoutez-y le secret **`NPM_TOKEN`** avec le jeton de l'étape 2.
+4. **Publier.** Les deux `package.json` indiquent déjà `3.1.0` et le changelog a sa section.
+   Poussez le tag : `git tag bmd-v3.1.0` puis `git push origin bmd-v3.1.0`. Suivez
+   *Actions → Publish B.MD* ; le résumé liste ce qui a été publié.
+5. **Passer à la publication de confiance** (après la première version) : sur npmjs.com, chaque
+   paquet → *Settings* → *Trusted Publisher* → GitHub Actions : propriétaire `FreeProject089`,
+   dépôt `BCW`, workflow `publish-bmd.yml`, environnement `npm`. Pour les deux paquets, puis
+   supprimez le secret `NPM_TOKEN` et révoquez le jeton. Option : *Require two-factor
+   authentication and disallow tokens* sur les deux paquets ; seul ce workflow pourra alors les
+   publier.
+
+Chaque version suivante, c'est l'étape 4 avec la nouvelle version : montez les deux
+`package.json`, ouvrez la section `## <version>` dans `packages/bmd/CHANGELOG.md`, poussez
+`bmd-v<version>`.
+
+**À la main, sans CI** (déconseillé ; aucune vérification ne tourne) : `npm pack` puis
+`npm publish <archive> --access public --provenance=false` depuis `packages/bmd`, puis depuis
+`packages/bmd-editor`. `--provenance=false` est nécessaire parce que `publishConfig.provenance`
+est activé et que la provenance ne peut être générée qu'en CI.
+
+- **En local, les mêmes contrôles :** dans `apps/web` après `npm ci`,
+  `node ../../packages/bmd/scripts/build.mjs`, `node scripts/check-bmd-publish.mjs`, puis
+  `node ../../packages/bmd/scripts/smoke.mjs --clients npm,pnpm --types --audit` (réseau et pnpm
+  dans le PATH requis).
+- **Artefact :** `bmd-tarballs`, 14 jours.
+
+---
+
 ## Variables et secrets à configurer
 
 Settings → Secrets and variables → Actions.
@@ -149,6 +211,7 @@ Settings → Secrets and variables → Actions.
 | `DEPLOY_HOST`, `DEPLOY_PORT`, `DEPLOY_USER` | variable | deploy | le serveur |
 | `DEPLOY_KNOWN_HOSTS` | variable | deploy | la ou les lignes de clé d'hôte du serveur ; obligatoire, pas de confiance au premier contact |
 | `CD_AUTO_DEPLOY` | variable | deploy | `true` = déployer après chaque CI verte sur `master` |
+| `NPM_TOKEN` | **secret** (environnement `npm`) | publish-bmd | un jeton npm granulaire pour la PREMIÈRE version de B.MD seulement ; à supprimer une fois la publication de confiance configurée |
 
 Les workflows de sécurité et DAST n'ont besoin d'**aucun secret** : ils utilisent le jeton du
 run pour les deux écritures ci-dessus. L'instance DAST locale génère ses secrets à l'exécution.

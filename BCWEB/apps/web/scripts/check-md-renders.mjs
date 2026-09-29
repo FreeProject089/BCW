@@ -139,6 +139,25 @@ for (const name of [...names].sort()) {
   }
 }
 
+// ── the registry's examples ─────────────────────────────────────────────────────────
+//
+// /dev/bmd has a "Try it" button on every row of the directive table, and it loads the row's
+// `example` from packages/bmd/src/registry.js. An example that does not render is a reference
+// page demonstrating a bug, so each one goes through the same leak rule as the forms above.
+const { DIRECTIVES } = await import(pathToFileURL(join(process.cwd(), '../../packages/bmd/src/registry.js')).href);
+if (!DIRECTIVES?.length) { console.error('✗ read no DIRECTIVES from registry.js — refusing to report success'); process.exit(2); }
+let examples = 0;
+for (const d of DIRECTIVES) {
+  let html;
+  try { html = render(d.example); } catch (e) { problems.push(`registry example for :${d.name} threw — ${e?.message || e}`); continue; }
+  examples++;
+  const text = html.replace(/<[^>]*>/g, ' ');
+  if (!/<[a-z]/i.test(html)) problems.push(`registry example for :${d.name} rendered no elements`);
+  for (const n of [d.name, ...d.aliases]) {
+    if (new RegExp(`(^|[^\\w-]):{1,3}${n}(?![\\w-])`).test(text)) { problems.push(`registry example for :${d.name} leaks :${n} as literal text`); break; }
+  }
+}
+
 // ── step marker shapes ───────────────────────────────────────────────────────────────
 //
 // `shape=` becomes a class name, so it is an allowlist. The failure it guards is quiet in both
@@ -267,4 +286,4 @@ if (problems.length) {
   console.error('  three checks while producing a gap in the middle of a sentence.');
   process.exit(1);
 }
-console.log(`✓ every directive renders — ${checked} of them, through the real component`);
+console.log(`✓ every directive renders — ${checked} of them, through the real component, and ${examples} registry example(s)`);

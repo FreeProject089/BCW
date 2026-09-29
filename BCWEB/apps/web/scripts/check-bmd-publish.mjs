@@ -49,6 +49,28 @@ function bareImports(src) {
   return out;
 }
 
+/**
+ * Does an exported path exist — or, for a built package, will `prepack` produce it?
+ *
+ * bmd and bmd-editor publish dist/ (compiled from src/ by packages/bmd/scripts/build.mjs,
+ * which `prepack` runs before every pack and publish) and dist/ is not committed. So a
+ * `dist/x.js` target is accepted when src/ has the file it is built from, and `prepack`
+ * really runs the build. When dist/ exists (after a build) the file itself has to be there.
+ */
+function builtOrExists(dir, pkg, target) {
+  const rel = target.replace(/^\.\//, '');
+  if (existsSync(join(dir, rel))) return true;
+  const m = rel.match(/^dist\/(.+?)(\.d\.ts|\.js|\.css)$/);
+  if (!m) return false;
+  if (!/scripts\/build\.mjs/.test(pkg.scripts?.prepack || '')) return false;
+  if (existsSync(join(dir, 'dist'))) return false;           // built, and this file is missing
+  const base = m[1];
+  if (m[2] === '.css') return existsSync(join(dir, 'src', `${base}.css`));
+  // A .d.ts is generated from the package's hand-written declaration file.
+  const srcFile = ['.jsx', '.js'].map((e) => join(dir, 'src', base + e)).find((f) => existsSync(f));
+  return !!srcFile;
+}
+
 let checkedFiles = 0;
 const versions = {};
 
@@ -66,15 +88,26 @@ for (const name of PKGS) {
   must(pkg.license, `${name}: no license field`);
   must(existsSync(join(dir, 'LICENSE')), `${name}: declares "${pkg.license}" but ships no LICENSE file`);
   must(pkg.types, `${name}: no "types" — every TypeScript consumer imports it as \`any\``);
-  if (pkg.types) must(existsSync(join(dir, pkg.types)), `${name}: "types" points at ${pkg.types}, which does not exist`);
+  if (pkg.types) must(builtOrExists(dir, pkg, pkg.types), `${name}: "types" points at ${pkg.types}, which does not exist (and is not built from src/)`);
   must(/^git\+https:\/\/.+\.git$/.test(pkg.repository?.url || ''), `${name}: repository.url should be "git+https://….git" or npm will not link the source`);
 
   // ── every exported path exists AND is packed ─────────────────────────────────────
   const files = pkg.files || [];
+  // A conditional export ({ types, default }) is checked condition by condition. `types`
+  // has to come FIRST: TypeScript takes the first condition it recognises, and a `default`
+  // ahead of it types every import from that subpath as \`any\`.
+  const targets = [];
   for (const [sub, target] of Object.entries(pkg.exports || {})) {
-    if (typeof target !== 'string' || target.includes('*')) continue;
+    if (target && typeof target === 'object') {
+      const keys = Object.keys(target);
+      if (keys.includes('types')) must(keys[0] === 'types', `${name}: exports "${sub}" lists "types" after "${keys[0]}" — TypeScript never reaches it`);
+      for (const t of Object.values(target)) if (typeof t === 'string') targets.push([sub, t]);
+    } else if (typeof target === 'string') targets.push([sub, target]);
+  }
+  for (const [sub, target] of targets) {
+    if (target.includes('*')) continue;
     const rel = target.replace(/^\.\//, '');
-    must(existsSync(join(dir, rel)), `${name}: exports "${sub}" → ${target}, which does not exist`);
+    must(builtOrExists(dir, pkg, target), `${name}: exports "${sub}" → ${target}, which does not exist (and is not built from src/)`);
     // `files` is what `npm pack` puts in the tarball. An export outside it resolves here and
     // 404s for everyone who installs it, which is the failure with the longest feedback loop.
     const packed = rel === 'package.json' || files.some((f) => rel === f || rel.startsWith(`${f.replace(/\/$/, '')}/`));

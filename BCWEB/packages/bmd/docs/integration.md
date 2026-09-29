@@ -20,9 +20,11 @@ types in step, every directive named in the README, every directive renders, hos
 
 ## Elsewhere
 
-`npm pack` here, then `npm i ./bettercommunity-bmd-2.0.0.tgz` — or copy `src/`. Peer
-dependencies are listed in `package.json`; the three optional ones (highlight, math) load only
-when a document needs them.
+`npm i @bettercommunity/bmd` (published from 3.1.0; the tarball carries a build in `dist/`,
+made by `scripts/build.mjs` on `prepack`). Before a release, `npm pack` here gives the same
+tarball, and `node scripts/smoke.mjs` installs it with npm and pnpm and renders every directive.
+Copying `src/` still works for a project with its own JSX build (that is what the `/dev/markdown`
+download is). How a release is published: `BCWEB/guides/run/CI_CD_EN.md`, "Publishing B.MD".
 
 ## The same vocabulary in BMM and in MkDocs
 

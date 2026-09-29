@@ -261,14 +261,17 @@ compose ci-dessus est la première. Voici la seconde — les workflows GitHub Ac
 chacun publie (lu depuis les ACTIONS utilisées, jamais depuis son nom), et quels secrets un
 clone neuf exigerait.
 
-Ce qu'elle rapporte, c'est **quatre workflows, dix-neuf jobs, un secret** :
+Ce qu'elle rapporte, c'est **cinq workflows, vingt et un jobs, deux secrets** :
 `BCW/.github/workflows/ci.yml`, qui exécute `web-build`, `api-check`, `native`, `caddyfile`,
 `secret-scan`, `npm-audit` et `cargo-audit` sur `push` et sur `pull_request` ; `security.yml`
 (`gate-selftest`, `gitleaks`, `semgrep`, `trivy-fs`, `trivy-image`, `code-scanning`,
 `pr-comment`) et `dast.yml` (`local`, `staging`, `code-scanning`, `pr-comment`), les scans de
 sécurité de [SECURITY_CI_FR.md](../run/SECURITY_CI_FR.md) ; et `deploy.yml`, un
 job `deploy` qui exige `DEPLOY_SSH_KEY` (une clé à qui le serveur ne laisse lancer que
-infra/deploy-gate.sh, DEPLOY_FR section 9). Les trois chiffres sont épinglés plus bas. Rien
+infra/deploy-gate.sh, DEPLOY_FR section 9) ; et `publish-bmd.yml` (`verify`, `publish`), qui
+publie les paquets B.MD sur npm à chaque tag `bmd-v*` et ne lit `NPM_TOKEN` que pour la première
+version (la publication de confiance npm n'exige aucun secret ; CI_CD_FR, « Publier B.MD »).
+Les trois chiffres sont épinglés plus bas. Rien
 dans la CI ni dans les scans de sécurité ne demande de secret (les deux jobs qui écrivent
 utilisent le jeton du run) : un contributeur sur un fork peut donc vérifier son travail,
 un fait d'une ligne qui ne vit sinon que dans la tête de celui qui l'a monté.
@@ -309,9 +312,9 @@ les semaines et sont écrits plus haut comme des instantanés datés, volontaire
 | `dataLossMigrations` | Migrations contenant `DROP TABLE`, `DROP COLUMN` ou `DELETE FROM` | **3** |
 | `indexDrift` | Index créés par une migration et absents de `schema.prisma` | **0** |
 | `publishedPorts` | Entrées de port joignables depuis l'extérieur de la machine | **3** |
-| `workflows` | Fichiers de workflow GitHub Actions que la carte peut atteindre | **4** |
-| `workflowJobs` | Jobs dans ces workflows | **19** |
-| `workflowSecrets` | Secrets distincts exigés par ces workflows | **1** |
+| `workflows` | Fichiers de workflow GitHub Actions que la carte peut atteindre | **5** |
+| `workflowJobs` | Jobs dans ces workflows | **21** |
+| `workflowSecrets` | Secrets distincts exigés par ces workflows | **2** |
 
 ## Ce qu'elles ne sont pas
 

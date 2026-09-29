@@ -28,6 +28,8 @@ export interface BmdSnippetGroup {
 
 export const SNIPPET_GROUPS: BmdSnippetGroup[];
 export const SNIPPETS: BmdSnippet[];
+/** French labels for the block menu, keyed by the English label. */
+export const SNIPPET_FR: Readonly<Record<string, string>>;
 /** Fill a snippet's placeholders against the current selection. */
 export function expandSnippet(md: string, selection?: string): { text: string; caret?: number };
 /** The same groups with their labels in `lang`, falling back to English per string. */

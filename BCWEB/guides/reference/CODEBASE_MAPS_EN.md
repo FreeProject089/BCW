@@ -246,14 +246,17 @@ above is the first. This is the second — the GitHub Actions workflows, what ea
 publishes (read from the ACTIONS it uses, never from its name), and which secrets a fresh
 clone would need.
 
-What it reports is **four workflows, nineteen jobs, one secret**: `BCW/.github/workflows/ci.yml`,
+What it reports is **five workflows, twenty-one jobs, two secrets**: `BCW/.github/workflows/ci.yml`,
 running `web-build`, `api-check`, `native`, `caddyfile`, `secret-scan`, `npm-audit` and
 `cargo-audit` on push and on
 pull_request; `security.yml` (`gate-selftest`, `gitleaks`, `semgrep`, `trivy-fs`, `trivy-image`,
 `code-scanning`, `pr-comment`) and `dast.yml` (`local`, `staging`, `code-scanning`,
 `pr-comment`), the security scans of [SECURITY_CI_EN.md](../run/SECURITY_CI_EN.md); and
 `deploy.yml`, one `deploy` job that needs `DEPLOY_SSH_KEY` (a key the server
-only lets run infra/deploy-gate.sh, DEPLOY_EN section 9). All three figures are pinned below.
+only lets run infra/deploy-gate.sh, DEPLOY_EN section 9); and `publish-bmd.yml` (`verify`,
+`publish`), which publishes the B.MD packages to npm on a `bmd-v*` tag and reads `NPM_TOKEN`
+for the first release only (npm trusted publishing needs no secret; CI_CD_EN, "Publishing
+B.MD"). All three figures are pinned below.
 Nothing in CI or in the security scans needs a secret (the two jobs that write use the run's
 own token), so a
 contributor on a fork can check their work, which is a one-line fact that otherwise lives only
@@ -294,9 +297,9 @@ be switched off within a month.
 | `dataLossMigrations` | Migrations containing `DROP TABLE`, `DROP COLUMN` or `DELETE FROM` | **3** |
 | `indexDrift` | Indexes created by a migration and absent from `schema.prisma` | **0** |
 | `publishedPorts` | Port entries reachable from outside the machine | **3** |
-| `workflows` | GitHub Actions workflow files the map can reach | **4** |
-| `workflowJobs` | Jobs across those workflows | **19** |
-| `workflowSecrets` | Distinct secrets those workflows need | **1** |
+| `workflows` | GitHub Actions workflow files the map can reach | **5** |
+| `workflowJobs` | Jobs across those workflows | **21** |
+| `workflowSecrets` | Distinct secrets those workflows need | **2** |
 
 ## What these are not
 

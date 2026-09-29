@@ -4,10 +4,13 @@ One component, one stylesheet, and a `configureMarkdown()` call once at startup.
 between frameworks is where that call goes and whether the component renders on the server.
 
 ```bash
-npm i @bettercommunity/bmd react react-dom react-markdown remark-gfm remark-directive rehype-raw rehype-sanitize unist-util-visit unified remark-parse lucide-react
+npm i @bettercommunity/bmd          # or: pnpm add / yarn add / bun add
 # optional, loaded only when a document needs them
 npm i rehype-highlight remark-math rehype-katex katex mermaid
 ```
+
+The Markdown pipeline comes with the package; you bring React 18 or 19. With webpack (Next.js)
+install the optional packages you use: webpack resolves every `import()` at build time.
 
 The stylesheet reads a handful of CSS variables and defines none (`--text --muted --faint
 --line --line-strong --surface --surface-2 --bg-solid --primary --primary-2 --error`); give it

@@ -13,6 +13,7 @@ The security scans have their own detailed guide: [SECURITY_CI_EN.md](SECURITY_C
 | **BCWEB security** | `security.yml` | same, + Mondays 03:17 UTC, + by hand | the security gate finds something at or above the threshold (default HIGH) in Gitleaks, Semgrep or Trivy |
 | **BCWEB DAST** | `dast.yml` | pull requests touching the API, web, packages, Caddy or the DAST files; Tuesdays 04:41 UTC; by hand | the gate finds something at or above the threshold in ZAP or Nuclei, or the scan could not run properly |
 | **BCWEB deploy (production)** | `deploy.yml` | by hand on `master`, or after a green **BCWEB CI** on `master` when `CD_AUTO_DEPLOY` = `true` | **BCWEB security** has not passed for that commit (after waiting up to 20 min), or the SSH deploy through the server's gate fails |
+| **Publish B.MD** | `publish-bmd.yml` | a tag `bmd-v<version>`, or by hand (verify only unless *publish* is ticked) | the tag and the two package versions disagree, a B.MD gate fails, the tarball does not install and render with npm and pnpm, `publint` / `arethetypeswrong` / `npm audit` object, or npm refuses the publish |
 
 Every job asks for its own permissions and nothing else (`contents: read` almost everywhere);
 the only jobs that may write are named below. Every action is pinned by commit SHA, every
@@ -126,6 +127,65 @@ Tuesday's scan. Its findings are read on the pull request and in the weekly run.
 
 ---
 
+## Publishing B.MD (`publish-bmd.yml`)
+
+Publishes **`@bettercommunity/bmd`** and **`@bettercommunity/bmd-editor`** (versioned together)
+to the npm registry. pnpm, yarn and bun install from that same registry, so there is no second
+publish "for pnpm"; what matters for pnpm is that the package installs under its strict
+`node_modules`, and the workflow proves that on every release.
+
+| Job | Permissions | What it does |
+|---|---|---|
+| Build, test, pack (npm + pnpm) | `contents: read`, no secret | tag = version check, `npm ci` in `apps/web`, the B.MD gates (lint, `check-md-*`, registry and URL-policy tests, README table), builds `dist/` (`packages/bmd/scripts/build.mjs`), `check-bmd-publish`, then `packages/bmd/scripts/smoke.mjs`: packs both packages, installs the tarballs with **npm and pnpm**, imports every export, server-renders every directive example, compiles a TypeScript consumer, `npm audit`; again on React 18; then `publint` and `arethetypeswrong` on the tarballs, uploaded as the artifact `bmd-tarballs` |
+| npm publish (provenance) | `contents: read`, `id-token: write`, environment `npm` | downloads those tarballs and runs `npm publish <tarball> --provenance --access public` (renderer first, then editor); a version already on npm is skipped, a pre-release goes to the `next` dist-tag. No checkout, no package script runs next to the credentials |
+
+**Token or trusted publishing.** The job is written for **npm trusted publishing** (OIDC): npm
+exchanges the run's GitHub identity for a one-time publish credential, nothing long-lived is
+stored anywhere, and provenance is attached automatically. It is the steady state. A trusted
+publisher can only be added to a package that already exists on npm, so the **first** release
+goes through a token (`NPM_TOKEN`, a secret of the `npm` environment). npm tries OIDC first and
+falls back to that token, so the same job serves both; delete the secret once the trusted
+publishers are set. Provenance needs a public repository, which `FreeProject089/BCW` is, and a
+`repository.url` in each `package.json` that names it (checked by npm at publish time).
+
+### What the owner does, once
+
+1. **The npm scope.** On npmjs.com, signed in: *Add Organization* → name **`bettercommunity`**
+   (the free plan is enough for public packages). The scope did not exist on 2026-09-26.
+   Turn on two-factor authentication for the account if it is not already.
+2. **The first-release token.** Account → *Access Tokens* → *Generate New Token* →
+   *Granular Access Token*: packages and scopes **read and write**, limited to the
+   `@bettercommunity` scope (or "all packages" of the org), expiry 7 days, and tick *bypass
+   two-factor authentication* (a CI run cannot answer a 2FA prompt).
+3. **The GitHub environment.** Repository → Settings → Environments → *New environment*
+   **`npm`**. Optionally add yourself as a required reviewer: every publish then waits for a
+   click. Add the secret **`NPM_TOKEN`** there with the token from step 2.
+4. **Release.** Both `package.json` files already say `3.1.0` and the changelog has its
+   section. Push the tag: `git tag bmd-v3.1.0` then `git push origin bmd-v3.1.0`. Watch
+   *Actions → Publish B.MD*; the summary lists what was published.
+5. **Switch to trusted publishing** (after the first release): on npmjs.com, each package →
+   *Settings* → *Trusted Publisher* → GitHub Actions: owner `FreeProject089`, repository
+   `BCW`, workflow `publish-bmd.yml`, environment `npm`. Do it for both packages, then delete
+   the `NPM_TOKEN` secret and revoke the token. Optionally set *Require two-factor
+   authentication and disallow tokens* on both packages: from then on only this workflow can
+   publish them.
+
+Every later release is step 4 with the new version: bump both `package.json` files, cut the
+`## <version>` section in `packages/bmd/CHANGELOG.md`, push `bmd-v<version>`.
+
+**By hand, without CI** (not recommended; no verification runs): `npm pack` then
+`npm publish <tarball> --access public --provenance=false` from `packages/bmd`, then from
+`packages/bmd-editor`. `--provenance=false` is needed because `publishConfig.provenance` is on
+and provenance can only be generated inside CI.
+
+- **Locally, the same checks:** in `apps/web` after `npm ci`, `node ../../packages/bmd/scripts/build.mjs`,
+  `node scripts/check-bmd-publish.mjs`, then
+  `node ../../packages/bmd/scripts/smoke.mjs --clients npm,pnpm --types --audit` (needs the
+  network and pnpm on the PATH).
+- **Artifact:** `bmd-tarballs`, 14 days.
+
+---
+
 ## Variables and secrets to configure
 
 Settings → Secrets and variables → Actions.
@@ -143,6 +203,7 @@ Settings → Secrets and variables → Actions.
 | `DEPLOY_HOST`, `DEPLOY_PORT`, `DEPLOY_USER` | variable | deploy | the server |
 | `DEPLOY_KNOWN_HOSTS` | variable | deploy | the server's host key line(s); required, no trust-on-first-use |
 | `CD_AUTO_DEPLOY` | variable | deploy | `true` = deploy after every green CI on `master` |
+| `NPM_TOKEN` | **secret** (environment `npm`) | publish-bmd | a granular npm token for the FIRST B.MD release only; delete it once trusted publishing is configured |
 
 The security and DAST workflows need **no secret**: they use the run's own token for the
 two writes above. The CI-local DAST instance generates its secrets at run time.

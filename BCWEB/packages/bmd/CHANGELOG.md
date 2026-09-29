@@ -2,7 +2,21 @@
 
 ## Unreleased
 
+## 3.1.0 — 2026-09-26
+
+The first release on the npm registry, for both packages (`@bettercommunity/bmd` and
+`@bettercommunity/bmd-editor`, versioned together).
+
+### Packaging
+- **Built for npm**: the tarball ships `dist/` (plain ES modules, one file per entry, shared chunks beside them) instead of the JSX sources, so the package imports in Node, in Next.js without `transpilePackages`, and in any bundler. `prepack` builds it (`scripts/build.mjs`).
+- **Types per entry**: `@bettercommunity/bmd/config`, `/export`, `/registry`… each carry their own `.d.ts` holding only what that entry exports; `exports` lists `types` first; `typesVersions` covers `moduleResolution: node`.
+- **Dependencies**: the Markdown pipeline (`react-markdown`, `remark-*`, `rehype-*`, `unified`, `unist-util-visit`) and `lucide-react` are now `dependencies`, installed for you. `react` and `react-dom` (18 or 19) stay peers; `mermaid`, `rehype-highlight`, `remark-math`, `rehype-katex`, `katex` stay optional peers. `npm i @bettercommunity/bmd` is the whole install.
+- **The stylesheet is imported explicitly**: `import '@bettercommunity/bmd/markdown.css'` (and `@bettercommunity/bmd-editor/editor.css`). The built entry no longer imports CSS itself, so it runs under Node and server renderers.
+- Verified from the packed tarball with npm and pnpm (strict `node_modules`), React 18 and 19, TypeScript `node16` and `bundler`, `publint` and `arethetypeswrong` (ESM-only profile).
+- The `./src/*` subpath is gone from `exports`: the sources are no longer in the tarball.
+
 ### Added
+- **Directive registry**: `DIRECTIVES`, `DIRECTIVE_GROUPS`, `directiveNames()`, `findDirective()`, `directiveSyntax()` (also at `@bettercommunity/bmd/registry`). Every block as data (name, aliases, forms, attributes, an English and French summary, an example); the README table and bettercommunity.ch/dev/bmd are generated from it, and a test fails when it and the parser disagree.
 - **Isometric icons**: `iso:<name>` (or `isometric:`), 83 full-colour SVGs shipped in `assets/iso/` from three MIT sets (Isoflow isopack, MI2, Jolloficons; MI2's glyphs are Material Design Icons, Apache-2.0), with every notice in `assets/iso/LICENSES.txt`. Drawn as an `<img>`; `cdn.iso` in the config says where from (jsDelivr's copy of this package by default, `null` switches the family off). `ISO_NAMES` and `isoRef()` exported from `./icons`; `./iso/icons.json` is the picker manifest.
 
 - **`policy.allowApiHosts`** (and `policy.origin`): a strict allowlist for what live blocks FETCH (`kind: 'api'`). An array, even empty, means the page's own origin plus the listed hosts; `[]` is same origin only. `null` (the default) keeps the `allowHosts` rule.

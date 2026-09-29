@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { Code2, Shield, KeyRound, BookOpen, Send, Copy, Sliders, FlaskConical, ArrowRight, FileJson, Puzzle } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Code2, Shield, KeyRound, BookOpen, Send, Copy, FlaskConical, ArrowRight, Puzzle, Webhook, Palette, Activity, ExternalLink } from 'lucide-react';
+import { SnippetTabs } from '../ui/dev-snippet.jsx';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { useAsync } from './pages.jsx';
@@ -386,9 +387,93 @@ export function devCards(cfg, t) {
   }));
 }
 
+// The six things a developer can build against, and where each one's documentation lives.
+// Every `to` is a route of this app or a seeded doc slug (apps/api/src/seed-docs.mjs), so a
+// renamed page shows up in check-seed-links rather than as a dead card here.
+const NPM_BMD = 'https://www.npmjs.com/package/@bettercommunity/bmd';
+export const SURFACES = [
+  { id: 'api', icon: Code2, to: '/docs/bcweb-api', titleKey: 'devp.s.api', title: 'REST API',
+    bodyKey: 'devp.s.api.b', body: 'Read and change what a member owns, with a key they created and the scopes they chose. JSON over HTTPS, a sandbox for writes.',
+    links: [
+      { key: 'devp.l.ref', label: 'Reference', to: '/docs/bcweb-api' },
+      { key: 'devp.l.try', label: 'Try a call', to: '/dev/tools#try' },
+      { key: 'devp.l.sandbox', label: 'Sandbox', to: '/docs/sandbox' },
+      { key: 'devp.l.keys', label: 'Your keys', to: '/dev/config' },
+    ] },
+  { id: 'oidc', icon: Shield, to: '/docs/sso', titleKey: 'devp.s.oidc', title: 'Sign in with BetterCommunity',
+    bodyKey: 'devp.s.oidc.b', body: 'Standard OpenID Connect: point any OIDC library at the discovery document. Authorization code with PKCE, no in-house SDK.',
+    links: [
+      { key: 'devp.l.guide', label: 'Guide', to: '/docs/sso' },
+      { key: 'devp.l.discovery', label: 'Discovery document', href: 'DISCOVERY' },
+      { key: 'devp.l.app', label: 'Register an app', to: '/dev/config' },
+    ] },
+  { id: 'webhooks', icon: Webhook, to: '/docs/webhooks', titleKey: 'devp.s.wh', title: 'Webhooks',
+    bodyKey: 'devp.s.wh.b', body: 'Get told when something changes instead of polling. Every delivery is signed (HMAC-SHA256 over timestamp and body).',
+    links: [
+      { key: 'devp.l.guide', label: 'Guide', to: '/docs/webhooks' },
+      { key: 'devp.l.sig', label: 'Check a signature', to: '/dev/tools#signature' },
+    ] },
+  { id: 'bmd', icon: Puzzle, to: '/dev/bmd', titleKey: 'devp.s.bmd', title: 'B.MD, the markdown kit',
+    bodyKey: 'devp.s.bmd.b', body: 'The block system this site is written in, as an npm package: callouts, cards, tabs, API cards, live values, diagrams. Works with npm, pnpm, yarn and bun.',
+    links: [
+      { key: 'devp.l.install', label: 'Install and directives', to: '/dev/bmd' },
+      { key: 'devp.l.play', label: 'Playground', to: '/dev/markdown' },
+      { key: 'devp.l.editor', label: 'Editor', to: '/dev/editor' },
+      { key: 'devp.l.npm', label: 'npm', href: NPM_BMD },
+    ] },
+  { id: 'bmm', icon: Palette, to: '/docs/plugins', titleKey: 'devp.s.bmm', title: 'BMM plugins and themes',
+    bodyKey: 'devp.s.bmm.b', body: 'Extend BetterModsManager with a plugin, restyle it with a theme, and publish either through a catalog feed.',
+    links: [
+      { key: 'devp.l.plugins', label: 'Plugins', to: '/docs/plugins' },
+      { key: 'devp.l.pluginapi', label: 'Plugin API', to: '/docs/api-reference' },
+      { key: 'devp.l.themes', label: 'Themes', to: '/docs/themes' },
+      { key: 'devp.l.feed', label: 'Check a catalog feed', to: '/dev/tools#validate' },
+      { key: 'devp.l.deeplink', label: 'bmm:// links', to: '/dev/tools#deeplink' },
+    ] },
+  { id: 'status', icon: Activity, to: '/status', titleKey: 'devp.s.status', title: 'Status',
+    bodyKey: 'devp.s.status.b', body: 'Whether the API, the site and the repositories are up right now, and every incident with its timeline.',
+    links: [
+      { key: 'devp.l.status', label: 'Status page', to: '/status' },
+      { key: 'devp.l.calls', label: 'What your keys did', to: '/dev/tools#calls' },
+    ] },
+];
+
+/** The first call of each surface. Keys come from the environment, never from the page. */
+function quickStart(base, t) {
+  const origin = base || 'https://bettercommunity.ch';
+  return [
+    { id: 'api', label: t('devp.q.api', 'API key'), lang: 'bash',
+      code: `# Create a key at ${origin}/dev/config, then:\nexport BCW_KEY=bck_...\ncurl -H "Authorization: Bearer $BCW_KEY" ${origin}/api/v1/account`,
+      note: t('devp.q.api.n', 'Writes accept X-BCW-Sandbox: 1: the key and the scope are checked, nothing is written.') },
+    { id: 'oidc', label: 'OpenID Connect', lang: 'bash',
+      code: `# Everything an OIDC library needs: endpoints, scopes, signing keys\ncurl ${origin}/.well-known/openid-configuration`,
+      note: t('devp.q.oidc.n', 'Register the app (client id, redirect URI) at /dev/config, then give your library the discovery URL.') },
+    { id: 'webhooks', label: t('devp.q.wh', 'Webhook check'), lang: 'js',
+      code: [
+        "import crypto from 'node:crypto';",
+        '',
+        '// rawBody: the request body exactly as received, before JSON.parse',
+        'export function verify(headers, rawBody, secret) {',
+        "  const ts = headers['x-bcw-timestamp'];",
+        "  const sig = String(headers['x-bcw-signature'] || '').replace(/^v1=/, '');",
+        '  if (Math.abs(Date.now() / 1000 - Number(ts)) > 300) return false; // replay window',
+        "  const mine = crypto.createHmac('sha256', secret).update(`${ts}.${rawBody}`).digest('hex');",
+        '  return mine.length === sig.length && crypto.timingSafeEqual(Buffer.from(mine), Buffer.from(sig));',
+        '}',
+      ].join('\n') },
+    { id: 'bmd', label: 'B.MD', lang: 'jsx',
+      code: [
+        '// npm i @bettercommunity/bmd   (or pnpm add / yarn add / bun add)',
+        "import Markdown from '@bettercommunity/bmd';",
+        "import '@bettercommunity/bmd/markdown.css';",
+        '',
+        'export const Post = ({ body }) => <Markdown lang="en">{body}</Markdown>;',
+      ].join('\n') },
+  ];
+}
+
 export default function DevHub() {
   const { t } = useI18n(); const toast = useToast();
-  const nav = useNavigate();
   const { user } = useAuth();
   // What this visitor already has. Only asked for when signed in — a signed-out developer is
   // the one this page was written for, and should not pay for a request that can only answer
@@ -484,47 +569,44 @@ export default function DevHub() {
         </div>
       )}
 
-      {/* Two doors into the material — the workbench and the written guides — as a calm
-          pair, not a nine-tile wall. This is a landing page: it names where to go and gets
-          out of the way. The interactive console, the feed validator and the deeplink
-          builder all still live at /dev/tools; they are no longer inlined onto the front
-          door, so arriving here reads as "here is what you can build" rather than "here is a
-          control panel". */}
-      <div className="grid sm:grid-cols-3 gap-4 mb-12">
-        <Link to="/dev/tools" className="group rounded-xl border border-[var(--line)] p-5 transition hover:border-[var(--primary)]" style={{ background: 'var(--surface)' }}>
-          <div className="flex items-center gap-2 mb-1">
-            <FlaskConical size={16} className="text-[var(--accent-ink)]" />
-            <span className="font-semibold text-[15px] flex-1">{t('dev.landing.toolsT', 'Developer tools & console')}</span>
-            <ArrowRight size={14} className="shrink-0 opacity-0 group-hover:opacity-100 transition text-[var(--accent-ink)]" />
+      {/* What you can build on, one card per surface. Each card is a heading link plus its
+          own row of links: the old three doors nested clickable pills INSIDE a link (a
+          `role="link"` span in an `<a>`), which a screen reader announces as one link and a
+          keyboard could only half reach. Siblings now, every one a real anchor. */}
+      <h2 className="text-xl sm:text-2xl font-extrabold tracking-tight mb-4">{t('devp.surfaces', 'What you can build on')}</h2>
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-12">
+        {SURFACES.map((s) => (
+          <div key={s.id} className="group rounded-xl border border-[var(--line)] p-5 min-w-0 flex flex-col transition hover:border-[var(--primary)]" style={{ background: 'var(--surface)' }}>
+            <Link to={s.to} className="flex items-center gap-2 mb-1">
+              <s.icon size={16} className="text-[var(--accent-ink)] shrink-0" />
+              <span className="font-semibold text-[15px] flex-1 min-w-0">{t(s.titleKey, s.title)}</span>
+              <ArrowRight size={14} className="shrink-0 opacity-60 group-hover:opacity-100 transition text-[var(--accent-ink)]" />
+            </Link>
+            <p className="text-[13px] text-[var(--muted)] flex-1">{t(s.bodyKey, s.body)}</p>
+            <div className="flex flex-wrap gap-1.5 mt-3">
+              {s.links.map((l) => {
+                const cls = 'text-[11px] px-2 py-0.5 rounded-full border border-[var(--line)] text-[var(--muted)] hover:border-[var(--primary)] hover:text-[var(--text)] inline-flex items-center gap-1';
+                const label = t(l.key, l.label);
+                return l.href
+                  ? <a key={l.key} href={l.href === 'DISCOVERY' ? `${base}/.well-known/openid-configuration` : l.href} target="_blank" rel="noopener noreferrer" className={cls}>{label} <ExternalLink size={10} /></a>
+                  : <Link key={l.key} to={l.to} className={cls}>{label}</Link>;
+              })}
+            </div>
           </div>
-          <p className="text-[13px] text-[var(--muted)]">{t('dev.landing.toolsS', 'Try a call, validate a catalog feed, build a bmm:// link, check a webhook signature.')}</p>
-        </Link>
-        <Link to={hero.refUrl || '/docs/bcweb-api'} className="group rounded-xl border border-[var(--line)] p-5 transition hover:border-[var(--primary)]" style={{ background: 'var(--surface)' }}>
-          <div className="flex items-center gap-2 mb-1">
-            <BookOpen size={16} className="text-[var(--accent-ink)]" />
-            <span className="font-semibold text-[15px] flex-1">{hero.refLabel || t('dev.landing.guidesT', 'Guides & API reference')}</span>
-            <ArrowRight size={14} className="shrink-0 opacity-0 group-hover:opacity-100 transition text-[var(--accent-ink)]" />
-          </div>
-          <p className="text-[13px] text-[var(--muted)]">{t('dev.landing.guidesS', 'Endpoints, scopes, OpenID Connect and webhooks, the full written reference.')}</p>
-        </Link>
-        {/* The third door: the markdown kit this whole site is written in. It had a card in
-            the old nine-tile wall and lost it when the wall went — so /dev/bmd, /dev/editor
-            and the playground were reachable only by typing the address. */}
-        <Link to="/dev/bmd" className="group rounded-xl border border-[var(--line)] p-5 transition hover:border-[var(--primary)]" style={{ background: 'var(--surface)' }}>
-          <div className="flex items-center gap-2 mb-1">
-            <Puzzle size={16} className="text-[var(--accent-ink)]" />
-            <span className="font-semibold text-[15px] flex-1">{t('dev.landing.bmdT', 'B.MD, the markdown kit')}</span>
-            <ArrowRight size={14} className="shrink-0 opacity-0 group-hover:opacity-100 transition text-[var(--accent-ink)]" />
-          </div>
-          <p className="text-[13px] text-[var(--muted)]">{t('dev.landing.bmdS', 'Callouts, cards, tabs, API cards, live values, diagrams, install it, try the playground, open the editor.')}</p>
-          <div className="flex flex-wrap gap-1.5 mt-3">
-            {[['/dev/bmd', t('dev.hub.md.install', 'Install it')], ['/dev/markdown', t('dev.hub.md.play', 'Playground')], ['/dev/editor', t('dev.hub.md.editor', 'The editor')], ['/dev/tools#openapi', t('dvt.oa.title', 'OpenAPI → B.MD')]].map(([to, label]) => (
-              <span key={to} role="link" tabIndex={0} onClick={(e) => { e.preventDefault(); e.stopPropagation(); nav(to); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); nav(to); } }}
-                className="text-[11px] px-2 py-0.5 rounded-full border border-[var(--line)] text-[var(--muted)] hover:border-[var(--primary)] hover:text-[var(--text)]">{label}</span>
-            ))}
-          </div>
-        </Link>
+        ))}
       </div>
+
+      {/* Quick start: the first call of each surface, copyable. The key is read from the
+          environment in every snippet, never pasted in (see ApiConsole's note). */}
+      {show.quickstart !== false && (
+        <section className="mb-12">
+          <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
+            <h2 className="text-xl sm:text-2xl font-extrabold tracking-tight">{t('devp.qs', 'Quick start')}</h2>
+            <Link to={hero.refUrl || '/docs/bcweb-api'} className="text-sm text-[var(--accent-ink)] inline-flex items-center gap-1 hover:gap-2 transition-all">{t('devp.qs.ref', 'Full API reference')} <ArrowRight size={13} /></Link>
+          </div>
+          <SnippetTabs tabs={quickStart(base, t)} />
+        </section>
+      )}
 
       {/* The living half of the page: the latest from the developer blog, read right here.
           Same NewsGrid the home landing uses, so the two front doors share one look. Absent

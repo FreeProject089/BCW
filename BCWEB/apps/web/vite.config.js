@@ -204,6 +204,7 @@ export default defineConfig(async () => ({
       { find: /^@bettercommunity\/bmd\/ast$/, replacement: `${BMD}/ast.js` },
       { find: /^@bettercommunity\/bmd\/editor-blocks$/, replacement: `${BMD}/editor-blocks.js` },
       { find: /^@bettercommunity\/bmd\/links$/, replacement: `${BMD}/links.js` },
+      { find: /^@bettercommunity\/bmd\/registry$/, replacement: `${BMD}/registry.js` },
       { find: /^@bettercommunity\/bmd-editor$/, replacement: `${BMD}/../../bmd-editor/src/index.jsx` },
       { find: /^@bettercommunity\/bmd-editor\/snippets$/, replacement: `${BMD}/../../bmd-editor/src/snippets.js` },
       { find: /^@bettercommunity\/bmd-editor\/block-canvas$/, replacement: `${BMD}/../../bmd-editor/src/block-canvas.jsx` },
