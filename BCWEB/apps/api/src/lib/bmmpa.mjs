@@ -16,7 +16,7 @@
  *  Codes, not sentences: this is an API, and a client renders in its own language. Sending
  *  "Runs external programs" made the French moderation screen print English under a French
  *  heading, because there was nothing else it could do with it. */
-export const RISK_KEYS = ['command', 'script', 'deeplink', 'stopProcess', 'delete', 'resources', 'tasks'];
+export const RISK_KEYS = ['command', 'script', 'deeplink', 'stopProcess', 'delete', 'resources', 'tasks', 'network'];
 
 /** Actions that reach outside BMM whatever the permissions say. A Set of action types
  *  rather than a map to prose — the type IS the stable identifier, and the words belong to
@@ -26,6 +26,7 @@ export const RISK_KEYS = ['command', 'script', 'deeplink', 'stopProcess', 'delet
 const REACHING_ACTIONS = new Set([
   'custom.command', 'custom.script', 'app.stop', 'app.launch', 'http.request',
   'file.open', 'folder.open', 'open.url', 'restart', 'task.run',
+  'webhook.send', 'discord.send', 'slack.send',
 ]);
 
 /** Actions that name another thing by id, and what kind. Must match BMM's copy —

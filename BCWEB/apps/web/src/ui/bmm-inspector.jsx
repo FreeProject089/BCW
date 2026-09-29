@@ -143,6 +143,7 @@ export default function BmmInspector({ endpoint = '/admin/inspect' }) {
     // holds the two lists together): a missing one printed the raw code to the moderator.
     resources: t('bmi.p.resources', 'Changes how hard BMM works (CPU, disk and network limits, pausing work)'),
     tasks: t('bmi.p.tasks', 'Runs or switches on other scheduled tasks'),
+    network: t('bmi.p.network', 'Sends webhooks and chat messages, reads feeds (never a private address unless the step allows the local network)'),
   };
   const REACH = {
     'custom.command': t('bmi.r.command', 'Runs an external program'),
@@ -154,6 +155,9 @@ export default function BmmInspector({ endpoint = '/admin/inspect' }) {
     'open.url': t('bmi.r.url', 'Opens a URL'),
     restart: t('bmi.r.restart', 'Restarts BMM'),
     'task.run': t('bmi.r.task', 'Runs another scheduled task'),
+    'webhook.send': t('bmi.r.webhook', 'Sends a webhook to a web address'),
+    'discord.send': t('bmi.r.discord', 'Posts a message to a Discord channel'),
+    'slack.send': t('bmi.r.slack', 'Posts a message to a Slack channel'),
   };
   const [open, setOpen] = useState(false);
   const [text, setText] = useState('');

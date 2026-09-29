@@ -9365,6 +9365,8 @@ const DICT = {
     'th.revoke.ok': 'Lien remplacé. L’expéditeur a reçu le nouveau par e-mail.', 'th.revoke.ok2': 'Lien remplacé.',
     'bmi.p.resources': 'Change l’effort de BMM (limites de processeur, de disque et de réseau, mise en pause du travail)',
     'bmi.p.tasks': 'Lance ou active d’autres tâches planifiées',
+    'bmi.p.network': 'Envoie des webhooks et des messages de discussion, lit des flux (jamais une adresse privée, sauf si l’étape autorise le réseau local)',
+    'bmi.r.webhook': 'Envoie un webhook à une adresse web', 'bmi.r.discord': 'Publie un message dans un salon Discord', 'bmi.r.slack': 'Publie un message dans un salon Slack',
     'rd.readonly': 'Lecture seule : la modération peut consulter ce tableau de bord. Changer les fichiers, publier, modifier les réglages ou la liste d’accès demande un administrateur.',
     // fin sec-api (agent-sec-api)
     // keypin (agent-small-fixes) : le bouton « Réinitialiser l’épinglage de clé » de la section Creator IDs du profil (DELETE /me/creator-links/:id/key-pin).
