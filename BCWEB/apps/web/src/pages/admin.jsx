@@ -8396,7 +8396,7 @@ function AdminTransfers() {
 }
 
 // N-hosting (agent-hosting-N): the loyalty (tenure) pricing editor, rendered under the plans.
-import HostingLoyaltyEditor from './admin-loyalty.jsx';
+import HostingLoyaltyEditor, { TermEditor } from './admin-loyalty.jsx'; // TermEditor: hosting2 (agent-hosting)
 import { ReportThreadModal, REPORT_TARGET_ICON } from './my-reports.jsx'; // moved out, unchanged (full audit Sept 24 2026, web)
 // fin N-hosting (agent-hosting-N)
 function AdminHostingPlans() {
@@ -8723,6 +8723,8 @@ function AdminHostingPlans() {
         </Card>
       )}
       <BotFreeTier />
+      {/* hosting2 (agent-hosting): the prepaid duration's bounds, then the loyalty steps. */}
+      <TermEditor />
       {/* N-hosting (agent-hosting-N) */}
       <HostingLoyaltyEditor />
       {/* fin N-hosting (agent-hosting-N) */}

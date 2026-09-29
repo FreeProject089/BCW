@@ -18,6 +18,8 @@ import { reservedTermIn } from '../lib/reserved-names.mjs';
 // N-hosting (agent-hosting-N): loyalty (tenure) pricing on renewals paid by hand.
 import { hostingGrace } from '../lib/lib.mjs';
 import { loyaltyFromSettings, pctForRenewalNow, applyLoyalty, ensureLoyaltyCoupon } from '../lib/loyalty.mjs';
+// hosting2 (agent-hosting): calendar-month terms; a renewal paid early starts on the paid-up date.
+import { addMonths, nextTenureStart, graceHoursFor, renewedEnd } from '../lib/loyalty.mjs';
 
 // A listed repo is a link like any other, so the blocklist reaches it too. Same shape of
 // refusal as the catalog, so a client handles one error and not two.
@@ -601,8 +603,9 @@ export default async function repoRoutes(app) {
       // (serverRepoId is @unique), so a plain create() would throw here every time.
       await p.subscription.upsert({
         where: { serverRepoId: repo.id },
-        create: { userId: req.user.uid, serverRepoId: repo.id, planId: plan.id, status: 'active', currentPeriodEnd: new Date(Date.now() + months * 30 * 864e5) },
-        update: { planId: plan.id, status: 'active', currentPeriodEnd: new Date(Date.now() + months * 30 * 864e5) },
+        // hosting2 (agent-hosting): a new term from today, in calendar months.
+        create: { userId: req.user.uid, serverRepoId: repo.id, planId: plan.id, status: 'active', currentPeriodEnd: addMonths(new Date(), months) },
+        update: { planId: plan.id, status: 'active', currentPeriodEnd: addMonths(new Date(), months) },
       });
       await notify(p, req.user.uid, 'hosting_started', `"${repo.name}" upgraded to ${newStorageGB} GB — free tier, no charge.`);
       return { ok: true, free: true, repoId: repo.id };
@@ -662,8 +665,10 @@ export default async function repoRoutes(app) {
     const applyRenewal = async () => {
       await p.serverRepo.update({ where: { id: repo.id }, data: { deleteAt: null, status: repo.status === 'SUSPENDED' ? 'ONLINE' : repo.status } });
       const existing = await p.subscription.findUnique({ where: { serverRepoId: repo.id } });
-      const currentPeriodEnd = new Date(Date.now() + months * 30 * 864e5);
-      if (existing) { await p.subscription.update({ where: { serverRepoId: repo.id }, data: { status: 'active', currentPeriodEnd } }); return; }
+      // hosting2 (agent-hosting): from the paid-up date when renewing early, calendar months;
+      // the loyalty count kept, restarted or resumed exactly as a paid renewal would.
+      const currentPeriodEnd = renewedEnd(existing, months, false);
+      if (existing) { await p.subscription.update({ where: { serverRepoId: repo.id }, data: { status: 'active', currentPeriodEnd, tenureStartAt: nextTenureStart(existing, new Date(), graceHoursFor(existing, await hostingGrace(p)), loyaltyFromSettings(s).lapseResets) } }); return; }
       // No Subscription row exists yet (shouldn't normally happen — every hosted
       // repo gets one at provisioning) — mint a plan matching the current specs so
       // Subscription.planId (required) is always satisfiable.
@@ -737,13 +742,14 @@ export default async function repoRoutes(app) {
     // fin N-hosting (agent-hosting-N)
 
     const applyRenewal = async () => {
-      const currentPeriodEnd = new Date(Date.now() + months * 30 * 864e5);
       // Restore everything the pool owns that a lapse had suspended/hidden.
       await p.serverRepo.updateMany({ where: { groupId: group.id, status: 'SUSPENDED' }, data: { status: 'ONLINE' } });
       await p.serverRepo.updateMany({ where: { groupId: group.id }, data: { deleteAt: null } });
       await p.communityCatalog.updateMany({ where: { groupId: group.id, status: 'HIDDEN' }, data: { status: 'ACTIVE', deleteAt: null } });
       const existing = await p.subscription.findFirst({ where: { hostingGroupId: group.id } });
-      if (existing) { await p.subscription.update({ where: { id: existing.id }, data: { status: 'active', currentPeriodEnd, warnedAt: null } }); }
+      // hosting2 (agent-hosting): from the paid-up date when renewing early, calendar months.
+      const currentPeriodEnd = renewedEnd(existing, months, false);
+      if (existing) { await p.subscription.update({ where: { id: existing.id }, data: { status: 'active', currentPeriodEnd, warnedAt: null, tenureStartAt: nextTenureStart(existing, new Date(), graceHoursFor(existing, await hostingGrace(p)), loyaltyFromSettings(s).lapseResets) } }); }
       else {
         const plan = await p.hostingPlan.create({ data: { name: `Custom ${storageGB}GB pool (renewal)`, storageGB, uploadLimitKbps: group.uploadLimitKbps, cpuShare: group.cpuShare, priceMonthlyCents: monthly, active: false } });
         await p.subscription.create({ data: { userId: group.ownerId, hostingGroupId: group.id, planId: plan.id, status: 'active', poolContribBytes: group.poolBytes, currentPeriodEnd } });

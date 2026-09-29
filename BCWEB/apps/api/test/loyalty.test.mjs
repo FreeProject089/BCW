@@ -36,7 +36,10 @@ describe('monthsBetween (whole calendar months)', () => {
   });
   test('a day short is not a month', () => {
     assert.equal(monthsBetween(D('2026-01-12'), D('2026-04-11')), 2);
-    assert.equal(monthsBetween(D('2026-01-31'), D('2026-02-28')), 0);
+    // hosting2 (agent-hosting): 31 Jan -> 28 Feb IS one month now: a month of tenure ends when
+    // a month of term does (addMonths clamps to the shorter month, as Stripe bills it). A day
+    // short of that is still not a month.
+    assert.equal(monthsBetween(D('2026-01-31'), D('2026-02-27')), 0);
   });
   test('backwards is zero', () => {
     assert.equal(monthsBetween(D('2026-05-01'), D('2026-01-01')), 0);

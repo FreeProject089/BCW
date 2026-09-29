@@ -46,10 +46,10 @@ export const HOSTING_SETTINGS_GROUPS = [
     ['pricing.catalogHostPerMBCents', 'Catalog file hosting (¢ / MB / month)', 'Charged to non-staff submitters for our-hosted payloads above the free floor below.', 'number'],
     ['pricing.catalogFreeMB', 'Free catalog upload floor', 'Every submission\'s (app/plugin/theme/preset) first N are free — only the excess is billed.', 'gbmb', 'MB'],
     ['marketplace.feePercentBp', 'Marketplace margin (basis points)', 'What the platform keeps on every marketplace sale, in basis points \u2014 1000 = 10%, 250 = 2.5%. A product can override it, and a product of ours can be set to 0 so we do not charge ourselves. SUPERADMIN only: it decides how much of somebody else\'s sale we keep, and the split is written onto each purchase as it was at the moment of the sale, so changing this never rewrites history.', 'number'],
-    // N-hosting (agent-hosting-N): terms are capped at 12 months (no multi-year prepayment).
-    ['hosting.termMinMonths', 'Prepaid term: minimum (months)', 'The shortest term a hosting checkout accepts; anything outside the minimum and maximum is refused by the server, whatever the page sent. 1 = one month. Default 1.', 'number'],
-    ['hosting.termMaxMonths', 'Prepaid term: maximum (months)', 'The longest term anyone can prepay in one go, in months. Hard ceiling 12: the Terms promise no availability beyond the term paid, so nothing longer than a year is sold. Default 12.', 'number'],
-    ['hosting.termStepMonths', 'Prepaid term: step (months)', 'Which terms between the minimum and maximum are valid, counted from the minimum: min 1 / step 1 sells every length, min 3 / step 3 sells 3, 6, 9, 12. The Hosting page offers the terms that carry a discount (6 months: -10 %, 12 months: -20 %) plus the minimum. Default 1.', 'number'],
+    // hosting2 (agent-hosting): the three prepaid-term bounds (hosting.termMinMonths / termMaxMonths
+    // / termStepMonths) moved to their own card, Admin > Hosting plans > Prepaid duration
+    // (TermEditor in pages/admin-loyalty.jsx), which saves the three together and explains the
+    // 12-month legal ceiling. Listing them here too was the same numbers in two tabs.
     ['teams.maxOwned', 'Teams an account may own', 'How many teams one account can create as owner before it has to buy a slot. Staff are never capped. Default 3.', 'number'],
     ['teams.slotPriceCents', 'Extra team slot price (¢, one-off)', 'What one more team costs, paid once through Stripe; the slot is permanent for that account. Default 500 (5.00). Under 50 falls back to the default.', 'number'],
     ['teams.slotCurrency', 'Extra team slot currency', 'Three-letter Stripe currency for the slot price (eur, usd, chf…). Default eur.', 'text'],

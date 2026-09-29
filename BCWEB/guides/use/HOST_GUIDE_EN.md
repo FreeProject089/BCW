@@ -44,13 +44,21 @@ accounts — pooled storage/subscriptions can't cross owners.
 
 ## 4. Billing
 
-- **Prepaid** term: any whole number of months between the admin's minimum and maximum, on
-  the admin's step (defaults 1 to 36, by 1 — Admin → Hosting → *Prepaid term*). Pick it with
-  the slider or type it; the price is exact (months × monthly) and the discount steps at
-  3 / 6 / 12 / 24 months (−5 / −10 / −20 / −35 %, a term between two tiers gets the lower
-  tier). Each cart line can **auto-renew**: the same term is billed again when it ends, as a
-  real subscription you cancel from Billing (only for terms up to 12 months; a gift never
-  auto-renews). The first `hostingFreeGB` of storage is free; only the excess (plus any extra
+- **Prepaid** term: type any whole number of months between the admin's minimum and maximum,
+  on the admin's step (defaults 1 to 12, by 1 — Admin → Hosting plans → *Prepaid duration*;
+  never more than 12 while the Terms say so). The server refuses any other number and prices
+  the one it accepts itself (months × monthly, then the term discount: 6 months or more −10 %,
+  12 months −20 %). A term of N months ends on the same day N months later; renewing early adds
+  the months after the ones already paid. The page shows live the price today, the discount,
+  the end date and what happens that day. Each cart line can **auto-renew**: the same term is
+  billed again when it ends, as a real subscription you cancel from Billing (a gift never
+  auto-renews).
+- **Loyalty discount** (when the admin turns it on): renewals get cheaper once a subscription
+  reaches the steps shown on the Hosting page (e.g. −5 % after 3 months). The admin chooses who
+  gets it (storage pools and repos, catalogue file hosting, or both) and whether a late renewal
+  resets the count or only pauses it. It is applied at renewal only (a Stripe coupon on an
+  auto-renewing subscription, priced in on a renewal paid by hand), never to a term already
+  paid. Billing shows where each of your subscriptions stands and when the next step comes. The first `hostingFreeGB` of storage is free; only the excess (plus any extra
   upload/CPU) is billed. **Promo codes** can apply a discount or free hosting.
 - Lifecycle: an expiring pool warns you first (72 h ahead by default). When a term lapses
   the repos are **suspended and catalogs hidden at once** — nothing is served, not even to

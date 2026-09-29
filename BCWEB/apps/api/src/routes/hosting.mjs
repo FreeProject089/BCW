@@ -12,6 +12,8 @@ import { getActiveCampaign, applyCampaign } from './campaigns.mjs';
 import { promoMeetsMinimum } from '../lib/promo-rules.mjs';
 import { grantAutoBadges } from './social.mjs';
 import { LOYALTY_KEY, normaliseLoyalty, loyaltyFromSettings, LOYALTY_HARD_MAX_PCT } from '../lib/loyalty.mjs'; // N-hosting (agent-hosting-N)
+// hosting2 (agent-hosting): calendar-month terms, the loyalty scopes, the member's status line.
+import { addMonths, effectiveTiers, loyaltyStatus, catalogLoyaltyView, LOYALTY_SCOPES } from '../lib/loyalty.mjs';
 
 const GiB = 1024 ** 3;
 
@@ -190,7 +192,8 @@ export async function provisionHostingPool(p, { userId, plan, poolName, months, 
   await p.subscription.create({ data: {
     userId, hostingGroupId: group.id, planId: plan.id, stripeSubId, status: 'active',
     poolContribBytes: bytes, // this sub's storage contribution to the pool
-    currentPeriodEnd: new Date(Date.now() + months * 30 * 864e5),
+    // hosting2 (agent-hosting): N calendar months (a 12-month term is a year, not 360 days).
+    currentPeriodEnd: termEndDate(new Date(), months),
   } });
   grantAutoBadges(p, { event: 'hosting', user: { id: userId } }).catch(() => {});
   return group;
@@ -235,10 +238,26 @@ export async function recomputePoolBytes(p, groupId) {
 // payment up front, which is a promise to still be running the service in three years; the
 // Terms now say plainly that no multi-year availability is promised, so nothing longer than
 // a year can be prepaid. Monthly, 6 and 12 months are the choices the page offers.
+// hosting2 (agent-hosting): the page is a number field again (the owner's call: a field with a
+// minimum and a maximum is simpler than a list of choices), bounded by these same settings, and
+// apps/web/src/lib/hosting-term.js (termError) mirrors termCheck below reason for reason —
+// test/hosting-term-hosting2.test.mjs holds the two together.
 export const TERM_DEFAULTS = { min: 1, max: 12, step: 1 };
 export const TERM_LIMIT_MONTHS = 12;
+// Where the 12-month ceiling is written down. Raising TERM_LIMIT_MONTHS alone would sell a
+// term the Terms say we do not sell; these are the texts that would have to change first.
+export const TERM_LIMIT_LEGAL = Object.freeze([
+  'Terms of Service: "Prepaid terms: what we commit to"',
+  'Payments & Refunds: "Prepaid terms"',
+]);
+/** The end of a term of `months` starting at `from`: the same calendar day, N months later
+ *  (clamped to a shorter month's last day, as Stripe does). Every path that sets a prepaid
+ *  `currentPeriodEnd` goes through this, and the page shows the same date. */
+export function termEndDate(from, months) {
+  return addMonths(from, months);
+}
 /** The admin's term bounds, clamped to something that cannot break checkout: integers,
- *  1 ≤ min ≤ max ≤ 120, step ≥ 1. A setting that is missing, empty or nonsense falls back
+ *  1 ≤ min ≤ max ≤ 12, step ≥ 1. A setting that is missing, empty or nonsense falls back
  *  to its default rather than to "no term is valid". */
 export function termBounds(s) {
   const int = (k, d) => { const n = Math.round(Number(s?.[k])); return Number.isFinite(n) && n > 0 ? n : d; };
@@ -260,6 +279,21 @@ export function termCheck(bounds, months) {
   if (m > bounds.max) return bad('above_max');
   if ((m - bounds.min) % bounds.step !== 0) return bad('off_step');
   return null;
+}
+/** hosting2 (agent-hosting): the three bounds as an admin saves them, all at once, through
+ *  PUT /admin/hosting/term. Whole months from 1; nothing above TERM_LIMIT_MONTHS, and the
+ *  refusal says which legal texts would have to change first; the minimum not above the
+ *  maximum. Returns { ok, value } or { ok: false, status, body }. */
+export function termAdminCheck(body) {
+  const refuse = (status, b) => ({ ok: false, status, body: b });
+  const b = body && typeof body === 'object' ? body : null;
+  const whole = (v) => typeof v === 'number' && Number.isInteger(v) && v >= 1;
+  if (!b || !whole(b.min) || !whole(b.max) || !whole(b.step)) return refuse(400, { error: 'invalid_input' });
+  if (b.min > TERM_LIMIT_MONTHS || b.max > TERM_LIMIT_MONTHS || b.step > TERM_LIMIT_MONTHS) {
+    return refuse(400, { error: 'term_above_legal_cap', cap: TERM_LIMIT_MONTHS, legal: TERM_LIMIT_LEGAL });
+  }
+  if (b.min > b.max) return refuse(400, { error: 'term_min_above_max', min: b.min, max: b.max });
+  return { ok: true, value: { min: b.min, max: b.max, step: b.step } };
 }
 // Discount tiers: from N months up, this fraction off. The exact tiers the five buttons
 // carried, generalised — 7 months earns the 6-month rate, 30 months the 24-month one — so
@@ -649,17 +683,46 @@ export default async function hostingRoutes(app) {
     const p = await db();
     const s = await settings(p);
     const bounds = termBounds(s);
+    // hosting2 (agent-hosting): the scarcity multiplier and the grace windows ride along, so the
+    // page prices a typed duration to the cent the checkout will charge (the multiplier was
+    // missing, and a nearly full disk made the page cheaper than the invoice) and can say
+    // exactly what happens when the term ends.
+    const cf = capacityFactors(await capacityStatus(p));
+    const grace = await hostingGrace(p);
+    const l = loyaltyFromSettings(s);
     return {
       // Storage plans only: bot plans are listed by GET /hosting/bot-plans (M-plans). A bundle
       // (a hosting plan with `bot`) stays here, its card says what it adds on Discord.
       plans: await p.hostingPlan.findMany({ where: { active: true, kind: 'hosting' }, orderBy: { storageGB: 'asc' } }),
       // The term the page lets people pick — bounds from the admin, tiers from the code.
-      term: { ...bounds, presets: termPresets(bounds), tiers: TERM_DISCOUNT_TIERS.map(([from, off]) => ({ from, off })) },
+      term: { ...bounds, limit: TERM_LIMIT_MONTHS, presets: termPresets(bounds), tiers: TERM_DISCOUNT_TIERS.map(([from, off]) => ({ from, off })) },
+      priceMult: cf.priceMult,
+      grace: { lapseHours: grace.lapseHours, unpaidHours: grace.unpaidHours },
       // N-hosting (agent-hosting-N): the loyalty tiers, so the page shows the same numbers the
-      // renewal will charge. Public: it is a price list. Tiers above the cap are sent AT the cap.
-      loyalty: (() => { const l = loyaltyFromSettings(s); return { enabled: l.enabled, maxPct: l.maxPct, tiers: l.tiers.map((x) => ({ months: x.months, pct: Math.min(x.pct, l.maxPct) })) }; })(),
+      // renewal will charge. Public: it is a price list. hosting2: the tiers as charged (capped,
+      // non-raising steps dropped), which subscriptions earn them, and the lapse rule.
+      loyalty: { enabled: l.enabled, maxPct: l.maxPct, appliesTo: l.appliesTo, lapseResets: l.lapseResets, tiers: effectiveTiers(l) },
       // fin N-hosting (agent-hosting-N)
     };
+  });
+
+  // hosting2 (agent-hosting): the prepaid duration's bounds, edited on their own card beside the
+  // plans. Same three settings the checkout reads (hosting.termMinMonths / termMaxMonths /
+  // termStepMonths), written together so a minimum and a maximum can never be saved half-way
+  // into a range that refuses every sale.
+  app.get('/admin/hosting/term', { preHandler: requireCap('manage_hosting') }, async () => {
+    const bounds = termBounds(await settings(await db()));
+    return { term: { ...bounds, presets: termPresets(bounds) }, limit: TERM_LIMIT_MONTHS, legal: TERM_LIMIT_LEGAL };
+  });
+  app.put('/admin/hosting/term', { preHandler: requireCap('manage_hosting') }, async (req, reply) => {
+    const r = termAdminCheck(req.body);
+    if (!r.ok) return reply.code(r.status).send(r.body);
+    const p = await db();
+    const rows = [['hosting.termMinMonths', r.value.min], ['hosting.termMaxMonths', r.value.max], ['hosting.termStepMonths', r.value.step]];
+    await p.$transaction(rows.map(([key, value]) => p.adminSetting.upsert({ where: { key }, create: { key, value }, update: { value } })));
+    await logAudit(p, req.user.uid, 'hosting.term.update', `min=${r.value.min} max=${r.value.max} step=${r.value.step}`, clientIp(req)).catch(() => {});
+    const bounds = termBounds(Object.fromEntries(rows));
+    return { ok: true, term: { ...bounds, presets: termPresets(bounds) } };
   });
 
   // N-hosting (agent-hosting-N)
@@ -675,15 +738,64 @@ export default async function hostingRoutes(app) {
       enabled: z.boolean(),
       tiers: z.array(z.object({ months: z.number().int().min(1).max(120), pct: z.number().int().min(0).max(LOYALTY_HARD_MAX_PCT) })).max(12),
       maxPct: z.number().int().min(0).max(LOYALTY_HARD_MAX_PCT),
+      // hosting2 (agent-hosting): which subscriptions earn it, and whether a lapse restarts the
+      // count (continuous) or only pauses it (cumulative). Optional: an older client that does
+      // not send them keeps what is stored.
+      appliesTo: z.enum(LOYALTY_SCOPES).optional(),
+      lapseResets: z.boolean().optional(),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input', details: b.error.flatten() });
-    const value = normaliseLoyalty(b.data);
     const p = await db();
+    const cur = normaliseLoyalty((await p.adminSetting.findUnique({ where: { key: LOYALTY_KEY } }).catch(() => null))?.value);
+    const value = normaliseLoyalty({ appliesTo: cur.appliesTo, lapseResets: cur.lapseResets, ...b.data });
     await p.adminSetting.upsert({ where: { key: LOYALTY_KEY }, create: { key: LOYALTY_KEY, value }, update: { value } });
-    await logAudit(p, req.user.uid, 'hosting.loyalty.update', `enabled=${value.enabled} max=${value.maxPct} tiers=${value.tiers.map((x) => `${x.months}:${x.pct}`).join(',')}`, clientIp(req)).catch(() => {});
+    await logAudit(p, req.user.uid, 'hosting.loyalty.update', `enabled=${value.enabled} max=${value.maxPct} scope=${value.appliesTo} lapseResets=${value.lapseResets} tiers=${value.tiers.map((x) => `${x.months}:${x.pct}`).join(',')}`, clientIp(req)).catch(() => {});
     return { ok: true, loyalty: value };
   });
   // fin N-hosting (agent-hosting-N)
+
+  // hosting2 (agent-hosting): where each of MY subscriptions stands on the loyalty steps — "step
+  // 2 of 3, −10 %; the next step (−15 %) in 2 months". Computed by the same functions the
+  // renewal is charged with (lib/loyalty.mjs loyaltyStatus). Pools and solo repos from the
+  // Subscription table (the admin's grants and free pools left out: they cost nothing to
+  // renew), and catalogue files with a live hosting subscription.
+  app.get('/me/hosting/loyalty', { preHandler: requireRole() }, async (req) => {
+    const p = await db();
+    const s = await settings(p);
+    const policy = loyaltyFromSettings(s);
+    const grace = await hostingGrace(p);
+    const now = new Date();
+    const subs = await p.subscription.findMany({
+      where: { userId: req.user.uid, status: { notIn: ['canceled', 'cancelled'] }, OR: [{ hostingGroupId: { not: null } }, { serverRepoId: { not: null } }] },
+      select: {
+        id: true, status: true, stripeSubId: true, hostingGroupId: true, serverRepoId: true, createdAt: true, tenureStartAt: true, currentPeriodEnd: true, loyaltyPct: true,
+        plan: { select: { name: true } }, hostingGroup: { select: { name: true, freePlan: true } }, serverRepo: { select: { name: true } },
+      },
+      take: 200,
+    });
+    const items = await p.catalogItem.findMany({
+      where: { ownerId: req.user.uid, meta: { path: ['_hostingSubId'], string_starts_with: 'sub' } },
+      select: { id: true, name: true, meta: true, createdAt: true },
+      take: 200,
+    }).catch(() => []);
+    const out = [];
+    for (const sub of subs) {
+      if (sub.plan?.name === GRANT_PLAN_NAME || sub.hostingGroup?.freePlan) continue;
+      out.push({
+        kind: sub.hostingGroupId ? 'pool' : 'repo', id: sub.hostingGroupId || sub.serverRepoId,
+        name: sub.hostingGroup?.name || sub.serverRepo?.name || '', autoRenew: !!sub.stripeSubId,
+        ...loyaltyStatus(policy, sub, now, grace, 'repos'),
+      });
+    }
+    for (const it of items) {
+      out.push({ kind: 'catalog', id: it.id, name: it.name, autoRenew: true, ...loyaltyStatus(policy, catalogLoyaltyView(it), now, grace, 'catalogs') });
+    }
+    return {
+      policy: { enabled: policy.enabled, appliesTo: policy.appliesTo, lapseResets: policy.lapseResets, maxPct: policy.maxPct, tiers: effectiveTiers(policy) },
+      items: out,
+    };
+  });
+  // fin hosting2 (agent-hosting)
 
   /**
    * "Tell me when there is room."
@@ -1288,7 +1400,9 @@ export default async function hostingRoutes(app) {
     }).catch(() => {});
     if (await p.creatorLink.count({ where: { userId: req.user.uid } }) === 0) return reply.code(403).send({ error: 'creator_link_required' });
     const r = await resolveCart(p, req, b.data, { persistPlans: true });
-    if (r.error) return reply.code(r.error.startsWith('promo_') ? 400 : 409).send(r);
+    // hosting2 (agent-hosting): a refused duration is a 400 here too, as in /quote — it is the
+    // request that is wrong, not the state of the site.
+    if (r.error) return reply.code(r.error.startsWith('promo_') || r.error === 'invalid_term' ? 400 : 409).send(r);
     if (r.total < 50) return reply.code(400).send({ error: 'cart_makes_free', detail: 'Total is free/too low — use a free-hosting grant code, or add paid items.' });
     const sk = await stripe({ forPurchase: true });
     if (!sk) return reply.code(503).send({ error: 'stripe_not_configured' });

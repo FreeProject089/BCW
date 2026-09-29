@@ -45,13 +45,67 @@ export function snapTerm(bounds, months) {
   return onGrid > max ? onGrid - step : onGrid;
 }
 
-/** Whole-term total in cents: months × monthly, less the tier discount, then a promo — the
- *  same order the server prices in (termTotalCents in routes/hosting.mjs), so the number on
- *  the card is the number on the invoice. */
-export function termTotalCents(monthlyCents, months, tiers, promoPct = 0) {
-  let total = Math.round((Number(monthlyCents) || 0) * months * (1 - discountFor(tiers, months)));
+/** Whole-term total in cents: months × monthly, less the tier discount, times the scarcity
+ *  multiplier (`priceMult`, sent by GET /hosting/plans), then a promo — the same order the
+ *  server prices in (termTotalCents in routes/hosting.mjs), so the number on the card is the
+ *  number on the invoice. hosting2: the multiplier was missing, so a nearly full disk made the
+ *  page cheaper than the checkout. */
+export function termTotalCents(monthlyCents, months, tiers, promoPct = 0, priceMult = 1) {
+  const mult = Number(priceMult) > 0 ? Number(priceMult) : 1;
+  let total = Math.round((Number(monthlyCents) || 0) * months * (1 - discountFor(tiers, months)) * mult);
   if (promoPct) total = Math.round(total * (1 - promoPct / 100));
   return total;
+}
+
+// ── hosting2 (agent-hosting) ───────────────────────────────────────────────────────────────
+// The duration is a number the member types again (the owner's call). These are the page's
+// copies of three server rules, each pinned to its original by
+// apps/api/test/hosting-term-hosting2.test.mjs and loyalty-hosting2.test.mjs:
+//   termError      ≡ termCheck      (routes/hosting.mjs)   which numbers are refused, and why
+//   termEndDate    ≡ addMonths      (lib/loyalty.mjs)      the day a term ends
+//   loyaltyPctFor  ≡ loyaltyPct     (lib/loyalty.mjs)      the renewal discount a tenure earns
+
+/** Why `months` is not a term this site sells, or null when it is. Same reasons, in the same
+ *  order, as the server's termCheck: not_integer, below_min, above_max, off_step. */
+export function termError(bounds, months) {
+  const m = Number(months);
+  const bad = (reason) => ({ error: 'invalid_term', reason, min: bounds.min, max: bounds.max, step: bounds.step });
+  if (!Number.isInteger(m)) return bad('not_integer');
+  if (m < bounds.min) return bad('below_min');
+  if (m > bounds.max) return bad('above_max');
+  if ((m - bounds.min) % bounds.step !== 0) return bad('off_step');
+  return null;
+}
+
+/** The day a term of `months` bought at `from` ends: the same calendar day N months later,
+ *  clamped to a shorter month's last day (31 Jan + 1 → 28 Feb), in UTC, as the server stores. */
+export function termEndDate(from, months) {
+  const d = new Date(from);
+  const target = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + Math.trunc(Number(months) || 0), 1, d.getUTCHours(), d.getUTCMinutes(), d.getUTCSeconds(), d.getUTCMilliseconds()));
+  const last = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
+  target.setUTCDate(Math.min(d.getUTCDate(), last));
+  return target;
+}
+
+/** The loyalty discount (whole %) earned by `months` of tenure, from the `loyalty` object
+ *  GET /hosting/plans sends ({ enabled, maxPct, tiers }, tiers already capped). */
+export function loyaltyPctFor(loyalty, months) {
+  if (!loyalty?.enabled) return 0;
+  let pct = 0;
+  for (const t of loyalty.tiers || []) if (months >= t.months) pct = Math.max(pct, Number(t.pct) || 0);
+  return Math.min(pct, Number(loyalty.maxPct) || 0, 90);
+}
+
+/** The renewals a term of `months` would get if it auto-renews: the first `count` renewal
+ *  dates, each with the loyalty step the tenure reaches on that day and what it would cost
+ *  (the term price less that step, rounded once, as the server applies it). */
+export function renewalsFor({ from, months, termCents, loyalty, count = 3 }) {
+  const out = [];
+  for (let k = 1; k <= count; k++) {
+    const pct = loyaltyPctFor(loyalty, months * k);
+    out.push({ at: termEndDate(from, months * k), tenure: months * k, pct, cents: Math.round((Number(termCents) || 0) * (1 - pct / 100)) });
+  }
+  return out;
 }
 
 /** The next tier above `months`, if the bounds allow reaching it — so the control can say

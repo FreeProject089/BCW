@@ -6,7 +6,8 @@ import { Upload, CheckCircle2, XCircle, HardDrive, Gauge, Sliders, Receipt, Plus
 } from 'lucide-react';
 import { Button, Card, Badge, Input, Select, PageHeader, Spinner, Modal, bestByteUnit, bytesInUnit, useDialog, useToast, Explain } from '../ui/ui.jsx';
 import { api } from '../lib/api.js';
-import { normaliseTerm, discountFor, snapTerm, termTotalCents, nextTier } from '../lib/hosting-term.js';
+import { normaliseTerm, discountFor, snapTerm, termTotalCents, nextTier, termEndDate, renewalsFor } from '../lib/hosting-term.js';
+import TermInput, { monthsLabel } from '../ui/term-input.jsx'; // hosting2 (agent-hosting): the duration field
 import { useAuth } from './auth.jsx';
 import { useIntro } from '../ui/IntroContext.jsx';
 // The reorganised page's building blocks: one offer card, one accordion, and the custom-domain
@@ -37,92 +38,74 @@ const Loading = () => <div className="flex items-center gap-2 text-[var(--muted)
 /**
  * The billing term — any number of months the admin allows.
  *
- * It was five buttons (1 / 3 / 6 / 12 / 24). Five is what the discount table had rows for,
- * not what anyone asked for: somebody paying until the end of a school year wants 9, and the
- * server now prices 9 exactly (nine × monthly, at the 6-month rate). So the control is the
- * number itself — a slider for the sweep, a stepper for the exact figure — bounded by what
- * `GET /hosting/plans` says the site sells (`term.min/max/step`, set by the admin). The tier
- * chips under it are the old five, kept as shortcuts because they are where the price steps.
- *
- * The sentence beside the number is the point of the whole control: "12 months → $X (−20 %)",
- * priced against a real plan, live, so the discount is a number and not a promise.
+ * hosting2 (agent-hosting): a number field again, the owner's call ("a field where the user
+ * enters the duration, with a minimum and a maximum" is simpler than a list of choices). The
+ * field and its slider are ui/term-input.jsx; the terms that carry a discount stay as one-click
+ * shortcuts beside it, because they are where the price steps. The panel beside it says, live,
+ * everything the number changes: the price today, the term discount, the renewals and their
+ * loyalty discount, the day the term ends, and what happens that day.
  */
-function TermControl({ months, setMonths, term, sample, t }) {
-  const { min, max, step, presets, tiers } = term;
-  const pick = (m) => setMonths(snapTerm(term, m));
+function TermControl({ months, setMonths, term, sample, t, priceMult, loyalty, grace }) {
+  const { lang } = useI18n(); // dates in the page's language, not the browser's
+  const { presets, tiers } = term;
   const disc = Math.round(discountFor(tiers, months) * 100);
   const next = nextTier(term, months);
-  const total = sample ? termTotalCents(sample.priceMonthlyCents, months, tiers) : null;
-  const label = (m) => `${m} ${m === 1 ? t('hosting.month1', 'month') : t('hosting.months', 'months')}`;
-  // N-hosting (agent-hosting-N): the chips ARE the choice now (monthly, 6 months, 12 months).
-  // The "another length" fold with its slider and typed figure is gone: three honest options
-  // read at a glance, and a term nobody can buy is not a thing to offer. The slider is kept
-  // only for a site whose admin settings leave a single preset (then it is the only control).
-  const fine = (
-      <div className="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
-        <div className="min-w-0">
-          <div className="flex items-baseline justify-between gap-3 text-sm mb-2">
-            <span className="text-[var(--muted)] flex items-center gap-1.5"><CalendarClock size={14} /> {t('hosting.term', 'Billing term')}</span>
-            <span className="font-semibold tabular-nums">{label(months)}{disc > 0 && <span className="ms-2 text-[12px] font-semibold text-success">−{disc}%</span>}</span>
-          </div>
-          <input type="range" min={min} max={max} step={step} value={months} className="bcw-range"
-            aria-label={t('hosting.term', 'Billing term')} aria-valuetext={label(months)}
-            onChange={(e) => pick(e.target.value)} />
-          <div className="flex justify-between text-[11px] text-[var(--faint)] mt-1 tabular-nums"><span>{label(min)}</span><span>{label(max)}</span></div>
-        </div>
-        {/* The exact figure. Typing 500 lands on the maximum, typing 5 on a step of 3 lands
-            on the nearest term that exists — the server would refuse anything else anyway,
-            and a control that lets you pick a number you cannot buy is a trap. */}
-        <label className="text-xs text-[var(--muted)] flex flex-col gap-1 sm:w-40">
-          {t('hosting.term.exact', 'Or type it')}
-          <span className="flex items-center gap-1.5">
-            {/* w-28 (112px) is under .num-wrap's 9rem container-query threshold, so below it the
-                  stepper STACKS its two buttons in one column and each gets 22px - half a touch
-                  target, and unreachable by the usual fix because the container query cannot be
-                  overridden from outside. w-36 on a touch viewport keeps the side-by-side layout
-                  and the 44px buttons; the desktop width is unchanged. */}
-            <Input type="number" min={min} max={max} step={step} value={months} className="!w-28 max-lg:!w-36"
-              aria-label={t('hosting.term.months', 'Months')}
-              onChange={(e) => { const v = e.target.value; if (v !== '') pick(v); }}
-              onBlur={(e) => pick(e.target.value)} />
-            <span className="text-[var(--muted)] whitespace-nowrap">{t('hosting.mo', 'mo')}</span>
-          </span>
-        </label>
-      </div>
+  const total = sample ? termTotalCents(sample.priceMonthlyCents, months, tiers, 0, priceMult) : null;
+  const money = (c) => `$${(c / 100).toFixed(2)}`;
+  const today = new Date();
+  const ends = termEndDate(today, months);
+  const day = (d) => d.toLocaleDateString(lang === 'fr' ? 'fr-FR' : 'en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+  const renewals = total != null && loyalty ? renewalsFor({ from: today, months, termCents: total, loyalty, count: 3 }) : [];
+  const firstLoyal = renewals.find((r) => r.pct > 0);
+  const graceText = (h) => (h % 24 === 0 ? t('hosting.term2.days', '{n} days').replace('{n}', h / 24) : t('hosting.term2.hours', '{n} hours').replace('{n}', h));
+  const row = (k, v, cls = '') => (
+    <div className="flex items-baseline justify-between gap-3 py-1.5 border-t border-[var(--line)] first:border-t-0">
+      <dt className="text-[var(--muted)] min-w-0">{k}</dt><dd className={`text-end tabular-nums min-w-0 ${cls}`}>{v}</dd>
+    </div>
   );
   return (
-    <div>
-      {/* ONE segmented control (the monthly / yearly switch of every pricing page, with the
-          admin's other terms beside them), not a row of separate pills: a set of choices where
-          exactly one is on reads as a switch, five bordered chips read as five badges. The
-          saving is text under the length, green only where there is one. */}
-      {presets.length > 1 ? (
-        <div className="inline-flex flex-wrap max-w-full rounded-xl border border-[var(--line)] bg-[var(--surface-2)] p-1 gap-1" role="group" aria-label={t('hosting.term.presets', 'Common terms')}>
-          {presets.map((m) => {
-            const d = Math.round(discountFor(tiers, m) * 100);
-            const active = m === months;
-            return (
-              <button key={m} type="button" aria-pressed={active} onClick={() => pick(m)}
-                className={`tap-44 min-w-[4.5rem] rounded-lg px-3.5 py-1.5 text-[13px] leading-tight transition-colors tabular-nums flex flex-col items-center ${active ? 'bg-[var(--bg-solid)] shadow-sm font-semibold text-[var(--text)]' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>
-                <span>{m === 1 ? t('hosting.term.monthly', 'Monthly') : m === 12 ? t('hosting.term.12mo', '12 months') : `${m} ${t('hosting.months', 'months')}`}</span>
-                <span className={`text-[11px] font-semibold ${d > 0 ? 'text-success' : 'invisible'}`}>{d > 0 ? `−${d}%` : '·'}</span>
-              </button>
-            );
-          })}
-        </div>
-      ) : fine}
-      {/* Live, against a real plan. `sample` is the recommended plan (or the cheapest paid
-          one), so the sentence is the same one the card under it will show. */}
-      <div className="mt-3 text-[13px] flex flex-wrap items-center gap-x-2 gap-y-1">
-        {total != null && (
-          <span>
-            <span className="text-[var(--muted)]">{sample.name}:</span>{' '}
-            <span className="font-semibold tabular-nums">{label(months)} → ${(total / 100).toFixed(2)}</span>
-            {disc > 0 && <span className="text-success font-semibold"> (−{disc}%)</span>}
-            {months > 1 && <span className="text-[var(--faint)]"> · ${(total / 100 / months).toFixed(2)} {t('hosting.permo', '/mo')}</span>}
-          </span>
+    <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] md:items-start">
+      <div className="min-w-0">
+        <TermInput months={months} onChange={setMonths} term={term} />
+        {presets.length > 1 && (
+          <div className="mt-3">
+            <div className="text-[11.5px] text-[var(--faint)] mb-1.5">{t('hosting.term2.quick', 'Or pick one:')}</div>
+            <div className="flex flex-wrap gap-1.5" role="group" aria-label={t('hosting.term.presets', 'Common terms')}>
+              {presets.map((m) => {
+                const d = Math.round(discountFor(tiers, m) * 100);
+                const active = m === months;
+                return (
+                  <button key={m} type="button" aria-pressed={active} onClick={() => setMonths(m)}
+                    className={`tap-44 rounded-lg border px-3 py-1.5 text-[13px] tabular-nums transition-colors ${active ? 'border-[var(--primary)] bg-[var(--bg-solid)] font-semibold text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}>
+                    {monthsLabel(t, m)}{d > 0 && <span className="ms-1.5 text-success font-semibold">−{d}%</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         )}
-        {next && <span className="text-[var(--faint)]">{t('hosting.term.next', '{n} months would be −{pct}%.').replace('{n}', next.months).replace('{pct}', Math.round(next.off * 100))}</span>}
+      </div>
+      {/* Live, against a real plan (the recommended one, or the middle of the range): the same
+          numbers its card below shows, and the ones the checkout will charge. */}
+      <div className="min-w-0 rounded-xl border border-[var(--line)] bg-[var(--surface-2)] px-4 py-3 text-[13px]" aria-live="polite">
+        {total != null ? (
+          <dl>
+            {row(t('hosting.term2.pay', '{plan}, {n}').replace('{plan}', sample.name).replace('{n}', monthsLabel(t, months)),
+              <span><span className="font-semibold">{money(total)}</span> <span className="text-[var(--faint)]">{t('hosting.term2.today', 'today')}</span>{months > 1 && <span className="block text-[11.5px] text-[var(--faint)]">{money(Math.round(total / months))} {t('hosting.permo', '/mo')}</span>}</span>)}
+            {row(t('hosting.termdiscount', 'Term discount'), disc > 0
+              ? <span className="text-success font-semibold">−{disc}%</span>
+              : <span className="text-[var(--faint)]">{next ? t('hosting.term2.nextoff', 'none; {n} would be −{pct}%').replace('{n}', monthsLabel(t, next.months)).replace('{pct}', Math.round(next.off * 100)) : t('hosting.term2.none', 'none')}</span>)}
+            {row(t('hosting.term2.ends', 'Paid until'), <span className="font-medium">{day(ends)}</span>)}
+            {loyalty && row(t('hosting.term2.loyal', 'Loyalty discount'), firstLoyal
+              ? <span><span className="text-success font-semibold">−{firstLoyal.pct}%</span> <span className="text-[var(--faint)]">{t('hosting.term2.loyalfrom', 'from the renewal on {d}').replace('{d}', day(firstLoyal.at))}</span></span>
+              : <span className="text-[var(--faint)]">{t('hosting.term2.loyalnot', 'not within three renewals of this length')}</span>)}
+            {firstLoyal && row(t('hosting.term2.renewprice', 'That renewal costs'), <span>{money(firstLoyal.cents)} <s className="text-[var(--faint)]">{money(total)}</s></span>)}
+          </dl>
+        ) : <div className="text-[var(--muted)]">{t('hosting.term2.noplan', 'Prices appear here once the plans have loaded.')}</div>}
+        <p className="mt-2 pt-2 border-t border-[var(--line)] text-[12px] text-[var(--muted)] leading-relaxed">
+          {t('hosting.term2.end', 'On {d}: with auto-renew (on by default in the cart) the same length renews and is charged again; without it nothing is charged, the pool is paused that day and deleted {g} later unless you renew.')
+            .replace('{d}', day(ends)).replace('{g}', graceText(grace?.lapseHours || 72))}
+        </p>
       </div>
     </div>
   );
@@ -386,7 +369,9 @@ export function Hosting() {
     x.uid === uid ? { ...x, giftTo, ...(giftTo ? { autoRenew: false } : {}) } : x)));
   const clearCart = () => setCart([]);
   const cartCount = cart.length;
-  const termTotal = (monthlyCents) => termTotalCents(monthlyCents, months, term.tiers, promo?.percentOff || 0);
+  // hosting2 (agent-hosting): with the scarcity multiplier, as the checkout prices it.
+  const priceMult = Number(plans.data?.priceMult) > 0 ? Number(plans.data.priceMult) : 1;
+  const termTotal = (monthlyCents) => termTotalCents(monthlyCents, months, term.tiers, promo?.percentOff || 0, priceMult);
   const checkout = async (body) => {
     if (!user) return nav('/auth');
     const repoName = await dialog.prompt({ title: mode === 'multi' ? t('hosting.pool.title', 'New storage pool') : t('hosting.repo.title', 'Host a repo'), label: mode === 'multi' ? t('hosting.pool.label', 'Pool name') : t('hosting.repo.label', 'Repository name'), placeholder: mode === 'multi' ? t('hosting.pool.ph', 'my-pool') : t('hosting.repo.ph', 'my-awesome-repo'), okLabel: t('hosting.continue', 'Continue to payment') });
@@ -469,9 +454,10 @@ export function Hosting() {
           the custom build alike. It used to sit inside the configurator, which sat UNDER the
           cards: changing it repriced four cards nobody was looking at. A control belongs
           above the numbers it moves. */}
-      <TermBar months={months} setMonths={setMonths} term={term} sample={samplePlan} />
-      {/* N-hosting (agent-hosting-N): loyalty tiers, when the site runs them. */}
-      <LoyaltyStrip loyalty={loyalty} />
+      <TermBar months={months} setMonths={setMonths} term={term} sample={samplePlan} priceMult={priceMult} loyalty={loyalty} grace={plans.data?.grace} />
+      {/* N-hosting (agent-hosting-N): loyalty tiers, when the site runs them. hosting2: a table,
+          priced on the recommended plan at the length picked above. */}
+      <LoyaltyTable loyalty={loyalty} sample={samplePlan} months={months} tiers={term.tiers} priceMult={priceMult} />
 
       {/* One column on a phone, two from sm, three from lg, four from xl. It was a
           scroll-snap row at 78 % of the viewport below sm; a thumb found the next card, but
@@ -492,7 +478,7 @@ export function Hosting() {
           // (lower) prepaid rate, and a "−N%" pill — the saving reads at a glance.
           const total = termTotal(pl.priceMonthlyCents);
           const eff = total / 100 / months;
-          const base = pl.priceMonthlyCents / 100;
+          const base = (pl.priceMonthlyCents * priceMult) / 100; // hosting2: as charged
           const save = months > 1 ? Math.round((1 - eff / base) * 100) : 0;
           // What the plan includes, as a list a reader can tick through, in the order somebody
           // comparing four cards actually reads: the two numbers that differ (storage,
@@ -525,7 +511,7 @@ export function Hosting() {
             ...(pl.bot && ((pl.bot.features || []).length || Object.values(pl.bot.limits || {}).some((n) => n > 0))
               ? [[Bot, t('hosting.card.bot', 'A Discord bot plan included'), true, t('hosting.card.bot.n', 'On {n} of your servers, see the bot plans below').replace('{n}', pl.bot.guilds || 1)]] : []),
             [Globe, t('hosting.card.domain', 'Your own domain, per repo or catalogue'), true],
-            ...(loyalty ? [[TrendingDown, t('hosting.card.loyal', 'Cheaper the longer you stay, up to {pct}% off renewals').replace('{pct}', loyaltyMax), true, t('hosting.card.loyal.n', 'Counted while your subscription runs without a break')]] : []),
+            ...(loyalty && loyalty.appliesTo !== 'catalogs' ? [[TrendingDown, t('hosting.card.loyal', 'Cheaper the longer you stay, up to {pct}% off renewals').replace('{pct}', loyaltyMax), true, loyalty.lapseResets ? t('hosting.card.loyal.n', 'Counted while your subscription runs without a break') : t('hosting.card.loyal.n2', 'Counted in months paid for, a gap only pauses it')]] : []),
             [Hourglass, t('hosting.card.end', 'When the term ends, it renews only if auto-renew is on'), true, t('hosting.card.end.n', 'Otherwise the pool is paused, then deleted after a grace period unless you renew')],
           ];
           // The recommended card stands FORWARD (PlanCard: a ring, a lift and a shadow, from lg
@@ -867,11 +853,13 @@ function PoolConfigurator({ months, tiers, soldOut, capacity, onAdd }) {
   const [factors, setFactors] = useState(null);
   const [promo, setPromo] = useState(null);
   const disc = discountFor(tiers, months);
-  const termTotal = price == null ? null : termTotalCents(price, months, tiers, promo?.percentOff || 0);
+  // hosting2 (agent-hosting): priced from the BASE monthly and the multiplier, in the server's
+  // order (termTotalCents), so the configurator and the checkout agree to the cent.
+  const termTotal = price == null ? null : termTotalCents(price, months, tiers, promo?.percentOff || 0, factors?.priceMult || 1);
   useEffect(() => {
     const id = setTimeout(() => {
       api.get(`/hosting/price?${new URLSearchParams({ storageGB: spec.storageGB, uploadMbps: spec.uploadMbps })}`)
-        .then((r) => { setPrice(r.priceMonthlyCents); setFactors(r.factors || null); })
+        .then((r) => { setPrice(r.baseMonthlyCents); setFactors(r.factors || null); })
         .catch(() => setPrice(null));
     }, 200);
     return () => clearTimeout(id);
@@ -994,65 +982,79 @@ const PLAN_ACCENTS = ['var(--info)', 'var(--success)', 'color-mix(in srgb, var(-
  * A full-width row rather than a field tucked in a corner: it is the one control on the page
  * that changes every price at once, and it now sits above all of them.
  */
-function TermBar({ months, setMonths, term, sample }) {
+function TermBar({ months, setMonths, term, sample, priceMult, loyalty, grace }) {
   const { t } = useI18n();
   return (
     <Card className="p-4 sm:p-5 mb-7">
       <div className="mb-4">
         <div className="font-semibold text-[14.5px]">{t('hosting.termbar.t4', 'How long you pay for, up front')}</div>
-        {/* The sentence that changes what you click stays; the two that describe what
-            happens LATER fold. Somebody choosing a term needs to know the price below is for
-            that many months and that longer is cheaper per month; renewal and what happens at
-            the end are the next decision, made in the cart, and printing them here put a
-            five-line paragraph above every price on the page.
-            Nothing is cut: both sentences are true to the code, which is worth saying because
-            an earlier version of them was not (auto-renew is ON by default in the cart, and
-            the pool is suspended at once rather than at the end of the grace). */}
-        {/* N-hosting (agent-hosting-N): three terms, and what paying ahead actually commits
-            each side to. Nothing longer than 12 months is sold (see the Terms). */}
+        {/* hosting2 (agent-hosting): the length is typed, between the admin's minimum and
+            maximum; the sentence says the range the server will accept, never a list the admin
+            did not set. Nothing longer than 12 months is sold (see the Terms). */}
         <p className="text-[12.5px] text-[var(--muted)] mt-1 leading-relaxed max-w-3xl">
-          {t('hosting.termbar.s6', 'Monthly, 6 months or 12 months. Each card below shows the price for the length you pick, paid once today; 6 and 12 months cost less per month.')}
+          {t('hosting.term2.s', 'Type how many months you want, from {min} to {max}. Every price below is for that length, paid once today; from 6 months on it costs less per month.').replace('{min}', term.min).replace('{max}', term.max)}
         </p>
         <Explain className="text-[12.5px] mt-1.5 max-w-3xl" label={t('hosting.termbar.what', 'What paying ahead means')}>
           <span className="block">{t('hosting.termbar.s7', 'You pay the whole term today, and the pool is yours until its last day: we commit to running it for exactly the term you paid, never less. We sell nothing longer than 12 months because we do not promise the service years ahead. If we ever had to stop it before your term ends, the part you have not used is refunded, to the day.')}</span>
-          <span className="block mt-2">{t('hosting.termbar.s8', 'In the cart you choose whether it auto-renews. On, the same term is billed again when it ends, and you can cancel any time from Billing. Off, nothing is charged again: the pool is suspended the day the term ends, and deleted after a grace period (72 hours by default, a week after a failed payment) unless you renew.')}</span>
+          <span className="block mt-2">{t('hosting.term2.s8', 'A term of N months ends on the same day N months later. In the cart you choose whether it auto-renews. On, the same length is billed again when it ends, and you can cancel any time from Billing. Off, nothing is charged again: the pool is suspended the day the term ends, and deleted after a grace period (72 hours by default, a week after a failed payment) unless you renew. Renewing early adds the new months after the ones already paid.')}</span>
         </Explain>
       </div>
-      <TermControl months={months} setMonths={setMonths} term={term} sample={sample} t={t} />
+      <TermControl months={months} setMonths={setMonths} term={term} sample={sample} t={t} priceMult={priceMult} loyalty={loyalty} grace={grace} />
     </Card>
   );
 }
 
-// N-hosting (agent-hosting-N)
+// N-hosting (agent-hosting-N), hosting2 (agent-hosting): a table now.
 /**
- * Loyalty (tenure) pricing, as the page shows it: the tiers the server renews with, and the
- * one sentence that says exactly what "staying" means (lib/loyalty.mjs on the API is the rule).
+ * Loyalty (tenure) pricing, as the page shows it: the steps the server renews with, as a
+ * table that says what each one is worth on a real plan at the length picked above, and the
+ * exact rule for what counts as staying (lib/loyalty.mjs on the API is the rule; the page
+ * receives which subscriptions it covers and whether a lapse resets the count).
  * Nothing when the site does not run it: a promise the renewal would not keep is worse than none.
  */
-function LoyaltyStrip({ loyalty }) {
+function LoyaltyTable({ loyalty, sample, months, tiers, priceMult }) {
   const { t } = useI18n();
   if (!loyalty) return null;
-  const tiers = (loyalty.tiers || []).filter((x) => x.pct > 0);
-  const label = (m) => (m === 1 ? t('hosting.loyal.after1', 'After 1 month') : t('hosting.loyal.after', 'After {n} months').replace('{n}', m));
+  const steps = (loyalty.tiers || []).filter((x) => x.pct > 0);
+  const total = sample ? termTotalCents(sample.priceMonthlyCents, months, tiers, 0, priceMult) : null;
+  const money = (c) => `$${(c / 100).toFixed(2)}`;
+  const covers = loyalty.appliesTo === 'catalogs'
+    ? t('hosting.loyal2.cat', 'It applies to catalogue file hosting (the monthly subscription of a paid catalogue upload), not to the pools below.')
+    : loyalty.appliesTo === 'both'
+      ? t('hosting.loyal2.both', 'It applies to storage pools and repos, and to catalogue file hosting.')
+      : t('hosting.loyal2.repos', 'It applies to storage pools and repos, the plans below.');
+  const rule = loyalty.lapseResets
+    ? t('hosting.loyal2.reset', 'The count starts on the day you first pay and keeps running while the subscription is renewed without a break. It starts again from zero if you cancel, or if a renewal comes later than the grace period after the paid-up date (by default 72 hours for a term renewed by hand, a week after a failed card payment).')
+    : t('hosting.loyal2.pause', 'The count is the number of months you have paid for. If a renewal comes late, or after you cancelled, the months nobody paid for are simply not counted: the count pauses, it never starts again from zero.');
   return (
     <Card className="p-4 sm:p-5 mb-7">
       <div className="flex items-start gap-2.5">
         <TrendingDown size={17} className="text-[var(--accent-ink)] shrink-0 mt-[2px]" aria-hidden />
         <div className="min-w-0 flex-1">
-          <div className="font-semibold text-[14.5px]">{t('hosting.loyal.t', 'The longer you stay, the less it costs')}</div>
+          <div className="font-semibold text-[14.5px]" id="loyalty-title">{t('hosting.loyal.t', 'The longer you stay, the less it costs')}</div>
           <p className="text-[12.5px] text-[var(--muted)] mt-1 leading-relaxed max-w-3xl">
-            {t('hosting.loyal.s', 'Each renewal is cheaper once your subscription has run without a break for long enough. The discount comes on top of the term price, from the renewal after you reach a step, and never changes a term you have already paid.')}
+            {t('hosting.loyal2.s', 'Each renewal is cheaper once your subscription has lasted long enough. The discount comes on top of the term price, from the first renewal after you reach a step, and never changes a term you have already paid.')} {covers}
           </p>
-          <ul className="mt-3 grid gap-2 sm:grid-cols-3" aria-label={t('hosting.loyal.t', 'The longer you stay, the less it costs')}>
-            {tiers.map((x) => (
-              <li key={x.months} className="rounded-lg border border-[var(--line)] px-3 py-2 flex items-baseline justify-between gap-3 text-[13px]">
-                <span className="text-[var(--muted)]">{label(x.months)}</span>
-                <span className="font-semibold tabular-nums text-success">{t('hosting.loyal.off', '{pct}% off').replace('{pct}', x.pct)}</span>
-              </li>
-            ))}
-          </ul>
+          <table className="mt-3 w-full max-w-2xl table-fixed text-[13px] border-collapse" aria-labelledby="loyalty-title">
+            <thead>
+              <tr className="text-start text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)]">
+                <th scope="col" className="text-start font-semibold py-1.5 pe-2">{t('hosting.loyal2.col1', 'Subscribed for')}</th>
+                <th scope="col" className="text-start font-semibold py-1.5 pe-2">{t('hosting.loyal2.col2', 'Off each renewal')}</th>
+                {total != null && <th scope="col" className="text-end font-semibold py-1.5">{t('hosting.loyal2.col3', '{plan}, {n}').replace('{plan}', sample.name).replace('{n}', monthsLabel(t, months))}</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {steps.map((x) => (
+                <tr key={x.months} className="border-t border-[var(--line)]">
+                  <th scope="row" className="text-start font-normal py-2 pe-2 text-[var(--muted)]">{t('hosting.loyal2.after', '{n} or more').replace('{n}', monthsLabel(t, x.months))}</th>
+                  <td className="py-2 pe-2 font-semibold tabular-nums text-success">−{x.pct}%</td>
+                  {total != null && <td className="py-2 text-end tabular-nums"><span className="font-semibold">{money(Math.round(total * (1 - x.pct / 100)))}</span> <s className="text-[var(--faint)] text-[12px] max-sm:hidden">{money(total)}</s></td>}
+                </tr>
+              ))}
+            </tbody>
+          </table>
           <Explain className="text-[12.5px] mt-2 max-w-3xl" label={t('hosting.loyal.how', 'What counts as staying')}>
-            {t('hosting.loyal.rule', 'The count starts on the day you first pay and keeps running as long as the subscription is renewed without a break. It starts again from zero if you cancel, or if a renewal comes later than the grace period after the paid-up date (by default 72 hours for a term renewed by hand, a week after a failed card payment). A new pool is a new subscription, so it starts at zero. The discount never goes past {max}%.').replace('{max}', loyalty.maxPct)}
+            {rule} {t('hosting.loyal2.tail', 'A new pool is a new subscription, so it starts at zero. The discount never goes past {max}%. The steps can change, with the same notice as any price.').replace('{max}', loyalty.maxPct)}
           </Explain>
         </div>
       </div>

@@ -46,14 +46,24 @@ cet espace de façon fongible.
 
 ## 4. Facturation
 
-- Terme **prépayé** : n'importe quel nombre entier de mois entre le minimum et le maximum
-  fixés par l'admin, selon son pas (par défaut 1 à 36, de 1 en 1 — Admin → Hébergement →
-  *Terme prépayé*). Choisis-le au curseur ou tape-le ; le prix est exact (mois × mensuel) et
-  la remise passe des paliers à 3 / 6 / 12 / 24 mois (−5 / −10 / −20 / −35 %, un terme entre
-  deux paliers prend le palier inférieur). Chaque ligne du panier peut se **renouveler
-  automatiquement** : le même terme est refacturé à son échéance, comme un vrai abonnement
-  résiliable depuis Facturation (seulement jusqu'à 12 mois ; un cadeau ne se renouvelle
-  jamais). Les premiers `hostingFreeGB` de stockage sont gratuits ; seul le surplus (plus
+- Terme **prépayé** : tape n'importe quel nombre entier de mois entre le minimum et le maximum
+  fixés par l'admin, selon son pas (par défaut 1 à 12, de 1 en 1 — Admin → Offres
+  d'hébergement → *Durée prépayée* ; jamais plus de 12 tant que les Conditions le disent). Le
+  serveur refuse tout autre nombre et calcule lui-même le prix de celui qu'il accepte (mois ×
+  mensuel, puis la remise de durée : 6 mois ou plus −10 %, 12 mois −20 %). Un terme de N mois
+  se termine le même jour N mois plus tard ; renouveler en avance ajoute les mois après ceux
+  déjà payés. La page affiche en direct le prix du jour, la remise, la date de fin et ce qui se
+  passe ce jour-là. Chaque ligne du panier peut se **renouveler automatiquement** : le même
+  terme est refacturé à son échéance, comme un vrai abonnement résiliable depuis Facturation
+  (un cadeau ne se renouvelle jamais).
+- **Remise fidélité** (quand l'admin l'active) : les renouvellements coûtent moins cher dès
+  qu'un abonnement atteint les paliers affichés sur la page Hébergement (par ex. −5 % après
+  3 mois). L'admin choisit qui en profite (pools de stockage et dépôts, hébergement de
+  fichiers de catalogue, ou les deux) et si un renouvellement en retard remet le compte à zéro
+  ou le met seulement en pause. Elle s'applique au renouvellement seulement (un coupon Stripe
+  sur un abonnement automatique, dans le prix d'un renouvellement payé à la main), jamais à un
+  terme déjà payé. Facturation montre où en est chacun de tes abonnements et quand vient le
+  palier suivant. Les premiers `hostingFreeGB` de stockage sont gratuits ; seul le surplus (plus
   l'upload/CPU supplémentaire) est facturé. Les **codes promo** peuvent donner une remise ou de
   l'hébergement gratuit.
 - Cycle de vie : un pool qui expire t'avertit d'abord (72 h avant par défaut). Quand un terme

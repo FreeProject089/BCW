@@ -1,5 +1,5 @@
 import { safeHref } from '../lib/safe-href.js';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Gauge,
   Server, GitBranch, Star, Plus, Pencil, Trash2, UploadCloud, Eye, EyeOff, CheckCircle2,
@@ -17,6 +17,11 @@ import { useUploads } from './uploads.jsx';
 import { LiveTraffic } from './traffic-live.jsx';
 import { useI18n } from '../i18n.jsx';
 import BoostCredits from '../ui/boost-credits.jsx';
+// hosting2 (agent-hosting): the renew duration is the same typed field as /hosting, bounded by the
+// server's term; and where each subscription stands on the loyalty steps.
+import TermInput from '../ui/term-input.jsx';
+import LoyaltyStatus from '../ui/loyalty-status.jsx';
+import { normaliseTerm, snapTerm } from '../lib/hosting-term.js';
 import FeedLink, { FeedMenu } from '../ui/feed-link.jsx';
 import { useAuth } from './auth.jsx';
 
@@ -1444,9 +1449,11 @@ function PromoRedeem() {
 // One row per hosted repo — its prepaid term, and a renew action. Prepaid hosting
 // never auto-renews (no recurring Stripe subscription behind it, see the sweeper),
 // so this is the only way to extend it short of buying a whole new repo.
-function SubscriptionRow({ repo, stripeSub, onChanged }) {
+function SubscriptionRow({ repo, stripeSub, onChanged, term }) {
   const toast = useToast(); const { t } = useI18n(); const dialog = useDialog();
-  const [months, setMonths] = useState(12);
+  // hosting2 (agent-hosting): the server's bounds, not a hard-coded 1/3/6/12/24 (24 was refused).
+  const [months, setMonths] = useState(() => snapTerm(term, 12));
+  useEffect(() => { setMonths((m) => snapTerm(term, m)); }, [term]);
   const [busy, setBusy] = useState(false);
   const localSub = repo.subscription;
   // The live Stripe subscription (from /me/billing/overview) is the source of truth —
@@ -1498,9 +1505,7 @@ function SubscriptionRow({ repo, stripeSub, onChanged }) {
         </Button>
       ) : (
         <>
-          <Select className="!w-auto !py-1.5 !text-xs" value={months} onChange={(e) => setMonths(Number(e.target.value))}>
-            {[1, 3, 6, 12, 24].map((m) => <option key={m} value={m}>{m} mo</option>)}
-          </Select>
+          <TermInput months={months} onChange={setMonths} term={term} slider={false} className="w-full sm:w-auto" label={t('bill.renewfor', 'Renew for')} />
           <Button size="sm" variant="primary" disabled={busy} onClick={enableAutoRenew} title={t('bill.autorenew.h', 'Start a recurring subscription, charges automatically each term.')}>{busy ? <Spinner /> : <><RefreshCw size={13} /> {t('bill.ah.enable', 'Enable auto-renew')}</>}</Button>
         </>
       )}
@@ -1513,6 +1518,9 @@ export function Billing() {
   const { data, loading } = useFetch(() => api.get('/me/payments'), []);
   const { data: repoData, reload: reloadRepos } = useFetch(() => api.get('/me/repos'), []);
   const { data: overview, reload: reloadOverview } = useFetch(() => api.get('/me/billing/overview').catch(() => null), []);
+  // hosting2 (agent-hosting): the term the server sells, for the renew field.
+  const { data: plansData } = useFetch(() => api.get('/hosting/plans').catch(() => null), []);
+  const term = useMemo(() => normaliseTerm(plansData?.term), [plansData]);
   const dialog = useDialog();
   const [subBusy, setSubBusy] = useState(null);
   const cancelSub = async (s) => {
@@ -1553,6 +1561,7 @@ export function Billing() {
   return (
     <div className="mt-10">
       <PromoRedeem />
+      <LoyaltyStatus />{/* hosting2 (agent-hosting) */}
 
       {hostedRepos.length > 0 && (
         <div className="mb-8">
@@ -1569,7 +1578,7 @@ export function Billing() {
           </div>
           <p className="text-[11px] text-[var(--faint)] mb-2 flex items-center gap-1"><Info size={11} /> {t('bill.prepaid.note2', 'Auto-renew keeps a repo online automatically; cancel it here anytime (it stays online until the period ends). One-time terms just lapse — no charge to cancel.')}</p>
           <Card className="overflow-hidden p-0">
-            {filteredHosted.length ? filteredHosted.map((r) => <SubscriptionRow key={r.id} repo={r} stripeSub={subs.find((s) => s.repoId === r.id && s.target !== 'boost')} onChanged={() => { reloadRepos(); reloadOverview(); }} />)
+            {filteredHosted.length ? filteredHosted.map((r) => <SubscriptionRow key={r.id} repo={r} term={term} stripeSub={subs.find((s) => s.repoId === r.id && s.target !== 'boost')} onChanged={() => { reloadRepos(); reloadOverview(); }} />)
               : <div className="px-4 py-6 text-sm text-[var(--muted)] text-center">{t('bill.nomatch', 'No hosting matches your search.')}</div>}
           </Card>
         </div>
