@@ -20,6 +20,12 @@ export const getConsent = () => {
   try { return localStorage.getItem(KEY); } catch { return null; }
 };
 
+export const CONSENT_EVENT = 'bcw:consent';
+
 export const setConsent = (v) => {
   try { localStorage.setItem(KEY, v); } catch { /* private mode, or storage disabled */ }
+  // landing2 (agent-landing): said out loud, so the install card (ui/pwa-install.jsx), which
+  // waits for the cookie question to be answered, can appear right after it instead of on the
+  // next page.
+  try { window.dispatchEvent(new CustomEvent(CONSENT_EVENT)); } catch { /* no window */ }
 };

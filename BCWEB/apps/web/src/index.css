@@ -1833,6 +1833,10 @@ html[data-studio-open="1"], html[data-studio-open="1"] body { overflow: hidden; 
   border-radius: 18px;
   box-shadow: 0 12px 30px -12px rgba(0, 0, 0, .5);
   max-height: calc(100vh - 150px);
+  /* landing2 (agent-landing): the VISIBLE height, not 100vh (which on a phone includes the
+     browser toolbar that is showing), minus the 72px above the sheet and the floating bottom bar
+     under it. With 100vh a long signed-in sheet ran its "Close the menu" row under the tab bar. */
+  max-height: calc(100dvh - 72px - var(--mbar-h, 56px) - var(--mbar-gap, 10px) * 3 - env(safe-area-inset-bottom, 0px));
   overflow-y: auto;
   overscroll-behavior: contain;
 }

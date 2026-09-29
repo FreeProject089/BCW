@@ -12,8 +12,8 @@
 //
 // Rules about the READER live here too, because both the corner card and the Settings row
 // read them: never offer to install what is already installed (display-mode: standalone, or
-// navigator.standalone on iOS), and never nag. The card waits for real engagement, a dismissal
-// is remembered, and Settings is the permanent place to install later.
+// navigator.standalone on iOS), and never nag. The card comes once per visit on a few visits
+// at most, a dismissal is remembered, and Settings is the permanent place to install later.
 //
 // Every storage access is wrapped: localStorage throws in a private window and in a sandboxed
 // iframe, and an install card is a convenience, never state worth failing over.
@@ -98,11 +98,22 @@ export function onInstallChange(fn) {
 }
 
 // ── "Not pushy" ──────────────────────────────────────────────────────────────
-// Engagement = page views across visits, plus a visit count. The card appears only once the
-// reader has come back (a second visit) AND looked at a few pages, so a first-time visitor
-// reading one blog post is never asked to install anything.
-export const ENGAGE_MIN_VIEWS = 4;
-export const ENGAGE_MIN_VISITS = 2;
+// landing2 (agent-landing): the offer now comes on ARRIVAL, not after a second visit and four
+// page views. The owner wants the site to offer itself as an app when a visitor lands; the
+// old gate meant almost nobody ever saw the card, and the browser's own mini-infobar is
+// suppressed (preventDefault above) so that the site asks once, in its own words.
+//
+// What keeps it from nagging:
+//   · it waits a few seconds after the page settles (the card, not the page, is what waits);
+//   · "Not now" or the cross is remembered for good (isDismissed), Settings stays the way back;
+//   · ignored rather than dismissed, it comes back on at most OFFER_MAX_VISITS visits, then
+//     stops on its own, the same as a "Not now";
+//   · on iOS the Add to Home Screen hint is ONE-TIME: remembered the moment it is shown.
+// A "visit" starts after 30 minutes away, so a reader clicking round the site sees the card
+// once per visit, never once per page.
+export const OFFER_DELAY_MS = 4000;
+export const OFFER_MAX_VISITS = 3;
+const OFFERED_KEY = 'bcw.pwa.install.offered';
 const VISIT_GAP_MS = 30 * 60 * 1000; // a new "visit" after 30 minutes away
 
 function readEngage() {
@@ -113,7 +124,7 @@ function readEngage() {
   return { views: 0, visits: 0, last: 0 };
 }
 
-/** Count one page view. Returns the updated tally. */
+/** Count one page view. Returns the updated tally (`visits` is this visit's number). */
 export function recordView(now = Date.now()) {
   const e = readEngage();
   const next = { views: e.views + 1, visits: e.visits + (now - e.last > VISIT_GAP_MS ? 1 : 0), last: now };
@@ -121,8 +132,25 @@ export function recordView(now = Date.now()) {
   return next;
 }
 
-export function engaged(e = readEngage()) {
-  return e.views >= ENGAGE_MIN_VIEWS && e.visits >= ENGAGE_MIN_VISITS;
+function readOffered() {
+  try {
+    const v = JSON.parse(localStorage.getItem(OFFERED_KEY) || 'null');
+    if (v && typeof v === 'object') return { count: Number(v.count) || 0, visit: Number(v.visit) || 0 };
+  } catch { /* unreadable */ }
+  return { count: 0, visit: 0 };
+}
+
+/** May the card be offered during visit number `visit`? (Already offered this visit counts as yes.) */
+export function mayOffer(visit) {
+  const o = readOffered();
+  return o.visit === visit || o.count < OFFER_MAX_VISITS;
+}
+
+/** The card was shown during visit number `visit`. Counted once per visit. */
+export function markOffered(visit) {
+  const o = readOffered();
+  if (o.visit === visit) return;
+  try { localStorage.setItem(OFFERED_KEY, JSON.stringify({ count: o.count + 1, visit })); } catch { /* shown again, harmless */ }
 }
 
 export function isDismissed() {

@@ -54,7 +54,9 @@ export function HomeV2(ctx) {
     <div className="space-y-16">
       {/* No `pt-24` and no reveal-on-scroll: the whole premise is that the answer is above
           the fold. A staggered entrance would be the story this page exists to skip. */}
-      <section className="grid lg:grid-cols-2 gap-10 items-center pt-10">
+      {/* landing2 (agent-landing): two columns only when there is media to put in the second;
+          without a showcase the fake demo window used to fill it, and that is deleted. */}
+      <section className={`grid gap-10 items-center pt-10 ${showcase?.enabled ? 'lg:grid-cols-2' : 'max-w-3xl'}`}>
         <div className="min-w-0">
           {/* clamp(), not `text-5xl md:text-6xl`.
               v1 already learned this and v2 had not: "BetterCommunity" is ONE unbreakable
@@ -97,9 +99,11 @@ export function HomeV2(ctx) {
 
         {/* The media, big, beside the choice rather than under it. On one screen the
             showcase is the argument; in v1 it is an illustration you scroll to. */}
-        <div className="min-w-0 lg:sticky lg:top-24 lg:self-start">
-          <ShowcasePanel showcase={showcase} />
-        </div>
+        {showcase?.enabled && (
+          <div className="min-w-0 lg:sticky lg:top-24 lg:self-start">
+            <ShowcasePanel showcase={showcase} />
+          </div>
+        )}
       </section>
 
       {show('news') && (
@@ -225,7 +229,7 @@ export function HomeV3(ctx) {
               beyond whatever cover a post happened to carry — a feed of text where the site's
               own work was the one thing never shown. It is the site's media, not a section, so
               it is drawn here on the same terms v1 draws it: whatever an admin configured, and
-              the placeholder frame when they configured nothing. */}
+              nothing when they configured nothing (landing2: the demo placeholder is deleted). */}
           <ShowcasePanel showcase={showcase} />
           {/* The poll is IN the column rather than being its own full-width band. A decision
               being taken is a sidebar fact on a page about what is happening. */}

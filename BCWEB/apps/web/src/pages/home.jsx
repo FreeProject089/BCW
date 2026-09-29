@@ -36,8 +36,9 @@ import { heroCtas, heroNote, closingCta } from '../lib/home-ctas.js';
 import { useFramedDraft } from '../lib/studio-preview.js';
 // The marker stroke under the title and the handwritten asides (ui/marker.jsx).
 import { Marker, HandNote } from '../ui/marker.jsx';
-// M9 / M2: the snake path (steps joined by one swinging line) and the v4 landing built on it.
-import { SnakeSteps, HomeSnake } from './home-snake.jsx';
+// M2: the v4 landing (the snake path). v1's own steps are ui/steps-track.jsx (landing2).
+import { HomeSnake } from './home-snake.jsx';
+import { StepsTrack } from '../ui/steps-track.jsx';
 // N7: "Why BetterCommunity", four pillars.
 import WhySection from './home-why.jsx';
 // prerelease (agent-prerelease): open pre-releases under the suite, and the landing's review entry point.
@@ -509,9 +510,9 @@ export function Home({ draft: draftProp = null }) {
               page opens with now: a paragraph is what a site says about itself, and what a
               visitor is deciding is whether the thing looks like something they want. */}
           {/* N4 (agent-landing-N): the hero ends on its buttons. The fake "Catalogue" window
-              that stood here when no showcase is configured (home-demo.jsx: Find / Install /
-              Host tabs, three invented rows, handwritten notes) is gone from v1 at the owner's
-              request; v2 and v3 still draw it as their media fallback (ShowcasePanel).
+              that stood here when no showcase is configured (Find / Install / Host tabs, three
+              invented rows, handwritten notes) is gone at the owner's request; landing2
+              (agent-landing) deleted it everywhere, v2/v3's media fallback included.
               The reserved 16:10 frame went with it: it held the place for "a showcase or the
               demo", which was always one of the two. Now that "nothing" is the usual answer, a
               frame drawn while /site/showcase is on its way would flash and then collapse on
@@ -646,20 +647,21 @@ export function Home({ draft: draftProp = null }) {
             So: a rail with a real state on the first stop. Signed in, it is ticked and the row
             goes quiet; signed out, it is the only lit one. The other two are not claimed to be
             done, because nothing on this page can tell. */}
-        {/* M9: the same three stops, now a snake (pages/home-snake.jsx): the stops swing left
-            and right from md up and one line joins them, straight down on a phone (N5: thin,
-            routed through the gaps so it never crosses a card, walked part solid). The
-            first stop still knows whether the reader is signed in; the other two are ticked
-            only on what the page can see (a catalogue opened here, something published, a
-            pool owned). */}
-        <SnakeSteps className="max-w-4xl mx-auto" steps={[
+        {/* landing2 (agent-landing): the snake is gone from here (its line crossed the orb and
+            showed as a stray bar between the cards on a phone). A row of three cards from lg
+            up, a timeline on a phone, badges and connectors in their own strip or rail so
+            they never touch a card (ui/steps-track.jsx). Same steps, same copy keys (the
+            admin's Home page copy editor still edits them), same done rules: the first stop
+            knows whether the reader is signed in; the other two are ticked only on what the
+            page can see (a catalogue opened here, something published, a pool owned). */}
+        <StepsTrack className="max-w-5xl mx-auto" steps={[
           { key: 's1', icon: Users, title: t('home.step1'), desc: t('home.step1.d'), to: user ? '/profile' : '/auth',
             cta: user ? t('home.step1.done', "You're set, view profile") : t('home.step1.cta', 'Sign up free'), done: !!user },
           { key: 's2', icon: Upload, title: t('home.step2'), desc: t('home.step2.d'), to: '/catalog',
             cta: step2done ? t('home.step2.done', 'Seen, go back to the catalogue') : t('home.step2.cta', 'Browse the catalog'), done: step2done },
           { key: 's3', icon: Cloud, title: t('home.step3'), desc: t('home.step3.d'), to: progress?.hosting ? '/dashboard' : '/hosting#plans',
             cta: progress?.hosting ? t('home.step3.done', 'Hosting is live, open your dashboard') : t('home.step3.cta', 'See hosting plans'), done: !!progress?.hosting },
-        ].map((x) => ({ ...x, doneLabel: t('home.snake.doneSr', 'done') }))} />
+        ]} />
       </section>
       )}
 
@@ -725,7 +727,7 @@ export function Home({ draft: draftProp = null }) {
             <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight">
               {pollData.polls.length > 1 ? t('home.poll.many', 'A few questions') : t('home.poll', 'One question')}
             </h2>
-            <Link to="/polls" className="plate px-2 text-sm text-[var(--accent-ink)] flex items-center gap-1 hover:gap-2 transition-all">
+            <Link to="/polls" className="plate px-2 text-sm text-[var(--accent-ink)] flex items-center gap-1 hover:gap-2 transition-all min-h-[44px] sm:min-h-0">
               {t('home.poll.all', 'All polls')} <ArrowRight size={13} />
             </Link>
           </div>
@@ -742,7 +744,7 @@ export function Home({ draft: draftProp = null }) {
       {show('news') && (
       <section>
         <SectionKicker n={reviewsData?.enabled && reviewsData.reviews?.length ? '05' : '04'} label={t('home.k.news', 'From the blog')} />
-        <div className="reveal-on-scroll flex items-center justify-between mb-5"><h2 className="text-2xl md:text-3xl font-extrabold tracking-tight">{t('home.news')}</h2><Link to="/blog" className="plate px-2 text-sm text-[var(--accent-ink)] flex items-center gap-1 hover:gap-2 transition-all">{t('home.news.all')} <ArrowRight size={13} /></Link></div>
+        <div className="reveal-on-scroll flex items-center justify-between mb-5"><h2 className="text-2xl md:text-3xl font-extrabold tracking-tight">{t('home.news')}</h2><Link to="/blog" className="plate px-2 text-sm text-[var(--accent-ink)] flex items-center gap-1 hover:gap-2 transition-all min-h-[44px] sm:min-h-0">{t('home.news.all')} <ArrowRight size={13} /></Link></div>
         {!data?.posts?.length ? <Card className="p-6 text-[var(--muted)] text-sm">{t('home.news.none')}</Card> : (() => {
           const posts = data.posts; const featured = posts[0]; const rest = posts.slice(1, 4);
           const fdate = (d) => d ? new Date(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '';
@@ -900,7 +902,11 @@ function BuildTabs({ myoOn, queueFull }) {
                     <button key={id} ref={(el) => { refs.current[id] = el; }} type="button" role="tab"
                       id={`${uid}-t-${id}`} aria-selected={on} aria-controls={`${uid}-p-${id}`} tabIndex={on ? 0 : -1}
                       onClick={() => setPicked(id)} onKeyDown={(e) => onKey(e, i)}
-                      className={`flex-1 sm:flex-none min-w-0 -mb-px pb-3 border-b-2 text-left inline-flex items-start gap-2.5 text-base sm:text-2xl font-extrabold leading-tight transition-colors ${
+                      // landing2 (agent-landing): shares the row until lg. From sm the two labels
+                      // stopped sharing (`sm:flex-none`) at text-2xl and asked for 403 + 335px of a
+                      // 644px tablist at 768px: the second tab ran 69px past the card's edge and the
+                      // card's overflow-hidden cut it off.
+                      className={`flex-1 lg:flex-none min-w-0 -mb-px pb-3 border-b-2 text-left inline-flex items-start gap-2.5 text-base sm:text-xl lg:text-2xl font-extrabold leading-tight transition-colors ${
                         on ? 'border-[var(--primary)] text-[var(--text)]' : 'border-transparent text-[var(--muted)] hover:text-[var(--text)]'}`}>
                       <I size={20} className={`hidden sm:block shrink-0 mt-1 ${on ? 'text-[var(--accent-ink)]' : ''}`} aria-hidden="true" />
                       <span className="min-w-0 break-words">{label}</span>

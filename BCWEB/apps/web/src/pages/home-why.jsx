@@ -71,7 +71,7 @@ export default function WhySection() {
           width over the three. lg: the featured one on the left for the whole height, the three
           stacked on the right. `min-w-0` everywhere: a long French word must wrap, not widen. */}
       <div className="reveal-stagger grid gap-4 md:grid-cols-3 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
-        <Card className="relative overflow-hidden p-6 sm:p-8 md:col-span-3 lg:col-span-1 lg:row-span-3 min-w-0 flex flex-col">
+        <Card className="relative overflow-hidden p-5 sm:p-8 md:col-span-3 lg:col-span-1 lg:row-span-3 min-w-0 flex flex-col">
           {/* A faint wash of the accent in one corner: decoration, under everything, no text on it
               that is not also on the card's own surface. */}
           <div aria-hidden="true" className="absolute inset-0 pointer-events-none opacity-[0.08]"
@@ -86,11 +86,18 @@ export default function WhySection() {
             </p>
             <ul className="mt-6 grid gap-3">
               {tracks.map(({ I, tone, label, tag, tagCls, d }) => (
-                <li key={label} className="rounded-xl border border-[var(--line)] panel p-4 min-w-0">
-                  <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
-                    <I size={16} className={`${tone} shrink-0`} aria-hidden="true" />
-                    <span className="font-semibold text-[15px] min-w-0">{label}</span>
-                    <span className={`${tagCls} ms-auto`}>{tag}</span>
+                <li key={label} className="rounded-xl border border-[var(--line)] panel p-3.5 sm:p-4 min-w-0">
+                  {/* landing2 (agent-landing): the icon has its own column and the label and the
+                      badge wrap INSIDE the other one. It was one flex-wrap row of three, so at
+                      375px the icon sat alone on a line, the label wrapped under it and the badge
+                      landed flush right on a third line. Now the badge drops under the label,
+                      aligned with it, and only goes to the far end when there is room. */}
+                  <div className="flex items-start gap-2.5">
+                    <I size={16} className={`${tone} shrink-0 mt-[3px]`} aria-hidden="true" />
+                    <div className="min-w-0 flex-1 flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
+                      <span className="font-semibold text-[15px] leading-snug min-w-0">{label}</span>
+                      <span className={`${tagCls} sm:ms-auto`}>{tag}</span>
+                    </div>
                   </div>
                   <p className="mt-2 text-sm text-[var(--muted)] leading-relaxed">{d}</p>
                 </li>

@@ -3,9 +3,9 @@ import { useLocation } from 'react-router-dom';
 import { Download, X, Share, SquarePlus, CheckCircle2, MonitorSmartphone, Info } from 'lucide-react';
 import { useI18n } from '../i18n.jsx';
 import { Button, Card } from './ui.jsx';
-import { getConsent } from '../lib/consent.js';
+import { getConsent, CONSENT_EVENT } from '../lib/consent.js';
 import { updateWaiting } from '../lib/pwa.js';
-import { installState, onInstallChange, promptInstall, recordView, engaged, isDismissed, dismissInstall } from '../lib/pwa-install.js';
+import { installState, onInstallChange, promptInstall, recordView, mayOffer, markOffered, isDismissed, dismissInstall, OFFER_DELAY_MS } from '../lib/pwa-install.js';
 import './pwa-install.css';
 
 /** installState(), kept live. */
@@ -29,12 +29,15 @@ function IosSteps() {
 /**
  * The corner invitation. Mounted once in App.
  *
- * Shown only when ALL of these hold, which is what "not pushy" means in code:
- *   · the browser can actually install (a kept prompt, or iOS where the steps are the answer);
- *   · the reader came back for a second visit and has looked at a few pages;
- *   · the cookie question is answered (never two prompts stacked on a first visit);
+ * landing2 (agent-landing): offered on ARRIVAL (it used to wait for a second visit and four
+ * page views, so almost nobody saw it). Shown only when ALL of these hold:
+ *   · the browser can actually install (a kept beforeinstallprompt, or iOS where the steps are
+ *     the answer; iOS gets it ONCE, see below);
+ *   · the cookie question is answered (never two prompts stacked on a first visit; the card
+ *     follows the answer at once, via the consent event);
  *   · no "new version" card is waiting (same corner, and that one matters more);
- *   · they have not said "Not now" before, which is remembered for good;
+ *   · they have not said "Not now" before, and it has not already been offered on
+ *     OFFER_MAX_VISITS visits (lib/pwa-install.js: once per visit, a few visits at most);
  *   · not inside the full-screen studio, where a floating card sits on the canvas.
  * It then waits a few seconds after the page settles instead of arriving with it.
  */
@@ -44,18 +47,32 @@ export default function PwaInstallPrompt() {
   const st = useInstallState();
   const [ready, setReady] = useState(false);
   const [hidden, setHidden] = useState(isDismissed);
+  const [visit, setVisit] = useState(0);
+  const [consent, setConsentSeen] = useState(getConsent);
 
+  // One page view per route; the visit number decides "once per visit".
+  useEffect(() => { setVisit(recordView().visits); }, [loc.pathname]);
   useEffect(() => {
-    const e = recordView();
-    if (!engaged(e)) return undefined;
-    const id = setTimeout(() => setReady(true), 6000);
+    const on = () => setConsentSeen(getConsent());
+    window.addEventListener(CONSENT_EVENT, on);
+    return () => window.removeEventListener(CONSENT_EVENT, on);
+  }, []);
+  useEffect(() => {
+    if (ready || !visit || !mayOffer(visit)) return undefined;
+    const id = setTimeout(() => setReady(true), OFFER_DELAY_MS);
     return () => clearTimeout(id);
-  }, [loc.pathname]);
+  }, [visit, ready]);
 
   const can = st === 'prompt' || st === 'ios';
-  if (!ready || hidden || !can) return null;
-  if (!getConsent() || updateWaiting()) return null;
-  if (/^\/studio\//.test(loc.pathname)) return null;
+  const shown = ready && !hidden && can && !!consent && !updateWaiting() && !/^\/studio\//.test(loc.pathname);
+  // Counted when it is actually on screen, not when it could have been. The iOS hint is
+  // one-time: remembered as answered the moment it appears (it stays up for this visit).
+  useEffect(() => {
+    if (!shown) return;
+    markOffered(visit);
+    if (st === 'ios') dismissInstall();
+  }, [shown, visit, st]);
+  if (!shown) return null;
 
   const close = () => { dismissInstall(); setHidden(true); };
   const install = async () => {

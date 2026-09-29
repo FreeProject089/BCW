@@ -26,7 +26,6 @@ import { PollTeaser } from './polls.jsx';
 import { useI18n } from '../i18n.jsx';
 import { ErrorBoundary } from '../ui/ErrorBoundary.jsx';
 import { Marker } from '../ui/marker.jsx';
-import HomeDemo from './home-demo.jsx';
 
 const ProjectShowcase = lazy(() => import('../hero/ProjectShowcase.jsx'));
 
@@ -119,25 +118,23 @@ export function ClosingBand({ user, t }) {
   );
 }
 
-/** The media panel, or a placeholder that keeps the layout when nothing is configured. */
+/**
+ * The media panel: the showcase an admin configured, or NOTHING.
+ *
+ * landing2 (agent-landing): the fallback used to be a fake "Catalogue" window (home-demo.jsx,
+ * Find / Install / Host tabs over three invented rows). The owner called it useless and ugly
+ * and it is deleted; a layout that holds a place for media now checks `showcase?.enabled`
+ * itself (v2 drops its media column when this draws nothing).
+ */
 export function ShowcasePanel({ showcase }) {
-  if (showcase?.enabled) {
-    // Wrapped: a bad showcase item (or a stale lazy chunk after a deploy — the classic
-    // "Element type is invalid" #306) must degrade to the placeholder, never take down the
-    // whole landing page. The panel is decorative; the page must survive it.
-    return (
-      <ErrorBoundary fallback={<ShowcaseFallback />}>
-        <Suspense fallback={null}><ProjectShowcase config={showcase} /></Suspense>
-      </ErrorBoundary>
-    );
-  }
-  return <ShowcaseFallback />;
-}
-
-// Nothing configured, or the showcase failed: the product demo (home-demo.jsx) instead of the
-// empty frame with a sparkle in it that used to hold the place.
-function ShowcaseFallback() {
-  return <HomeDemo />;
+  if (!showcase?.enabled) return null;
+  // Wrapped: a bad showcase item (or a stale lazy chunk after a deploy, the classic "Element
+  // type is invalid" #306) must degrade to nothing, never take down the whole landing page.
+  return (
+    <ErrorBoundary fallback={null}>
+      <Suspense fallback={null}><ProjectShowcase config={showcase} /></Suspense>
+    </ErrorBoundary>
+  );
 }
 
 /** A strip of headlines. The last thing on a page, saying the project is alive. */

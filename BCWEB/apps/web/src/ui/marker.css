@@ -22,6 +22,9 @@
   bottom: -0.2em;
   height: 0.34em;
   width: calc(100% + 0.14em);
+  /* landing2 (agent-landing): a global `max-width: 100%` on svg capped every stroke at the
+     word's own width, so the overshoot above (and the circle's 0.9em) never happened. */
+  max-width: none;
   overflow: visible;
   pointer-events: none;
   color: var(--mk-ink, color-mix(in srgb, var(--primary) 34%, transparent));
@@ -39,8 +42,16 @@
 /* The circle: a loop round a short word, a price or a badge. It sits AROUND the text, so it
    never crosses the letters: 0.3em of air above and below, 0.45em either side. Stroke only. */
 .mk--circle { --mk-ink: color-mix(in srgb, var(--primary) 78%, transparent); }
+/* landing2 (agent-landing): sized explicitly. It was `inset: -0.32em -0.45em` with width and
+   height `auto`, but an absolutely placed SVG is a REPLACED element: an auto size comes from
+   its viewBox ratio (200:60), not from the insets, and a global `max-width: 100%` on svg then
+   capped it at the word's width (see .mk-swash). Measured on "vérifiables" at 375px: a 148x48
+   loop round a 147x36 word, starting 14px before it and ending 13px short, so it sat off to
+   one side and cut the last letters. */
 .mk--circle .mk-swash {
-  inset: -0.32em -0.45em; bottom: auto; width: auto; height: auto;
+  top: -0.32em; bottom: auto;
+  inset-inline-start: -0.45em; inset-inline-end: auto;
+  width: calc(100% + 0.9em); height: calc(100% + 0.64em);
   transform: rotate(-1.5deg); transform-origin: 50% 50%;
 }
 .mk--circle .mk-swash path { fill: none; stroke: currentColor; stroke-width: max(2px, 0.07em); stroke-linecap: round; stroke-linejoin: round; }

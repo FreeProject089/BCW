@@ -20,17 +20,6 @@ const DICT = {
     // C1-C5 (agent-content-C) : landing (marqueur, démo produit), /hosting réorganisé + guide domaine, panneau domaine, /charity, 404.
     'nf.more.t': 'En savoir plus', 'nf.more.catalog': 'Parcourir le catalogue', 'nf.more.repos': 'Server Repos', 'nf.more.hosting': 'Offres d’hébergement',
     'nf.more.docs': 'Documentation', 'nf.more.faq': 'Questions et réponses', 'nf.more.status': 'État du service', 'nf.more.contact': 'Nous contacter',
-    'home.demo.t1': 'Trouver', 'home.demo.t2': 'Installer', 'home.demo.t3': 'Héberger', 'home.demo.w1': 'Catalogue', 'home.demo.w3': 'Hébergement',
-    'home.demo.tabs': 'Ce que l’on peut faire ici', 'home.demo.search': 'Chercher des mods, des presets, des repos',
-    'home.demo.r1': 'Un pack de textures', 'home.demo.r2': 'Un preset de serveur', 'home.demo.r3': 'Un mod d’interface',
-    'home.demo.official': 'Catalogue officiel', 'home.demo.community': 'Catalogue communautaire', 'home.demo.install': 'Installer',
-    'home.demo.note1': 'Un clic, et c’est dans l’appli', 'home.demo.done': 'Installé : Un pack de textures',
-    'home.demo.done.d': 'Le lien du catalogue a ouvert BetterModsManager, qui l’a récupéré et ajouté à ton profil.',
-    'home.demo.i1': 'Aucun téléchargement à la main', 'home.demo.i2': 'Aucun fichier à chercher', 'home.demo.note2': 'Il arrive là où l’appli l’attend',
-    'home.demo.pool': 'Ton espace de stockage', 'home.demo.pool.d': 'Deux repos et un catalogue qui partagent un même espace, avec de la place en réserve.',
-    'home.demo.h1': 'Une adresse stable depuis laquelle tout peut se synchroniser', 'home.demo.h2': 'Ton propre domaine, avec un espace payant',
-    'home.demo.note3': 'Partage-le comme tu veux', 'home.demo.caption': 'Une illustration de l’interface, pas des données réelles.',
-    'home.demo.go1': 'Ouvrir le catalogue', 'home.demo.go3': 'Voir les offres d’hébergement',
     'hosting.nav.l': 'Sur cette page', 'hosting.nav.plans': 'Offres et prix', 'hosting.nav.domains': 'Ton propre domaine', 'hosting.nav.compare': 'Ce qui change',
     'hosting.nav.faq': 'Questions', 'hosting.nav.talk': 'Nous parler', 'hosting.term.other': 'Une autre durée',
     'hosting.dom.title': 'Ton propre domaine, étape par étape', 'hosting.dom.sub': 'Inclus avec chaque espace payant : un nom d’hôte par repo ou par catalogue, servi en HTTPS.',
@@ -3982,10 +3971,6 @@ const DICT = {
     // fin N-os (agent-os-N)
     // M-landing (agent-landing-M) : grain léger, annotations manuscrites, démo de l’accueil (faits vrais), « Pourquoi », chemin serpentin, liens « aller voir », accueil v4.
     'set.texture.t2': 'Grain des cartes', 'set.texture.d4': 'Un grain léger sur quelques grandes cartes (les appels à l’action de l’accueil, la carte de la cagnotte). Jamais sur le fond de page, le pied de page, les panneaux chargés de texte, les tableaux ni les champs.',
-    'home.demo.f.guest': 'Tu n’es pas connecté, et tout ceci t’est ouvert', 'home.demo.f.guestHost': 'L’hébergement demande un compte gratuit, pas la visite',
-    'home.demo.f.pool': 'Ton espace d’hébergement est déjà en ligne', 'home.demo.f.noPool': 'Connecté : un espace est à une offre près',
-    'home.demo.f.published': 'Tu as déjà publié quelque chose ici', 'home.demo.f.discord': 'Ton compte Discord est lié à celui-ci',
-    'home.demo.f.bmm': 'BetterModsManager est lié à ton compte', 'home.demo.f.in': 'Tu es connecté, ta prochaine installation tient en un clic',
     'home.look.note': 'Ou va d’abord jeter un œil', 'home.look.submit': 'Publier dans le catalogue', 'home.look.hosting': 'Héberger un repo ou un catalogue', 'home.look.docs': 'Parcourir la doc',
     'home.look.myo': 'Voir ce qu’on peut commander', 'home.look.projects': 'Voir les projets déjà présents', 'home.look.contact': 'Poser une question d’abord',
     'home.snake.doneSr': 'fait', 'home.snake.h1': 'D’un premier coup d’œil à', 'home.snake.h1b': 'ton propre coin',
@@ -9738,6 +9723,9 @@ const DICT = {
     'rann.newsletter.h': 'Aux abonnés confirmés, avec le lien de désinscription.',
     'rann.once': 'Une version n’est annoncée qu’une fois.',
     // fin prerelease (agent-prerelease)
+    // landing2 (agent-landing) : étapes « Commencer » sans serpentin (ui/steps-track.jsx), démo « Catalogue » supprimée, invitation à installer l’appli dès l’arrivée.
+    'home.st.progress': 'Étapes faites : {n} sur {total}', 'home.st.done': 'Fait', 'home.st.next': 'Prochaine étape',
+    // fin landing2 (agent-landing)
   },
 };
 

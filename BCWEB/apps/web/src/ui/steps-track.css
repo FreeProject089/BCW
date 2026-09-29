@@ -1,0 +1,153 @@
+/* The landing's steps (ui/steps-track.jsx). landing2 (agent-landing).
+
+   Two layouts, one list:
+     phone   a timeline: [badge rail 2.25rem][card]; the connector runs down the rail from
+             one badge to the next and never enters the card column.
+     lg+     a row: one column per step; the badges sit in a strip above the cards and the
+             connector runs across that strip, badge to badge, over the column gap.
+   Theme tokens only. Logical properties throughout, so RTL mirrors without a second rule. */
+
+.st-list { list-style: none; margin: 0; padding: 0; display: grid; }
+
+.st-step {
+  --st-b: 2.25rem;             /* badge size */
+  --st-top: 1.15rem;           /* phone: badge offset from the card's top edge */
+  --st-gap: 1rem;              /* phone: space between two cards */
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--st-b) minmax(0, 1fr);
+  column-gap: .875rem;
+  padding-bottom: var(--st-gap);
+  min-width: 0;
+}
+.st-step:last-child { padding-bottom: 0; }
+
+/* ── The badge ─────────────────────────────────────────────────────────────────────── */
+.st-badge {
+  position: relative; z-index: 1;
+  grid-column: 1; align-self: start;
+  margin-top: var(--st-top);
+  display: grid; place-items: center;
+  width: var(--st-b); height: var(--st-b); border-radius: 9999px;
+  font-weight: 800; font-size: .95rem; font-variant-numeric: tabular-nums;
+  background: var(--bg-solid); color: var(--muted);
+  border: 2px solid var(--line-strong);
+}
+.st-step.is-current .st-badge {
+  background: var(--grad-primary, linear-gradient(120deg, var(--primary), var(--primary-2)));
+  color: var(--on-primary); border-color: transparent;
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--primary) 18%, transparent);
+}
+.st-step.is-done .st-badge { background: var(--success); border-color: var(--success); color: var(--bg-solid); }
+
+/* ── The connector: phone, down the rail ─────────────────────────────────────────────── */
+.st-step:not(:last-child)::before {
+  content: ""; position: absolute; z-index: 0; pointer-events: none;
+  inset-inline-start: calc(var(--st-b) / 2 - 1px);
+  width: 2px; border-radius: 2px;
+  /* from 6px under this badge to 6px above the next one (which sits --st-top into the next row) */
+  top: calc(var(--st-top) + var(--st-b) + 6px);
+  bottom: calc(6px - var(--st-top));
+  background: repeating-linear-gradient(to bottom, var(--line-strong) 0 5px, transparent 5px 10px);
+}
+.st-step.is-walked:not(:last-child)::before { background: var(--success); }
+
+/* ── The card: the whole thing is the link ───────────────────────────────────────────── */
+.st-card {
+  grid-column: 2;
+  display: flex; flex-direction: column; min-width: 0;
+  border-radius: var(--r-xl); border: 1px solid var(--line);
+  background: var(--surface);
+  padding: 1.15rem 1.15rem 1.1rem;
+  color: inherit; text-decoration: none;
+  transition: border-color .2s ease, transform .2s ease, box-shadow .2s ease;
+}
+.st-card:hover { border-color: color-mix(in srgb, var(--primary) 45%, var(--line)); transform: translateY(-2px); box-shadow: var(--shadow); }
+.st-card:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
+.st-step.is-current .st-card {
+  border-color: color-mix(in srgb, var(--primary) 50%, var(--line));
+  box-shadow: 0 14px 34px -22px var(--primary-glow);
+}
+.st-step.is-done .st-card { background: color-mix(in srgb, var(--surface-2) 55%, var(--bg-solid)); }
+
+.st-head { display: flex; align-items: center; gap: .6rem; min-width: 0; }
+.st-ico {
+  display: grid; place-items: center; flex-shrink: 0;
+  width: 2.25rem; height: 2.25rem; border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--primary) 12%, transparent); color: var(--accent-ink);
+}
+.st-step.is-done .st-ico { background: var(--surface-2); color: var(--muted); }
+.st-chip {
+  margin-inline-start: auto; flex-shrink: 0;
+  font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  padding: .2rem .55rem; border-radius: 9999px; line-height: 1.4;
+}
+.st-chip.is-done { color: var(--success); background: var(--success-bg); border: 1px solid var(--success-border); }
+.st-chip.is-next { color: var(--accent-ink); background: color-mix(in srgb, var(--primary) 12%, transparent); border: 1px solid color-mix(in srgb, var(--primary) 30%, transparent); }
+
+.st-title { margin: .8rem 0 0; font-size: 1.0625rem; font-weight: 800; line-height: 1.3; overflow-wrap: anywhere; }
+.st-desc { display: block; margin-top: .4rem; font-size: .875rem; line-height: 1.55; color: var(--muted); }
+
+.st-cta-row { display: block; margin-top: auto; padding-top: 1rem; }
+.st-cta {
+  display: inline-flex; align-items: center; gap: .4rem;
+  min-height: 44px; max-width: 100%;
+  font-size: .875rem; font-weight: 700; color: var(--accent-ink);
+}
+.st-step.is-done .st-cta { color: var(--muted); }
+.st-cta.is-primary {
+  padding: .55rem 1.05rem; border-radius: 9999px;
+  background: var(--grad-primary, linear-gradient(120deg, var(--primary), var(--primary-2)));
+  color: var(--on-primary);
+  box-shadow: 0 8px 22px -10px var(--primary-glow);
+}
+.st-arrow { flex-shrink: 0; transition: transform .2s ease; }
+.st-card:hover .st-arrow { transform: translateX(3px); }
+[dir="rtl"] .st-card:hover .st-arrow { transform: translateX(-3px) scaleX(-1); }
+
+/* ── The progress line, once something is done ───────────────────────────────────────── */
+.st-progress {
+  display: flex; align-items: center; justify-content: center; gap: .6rem;
+  margin: 0 0 1.25rem; font-size: 13px; font-weight: 600; color: var(--muted);
+}
+.st-progress-bar { display: inline-flex; gap: 4px; }
+.st-progress-bar > span { width: 1.5rem; height: 6px; border-radius: 9999px; background: var(--line-strong); }
+.st-progress-bar > span.is-done { background: var(--success); }
+
+/* ── lg+: a row ───────────────────────────────────────────────────────────────────────
+   From lg, not md: at 768px three columns are 226px wide and the filled button wrapped onto
+   two lines. The tablet keeps the timeline, whose cards are the full width. */
+@media (min-width: 1024px) {
+  .st-list { grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); column-gap: 1.5rem; }
+  .st-step {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto 1fr;
+    row-gap: 1rem;
+    padding-bottom: 0;
+  }
+  .st-badge { margin-top: 0; }
+  .st-card { grid-column: 1; }
+  /* across the badge strip: from 8px after this badge to 8px before the next one, which
+     starts one column gap (1.5rem) past this column's end */
+  .st-step:not(:last-child)::before {
+    top: calc(var(--st-b) / 2 - 1px); bottom: auto;
+    width: auto; height: 2px;
+    inset-inline-start: calc(var(--st-b) + 8px);
+    inset-inline-end: calc(8px - 1.5rem);
+    background: repeating-linear-gradient(to right, var(--line-strong) 0 5px, transparent 5px 10px);
+  }
+  .st-step.is-walked:not(:last-child)::before { background: var(--success); }
+  .st-card { padding: 1.35rem 1.35rem 1.25rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .st-card, .st-arrow { transition: none; }
+  .st-card:hover { transform: none; }
+  .st-card:hover .st-arrow { transform: none; }
+  [dir="rtl"] .st-card:hover .st-arrow { transform: scaleX(-1); }
+}
+@media (forced-colors: active) {
+  .st-badge, .st-card { border: 1px solid CanvasText; }
+  .st-step:not(:last-child)::before { background: CanvasText; }
+  .st-cta.is-primary { border: 1px solid ButtonText; }
+}

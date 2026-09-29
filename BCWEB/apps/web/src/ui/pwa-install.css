@@ -32,6 +32,17 @@
   color: var(--faint);
 }
 .pwa-install-x:hover { color: var(--text); background: var(--surface-2); }
+/* landing2 (agent-landing): the card now shows on a first visit, so on a touch screen its
+   controls get real targets. The cross was 22x22 and the two buttons 32px tall; the negative
+   margin keeps the cross's bigger box from pushing the card's text around. */
+@media (pointer: coarse) {
+  .pwa-install-x { display: grid; place-items: center; width: 44px; height: 44px; margin: -10px -10px -10px 0; }
+  .pwa-install .btn { min-height: 44px; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .pwa-install { animation: pwaIn .35s cubic-bezier(.2, .8, .2, 1) both; }
+}
+@keyframes pwaIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 
 .pwa-steps { margin: 10px 0 0; padding: 0; list-style: none; display: grid; gap: 6px; font-size: 12.5px; }
 .pwa-steps li { display: flex; align-items: flex-start; gap: 8px; }
