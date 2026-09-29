@@ -35,7 +35,7 @@ vulnerabilities:
   # glibc strncasecmp over-read: only the POWER8-optimised variant (ppc64le) is affected, per
   # the advisory (GLIBC-SA-2026-0024). Every BCWEB image is built and run on amd64, where that
   # code is never selected. Also covers the same libc6 advisory in the telemetry image
-  # (distroless cc-debian12), for the same architectural reason.
+  # (distroless cc-debian13), for the same architectural reason.
   - id: CVE-2026-97399
     purls:
       - "pkg:deb/debian/libc6"

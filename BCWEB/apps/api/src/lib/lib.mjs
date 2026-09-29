@@ -1313,20 +1313,53 @@ export async function notifyAll(p, kind, body, bodyFr, opts = {}) {
   if (!targets.length) return 0;
   // prerelease (agent-prerelease): an optional in-app destination, held to the same rule as notify().
   const href = safeNotifHref(opts?.href);
-  const write = (list) => p.notification.createMany({ data: list.map((u) => ({ userId: u.id, kind, body, ...(bodyFr ? { bodyFr } : {}), ...(href ? { href } : {}) })) });
-  try {
-    await write(targets);
-  } catch (e) {
-    // An account erased between the read above and this insert fails the WHOLE createMany on
-    // its foreign key (P2003), and nobody gets the broadcast. Re-read who still exists and
-    // send once more; anything else is a real error.
-    if (e?.code !== 'P2003') throw e;
-    const alive = new Set((await p.user.findMany({ where: { id: { in: targets.map((u) => u.id) } }, select: { id: true } })).map((u) => u.id));
-    const left = targets.filter((u) => alive.has(u.id));
-    if (left.length) await write(left);
-    return left.length;
+  const rows = targets.map((u) => ({ userId: u.id, kind, body, ...(bodyFr ? { bodyFr } : {}), ...(href ? { href } : {}) }));
+  return insertNotificationRows(p, rows);
+}
+
+/** Rows per transaction in insertNotificationRows. */
+const NOTIF_INSERT_CHUNK = 1000;
+const NOTIF_INSERT_TRIES = 4;
+
+/**
+ * Write notification rows for the recipients that STILL EXIST, without racing an account
+ * deletion. Shared by notifyAll() above and the fan-out in lib/notify.mjs.
+ *
+ * A broadcast reads the audience, then inserts. An account erased in between made the WHOLE
+ * createMany fail on its foreign key (P2003) and nobody got the broadcast. Re-reading once and
+ * retrying (what both writers used to do) only narrows the window: on a site where accounts are
+ * deleted steadily — or a test suite whose files create and delete users in parallel — the
+ * second insert loses the same race. So each chunk runs in one transaction that first takes
+ * FOR KEY SHARE on its recipients' User rows: an account already gone is simply not returned,
+ * and one being deleted now waits for this insert to commit (its Notification rows then go with
+ * it, onDelete: Cascade). The lock blocks only deletes and key changes, never ordinary updates.
+ *
+ * Locks are taken in id order to keep deadlocks rare; one that happens anyway (a deleteMany
+ * over several of these accounts, locking in its own order) is retried, as is the P2003 the
+ * lock makes impossible, so a bug in that reasoning degrades into a retry, not a lost send.
+ * Returns how many rows were written.
+ */
+export async function insertNotificationRows(p, rows, { skipDuplicates = false } = {}) {
+  let written = 0;
+  for (let i = 0; i < rows.length; i += NOTIF_INSERT_CHUNK) {
+    const chunk = rows.slice(i, i + NOTIF_INSERT_CHUNK);
+    const ids = [...new Set(chunk.map((r) => r.userId))];
+    for (let attempt = 1; ; attempt++) {
+      try {
+        written += await p.$transaction(async (tx) => {
+          const alive = new Set((await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ANY(${ids}::text[]) ORDER BY "id" FOR KEY SHARE`).map((u) => u.id));
+          const left = chunk.filter((r) => alive.has(r.userId));
+          if (!left.length) return 0;
+          return (await tx.notification.createMany({ data: left, ...(skipDuplicates ? { skipDuplicates: true } : {}) })).count;
+        });
+        break;
+      } catch (e) {
+        const retryable = e?.code === 'P2003' || e?.code === 'P2034' || /40P01|deadlock/i.test(String(e?.meta?.code || e?.message || ''));
+        if (!retryable || attempt >= NOTIF_INSERT_TRIES) throw e;
+      }
+    }
   }
-  return targets.length;
+  return written;
 }
 
 /** Append a per-repo audit entry. `actor` is a display label, not auth material.

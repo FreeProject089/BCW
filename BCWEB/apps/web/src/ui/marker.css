@@ -98,9 +98,9 @@
 /* ── The handwritten note ──────────────────────────────────────────────────────────────────
    Caveat (SIL Open Font License 1.1, public/fonts/OFL.txt), SELF-HOSTED: nothing is fetched
    from a font CDN, and the CSP's font-src 'self' covers it. Split by unicode-range as Google
-   Fonts ships it, so a French page downloads the latin file only (75 kB, preloaded by
-   marker.jsx on the pages that import it). `font-display: swap`: the note shows at once in
-   the fallback and changes face when the file lands. The fallbacks are the handwriting face
+   Fonts ships it, so a French page downloads the latin file only (75 kB, requested by
+   marker.jsx through document.fonts.load on the pages that draw a note). `font-display:
+   swap`: the note shows at once in the fallback and changes face when the file lands. The fallbacks are the handwriting face
    each system already has (Segoe Print, Bradley Hand, Chalkboard) and then `cursive`. */
 @font-face {
   font-family: "BC Hand"; font-style: normal; font-weight: 400 700; font-display: swap;

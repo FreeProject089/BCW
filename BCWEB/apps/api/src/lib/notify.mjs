@@ -30,7 +30,7 @@
 // NEVER THROWS. A notification is a side effect of something else (a moderation case, a post);
 // failing it must never fail that. The result says what happened instead.
 import crypto from 'node:crypto';
-import { db, notifCategory, NOTIF_CATEGORIES, safeNotifHref, CAPABILITIES } from './lib.mjs';
+import { db, notifCategory, NOTIF_CATEGORIES, safeNotifHref, CAPABILITIES, insertNotificationRows } from './lib.mjs';
 import { projectByRef, projectByTarget, isListable } from './project-target.mjs';
 
 export const CHUNK = 1000;
@@ -226,16 +226,9 @@ export async function listRecipients(input, { p: pIn, max = 100_000 } = {}) {
 }
 
 async function insertChunk(p, rows) {
-  try {
-    return (await p.notification.createMany({ data: rows, skipDuplicates: true })).count;
-  } catch (e) {
-    // An account erased between the read and this insert fails the WHOLE chunk on its foreign
-    // key (P2003). Keep the ones that still exist and write once more.
-    if (e?.code !== 'P2003') throw e;
-    const alive = new Set((await p.user.findMany({ where: { id: { in: rows.map((r) => r.userId) } }, select: { id: true } })).map((u) => u.id));
-    const left = rows.filter((r) => alive.has(r.userId));
-    return left.length ? (await p.notification.createMany({ data: left, skipDuplicates: true })).count : 0;
-  }
+  // Race-free against an account erased mid-fan-out (see insertNotificationRows in lib.mjs);
+  // skipDuplicates keeps a resumed send from writing anybody twice.
+  return insertNotificationRows(p, rows, { skipDuplicates: true });
 }
 
 /**

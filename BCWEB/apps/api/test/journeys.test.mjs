@@ -291,6 +291,22 @@ describe('notification preferences stop the write', { skip }, () => {
     assert.equal(await got(quiet.id), 0);
     assert.equal(await got(loud.id), 1);
   });
+
+  // The race notifyAll used to lose (P2003 under a parallel `npm test`, or an account deleted
+  // during a real broadcast): the audience was read, then one recipient vanished before the
+  // insert, and the WHOLE createMany failed. insertNotificationRows is the write both
+  // broadcasters use; handed a row for an account that no longer exists, it must drop that row
+  // and deliver the others, not throw.
+  test('a recipient erased before the insert is dropped, the others still get it', async (t) => {
+    const BODY = 'a broadcast to a vanished account (test fixture)';
+    t.after(() => p.notification.deleteMany({ where: { body: BODY } }).catch(() => {}));
+    const stays = await mkUser();
+    const gone = await mkUser();
+    await p.user.delete({ where: { id: gone.id } });
+    const n = await lib.insertNotificationRows(p, [stays, gone].map((u) => ({ userId: u.id, kind: 'event', body: BODY })));
+    assert.equal(n, 1);
+    assert.equal(await p.notification.count({ where: { userId: stays.id, body: BODY } }), 1);
+  });
 });
 
 // ── the staff wall ──────────────────────────────────────────────────────────────

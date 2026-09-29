@@ -13,19 +13,21 @@
 import './marker.css';
 
 // The handwriting face (Caveat, SIL OFL 1.1, self-hosted in public/fonts with its OFL.txt; see
-// marker.css for the @font-face). Preloaded from HERE, the first time a HandNote renders, so
-// only the pages that draw a note ask for it (a page with only a highlighter stroke does not,
-// which would be a "preloaded but not used" warning); index.html preloads nothing. The latin
-// file only: the other subsets are fetched by unicode-range when a language needs them.
+// marker.css for the @font-face). Fetched from HERE, the first time a HandNote renders, so only
+// the pages that draw a note ask for it; index.html fetches nothing. Through the FontFace API
+// (document.fonts.load) rather than a <link rel="preload">: the preload was a hint the font
+// request then had to MATCH, and on the home page it did not (the note renders after the load
+// event, its text is laid out later still), so Chrome fetched the file twice and warned
+// "preloaded using link preload but not used within a few seconds" on every visit. load()
+// starts the very download the CSS will use, so there is nothing left to match. A sample of
+// plain Latin text means only the latin subset is fetched; the others still come by
+// unicode-range when a language needs them.
+let handRequested = false;
 function preloadHand() {
-  if (typeof document === 'undefined' || document.querySelector('link[data-hand-font]')) return;
-  try {
-    const l = document.createElement('link');
-    l.rel = 'preload'; l.as = 'font'; l.type = 'font/woff2'; l.crossOrigin = 'anonymous';
-    l.href = '/fonts/caveat-latin.woff2';
-    l.setAttribute('data-hand-font', '');
-    document.head.appendChild(l);
-  } catch { /* a preload is a hint; without it the font still loads on first use */ }
+  if (handRequested || typeof document === 'undefined' || !document.fonts?.load) return;
+  handRequested = true;
+  // A hint: if it fails, the font still loads on first use through the @font-face rule.
+  document.fonts.load('600 19px "BC Hand"', 'Aa').catch(() => {});
 }
 
 // A brush stroke, drawn as a filled shape in a 200 x 24 box and stretched to the word

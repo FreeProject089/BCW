@@ -64,6 +64,13 @@ import Avatar from './ui/Avatar.jsx';
 // Eager: the initial landing routes + nav-critical modules (the notification map is
 // rendered by the always-present nav bell, which keeps dashboard.jsx in the main chunk).
 import { Home } from './pages/home.jsx';
+// /polls, /polls/:id and /charity are NOT lazy: home.jsx (eager, above) imports PollTeaser and
+// CharityWidget from those same files, so both modules are in the entry chunk whatever App
+// does. A lazy() here split nothing and made `vite build` warn "dynamically imported by
+// App.jsx but also statically imported … will not move module into another chunk" on every
+// build. To make them lazy again, move the home widgets into files of their own first.
+import PollsPage, { SinglePollPage } from './pages/polls.jsx';
+import CharityPage from './pages/charity.jsx';
 import { Catalog, ItemDetail } from './pages/catalog.jsx';
 import { DEFAULT_FOOTER_SOCIALS, DEFAULT_FOOTER_COLUMNS } from './ui/footer-default.js';
 import { LucideCdnIcon } from './editor/icon-picker.jsx';
@@ -81,9 +88,6 @@ const named = lazyNamed;
 const Hero3D = lazyChunk(() => import('./hero/Hero3D.jsx'));
 const CopyVerify = lazyChunk(() => import('./pages/copy-verify.jsx'));
 const ClosureCancel = lazyChunk(() => import('./pages/closure.jsx'));
-const PollsPage = lazyChunk(() => import('./pages/polls.jsx'));
-const CharityPage = lazyChunk(() => import('./pages/charity.jsx'));
-const SinglePollPage = lazyChunk(() => import('./pages/polls.jsx').then((m) => ({ default: m.SinglePollPage })));
 const DevHub = lazyChunk(() => import('./pages/dev.jsx'));
 const StatusPage = lazyChunk(() => import('./pages/status.jsx'));
 const DevConfig = lazyChunk(() => import('./pages/dev-config.jsx'));

@@ -92,9 +92,10 @@ export default async function releaseAnnounceRoutes(app) {
       done.blogSlug = post.slug;
     }
     if (b.data.notify) {
-      // notifyAll re-reads the accounts once when one is erased mid-write (P2003); a busy site can
-      // erase another in between. A failed bell must not turn an announcement whose blog post
-      // already exists into a 500, so it is retried, then reported instead of thrown.
+      // notifyAll no longer races an account erased mid-write (it locks the recipients it writes
+      // to, see insertNotificationRows in lib.mjs), but a broadcast can still fail for another
+      // reason (a dropped connection). A failed bell must not turn an announcement whose blog
+      // post already exists into a 500, so it is retried, then reported instead of thrown.
       done.notified = null;
       for (let attempt = 0; attempt < 3 && done.notified == null; attempt++) {
         try { done.notified = await _broadcast(p, 'release_published', `${headline} is out.`, headlineFr ? `${headlineFr} est disponible.` : null, { href: `${proj.url}?tab=versions` }); }
