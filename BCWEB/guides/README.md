@@ -33,6 +33,7 @@ guides/
 | **Know what every GitHub workflow does** (CI, security scans, DAST, CD deploy: triggers, gates, artifacts, variables, PR comment, Code scanning) | CI/CD | [EN](run/CI_CD_EN.md) | [FR](run/CI_CD_FR.md) |
 | **Run, tune or extend the security scans** (Gitleaks, Semgrep, Trivy, ZAP, Nuclei: thresholds, targets, reviewed exclusions, by hand) | Security CI | [EN](run/SECURITY_CI_EN.md) | [FR](run/SECURITY_CI_FR.md) |
 | **Add AI to moderation, or switch it off** (Laya sidecar or external API, kill switch, resource cost, privacy, the paid Discord option) | AI (Laya) | [EN](run/AI_LAYA_EN.md) | [FR](run/AI_LAYA_FR.md) |
+| **Offer AI helpers and watch what AI costs** (member helpers, members' own keys, the site key, per-plan limits, the usage dashboard, staff tools) | AI helpers | [EN](run/AI_FEATURES_EN.md) | [FR](run/AI_FEATURES_FR.md) |
 | **Ship app updates through BCWEB** (BMM/BSM release feeds) | Auto-updates | [EN](run/AUTO_UPDATE_EN.md) | [FR](run/AUTO_UPDATE_FR.md) |
 | **Use the site as a member** | User guide | [EN](use/USER_GUIDE_EN.md) | [FR](use/USER_GUIDE_FR.md) |
 | **Moderate** (tools, roles, judgement calls) | Moderator guide | [EN](use/MODERATOR_GUIDE_EN.md) | [FR](use/MODERATOR_GUIDE_FR.md) |

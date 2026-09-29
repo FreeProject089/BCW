@@ -78,6 +78,15 @@ export const GUIDE = [
           // moderation (agent-moderation)
           { en: 'Moderation engine: every form (contact, reports, legal notices, feedback and crashes, messages between members and teams, project reviews, the Discord bot) runs the same rules. Each surface has a policy: act automatically, flag only, manual review, or analysis only. Reports and legal requests are always reviewed by a person. Held content waits in the queue until you release it; a false positive teaches the rules. The AI is optional, asked only when the rules are unsure, and has a kill switch. Full guide: guides/use/MODERATION_EN.md.', fr: 'Moteur de modération : chaque formulaire (contact, signalements, demandes légales, retours et plantages, messages entre membres et équipes, avis de projet, le bot Discord) passe par les mêmes règles. Chaque surface a sa politique : agir automatiquement, signaler seulement, revue manuelle ou analyse seule. Les signalements et les demandes légales sont toujours relus par une personne. Un contenu retenu attend dans la file jusqu’à ce que tu le libères ; un faux positif apprend aux règles. L’IA est facultative, consultée seulement quand les règles hésitent, et a un coupe-circuit. Guide complet : guides/use/MODERATION_FR.md.' },
         ]),
+      // aios (agent-bcw-ai-os): the AI helpers screen.
+      G('ai', Sparkles, 'AI helpers', 'Aides IA',
+        'What is built on the AI layer: the usage dashboard (calls, errors, latency, cache, cost, decisions the AI changed and how often humans disagreed), the member helpers (tag and language suggestions, a check before posting, description drafts), the keys the writing helpers use (members’ own keys, the site key) and the staff tools (queue triage, duplicates, crash causes, thread summaries).',
+        'Ce qui est construit sur la couche IA : le tableau d’usage (appels, erreurs, latence, cache, coût, décisions changées par l’IA et désaccords humains), les aides aux membres (suggestion de tags et de langue, vérification avant publication, brouillons de description), les clés des aides à la rédaction (clés des membres, clé du site) et les outils du staff (tri de la file, doublons, causes de plantage, résumés de fils).',
+        [
+          { en: 'Every member helper is OFF until you switch it on here, and each one can be limited to paying members or to staff, with its own daily allowance.', fr: 'Chaque aide aux membres est ÉTEINTE tant que tu ne l’allumes pas ici, et chacune peut être réservée aux membres payants ou au staff, avec son propre quota quotidien.' },
+          { en: 'The dashboard stores counts only. No text sent to a model is kept, so none can be shown or leaked from here.', fr: 'Le tableau ne stocke que des compteurs. Aucun texte envoyé à un modèle n’est conservé : rien ne peut en être montré ni fuiter d’ici.' },
+          { en: 'The provider (Laya or an external API), the kill switch and the moderation surfaces stay on the Moderation engine screen. The kill switch cuts these helpers too, members’ own keys included.', fr: 'Le fournisseur (Laya ou une API externe), le coupe-circuit et les surfaces de modération restent sur l’écran Moteur de modération. Le coupe-circuit coupe aussi ces aides, clés des membres comprises.' },
+        ]),
     ],
   },
   {
@@ -318,6 +327,7 @@ export const GUIDE_TABS = {
   needs: ['needs'],
   tasks: ['tasks'],
   moderation: ['moderation', 'reports', 'rights', 'lookalikes', 'messages', 'legal', 'sanctions', 'modqueue'], // + modqueue: moderation (agent-moderation)
+  ai: ['ai'], // aios (agent-bcw-ai-os)
   feedback: ['feedback', 'suggestions'],
   users: ['users', 'planusers', 'maillog', 'onboarding'],
   access: ['access'],
@@ -391,6 +401,21 @@ const GUIDE_MORE = {
       { en: 'A rejected submission keeps its uploaded file for the “rejected-payload grace” (Hosting settings) so the author can fix and resubmit — after that the sweeper purges it.', fr: 'Une soumission refusée garde son fichier pendant le « délai après refus » (Réglages d’hébergement) pour que l’auteur corrige et renvoie — ensuite le nettoyeur le purge.' },
       { en: 'Moderator rank matters: a MOD cannot sanction an account above their own rank, and staff actions land in the tamper-evident Security log.', fr: 'Le rang compte : un MOD ne peut pas sanctionner un compte d’un rang supérieur au sien, et les actions du staff finissent dans le Journal de sécurité infalsifiable.' },
       { en: 'Legal notices identify their sender. They never leave the dashboard — the bot only posts a heads-up + link, and only if the Legal route has a channel.', fr: 'Les avis légaux identifient leur expéditeur. Ils ne sortent jamais du tableau de bord — le bot ne poste qu’un rappel + lien, et seulement si la route Légal a un salon.' },
+    ],
+  },
+  // aios (agent-bcw-ai-os)
+  ai: {
+    steps: [
+      { en: 'Usage: pick a range. The tiles are the whole site; the tables split by feature and by provider; the top consumers name who used the most calls.', fr: 'Usage : choisis une période. Les tuiles couvrent tout le site ; les tableaux détaillent par fonction et par fournisseur ; les plus gros consommateurs nomment qui a fait le plus d’appels.' },
+      { en: 'Features and limits: switch a helper on, choose who may use it, set the free and paid daily allowances, then the per-person and per-IP minute limits and the site-wide daily ceiling. Save.', fr: 'Fonctions et limites : allume une aide, choisis qui peut l’utiliser, fixe les quotas quotidiens gratuit et payant, puis les limites par personne et par IP à la minute et le plafond quotidien du site. Enregistre.' },
+      { en: 'Keys: allow members’ own keys (BYOK) if you want the writing helpers without paying for them; set the site key (admins only) for the staff summaries, and tick "paid plans" only if you want to pay for paying members’ drafts.', fr: 'Clés : autorise les clés des membres (BYOK) pour offrir les aides à la rédaction sans les payer ; pose la clé du site (admins seulement) pour les résumés du staff, et coche « offres payantes » seulement si tu veux payer les brouillons des membres payants.' },
+      { en: 'Staff tools: rank the queue, find duplicates, group crashes, summarise a thread by its id.', fr: 'Outils du staff : classe la file, trouve les doublons, regroupe les plantages, résume un fil par son id.' },
+    ],
+    traps: [
+      { en: 'A key is sealed with a secret derived from AI_KEYS_SECRET (or JWT_SECRET). Rotating that secret makes every stored key unreadable: members and the site key must be entered again.', fr: 'Une clé est scellée avec un secret dérivé de AI_KEYS_SECRET (ou JWT_SECRET). Changer ce secret rend toutes les clés stockées illisibles : les membres et la clé du site doivent les ressaisir.' },
+      { en: 'Before switching on the site key for summaries or paid drafts, name its provider in the privacy policy’s processor list: the text goes to them.', fr: 'Avant d’allumer la clé du site pour les résumés ou les brouillons payants, nomme son fournisseur dans la liste des sous-traitants de la politique de confidentialité : le texte part chez lui.' },
+      { en: 'The cost is an ESTIMATE from the prices you typed and the token counts the provider returned. Your provider’s invoice is the truth.', fr: 'Le coût est une ESTIMATION à partir des prix saisis et des jetons renvoyés par le fournisseur. La facture du fournisseur fait foi.' },
+      { en: 'The check before posting never tells a member which rule, word or list fired, only the kind of problem. Keep it that way: naming the word teaches a spammer to misspell it.', fr: 'La vérification avant publication ne dit jamais au membre quelle règle, quel mot ou quelle liste a réagi, seulement le genre de problème. Garde-le ainsi : nommer le mot apprend au spammeur à l’écrire autrement.' },
     ],
   },
   users: {

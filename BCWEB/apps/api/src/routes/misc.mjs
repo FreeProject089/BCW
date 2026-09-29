@@ -285,6 +285,7 @@ import { footerSchema, pageColours, gradients, logoUrl, THEME_KEY, HEX, THEME_DE
 const APP_ICONS_KEY = 'brand.appIcons';
 import { hostOf, normalizeUrl } from '../lib/urlblock.mjs';
 import { AI_CONFIG_KEY, AI_KILLED_KEY, normalizeAiConfig } from '../lib/moderation/ai.mjs'; // laya (agent-laya-bcweb)
+import { AI_FEATURES_KEY, normalizeFeatures } from '../lib/ai-features.mjs'; // aios (agent-bcw-ai-os)
 export { footerSchema, footSocial, pageColours } from '../lib/config-schemas.mjs';
 
 // ── Home page: admin-editable copy and sections ─────────────────────────────
@@ -793,6 +794,18 @@ export async function checkAdminSetting(p, key, value, { role } = {}) {
     return { ok: true, value, audit: value ? 'AI kill switch ON' : 'AI kill switch OFF' };
   }
   // fin laya (agent-laya-bcweb)
+  // aios (agent-bcw-ai-os): the AI features' settings are bounded by their own normaliser (a
+  // key can never live in them); OS mode's site-wide switch is a plain boolean. The site key
+  // itself is in SECRET_SETTING_KEYS and never comes through here.
+  if (key === AI_FEATURES_KEY) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return refuse(400, { error: 'invalid_input' });
+    return { ok: true, value: normalizeFeatures(value), audit: 'ai.features' };
+  }
+  if (key === 'os.enabled') {
+    if (typeof value !== 'boolean') return refuse(400, { error: 'invalid_input' });
+    return { ok: true, value, audit: value ? 'OS mode (beta) switched ON site-wide' : 'OS mode (beta) switched OFF site-wide' };
+  }
+  // fin aios
   if (key === 'seo.pages') {
     const parsed = SEO_PAGES_SCHEMA.safeParse(value);
     if (!parsed.success) return refuse(400, { error: 'invalid_input', details: parsed.error.flatten() });

@@ -283,6 +283,10 @@ services:
       AI_EXTERNAL_URL: ${AI_EXTERNAL_URL:-}
       AI_EXTERNAL_KEY: ${AI_EXTERNAL_KEY:-}
       AI_EXTERNAL_ALLOW_PRIVATE: ${AI_EXTERNAL_ALLOW_PRIVATE:-}
+      # aios (agent-bcw-ai-os): seals the AI keys stored in the database (members' own keys and
+      # the site key, lib/ai-keys.mjs). Empty = derived from JWT_SECRET. Changing it makes every
+      # stored key unreadable (they have to be entered again), never readable by the wrong party.
+      AI_KEYS_SECRET: ${AI_KEYS_SECRET:-}
       AUDIT_ANCHOR_DIR: /var/audit
       NODE_ENV: production
     # laya (agent-laya-bcweb): `ai` is the internal network the Laya sidecar lives on. Joining it

@@ -194,6 +194,18 @@ export default function OsShell({ scope, title, icon: Icon, tabs, render, search
   useLayoutEffect(() => { measureRef.current(); }, [fs.on, prefs.bar]);
 
   // ── Persistence ────────────────────────────────────────────────────────────
+  // aios (agent-bcw-ai-os): the layout key names the ACCOUNT. When it changes under a mounted
+  // shell (the session resolved after the first paint, or another account signed in in another
+  // tab), the new account's layout is loaded; before, the save below wrote the previous
+  // account's windows over it 250 ms later. Declared first so its reset cancels that save.
+  const keyRef = useRef(key);
+  useEffect(() => {
+    if (keyRef.current === key) return;
+    keyRef.current = key;
+    dispatch({ type: 'reset' });
+    const saved = readLayout(key);
+    if (saved) dispatch({ type: 'hydrate', saved });
+  }, [key]);
   useEffect(() => {
     const h = setTimeout(() => {
       try { localStorage.setItem(key, JSON.stringify(serialize(state))); } catch { /* private window: this session only */ }

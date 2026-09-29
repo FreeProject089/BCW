@@ -32,6 +32,7 @@ export const SECRET_SETTING_KEYS = new Set([
   'kofi.token',                         // Ko-fi webhook verification token (routes/kofi.mjs)
   'backup.signingKey',                  // ed25519 private key signing DB backups (lib/signing.mjs)
   'identity.attestation.privateKeyPem', // key signing identity attestations (lib/identity-attestation.mjs)
+  'ai.siteKey',                         // aios: the admin's AI provider key, sealed (routes/ai-features.mjs, ADMIN-only)
 ]);
 
 /** Property names that hold a credential. Matched on the whole name, case-insensitively,

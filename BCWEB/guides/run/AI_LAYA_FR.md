@@ -224,9 +224,9 @@ Dans `.env` (une valeur fixée ici **l’emporte** sur l’écran admin, qui gri
 - **API externe** : le texte vérifié part chez **un tiers**, selon ses conditions et dans son pays.
   **Avant de l’activer**, la politique de confidentialité doit nommer ce fournisseur, ce qui est
   envoyé et pourquoi (intérêt légitime de modération), et l’accord de traitement des données avec
-  lui doit exister. Les pages légales ne le disent pas aujourd’hui parce que l’option est éteinte :
-  une fonction qui arrive sans bruit les rend fausses, donc mets-les à jour dans le même
-  changement qui l’active.
+  lui doit exister. La liste des sous-traitants de la politique de confidentialité dit « un
+  fournisseur d’IA, seulement si nous en activons un » ; quand tu l’actives, ajoute son nom dans
+  le même changement, car une fonction qui arrive sans bruit rend les pages légales fausses.
 
 ## 9. Quand quelque chose cloche
 
@@ -260,3 +260,18 @@ modèle préchargé, son HEALTHCHECK répondant.
 Le chiffre de RAM et la latence sur ton CPU sont des estimations tant que tu n’as pas lancé
 `docker compose --profile ai up -d` et observé un premier démarrage. Le format de réponse de
 Laya a été lu dans le code source du paquet (laya 0.3.21, `laya/serve.py`), pas observé en direct.
+
+## 11. Statistiques d’usage, et ce qui est construit sur cette couche (aios)
+
+Chaque appel qui passe par cette couche est désormais compté, par jour, surface et fournisseur :
+appels, échecs, délais dépassés, un histogramme de latence (p50 / p95), réponses en cache, appels
+limités et abandonnés, ouvertures du disjoncteur et appels qu’il a refusés, jetons et coût estimé
+pour le fournisseur externe. Sont aussi comptées : les décisions que l’IA a placées au-dessus des
+règles, et combien de fois le verdict d’un modérateur lui a donné raison (cas signalé retiré ou
+sanctionné) ou tort (clos comme faux positif ou écarté). **Des compteurs seulement** : aucun texte,
+extrait ni empreinte de texte n’est stocké. L’encadré d’état ci-dessus montre toujours les chiffres
+en mémoire de ce processus ; le tableau montre l’historique stocké.
+
+Le tableau, les aides aux membres (suggestions de tags et de langue, vérification avant
+publication, brouillons de description), les clés des membres, la clé du site et les outils du
+staff sont décrits dans [AI_FEATURES_FR.md](AI_FEATURES_FR.md) : **Admin → Modération → Aides IA**.

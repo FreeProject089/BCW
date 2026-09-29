@@ -939,6 +939,13 @@ export function startSweeper(app) {
         await reconcilePendingCheckouts(p, { stripe: sk, log: app.log });
       })().catch((e) => app.log.warn({ e: String(e) }, 'pending checkout reconciliation failed'));
       await pruneApiRequests(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'api request prune failed'));
+      // aios (agent-bcw-ai-os): per-user AI counts past ai.features.retentionDays (default 90).
+      // The daily aggregates hold nobody and are kept.
+      await (async () => {
+        const [{ loadFeatures }, { pruneAiUsage }] = await Promise.all([import('./ai-features.mjs'), import('./ai-usage.mjs')]);
+        const { cfg } = await loadFeatures();
+        await pruneAiUsage(p, cfg.retentionDays, app.log);
+      })().catch((e) => app.log.warn({ e: String(e) }, 'AI usage prune failed'));
       // Pictures uploaded since the last tick get their perceptual hash and, if they look
       // like another account's, a flag for staff.
       await sweepMediaHashes(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'media hash sweep failed'));

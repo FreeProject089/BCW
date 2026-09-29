@@ -56,6 +56,7 @@ import crypto from 'node:crypto';
 import net from 'node:net';
 import { boundedSet } from '../boundedmap.mjs';
 import { isPrivateIp, safeFetch } from '../net.mjs';
+import { recordAi } from '../ai-usage.mjs'; // aios (agent-bcw-ai-os): usage analytics, counts only
 
 // ── Vocabulary ──────────────────────────────────────────────────────────────────────────────
 export const AI_SURFACES = Object.freeze(['contact', 'report', 'legal', 'crash', 'bug', 'suggestion',
@@ -261,8 +262,24 @@ function providerReady(cfg, { ignoreEnabled = false } = {}) {
   return false;
 }
 
+// aios (agent-bcw-ai-os): the user and staff features (lib/ai-features.mjs) call the layer with
+// a `feat:<name>` surface. Their gate is the feature's own switch, per plan and role, checked by
+// the route before it calls; here they only need the global switch, the provider and the kill
+// switch, like every other caller.
+export const FEATURE_PREFIX = 'feat:';
+/** The analytics name of a surface: mod:<surface> for moderation, the feature's name otherwise. */
+export function usageFeature(surface, adminTest = false) {
+  if (adminTest) return 'admin_test';
+  const s = String(surface || '');
+  if (s === BMM_SURFACE) return 'bmm_suggest';
+  if (s.startsWith(FEATURE_PREFIX)) return s.slice(FEATURE_PREFIX.length);
+  return `mod:${s}`;
+}
+// fin aios
+
 function surfaceOn(cfg, surface) {
   if (surface === BMM_SURFACE) return !!cfg.bmmSuggest;
+  if (typeof surface === 'string' && surface.startsWith(FEATURE_PREFIX) && /^[a-z_]{2,40}$/.test(surface.slice(FEATURE_PREFIX.length))) return true; // aios
   return AI_SURFACES.includes(surface) && !!cfg.surfaces?.[surface];
 }
 
@@ -384,11 +401,16 @@ function breakerAllows(now = Date.now()) {
   breaker.probing = true;
   return true;
 }
-function breakerResult(ok, cfg) {
+function breakerResult(ok, cfg, feature = 'other') {
   if (ok) { breaker = { fails: 0, openUntil: 0, probing: false }; return; }
   breaker.fails += 1;
   breaker.probing = false;
-  if (breaker.fails >= cfg.breakerFailures) breaker.openUntil = Date.now() + cfg.breakerOpenSec * 1000;
+  if (breaker.fails >= cfg.breakerFailures) {
+    // aios: an OPENING is counted once, when the circuit goes from closed (or half-open) to open.
+    const wasOpen = !!breaker.openUntil && Date.now() < breaker.openUntil;
+    breaker.openUntil = Date.now() + cfg.breakerOpenSec * 1000;
+    if (!wasOpen) recordAi({ feature, provider: cfg.provider, outcome: 'breakerOpen' });
+  }
 }
 
 // ── Rate limits ─────────────────────────────────────────────────────────────────────────────
@@ -602,28 +624,36 @@ async function callExternalChat(cfg, ext, text, questions, signal) {
  * `run(cfg, text, signal)` does the provider call and the parsing; it throws on any failure.
  */
 async function pipeline({ surface, text: raw, userId, signal, keyParts, run, adminTest = false }) {
+  // aios (agent-bcw-ai-os): every exit is counted for the usage analytics — numbers and enum
+  // strings only (lib/ai-usage.mjs); the text never reaches the recorder.
+  const feature = usageFeature(surface, adminTest);
+  let prov = 'off';
+  const uid = typeof userId === 'string' && /^[a-z0-9]{8,40}$/i.test(userId) ? userId : null;
+  const note = (outcome, extra = {}) => recordAi({ feature, provider: prov, outcome, userId: uid, ...extra });
   try {
     const cfg = await aiLoadConfig();
-    if (cfg.killed) { bump('killed'); return { value: null, reason: 'disabled' }; }
+    prov = cfg.provider === 'laya' || cfg.provider === 'external' ? cfg.provider : 'off';
+    if (cfg.killed) { bump('killed'); note('killed'); return { value: null, reason: 'disabled' }; }
     // The admin screen's "test" box may run before the global switch and the surface toggle are
     // on (that is what it is for) — never past the kill switch, never with the provider off.
     const ready = adminTest ? providerReady(cfg, { ignoreEnabled: true }) : providerReady(cfg) && surfaceOn(cfg, surface);
     // followups (agent-bcw-followups): Laya picked but no key: say which, not just "off".
-    if (!ready && cfg.provider === 'laya' && !layaCheck().ok) { bump('disabled'); return { value: null, reason: 'unconfigured' }; }
-    if (!ready) { bump('disabled'); return { value: null, reason: 'disabled' }; }
+    if (!ready && cfg.provider === 'laya' && !layaCheck().ok) { bump('disabled'); note('disabled'); return { value: null, reason: 'unconfigured' }; }
+    if (!ready) { bump('disabled'); note('disabled'); return { value: null, reason: 'disabled' }; }
     if (signal?.aborted) return { value: null, reason: 'unavailable' };
     const text = typeof raw === 'string' ? toPlainText(raw, cfg.maxChars) : '';
     if (!text) return { value: null, reason: 'empty' };
     const key = cacheKey([cfg.provider, cfg.externalMode, surface, ...keyParts, text.toLowerCase().replace(/\s+/g, ' ')]);
     const hit = cacheGet(key, cfg.cacheTtlSec * 1000);
-    if (hit) { bump('cacheHit'); return { value: { ...hit, cached: true }, reason: null }; }
-    if (!(await rateAllows(cfg, userId))) { bump('rateLimited'); return { value: null, reason: 'rate_limited' }; }
-    if (!breakerAllows()) { bump('breakerOpen'); return { value: null, reason: 'busy' }; }
+    if (hit) { bump('cacheHit'); note('cacheHit'); return { value: { ...hit, cached: true }, reason: null }; }
+    if (!(await rateAllows(cfg, userId))) { bump('rateLimited'); note('rateLimited'); return { value: null, reason: 'rate_limited' }; }
+    if (!breakerAllows()) { bump('breakerOpen'); note('breakerRefused'); return { value: null, reason: 'busy' }; }
     const slot = await acquire(cfg, signal);
     if (!slot) {
       // A half-open probe that never ran must not wedge the breaker shut.
       breaker.probing = false;
       bump('dropped');
+      note('dropped');
       return { value: null, reason: 'busy' };
     }
     bump('calls');
@@ -635,22 +665,27 @@ async function pipeline({ surface, text: raw, userId, signal, keyParts, run, adm
       recordLatency(latencyMs);
       breakerResult(true, cfg);
       bump('ok');
+      // aios: the external provider bills by token and says nothing about it on /moderations:
+      // estimated at ~4 characters a token, for the cost line. Laya runs here and costs nothing.
+      note('ok', { latencyMs, tokensIn: prov === 'external' ? Math.ceil(text.length / 4) : 0 });
       lastOkAt = new Date().toISOString();
       const out = { provider: cfg.provider, ...value, latencyMs };
       cachePut(key, out, cfg.cacheTtlSec * 1000);
       return { value: out, reason: null };
     } catch (e) {
       recordLatency(Date.now() - t0);
-      breakerResult(false, cfg);
+      breakerResult(false, cfg, feature);
       const aborted = dl.signal.aborted;
-      fail(e, aborted ? 'timeout' : e?.message === 'bad_answer' || e instanceof SyntaxError ? 'badAnswer' : 'failed');
+      const kind = aborted ? 'timeout' : e?.message === 'bad_answer' || e instanceof SyntaxError ? 'badAnswer' : 'failed';
+      fail(e, kind);
+      note(kind, { latencyMs: Date.now() - t0 });
       return { value: null, reason: 'unavailable' };
     } finally {
       dl.clear();
       release();
     }
   } catch (e) {
-    try { fail(e); } catch { /* never throw */ }
+    try { fail(e); note('failed'); } catch { /* never throw */ }
     return { value: null, reason: 'unavailable' };
   }
 }

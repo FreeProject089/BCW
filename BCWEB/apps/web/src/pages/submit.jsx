@@ -9,6 +9,7 @@ import { useAuth } from './auth.jsx';
 import { api, uploadPayload } from '../lib/api.js';
 import { kindLabel, kindsFor, DOCUMENT_KINDS, DOCUMENT_KIND_FIELD, isDocumentKind, useAsync, CATALOG_PROJECTS } from './pages.jsx';
 import { TagPicker, ProjectPicker, projectId } from '../ui/catalog-pickers.jsx';
+import AiAssist from '../ui/ai-assist.jsx'; // aios (agent-bcw-ai-os)
 
 // BMM publishes automations as PRESET too — the same enum value BSM uses for an audio
 // preset, told apart by the project. Leaving it out of this list meant a BMM user had no
@@ -220,6 +221,11 @@ function OfficialSubmit({ onBack }) {
             <Field label={t('sub.version', 'Version')}><Input value={form.version} onChange={(e) => setForm({ ...form, version: e.target.value })} /></Field>
           </div>
           <Field label={t('sub.desc', 'Description')}><Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
+          {/* aios (agent-bcw-ai-os): optional helpers; drawn only when the site switched one on. */}
+          <AiAssist kind={String(kind || 'plugin').toLowerCase()} name={form.name} text={form.description}
+            tagOptions={vocab.map((x) => (typeof x === 'string' ? x : x?.key)).filter(Boolean)}
+            onTags={(list) => setTags((cur) => [...new Set([...(cur || []), ...list])].slice(0, 12))}
+            onDescription={(d) => setForm((f) => ({ ...f, description: d }))} />
           <Field label={t('sub.tags', 'Tags')} hint={t('sub.tags.h', 'Up to 12. They drive the tag filter of the catalogue.')}><TagPicker id="sub-tags" value={tags} onChange={setTags} tags={vocab} /></Field>
           <Field label={t('sub2.file', 'File')} hint={t('sub2.filehint', 'Drop a .bmmplug, theme/preset .json, or a whole catalog.json for bulk import. Uploaded files are auto-parsed.')}>
             <Input type="file" onChange={(e) => onFile(e.target.files?.[0] || null)} /></Field>
@@ -396,6 +402,8 @@ function HostCatalog({ onBack }) {
             </Select>
           </Field>
           <Field label={t('sub.desc', 'Description')}><Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={3} /></Field>
+          {/* aios (agent-bcw-ai-os) */}
+          <AiAssist kind="repo" name={form.name} text={form.description} onDescription={(d) => setForm((f) => ({ ...f, description: d }))} />
         </>)}
 
         {step === 1 && (<>

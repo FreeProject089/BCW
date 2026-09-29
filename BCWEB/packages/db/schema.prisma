@@ -302,6 +302,11 @@ model User {
   // theirs, erased with the account (closure.mjs anonymiseAccount deletes both explicitly).
   projectFollows       ProjectFollow[]
   feedToken            FeedToken?
+  // aios (agent-bcw-ai-os): the account's own AI key (BYOK, sealed at rest) and its daily AI
+  // usage counters. Both theirs, erased with the account (closure.mjs anonymiseAccount).
+  aiKey                AiUserKey?
+  aiUsage              AiUserUsageDay[]
+  // fin aios
 
   @@index([status])
   @@index([closedEmailHash])
@@ -5454,3 +5459,85 @@ model ModerationCase {
   @@index([resolvedAt])
 }
 // ── fin moderation (agent-moderation) ────────────────────────────────────────────────────
+
+// ── aios (agent-bcw-ai-os): AI usage analytics, per-user AI usage, BYOK keys ───────────────
+//
+// AGGREGATES ONLY. Not one row here holds a text that was sent to a model or an answer that
+// came back: the analytics answer "how much, how fast, how often it failed, what it cost",
+// never "what was said". lib/ai-usage.mjs buffers counts in memory and flushes them on a
+// timer (the lib/apiusage.mjs pattern), so a call never waits on a statistics write.
+
+/// One row per (day, feature, provider). `feature` is a moderation surface prefixed `mod:`
+/// (mod:contact…), a user or staff feature (suggest_tags, describe, summarize…) or `bmm_suggest`.
+/// `provider` is laya | external | byok | site. Latency percentiles are read from `latencyHist`,
+/// a fixed-bucket histogram (bounds in lib/ai-usage.mjs LAT_BOUNDS), so p50/p95 over any range
+/// is a sum of arrays rather than a scan of raw timings nobody keeps.
+model AiUsageDay {
+  id           String   @id @default(cuid())
+  day          DateTime @db.Date
+  feature      String
+  provider     String
+  calls        Int      @default(0)
+  ok           Int      @default(0)
+  failed       Int      @default(0)
+  timeout      Int      @default(0)
+  dropped      Int      @default(0)
+  rateLimited  Int      @default(0)
+  cacheHit     Int      @default(0)
+  /// How many times the circuit breaker OPENED (after N failures in a row) …
+  breakerOpen  Int      @default(0)
+  /// … and how many calls it then refused while open.
+  breakerRefused Int    @default(0)
+  killed       Int      @default(0)
+  disabled     Int      @default(0)
+  badAnswer    Int      @default(0)
+  latencySumMs BigInt   @default(0)
+  latencyHist  Int[]    @default([])
+  tokensIn     Int      @default(0)
+  tokensOut    Int      @default(0)
+  /// Estimated, from the per-million-token prices the admin typed (ai.features pricing).
+  costUsd      Float    @default(0)
+  /// A moderation decision the AI raised above what the rules alone decided.
+  changed      Int      @default(0)
+  /// A human said the AI was wrong (a case closed as false positive / dismissed while the AI
+  /// had flagged it, or a user pressing "this warning is wrong").
+  falsePositive Int     @default(0)
+  /// A human agreed with the AI (a case it flagged ended removed or sanctioned).
+  confirmed    Int      @default(0)
+
+  @@unique([day, feature, provider])
+  @@index([day])
+}
+
+/// Who used how much, per day and feature: the per-user daily quota and the admin's "top
+/// consumers". Counts only. Kept `ai.features.retentionDays` (default 90), then pruned.
+model AiUserUsageDay {
+  id       String   @id @default(cuid())
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId   String
+  day      DateTime @db.Date
+  feature  String
+  calls    Int      @default(0)
+  tokens   Int      @default(0)
+  costUsd  Float    @default(0)
+
+  @@unique([userId, day, feature])
+  @@index([day])
+}
+
+/// A member's own key for an OpenAI-compatible provider (BYOK). The key is SEALED (AES-256-GCM,
+/// lib/ai-keys.mjs) and never leaves the server again: routes return `keyLast4` and the host.
+model AiUserKey {
+  id         String    @id @default(cuid())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String    @unique
+  baseUrl    String
+  model      String    @default("")
+  /// The sealed envelope. Named *Secret so the export and every secret filter drop it by name.
+  keySecret  String
+  keyLast4   String    @default("")
+  lastUsedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+}
+// ── fin aios (agent-bcw-ai-os) ─────────────────────────────────────────────────────────────

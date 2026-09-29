@@ -24,6 +24,7 @@ import { useI18n } from '../../i18n.jsx';
 import { Badge } from '../ui.jsx';
 import { buildIndex, searchIndex } from '../palette-search.js';
 import { isMenuKey, menuPoint, spatialFocus } from './os-menu.jsx';
+import { OsBeta } from './os-mode.jsx'; // aios
 
 export const badgeOf = (tb) => (tb.badge || 0) + (tb.sub || []).reduce((a, lf) => a + (lf === tb || lf.id === tb.id ? 0 : (lf.badge || 0)), 0);
 
@@ -129,6 +130,7 @@ export default function OsLauncher({ title, icon: Icon, sections, leaves, search
         <div className="os-lx-head">
           {Icon && <span className="os-lx-logo"><Icon size={16} aria-hidden /></span>}
           <span className="font-semibold text-sm truncate" title={title}>{title}</span>
+          <OsBeta className="ms-auto shrink-0" />{/* aios: OS mode is a beta, and says so */}
         </div>
         <div className="os-lx-search">
           <Search size={15} aria-hidden className="text-[var(--faint)] shrink-0" />

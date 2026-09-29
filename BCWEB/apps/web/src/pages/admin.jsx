@@ -120,6 +120,8 @@ import { StudioLinksCard } from './admin-studio-links.jsx'; // studio phase 5 (a
 import { BmdHostsCard } from './admin-bmd-hosts.jsx'; // sec-infra: hosts live B.MD blocks may fetch (SECURITY_SUMMARY §9)
 import { AdminMediaFlags } from './admin-media-flags.jsx';
 import { AdminModeration } from './admin-moderation.jsx'; // moderation (agent-moderation)
+import { AdminOsModeCard } from './admin-os.jsx'; // aios (agent-bcw-ai-os): OS mode (beta), the site-wide switch
+const AiAdminPanel = lazy(() => import('../ui/ai-admin-panel.jsx')); // aios: AI usage, features, staff tools
 import ReplayPlayer from '../ui/ReplayPlayer.jsx';
 import { useAsync, Loading, useUndoableDelete, useUndoableToggle, useUndoableSave, useElementWidth, statusTone, KIND_ICON, KIND_LABEL, kindLabel, kindsFor, CATALOG_PROJECTS, csvCell, downloadCsv, toCsv, fmtRemaining, seededAvatar, SideDash, useThreadStream } from './pages.jsx';
 import { JsonEditor, highlightJson, highlightCode } from '../ui/code-highlight.jsx'; // M18 (agent-perf-M18): moved out of pages.jsx with Prism
@@ -306,6 +308,8 @@ export function Admin() {
         can('manage_reports') && { id: 'lookalikes', label: t('adm.tab.lookalikes', 'Lookalike pictures'), icon: ImageIcon },
         // moderation (agent-moderation): the moderation engine's queue, policies, rules and AI switch.
         (isMod || can('manage_moderation')) && { id: 'modqueue', label: t('adm.tab.modqueue', 'Moderation engine'), icon: ShieldAlert, badge: pc.moderation || undefined },
+        // aios (agent-bcw-ai-os): AI usage analytics, member and staff AI features, BYOK / site key.
+        can('manage_moderation') && { id: 'ai', label: t('adm.tab.ai', 'AI helpers'), icon: Sparkles },
         isMod && { id: 'messages', label: t('adm.tab.messages', 'Messages'), icon: Mail, badge: pc.contact || undefined },
         // Ideas from the contact form, apart from support (M24): read together, badged apart.
         isMod && { id: 'suggestions', label: t('adm.tab.suggestions', 'Suggestions'), icon: Lightbulb, badge: pc.suggestions || undefined },
@@ -536,6 +540,7 @@ export function Admin() {
         {s === 'suggestions' && <AdminMessagesScreen only="suggestion" />}
         {s === 'lookalikes' && <AdminMediaFlags />}
         {s === 'modqueue' && <AdminModeration canConfig={can('manage_moderation')} isAdmin={isAdmin} />}
+        {s === 'ai' && <Suspense fallback={<div className="grid place-items-center py-10"><Spinner /></div>}><AiAdminPanel isAdmin={isAdmin} /></Suspense>}
         {s === 'legal' && <AdminLegal />}
         {s === 'users' && <AdminUsers />}
         {s === 'maillog' && <AdminMailLog />}
@@ -593,7 +598,7 @@ export function Admin() {
         {s === 'navui' && <AdminNav />}
         {s === 'footer' && <AdminFooter />}
         {s === 'guide' && <AdminGuide />}
-        {s === 'settings' && <><AdminSettings /><StudioLinksCard /><BmdHostsCard /></>}
+        {s === 'settings' && <><AdminOsModeCard /><AdminSettings /><StudioLinksCard /><BmdHostsCard /></>}
         {s === 'sitetheme' && <AdminSiteTheme />}
       </>)}
     </SideDash>

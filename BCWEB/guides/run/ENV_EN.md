@@ -128,7 +128,8 @@ Moderation → AI provider), which greys the field.
 | `AI_TIMEOUT_MS` / `AI_CONCURRENCY` | force the per-call deadline (default 1500) and the calls at once (default 1). |
 | `AI_EXTERNAL_URL` | base of an OpenAI-compatible API, e.g. `https://api.example.com/v1`. https and public only. A **third party**: update the privacy policy first. |
 | `AI_EXTERNAL_KEY` | its key. **Secret.** Read from here only: never stored, logged or shown. |
-| `AI_EXTERNAL_ALLOW_PRIVATE` | `1` = allow http and private addresses, for a model you host on your own network. |
+| `AI_EXTERNAL_ALLOW_PRIVATE` | `1` = allow http and private addresses, for a model you host on your own network. Also applies to the keys typed into the site (members' own keys, the site key). |
+| `AI_KEYS_SECRET` | seals the AI keys stored in the database (members' own keys, the site key; [AI_FEATURES_EN.md](AI_FEATURES_EN.md)). **Secret.** Empty = derived from `JWT_SECRET`. Changing it makes every stored key unreadable: they must be typed again. |
 
 ## 12. Misc
 | Variable | Purpose |

@@ -21,6 +21,7 @@ import { Prisma } from '@prisma/client';
 import { logAudit, hasCap } from '../lib.mjs';
 import { issueSanction } from '../sanctions.mjs';
 import { KEYS, loadConfig, normalizeRules, saveSetting } from './config.mjs';
+import { recordAiEvent } from '../ai-usage.mjs'; // aios (agent-bcw-ai-os)
 
 export const ACTIONS = Object.freeze(['approve', 'release', 'remove', 'sanction', 'false_positive', 'dismiss']);
 
@@ -84,6 +85,16 @@ export function actionsFor(c) {
  * @param body   { note?, reason? (sanction), remove? (sanction), allowDomains? (false_positive) }
  * @returns { ok, case } | { error, status }
  */
+/** aios: did the AI flag this case (a label at 0.75 or more, the weight aiReasons gives), and
+ *  what does the moderator's action say about that? null = nothing to learn. Pure. */
+export function aiVerdict(ai, action) {
+  const labels = ai && typeof ai === 'object' && ai.labels && typeof ai.labels === 'object' ? Object.values(ai.labels) : [];
+  if (!labels.some((v) => Number(v) >= 0.75)) return null;
+  if (action === 'false_positive' || action === 'dismiss' || action === 'approve' || action === 'release') return 'falsePositive';
+  if (action === 'remove' || action === 'sanction') return 'confirmed';
+  return null;
+}
+
 export async function actOnCase(p, caseId, action, actor, body = {}, ip = '') {
   if (!ACTIONS.includes(action)) return { error: 'unknown_action', status: 400 };
   const c = await p.moderationCase.findUnique({ where: { id: caseId } });
@@ -125,6 +136,10 @@ export async function actOnCase(p, caseId, action, actor, body = {}, ip = '') {
     data: { ...patch, status: action === 'dismiss' ? 'dismissed' : 'resolved', resolution, resolverId: actor.uid, resolvedAt: new Date(), note: sanctionCode ? `${note ? `${note} · ` : ''}${sanctionCode}` : note },
   });
   await logAudit(p, actor.uid, `moderation.${action}`, `case=${c.id} surface=${c.surface} subject=${c.subjectType}:${c.subjectId}${sanctionCode ? ` sanction=${sanctionCode}` : ''}`, ip);
+  // aios (agent-bcw-ai-os): a human's verdict on a case the AI flagged is the AI's feedback —
+  // counted (never the text) so the dashboard can show how often it was right.
+  const verdict = aiVerdict(c.ai, action);
+  if (verdict) recordAiEvent(`mod:${c.surface}`, verdict, c.ai?.provider);
   return { ok: true, case: updated, sanctionCode };
 }
 

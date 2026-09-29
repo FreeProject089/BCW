@@ -10,7 +10,7 @@ import { useI18n } from '../../i18n.jsx';
 import { Card, Select, Button, useToast } from '../ui.jsx';
 import { useAuth } from '../../pages/auth.jsx';
 import { canAdmin } from '../../lib/roles.js';
-import { useOsPrefs, clearOsLayout, OS_MIN_WIDTH } from './os-mode.jsx';
+import { useOsPrefs, clearOsLayout, OS_MIN_WIDTH, useOsSiteEnabled, OsBeta } from './os-mode.jsx';
 
 function Toggle({ on, onChange, label }) {
   return (
@@ -39,7 +39,8 @@ export function OsModeSettingsCard({ className = '' }) {
   const { user } = useAuth();
   const toast = useToast();
   const { uid, prefs, set } = useOsPrefs();
-  if (!user) return null;
+  const site = useOsSiteEnabled(); // aios: switched off site-wide = no card (the preference is kept)
+  if (!user || !site) return null;
   const admin = canAdmin(user);
   const reset = () => {
     clearOsLayout('dashboard', uid);
@@ -51,10 +52,12 @@ export function OsModeSettingsCard({ className = '' }) {
       <div className="flex items-center gap-2.5 mb-2 pb-2.5 border-b border-[var(--line)]">
         <span className="grid place-items-center w-7 h-7 rounded-lg tint-primary border b-primary shrink-0"><AppWindow size={14} className="text-[var(--accent-ink)]" /></span>
         <span className="text-sm font-semibold">{t('os.set.t', 'Dashboards: OS mode')}</span>
+        <OsBeta />
       </div>
       <p className="text-xs text-[var(--muted)] mb-1">
         {t('os.set.s', 'Show a dashboard as a desktop: each screen opens in a window you can move, resize, minimise and put side by side, with a taskbar and a start menu that searches. Classic stays the default. Screens narrower than {w}px always use the classic layout.').replace('{w}', String(OS_MIN_WIDTH))}
       </p>
+      <p className="text-xs text-[var(--muted)] mb-1">{t('os.set.beta', 'OS mode is a beta: it may still change, and the site can switch it off. Your layouts stay in this browser either way.')}</p>
       <Row icon={LayoutDashboard} title={t('os.set.dash', 'My dashboard')}>
         <Toggle on={prefs.dashboard} onChange={(v) => set({ dashboard: v })} label={t('os.set.dash', 'My dashboard')} />
       </Row>

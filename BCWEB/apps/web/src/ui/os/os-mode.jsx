@@ -16,6 +16,7 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import { AppWindow } from 'lucide-react';
 import { useI18n } from '../../i18n.jsx';
 import { useAuth } from '../../pages/auth.jsx';
+import { api } from '../../lib/api.js';
 
 const PREF_PREFIX = 'bcw.os.v1:';
 const LAYOUT_PREFIX = 'bcw.os.layout.v1:';
@@ -70,6 +71,44 @@ const wideNow = () => {
   try { return window.matchMedia(`(min-width: ${OS_MIN_WIDTH}px)`).matches; } catch { return true; }
 };
 
+// aios (agent-bcw-ai-os): the SITE-WIDE switch. OS mode is a beta, and an admin can turn it
+// off for everybody (Admin > Site settings > OS mode, AdminSetting `os.enabled`, served by
+// GET /site/features). When it is off the preference is kept but IGNORED: no switch in the
+// headers, no card in Settings, no shell, no OS shortcuts. One probe per load, shared by every
+// caller, refreshed every five minutes so a long-open admin tab follows the switch. Until the
+// answer arrives the mode is treated as available, exactly as before this switch existed:
+// failing closed on a network blip would flash every OS user back to the classic layout.
+let siteProbe = null;
+let siteState = { known: false, enabled: true };
+const SITE_EVENT = 'bcw:os-site-changed';
+export function probeOsSite(force = false) {
+  if (!siteProbe || force) {
+    siteProbe = api.get('/site/features')
+      .then((d) => { siteState = { known: true, enabled: d?.os?.enabled !== false }; })
+      .catch(() => { siteState = { known: true, enabled: siteState.enabled }; })
+      .then(() => { try { window.dispatchEvent(new CustomEvent(SITE_EVENT)); } catch { /* no window */ } return siteState.enabled; });
+  }
+  return siteProbe;
+}
+/** Tell this tab the admin just flipped the switch (the admin screen calls it after saving). */
+export function setOsSiteEnabled(on) {
+  siteState = { known: true, enabled: !!on };
+  siteProbe = Promise.resolve(!!on);
+  try { window.dispatchEvent(new CustomEvent(SITE_EVENT)); } catch { /* no window */ }
+}
+function subscribeSite(cb) {
+  if (typeof window === 'undefined') return () => {};
+  probeOsSite();
+  window.addEventListener(SITE_EVENT, cb);
+  const id = setInterval(() => probeOsSite(true), 5 * 60_000);
+  return () => { window.removeEventListener(SITE_EVENT, cb); clearInterval(id); };
+}
+/** Is OS mode allowed on this site at all? true until the site says otherwise. */
+export function useOsSiteEnabled() {
+  return useSyncExternalStore(subscribeSite, () => siteState.enabled, () => true);
+}
+// fin aios
+
 /** Is the screen wide enough for the OS mode? Live: rotating a tablet switches. */
 export function useOsWide() {
   return useSyncExternalStore(subscribeWide, wideNow, () => true);
@@ -97,19 +136,35 @@ export function useOsPrefs() {
 export function useOsMode(scope) {
   const { uid, prefs, set } = useOsPrefs();
   const wide = useOsWide();
-  const on = !!scope && prefs[scope] === true;
-  return { uid, on, wide, active: on && wide, wallpaper: prefs.wallpaper, prefs, setPrefs: set, set: (v) => scope && set({ [scope]: !!v }), setWallpaper: (w) => set({ wallpaper: w }) };
+  const site = useOsSiteEnabled(); // aios: off site-wide = off, whatever the preference says
+  const on = !!scope && site && prefs[scope] === true;
+  return { uid, on, wide, site, active: on && wide, wallpaper: prefs.wallpaper, prefs, setPrefs: set, set: (v) => scope && set({ [scope]: !!v }), setWallpaper: (w) => set({ wallpaper: w }) };
 }
 
-/** The header switch. Hidden below 768px, where the mode cannot be on. */
+/** The BETA mark (aios): OS mode is a beta, and says so wherever it can be switched on. */
+export function OsBeta({ className = '' }) {
+  const { t } = useI18n();
+  return (
+    <span className={`inline-flex items-center px-1.5 py-px rounded-md text-[10px] font-semibold uppercase tracking-wide border b-primary tint-primary text-[var(--accent-ink)] ${className}`}
+      title={t('os.beta.title', 'A beta: it works, it may still change, and the classic layout is always one click away.')}>
+      {t('os.beta', 'Beta')}
+    </span>
+  );
+}
+
+/** The header switch. Hidden below 768px, where the mode cannot be on, and when the site has
+ *  switched OS mode off (aios). */
 export function OsModeSwitch({ on, onChange, className = '' }) {
   const { t } = useI18n();
+  const site = useOsSiteEnabled();
+  if (!site) return null;
   return (
     <button type="button" role="switch" aria-checked={on} onClick={() => onChange(!on)}
       title={t('os.switch.title', 'Show this dashboard as a desktop with windows, a taskbar and a start menu. Classic stays the default.')}
       className={`hidden md:inline-flex items-center gap-2 px-3 py-2 rounded-xl text-sm border border-[var(--control-border)] bg-[var(--surface-2)] hover:bg-[var(--surface-3)] transition-colors press ${className}`}>
       <AppWindow size={15} className="text-[var(--accent-ink)] shrink-0" aria-hidden />
       <span className="whitespace-nowrap">{t('os.switch', 'OS mode')}</span>
+      <OsBeta />
       <span aria-hidden className={`relative w-8 h-[18px] rounded-full shrink-0 transition-colors ${on ? 'bg-[var(--primary)]' : 'bg-[var(--surface-3)] border border-[var(--line-strong)]'}`}>
         <span className={`absolute top-[2px] left-[2px] w-[14px] h-[14px] rounded-full bg-white shadow transition-transform ${on ? 'translate-x-[14px]' : ''}`} />
       </span>

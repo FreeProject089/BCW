@@ -32,6 +32,7 @@ import { runPatterns } from './patterns.mjs';
 import { heuristics } from './heuristics.mjs';
 import { floodReasons, ipKey } from './flood.mjs';
 import { authorFacts, trustReasons } from './trust.mjs';
+import { recordAiEvent } from '../ai-usage.mjs'; // aios (agent-bcw-ai-os): "decisions changed by AI", a count
 
 const MAX_TEXT = 20000;
 
@@ -218,7 +219,11 @@ export async function moderate(surface, input = {}, opts = {}) {
       if (ai) {
         const list = aiReasons(ai);
         reasons = [...reasons, ...list];
+        const before = rawDecision;
         rawDecision = withAi(rawDecision, score, list, policy);
+        // aios: the AI moved the decision above the rules' own. Not counted for the admin's
+        // dry-run test box, which decides nothing.
+        if (!dryRun && rank(rawDecision) > rank(before)) recordAiEvent(`mod:${surface}`, 'changed', ai.provider);
       }
     } else if (aiOk) aiPending = true;
 
@@ -271,6 +276,7 @@ async function laterAi(p, mod, ctx) {
   if (!ai) return;
   const list = aiReasons(ai);
   const raised = withAi(ctx.rawDecision, ctx.score, list, ctx.policy);
+  if (rank(raised) > rank(ctx.rawDecision)) recordAiEvent(`mod:${ctx.surface}`, 'changed', ai.provider); // aios
   const { decision, status } = applyMode(raised, ctx.policy);
   const reasons = [...ctx.reasons, ...list];
   if (ctx.caseId) {

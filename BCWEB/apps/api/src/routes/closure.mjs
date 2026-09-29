@@ -554,6 +554,9 @@ export async function anonymiseAccount(p, user, { removeObject = deleteObject } 
     // followed (a list of interests, and no longer anybody's).
     p.feedToken.deleteMany({ where: { userId: user.id } }).catch(() => {}),
     p.projectFollow.deleteMany({ where: { userId: user.id } }).catch(() => {}),
+    // aios (agent-bcw-ai-os): their own AI key (sealed) and their daily AI counts.
+    p.aiUserKey.deleteMany({ where: { userId: user.id } }).catch(() => {}),
+    p.aiUserUsageDay.deleteMany({ where: { userId: user.id } }).catch(() => {}),
     // Outstanding reset and confirmation tokens (F23-2 residual). Hashed and single-use, but a
     // row that outlives the account is a way back in written down; nothing needs them now.
     p.passwordReset.deleteMany({ where: { userId: user.id } }).catch(() => {}),

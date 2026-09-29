@@ -1,7 +1,7 @@
 import { safeHref } from '../lib/safe-href.js';
 import { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { BadgeCheck, Lock, Cookie, Palette, Shield, CheckCircle2, XCircle, Eye, Globe, Mail, Orbit, Package, Server, ShieldCheck, Users, Activity, Box, Clapperboard, Moon, Sun, Play, PartyPopper, SprayCan, MousePointerClick, Settings as SettingsIcon, Undo2, LogOut, AlertTriangle, FileText } from 'lucide-react';
+import { BadgeCheck, Lock, Cookie, Palette, Shield, CheckCircle2, XCircle, Eye, Globe, Mail, Orbit, Package, Server, ShieldCheck, Users, Activity, Box, Clapperboard, Moon, Sun, Play, PartyPopper, SprayCan, MousePointerClick, Settings as SettingsIcon, Undo2, LogOut, AlertTriangle, FileText, Download, AppWindow, Keyboard } from 'lucide-react';
 import { Button, Card, Explain, PageHeader, Select, Spinner, useToast, useDialog } from '../ui/ui.jsx';
 import { fxPref, setFxPref, prefersReducedMotion } from '../lib/fx-pref.js';
 import { useI18n } from '../i18n.jsx';
@@ -15,6 +15,8 @@ import { SKIP_KEY } from '../ui/IntroContext.jsx';
 import { InstallAppCard } from '../ui/pwa-install.jsx';
 import { ShortcutsCard } from '../ui/shortcuts.jsx';
 import { OsModeSettingsCard } from '../ui/os/os-settings.jsx'; // M1 OS mode
+import { useOsSiteEnabled } from '../ui/os/os-mode.jsx'; // aios (agent-bcw-ai-os)
+import AiAccountCard from '../ui/ai-account-card.jsx'; // aios (agent-bcw-ai-os): AI helpers + own key (BYOK)
 
 /* ──────────────  BMM telemetry: my data (GDPR export / erasure)  ────────────── */
 // Only for a signed-in account with at least one linked BMM install (creator id). The
@@ -96,6 +98,21 @@ export function Settings() {
   const [logoutConfirm, setLogoutConfirmState] = useState(() => getLogoutConfirm());
   const [forceConfirm, setForceConfirmState] = useState(() => getForceConfirm());
   const [draftsOff, setDraftsOff] = useState(() => getDraftsDisabled());
+  // bcwvisual (agent-bcw-visual) : section en vue, pour le sommaire.
+  const { user: authUser } = useAuth();
+  const osSite = useOsSiteEnabled(); // aios (agent-bcw-ai-os): OS mode switched off site-wide
+  const [active, setActive] = useState('set-appearance');
+  useEffect(() => {
+    if (typeof IntersectionObserver === 'undefined') return undefined;
+    const ids = ['set-appearance', 'set-motion', 'set-actions', 'set-privacy', 'install-app', 'os-mode', 'shortcuts'];
+    const io = new IntersectionObserver((entries) => {
+      const seen = entries.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+      if (seen[0]) setActive(seen[0].target.id);
+    }, { rootMargin: '-20% 0px -65% 0px' });
+    ids.forEach((id) => { const el = document.getElementById(id); if (el) io.observe(el); });
+    return () => io.disconnect();
+  }, [authUser]);
+  // fin bcwvisual
 
   const setFx = (v) => { setFxState(v); setFxPref(v); };
   const setIntro = (skip) => { setSkipIntro(skip); try { skip ? localStorage.setItem(SKIP_KEY, '1') : localStorage.removeItem(SKIP_KEY); } catch {} };
@@ -132,22 +149,26 @@ export function Settings() {
   //
   // `stack` gives the control its own line, for the one row whose control is not a switch but
   // a list of buttons per linked install.
+  // bcwvisual (agent-bcw-visual) : une ligne = une petite icône grise (plus de pastille
+  // encadrée), le nom, le contrôle aligné à droite ; l'explication dessous, alignée sur le nom.
+  // Hauteur minimale commune pour que toutes les lignes aient le même rythme.
   const Row = ({ icon: Icon, title, desc, more, stack = false, children }) => (
-    <div className="py-3 border-b border-[var(--line)] last:border-0">
-      <div className="flex items-center gap-3">
-        <span className="grid place-items-center w-9 h-9 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] shrink-0"><Icon size={16} className="text-[var(--accent-ink)]" /></span>
+    <div className="py-3.5 border-b border-[var(--line)] last:border-0">
+      <div className="flex items-center gap-3 min-h-[40px]">
+        <Icon size={16} className="text-[var(--muted)] shrink-0" aria-hidden="true" />
         <div className="flex-1 min-w-0 text-sm font-medium">{title}</div>
         {!stack && <div className="shrink-0">{children}</div>}
       </div>
       {(desc || more) && (
-        <div className="ps-12 mt-0.5 space-y-0.5">
-          {desc && <div className="text-xs text-[var(--muted)]">{desc}</div>}
+        <div className="ps-7 space-y-0.5">
+          {desc && <div className="text-xs text-[var(--muted)] leading-relaxed">{desc}</div>}
           {more && <Explain className="text-xs">{more}</Explain>}
         </div>
       )}
-      {stack && <div className="ps-12 mt-2">{children}</div>}
+      {stack && <div className="ps-7 mt-2">{children}</div>}
     </div>
   );
+  // fin bcwvisual
   const Switch = ({ on, onChange }) => (
     <button onClick={() => onChange(!on)} className={`tap-44 relative w-10 h-6 rounded-full transition shrink-0 ${on ? 'bg-[var(--primary)]' : 'bg-[var(--surface-2)] border border-[var(--line)]'}`} role="switch" aria-checked={on}>
       <span className={`absolute left-0.5 top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${on ? 'translate-x-[16px]' : 'translate-x-0'}`} />
@@ -156,24 +177,61 @@ export function Settings() {
 
   // A titled card — one settings group. Its icon chip gives the page a consistent rhythm
   // instead of four differently-weighted headers.
-  const Group = ({ icon: Icon, title, children, className = '' }) => (
-    <Card className={`p-4 sm:p-5 ${className}`}>
-      <div className="flex items-center gap-2.5 mb-2 pb-2.5 border-b border-[var(--line)]">
-        <span className="grid place-items-center w-7 h-7 rounded-lg tint-primary border b-primary shrink-0"><Icon size={14} className="text-[var(--accent-ink)]" /></span>
-        <span className="text-sm font-semibold">{title}</span>
-      </div>
+  // bcwvisual (agent-bcw-visual) : chaque groupe porte un id (cible du sommaire) et un vrai titre h2.
+  const Group = ({ id, icon: Icon, title, children, className = '' }) => (
+    <Card className={`p-4 sm:p-5 scroll-mt-24 ${className}`} id={id}>
+      <h2 className="flex items-center gap-2.5 mb-1 pb-2.5 border-b border-[var(--line)] text-sm font-semibold">
+        <span className="grid place-items-center w-7 h-7 rounded-lg tint-primary border b-primary shrink-0"><Icon size={14} className="text-[var(--accent-ink)]" aria-hidden="true" /></span>
+        {title}
+      </h2>
       {children}
     </Card>
   );
 
-  return (
-    <div className="max-w-4xl mx-auto">
-      <PageHeader icon={SettingsIcon} title={t('set.title', 'Settings')} subtitle={t('set.sub', 'Your device preferences, saved on this browser only.')} />
+  // Le sommaire : colonne collante à gauche sur grand écran, rangée défilante en haut sur
+  // téléphone. Il ne liste que les sections réellement affichées (le mode OS n'existe que
+  // connecté).
+  const sections = [
+    ['set-appearance', Palette, t('set.appearance', 'Appearance')],
+    ['set-motion', Clapperboard, t('set.motion', 'Motion & effects')],
+    ['set-actions', MousePointerClick, t('set.behaviour', 'Actions')],
+    ['set-privacy', Lock, t('set.privacy', 'Cookies & privacy')],
+    ['install-app', Download, t('pwa.set.t', 'Install the app')],
+    ...(authUser && osSite ? [['os-mode', AppWindow, t('set.nav.os', 'OS mode')]] : []), // aios: no link to a card the site switched off
+    ['shortcuts', Keyboard, t('sc.overlay.t', 'Keyboard shortcuts')],
+  ];
+  const go = (id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    setActive(id);
+    el.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'start' });
+  };
+  // fin bcwvisual
 
-      {/* Two columns on desktop so the page uses the width instead of a long narrow strip;
-          stacks on mobile. items-start keeps each card its own height (no stretched gaps). */}
-      <div className="grid gap-4 lg:grid-cols-2 items-start">
-        <Group icon={Palette} title={t('set.appearance', 'Appearance')}>
+  return (
+    <div className="max-w-5xl mx-auto">
+      <PageHeader icon={SettingsIcon} title={t('set.title', 'Settings')} subtitle={t('set.sub2', 'Saved on this browser only.')} />
+
+      {/* bcwvisual (agent-bcw-visual) : une seule colonne de sections, lisible de haut en bas,
+          avec un sommaire collant à gauche dès lg ; sur téléphone, le sommaire est une rangée
+          qui défile en haut. Remplace la grille à deux colonnes où l'ordre de lecture sautait
+          d'une carte à l'autre. */}
+      <div className="grid gap-6 lg:grid-cols-[13rem_minmax(0,1fr)] items-start">
+        <nav aria-label={t('set.nav', 'Settings sections')} className="min-w-0 lg:sticky lg:top-24">
+          <ul className="flex lg:flex-col gap-1 overflow-x-auto lg:overflow-visible -mx-1 px-1 pb-1 lg:pb-0 [scrollbar-width:thin]">
+            {sections.map(([id, I, label]) => (
+              <li key={id} className="shrink-0">
+                <button type="button" onClick={() => go(id)} aria-current={active === id ? 'true' : undefined}
+                  className={`w-full flex items-center gap-2 rounded-lg px-3 min-h-[40px] text-sm text-start whitespace-nowrap transition-colors ${active === id ? 'bg-[var(--surface-2)] text-[var(--text)] font-semibold' : 'text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)]'}`}>
+                  <I size={15} className="shrink-0" aria-hidden="true" />{label}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </nav>
+        <div className="grid gap-4 min-w-0">
+        {/* fin bcwvisual */}
+        <Group id="set-appearance" icon={Palette} title={t('set.appearance', 'Appearance')}>
           <Row icon={theme === 'dark' ? Moon : Sun} title={t('set.theme', 'Theme')} desc={t('set.theme.d', 'Light or dark, applies instantly.')}>
             <Select value={theme} onChange={(e) => { if (e.target.value !== theme) toggleTheme(); }} className="!w-auto"><option value="light">{t('set.light', 'Light')}</option><option value="dark">{t('set.dark', 'Dark')}</option></Select>
           </Row>
@@ -190,12 +248,12 @@ export function Settings() {
               <span className="text-xs font-medium tabular-nums w-10 text-end">{glass.pct}%</span>
             </div>
           )}
-          <Row icon={SprayCan} title={t('set.texture.t2', 'Card grain')} desc={t('set.texture.d4', 'A light grain on a few large cards (the home page calls to action, the charity card). Never on the page background, the footer, text-heavy panels, tables or fields.')}>
+          <Row icon={SprayCan} title={t('set.texture.t2', 'Card grain')} desc={t('set.texture.d5', 'A light grain on a few large cards, never behind text.')}>
             <Switch on={texture !== 'off'} onChange={(v) => { const next = v ? 'on' : 'off'; setTextureState(next); setTexturePref(next); }} />
           </Row>
         </Group>
 
-        <Group icon={Clapperboard} title={t('set.motion', 'Motion & effects')}>
+        <Group id="set-motion" icon={Clapperboard} title={t('set.motion', 'Motion & effects')}>
           <Row icon={Play} title={t('set.intro', 'Intro animation')} desc={t('set.intro.d', 'Play the orb intro on each page load.')}>
             <Switch on={!skipIntro} onChange={(v) => setIntro(!v)} />
           </Row>
@@ -226,7 +284,7 @@ export function Settings() {
           </Row>
         </Group>
 
-        <Group icon={MousePointerClick} title={t('set.behaviour', 'Actions')}>
+        <Group id="set-actions" icon={MousePointerClick} title={t('set.behaviour', 'Actions')}>
           <Row icon={Undo2} title={t('set.undo', 'Undo window')} more={t('set.undo.d', 'Saving, publishing and deleting wait a few seconds behind an “Undo” toast, so a mistake costs nothing. Turn this off to apply every action immediately.')}>
             <Switch on={!undoOff} onChange={(v) => setUndo(!v)} />
           </Row>
@@ -243,7 +301,7 @@ export function Settings() {
           </Row>
         </Group>
 
-        <Group icon={Lock} title={t('set.privacy', 'Cookies & privacy')}>
+        <Group id="set-privacy" icon={Lock} title={t('set.privacy', 'Cookies & privacy')}>
           <Row icon={Cookie} title={t('set.cookies', 'Analytics cookies')} desc={t('set.cookies.d', 'Essential keeps you signed in; All also enables privacy-friendly, first-party page analytics.')}>
             <Select value={consent} onChange={(e) => setCookie(e.target.value)} className="!w-auto"><option value="essential">{t('set.essential', 'Essential only')}</option><option value="all">{t('set.all', 'Accept all')}</option></Select>
           </Row>
@@ -254,8 +312,10 @@ export function Settings() {
         </Group>
 
         <InstallAppCard />
-        <OsModeSettingsCard />
-        <ShortcutsCard className="lg:col-span-2" />
+        <OsModeSettingsCard className="scroll-mt-24" />
+        <AiAccountCard className="scroll-mt-24" />
+        <ShortcutsCard className="scroll-mt-24" />
+        </div>
       </div>
     </div>
   );

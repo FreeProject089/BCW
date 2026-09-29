@@ -55,6 +55,7 @@ const pem = (kind, body) => ['-----BEGIN ', kind, '-----\n', body, '\n-----END '
 const S = {
   botToken: ['MTA3NjQ1Njc4OTAxMjM0NTY3OA', 'GhYt9x', 'FAKEfakeFAKEfakeFAKEfakeFAKEfake12'].join('.'),
   kofiToken: 'kofi-verification-FAKE-0f1e2d3c',
+  aiSiteKeyEnvelope: '{"shred":1,"userId":"site","iv":"FAKEivFAKEiv","tag":"FAKEtagFAKEtagFAKEtag==","data":"FAKEaiSiteKeyCiphertext0123456789"}',
   signingPem: pem('PRIVATE KEY', 'MC4CAQAwBQYDK2VwBCIEIFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKE'),
   attestPem: pem('EC PRIVATE KEY', 'MHcCAQEEIFAKEattestationFAKEattestationFAKEattestation0123'),
   codegraphSecret: 'cg-webhook-FAKE-secret-value',
@@ -80,6 +81,8 @@ function seededInstall() {
   set(p, 'kofi.token', { token: S.kofiToken });
   set(p, 'backup.signingKey', { privateKey: S.signingPem, publicKey: 'pub', createdAt: '2026-01-01' });
   set(p, 'identity.attestation.privateKeyPem', S.attestPem);
+  // aios (agent-bcw-ai-os): the AI site key, a sealed envelope. Its ciphertext must not travel either.
+  set(p, 'ai.siteKey', { baseUrl: 'https://api.example.com/v1', model: 'm', keySecret: S.aiSiteKeyEnvelope, last4: 'abcd' });
   // 2. A nested secret field beside a harmless one.
   set(p, 'codegraph.settings.bmm', { url: 'https://github.com/x/y', secret: S.codegraphSecret });
   // 3. Secret-shaped values in free-form config, under innocent names.

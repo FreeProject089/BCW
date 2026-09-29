@@ -216,8 +216,9 @@ In `.env` (a value set here **wins** over the admin screen, which greys the fiel
 - **External API**: the checked text goes to **a third party**, under their terms and in their
   country. **Before switching it on**, the privacy policy must name that provider, what is sent
   and why (legitimate interest in moderation), and the data-processing agreement with them must
-  exist. The legal pages do not say this today because the option is off: a feature that ships
-  silently falsifies them, so update them in the same change that turns it on.
+  exist. The privacy policy's processor list says "an AI provider, only if we switch one on";
+  when you do, add its name there in the same change that turns it on, because a feature that
+  ships silently falsifies the legal pages.
 
 ## 9. When something looks wrong
 
@@ -251,3 +252,17 @@ model preloaded, its HEALTHCHECK answering.
 figure and the latency on your CPU are estimates until you run
 `docker compose --profile ai up -d` and watch it once. The Laya answer format was read from the
 package source (laya 0.3.21, `laya/serve.py`), not observed live.
+
+## 11. Usage analytics, and what is built on this layer (aios)
+
+Every call through this layer is now counted, per day, surface and provider: calls, failures,
+timeouts, a latency histogram (p50 / p95), cache hits, rate-limited and dropped calls, breaker
+openings and the calls it refused, tokens and an estimated cost for the external provider. Also
+counted: the decisions the AI raised above the rules, and how often a moderator's verdict agreed
+with it (a flagged case removed or sanctioned) or not (closed as a false positive or dismissed).
+**Counts only**: no text, excerpt or hash of a text is stored. The status box above still shows
+the live, in-memory figures of this process; the dashboard shows the stored history.
+
+The dashboard, the member helpers (tag and language suggestions, the check before posting,
+description drafts), members' own keys, the site key and the staff tools are documented in
+[AI_FEATURES_EN.md](AI_FEATURES_EN.md): **Admin → Moderation → AI helpers**.

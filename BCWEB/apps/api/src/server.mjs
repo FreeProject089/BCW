@@ -103,6 +103,8 @@ import releaseAnnounceRoutes from './routes/release-announce.mjs'; // prerelease
 import notifyRoutes from './routes/notify.mjs'; // notify (agent-notify): feeds, follows, the admin composer
 import bmmLaunchRoutes from './routes/bmm-launch.mjs'; // notify (agent-notify): the BMM launch feed
 import aiRoutes from './routes/ai.mjs'; // laya (agent-laya-bcweb): the optional AI provider layer's doors
+import aiFeatureRoutes from './routes/ai-features.mjs'; // aios (agent-bcw-ai-os): member + staff AI features, BYOK, usage analytics, /site/features
+import { flushAiUsage } from './lib/ai-usage.mjs'; // aios
 import moderationRoutes from './routes/moderation.mjs'; // moderation (agent-moderation): the rules-first moderation engine's queue and settings
 import { recordRequest } from './lib/monitor.mjs';
 import { registerApiUsageHook, flushApiUsage } from './lib/apiusage.mjs';
@@ -473,6 +475,7 @@ await app.register(releaseAnnounceRoutes); // prerelease (agent-prerelease)
 await app.register(notifyRoutes); // notify (agent-notify)
 await app.register(bmmLaunchRoutes); // notify (agent-notify)
 await app.register(aiRoutes); // laya (agent-laya-bcweb): /admin/ai, /ai/bmm/suggest, /bot/ai/automod (lib/moderation/ai.mjs)
+await app.register(aiFeatureRoutes); // aios (agent-bcw-ai-os): /ai/*, /admin/ai/{usage,features,site-key,triage,summarize,duplicates,crash-clusters}, /site/features
 await app.register(moderationRoutes); // moderation (agent-moderation): /admin/moderation/*, /bot/moderation/check
 await app.register(statusRoutes); // public status page: service uptime, incidents, alert sign-up
 await app.register(codeWebhookRoutes); // encapsulated: raw-body for the GitHub HMAC
@@ -562,6 +565,7 @@ async function shutdown(signal) {
     // After close, so the last requests are counted: the flush is buffered work, and the
     // whole point of draining is that those calls really happened.
     try { await flushApiUsage(); } catch { /* statistics are not worth blocking an exit */ }
+    try { await flushAiUsage(); } catch { /* aios: same for the AI counts */ }
     try { await (await db()).$disconnect(); } catch { /* already gone */ }
     try { await getRedis()?.quit(); } catch { /* already gone */ }
     clearTimeout(hard);

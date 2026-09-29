@@ -12,6 +12,7 @@ import {
   setBinding, setCapturing, setHandlers, siteKeysPaused, takeBinding, validateCombo, visibleTo,
 } from '../lib/shortcuts.js';
 import './shortcuts.css';
+import { useOsSiteEnabled } from './os/os-mode.jsx'; // aios (agent-bcw-ai-os)
 
 // How long Alt has to be HELD, alone, before the overlay appears. Long enough that Alt+Tab and
 // a quick Alt+H never flash it, short enough that holding it to look feels immediate.
@@ -225,6 +226,7 @@ const REASONS = {
 export function ShortcutsCard({ className = '' }) {
   const { t } = useI18n();
   const { user } = useAuth();
+  const osSite = useOsSiteEnabled(); // aios: OS mode switched off site-wide = its keys are not listed
   const uid = uidOf(user);
   const overrides = useOverrides(uid);
   const touchOnly = useTouchOnly();
@@ -280,7 +282,7 @@ export function ShortcutsCard({ className = '' }) {
       <div className="sc-set-cols">
         {GROUPS.map(([g, label]) => {
           const list = rows.filter((s) => s.group === g);
-          if (!list.length) return null;
+          if (!list.length || (g === 'os' && !osSite)) return null;
           return (
             <section key={g}>
               <h3 className="sc-group-t mt-2">{g === 'page' ? t('sc.g.docs', 'In the documentation') : label(t)}</h3>

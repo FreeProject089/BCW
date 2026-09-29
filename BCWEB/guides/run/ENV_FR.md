@@ -128,7 +128,8 @@ Tout vide = IA éteinte, règles seules. Une valeur fixée ici **l'emporte** sur
 | `AI_TIMEOUT_MS` / `AI_CONCURRENCY` | forcer le délai par appel (1500 par défaut) et les appels simultanés (1 par défaut). |
 | `AI_EXTERNAL_URL` | base d'une API compatible OpenAI, par ex. `https://api.example.com/v1`. https et publique seulement. Un **tiers** : mettre d'abord à jour la politique de confidentialité. |
 | `AI_EXTERNAL_KEY` | sa clé. **Secret.** Lue ici seulement : jamais stockée, journalisée ni affichée. |
-| `AI_EXTERNAL_ALLOW_PRIVATE` | `1` = autoriser http et les adresses privées, pour un modèle hébergé sur ton propre réseau. |
+| `AI_EXTERNAL_ALLOW_PRIVATE` | `1` = autoriser http et les adresses privées, pour un modèle hébergé sur ton propre réseau. Vaut aussi pour les clés saisies sur le site (clés des membres, clé du site). |
+| `AI_KEYS_SECRET` | scelle les clés IA stockées en base (clés des membres, clé du site ; [AI_FEATURES_FR.md](AI_FEATURES_FR.md)). **Secret.** Vide = dérivé de `JWT_SECRET`. Le changer rend toutes les clés stockées illisibles : il faut les ressaisir. |
 
 ## 12. Divers
 | Variable | Rôle |
