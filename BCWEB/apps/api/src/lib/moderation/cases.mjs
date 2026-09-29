@@ -43,7 +43,15 @@ const ADAPTERS = {
     async remove(p, c) { await p.contactMessage.updateMany({ where: { id: c.subjectId }, data: { status: 'read', readAt: new Date() } }); return {}; },
   },
   thread_message: {
-    async release(p, c) { await p.contactThreadMessage.updateMany({ where: { id: c.subjectId }, data: { hidden: false } }); return {}; },
+    async release(p, c) {
+      await p.contactThreadMessage.updateMany({ where: { id: c.subjectId }, data: { hidden: false } });
+      // followups (agent-bcw-followups): the hold told nobody, so the release must. A held first
+      // message also opens its thread (routes/threads.mjs `held`). Imported late: the routes
+      // module is heavy and the queue has no other reason to load it.
+      const { onThreadMessageReleased } = await import('../../routes/threads.mjs');
+      await onThreadMessageReleased(p, c.subjectId);
+      return {};
+    },
     async remove(p, c) { await p.contactThreadMessage.updateMany({ where: { id: c.subjectId }, data: { hidden: true } }); return {}; },
   },
   feedback: {

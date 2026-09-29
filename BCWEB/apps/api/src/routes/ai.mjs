@@ -164,7 +164,8 @@ export default async function aiRoutes(app) {
     if (q.error) return reply.code(400).send({ ok: false, error: q.error });
     const r = await aiClassifyWithReason(q, { text: parsed.data.text }, { userId: req.user?.uid });
     if (!r.value) {
-      const reason = ['disabled', 'rate_limited', 'busy'].includes(r.reason) ? r.reason : 'unavailable';
+      // followups (agent-bcw-followups): an unconfigured Laya is "disabled" to BMM (its contract).
+      const reason = r.reason === 'unconfigured' ? 'disabled' : ['disabled', 'rate_limited', 'busy'].includes(r.reason) ? r.reason : 'unavailable';
       return { ok: false, reason };
     }
     const v = r.value;
@@ -183,7 +184,7 @@ export default async function aiRoutes(app) {
     if (!guildAllows(guildId)) return { ok: false, reason: 'rate_limited' };
     const labels = [...new Set(checks.flatMap((c) => CHECK_LABELS[c]))];
     const r = await aiAnalyzeWithReason('discord_automod', { text, meta: { labels, userId: userId ? `discord:${userId}` : null } }, {});
-    if (!r.value) return { ok: false, reason: r.reason === 'empty' ? 'unavailable' : r.reason };
+    if (!r.value) return { ok: false, reason: r.reason === 'empty' ? 'unavailable' : r.reason === 'unconfigured' ? 'disabled' : r.reason }; // followups: the bot's contract
     return { ok: true, provider: r.value.provider, latencyMs: r.value.latencyMs, labels: r.value.labels };
   });
 }

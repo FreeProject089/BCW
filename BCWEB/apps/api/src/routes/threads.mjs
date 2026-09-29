@@ -423,6 +423,55 @@ export async function mailCopiesOnClose(p, threadId) {
   return n;
 }
 
+// followups (agent-bcw-followups): moderation holds, and what a release does.
+/** The status of a thread whose FIRST message is held by moderation: invisible to the side it
+ *  is addressed to (inbox lists, team inbox, the thread itself), readable by its sender and
+ *  by staff, and not writable until released. */
+export const HELD = 'held';
+
+/**
+ * A moderator released a held thread message (lib/moderation/cases.mjs). The message is
+ * already un-hidden; this does what posting it would have done, which the hold skipped:
+ *   · the first message of a held thread: the thread opens, and whoever answers it is told
+ *     about a new conversation (and it counts as unread for them);
+ *   · a held reply: the other side is told about it, exactly as for a reply that was never held.
+ * Returns what it did, for the tests. Never throws.
+ */
+export async function onThreadMessageReleased(p, messageId) {
+  try {
+    const m = await p.contactThreadMessage.findUnique({ where: { id: String(messageId || '') }, select: { id: true, threadId: true, side: true, hidden: true } });
+    if (!m || m.hidden) return { told: false };
+    const t = await p.contactThread.findUnique({ where: { id: m.threadId } });
+    if (!t) return { told: false };
+    const href = `/dashboard?s=reports&thread=${t.id}`;
+    if (t.status === HELD) {
+      // A sender staff blocked while it waited: released as blocked (as their other threads
+      // were), and nobody is invited to answer them.
+      const cfg = await config(p);
+      if ((t.senderId && cfg.blockedUserIds.includes(t.senderId)) || (t.senderEmail && cfg.blockedEmails.includes(t.senderEmail))) {
+        await p.contactThread.update({ where: { id: t.id }, data: { status: 'blocked' } });
+        return { told: false, blocked: true };
+      }
+      await p.contactThread.update({ where: { id: t.id }, data: { status: 'open', ownerUnread: true, lastActivityAt: new Date() } });
+      await tellManagers(p, t, `New message about “${t.targetLabel}”: ${t.subject}`, href);
+      return { told: true, opened: true };
+    }
+    if (m.side === 'sender') {
+      await p.contactThread.update({ where: { id: t.id }, data: { ownerUnread: true, lastActivityAt: new Date() } });
+      await tellManagers(p, t, `Reply on “${t.targetLabel}”: ${t.subject}`, href);
+      return { told: true };
+    }
+    await p.contactThread.update({ where: { id: t.id }, data: { senderUnread: true, lastActivityAt: new Date() } });
+    if (t.senderId) await notify(p, t.senderId, 'thread', `Reply about “${t.targetLabel}”: ${t.subject}`, { href }).catch(() => {});
+    else {
+      const due = await scheduleAnonMail(p, await config(p), t);
+      if (due) setTimeout(() => { flushAnonThreadMails(p).catch(() => {}); }, Math.max(0, due.getTime() - Date.now()) + 1000).unref?.();
+    }
+    return { told: true };
+  } catch { return { told: false }; }
+}
+// fin followups
+
 export default async function threadRoutes(app) {
   // ── opening one ────────────────────────────────────────────────────────────────────────
   app.post('/threads', { preHandler: optionalAuth(), bodyLimit: FILE_BODY_LIMIT, config: { rateLimit: { max: 12, timeWindow: '10 minutes' } } }, async (req, reply) => {
@@ -502,11 +551,16 @@ export default async function threadRoutes(app) {
         ownerUserId: target.teamId ? null : target.ownerId, ownerTeamId: target.teamId || null,
         senderId: uid, senderEmail: email, senderName: uid ? '' : (b.data.name || ''), accessToken: token(),
         subject: b.data.subject, ip, topic,
+        // followups (agent-bcw-followups): a held FIRST message holds the whole thread. Its
+        // subject is part of what was moderated, and a conversation with a subject and no
+        // message is not something the recipient should see: `held` keeps it out of every
+        // inbox until a moderator releases it (onThreadMessageReleased opens it and tells them).
+        ...(held ? { status: HELD, ownerUnread: false } : {}),
         messages: { create: { authorId: uid, side: 'sender', body: b.data.body, hidden: held } },
       },
       include: INCLUDE_FULL,
     });
-    linkCase(p, mod.caseId, 'thread_message', t.messages[0]?.id); // moderation (agent-moderation)
+    linkCase(p, mod, 'thread_message', t.messages[0]?.id); // moderation (agent-moderation)
     if (prepared.decoded.length) await commitFiles(p, t, t.messages[0]?.id || null, prepared);
     if (!held) await tellManagers(p, t, `New message about “${t.targetLabel}”: ${t.subject}`, `/dashboard?s=reports&thread=${t.id}`);
     await mailAnonSender(t, `Your message to ${t.targetLabel}`, `Your message “${t.subject}” has been sent. You will be e-mailed when they answer; you can also follow the conversation here:`);
@@ -530,6 +584,9 @@ export default async function threadRoutes(app) {
       owner = !!(proj && await inboxAccess(req.user, proj, await settingsFor(p, proj.ref)));
     }
     const sender = t.senderId === req.user.uid;
+    // followups (agent-bcw-followups): until a moderator releases it, a held thread does not
+    // exist for the side it was addressed to (the same 404 as somebody else's thread).
+    if (t.status === HELD && !sender) owner = false;
     if (!owner && !sender && !isStaff(req.user)) { reply.code(404).send({ error: 'not_found' }); return null; }
     // Reading somebody else's conversation because you are staff is an ADMIN power, and on
     // this site every admin power is behind the 2FA wall: `GET /admin/threads/:id` refuses
@@ -553,7 +610,8 @@ export default async function threadRoutes(app) {
     const p = await db();
     await autoArchive(p, await config(p));
     const box = req.query?.box === 'sent' ? 'sent' : 'inbox';
-    const base = box === 'sent' ? { senderId: req.user.uid } : await mine(p, req);
+    // followups (agent-bcw-followups): a held thread is in its sender's box only.
+    const base = box === 'sent' ? { senderId: req.user.uid } : { AND: [await mine(p, req), { NOT: { status: HELD } }] };
     // ?project=<ref>: one project's inbox, as its "Inbox" button opens it. A NARROWING of what
     // the viewer may already see, never a widening: it is ANDed with the rule above.
     const project = typeof req.query?.project === 'string' ? req.query.project.slice(0, 90) : '';
@@ -612,7 +670,7 @@ export default async function threadRoutes(app) {
     const prepared = await prepareFiles(p, got.t, b.data.files);
     if (prepared.error) return fileError(reply, prepared);
     const m = await post(p, got.t, { authorId: req.user.uid, side: got.side, body: b.data.body, hidden: held });
-    if (mod) linkCase(p, mod.caseId, 'thread_message', m.id);
+    if (mod) linkCase(p, mod, 'thread_message', m.id);
     const stored = await commitFiles(p, got.t, m.id, prepared);
     if (held) { /* moderation: held for review, nobody is told yet */ } else if (got.side === 'owner' || got.side === 'staff') {
       if (got.t.senderId) notify(p, got.t.senderId, 'thread', `Reply about “${got.t.targetLabel}”: ${got.t.subject}`, { href: `/dashboard?s=reports&thread=${got.t.id}` }).catch(() => {});
@@ -630,6 +688,9 @@ export default async function threadRoutes(app) {
     const p = await db();
     const got = await participant(p, req, reply, req.params.id); if (!got) return;
     if (verb === 'reopen' && got.t.status === 'blocked') return reply.code(403).send({ error: 'blocked' });
+    // followups (agent-bcw-followups): only a moderator's release takes a thread out of `held`;
+    // a reopen / close / archive would put it in the recipient's inbox with its message hidden.
+    if (got.t.status === HELD) return reply.code(409).send({ error: HELD });
     await p.contactThread.update({ where: { id: got.t.id }, data });
     // Closing is the end of the conversation: each participant gets a signed copy of it
     // (threads.config.copyOnClose, on unless an admin switched it off).
@@ -836,7 +897,7 @@ export default async function threadRoutes(app) {
     const prepared = await prepareFiles(p, t, b.data.files);
     if (prepared.error) return fileError(reply, prepared);
     const m = await post(p, t, { authorId: null, side: 'sender', body: b.data.body, hidden: held });
-    linkCase(p, mod.caseId, 'thread_message', m.id);
+    linkCase(p, mod, 'thread_message', m.id);
     const stored = await commitFiles(p, t, m.id, prepared);
     if (!held) await tellManagers(p, t, `Reply on “${t.targetLabel}”: ${t.subject}`, `/dashboard?s=reports&thread=${t.id}`);
     return { message: { ...serMsg({ ...m, files: stored.rows.map(serFile) }), receipt: 'sent' } };
@@ -892,6 +953,9 @@ export default async function threadRoutes(app) {
 
   app.post('/admin/threads/:id/close', { preHandler: requireCap('manage_reports') }, async (req, reply) => {
     const p = await db();
+    // followups (agent-bcw-followups): a held thread leaves `held` through the moderation queue only.
+    const cur = await p.contactThread.findUnique({ where: { id: String(req.params.id) }, select: { status: true } }).catch(() => null);
+    if (cur?.status === HELD) return reply.code(409).send({ error: HELD });
     const t = await p.contactThread.update({ where: { id: req.params.id }, data: { status: 'closed', staffFlag: '' } }).catch(() => null);
     if (!t) return reply.code(404).send({ error: 'not_found' });
     await logAudit(p, req.user.uid, 'thread.close', `thread=${t.id}`).catch(() => {});
@@ -907,6 +971,7 @@ export default async function threadRoutes(app) {
     const t = await p.contactThread.findUnique({ where: { id: req.params.id }, select: { id: true, status: true } });
     if (!t) return reply.code(404).send({ error: 'not_found' });
     if (verb === 'reopen' && t.status === 'blocked') return reply.code(409).send({ error: 'blocked' });
+    if (t.status === HELD) return reply.code(409).send({ error: HELD }); // followups: release it from the moderation queue
     await p.contactThread.update({ where: { id: t.id }, data });
     await logAudit(p, req.user.uid, `thread.${verb}`, `thread=${t.id}`).catch(() => {});
     return { ok: true };
@@ -941,7 +1006,7 @@ export default async function threadRoutes(app) {
     if (t.senderId && !cfg.blockedUserIds.includes(t.senderId)) cfg.blockedUserIds.push(t.senderId);
     if (t.senderEmail && !cfg.blockedEmails.includes(t.senderEmail)) cfg.blockedEmails.push(t.senderEmail);
     await p.adminSetting.upsert({ where: { key: CONFIG_KEY }, create: { key: CONFIG_KEY, value: cfg }, update: { value: cfg } });
-    await p.contactThread.updateMany({ where: { OR: [...(t.senderId ? [{ senderId: t.senderId }] : []), ...(t.senderEmail ? [{ senderEmail: t.senderEmail }] : [])] }, data: { status: 'blocked', staffFlag: '' } });
+    await p.contactThread.updateMany({ where: { OR: [...(t.senderId ? [{ senderId: t.senderId }] : []), ...(t.senderEmail ? [{ senderEmail: t.senderEmail }] : [])], status: { not: HELD } }, data: { status: 'blocked', staffFlag: '' } }); // followups: a held thread stays out of the recipient's inbox
     await logAudit(p, req.user.uid, 'thread.block', `thread=${t.id} sender=${t.senderId || t.senderEmail}`).catch(() => {});
     return { ok: true };
   });

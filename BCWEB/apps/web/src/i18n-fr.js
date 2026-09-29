@@ -9877,7 +9877,6 @@ const DICT = {
     'aip.ext.ok': 'Une API externe est configurée. Les textes vérifiés sont envoyés à ce tiers.',
     'aip.ext.mode': 'Point d’accès', 'aip.ext.mode.mod': 'Modération (/moderations) : toxique et automutilation seulement',
     'aip.ext.mode.chat': 'Classification par chat (/chat/completions) : toutes les étiquettes', 'aip.ext.model': 'Nom du modèle (facultatif)',
-    'aip.laya.nokey': 'LAYA_API_KEY n’est pas définie : le conteneur annexe accepte tout appelant de son réseau. Mets la même clé des deux côtés.',
     'aip.m.queue': 'File', 'aip.m.inflight': 'en cours', 'aip.m.lat': 'Latence p50 / p95', 'aip.m.calls': 'Appels réussis / échoués / expirés',
     'aip.m.shed': 'Rejetés / limités / en cache', 'aip.breaker': 'En pause après des échecs répétés jusqu’à {at}.',
     'aip.lasterr': 'Dernière erreur ({at}) : {m}',
@@ -10032,6 +10031,14 @@ const DICT = {
     'modq.ai.cols': 'Le moteur ne consulte que là où les deux disent oui. « Le moteur consulte » et « Attend la réponse » se règlent dans Politiques ; « La couche IA permet » dans les réglages du fournisseur ci-dessous.',
     'modq.ai.panelErr': 'Les réglages du fournisseur n’ont pas pu être chargés. Recharge la page pour réessayer.',
     // fin moderation (agent-moderation)
+    // followups (agent-bcw-followups) : Laya sans LAYA_API_KEY est « non configuré »
+    'aip.laya.unconf': 'LAYA_API_KEY n’est pas définie : Laya n’est pas configuré et rien ne lui est envoyé. Mets la même clé pour l’API et pour le conteneur annexe, qui refuse de démarrer sans elle.',
+    'aip.r.unconfigured': 'Laya n’est pas configuré : LAYA_API_KEY n’est pas définie sur le serveur, rien n’a été envoyé.',
+    'aip.h.unconf': 'Non configuré',
+    // followups (agent-bcw-followups) : une conversation retenue par la modération
+    'th.st.held': 'en attente de relecture',
+    'th.heldline': 'Ton message attend un modérateur. Le destinataire verra la conversation, et pourra y répondre, une fois qu’il aura été validé.',
+    // fin followups
   },
 };
 

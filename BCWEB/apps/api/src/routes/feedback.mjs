@@ -475,7 +475,7 @@ export default async function feedbackRoutes(app) {
       attachments: stored, fingerprint, userId, email: d.email, creatorId, ipHash: ipHash(ip),
       ...(mod.action === 'hold' ? { status: 'ignored' } : {}), // moderation (agent-moderation)
     } });
-    linkCase(p, mod.caseId, 'feedback', row.id); // moderation (agent-moderation)
+    linkCase(p, mod, 'feedback', row.id); // moderation (agent-moderation)
 
     // Where the conversation lives.
     let threadId = null;

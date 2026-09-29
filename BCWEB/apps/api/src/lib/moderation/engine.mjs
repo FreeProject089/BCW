@@ -227,14 +227,21 @@ export async function moderate(surface, input = {}, opts = {}) {
     const result = { decision, action, score, reasons, caseId: null, ai: aiRecord(ai), raw: rawDecision, mode: policy.mode, surface, ms: Math.round(performance.now() - t0) };
     if (dryRun) return result;
 
+    // followups (agent-bcw-followups): the content's id, once the route has written it. The
+    // after-the-response AI pass can open a case AFTER the route called linkCase (there was no
+    // case to link yet), so the id is kept here: a case created later reads it, and an id that
+    // arrives after that case is written onto it (linkCase below).
+    const subject = { type: opts.subject?.type || null, id: opts.subject?.id || null, laterCaseId: null };
+    Object.defineProperty(result, 'subjectRef', { value: subject, enumerable: false });
+    // fin followups
     const secret = policy.sensitive || meta.secret === true;
     const authorKey = input.authorId ? '' : input.authorKey ? String(input.authorKey).slice(0, 80) : input.ip ? `ip:${ipKey(input.ip)}` : '';
     const caseData = () => ({
       surface, decision, rawDecision, mode: policy.mode, score,
       reasons, ai: aiRecord(ai) ?? undefined,
       status, held: action === 'hold',
-      subjectType: action === 'refuse' ? 'refused' : String((action === 'hold' && opts.holdType) || opts.subject?.type || 'text').slice(0, 40),
-      subjectId: String(opts.subject?.id || '').slice(0, 80),
+      subjectType: action === 'refuse' ? 'refused' : String((action === 'hold' && opts.holdType) || subject.type || 'text').slice(0, 40),
+      subjectId: String((action === 'refuse' ? '' : subject.id) || '').slice(0, 80),
       authorId: input.authorId || null, authorKey,
       excerpt: secret ? null : excerptOf(text),
       payload: action === 'hold' && opts.payload ? opts.payload : undefined,
@@ -250,7 +257,7 @@ export async function moderate(surface, input = {}, opts = {}) {
     if (aiPending) {
       // After the response. The content is already published by then, so the AI can only open
       // or raise a case for a human; it never holds or refuses anything.
-      setImmediate(() => { laterAi(p, mod, { surface, text, meta, policy, score, rawDecision, reasons, caseId: result.caseId, caseData, log: opts.log }).catch(() => {}); });
+      setImmediate(() => { laterAi(p, mod, { surface, text, meta, policy, score, rawDecision, reasons, caseId: result.caseId, caseData, subject, log: opts.log }).catch(() => {}); });
     }
     return result;
   } catch (e) {
@@ -276,11 +283,28 @@ async function laterAi(p, mod, ctx) {
   if (!status) return;
   const base = ctx.caseData();
   const c = await p.moderationCase.create({ data: { ...base, decision, rawDecision: raised, status, held: false, payload: undefined, reasons, ai: aiRecord(ai) } });
+  // followups (agent-bcw-followups): the route's linkCase may land after this; it will find
+  // the case through the subject holder.
+  if (ctx.subject) {
+    ctx.subject.laterCaseId = c.id;
+    if (ctx.subject.id && !base.subjectId) await linkCase(p, c.id, ctx.subject.type, ctx.subject.id);
+  }
   if (status === 'open' && ctx.policy.notify && !ctx.policy.sensitive && decision === 'REVIEW') notifyStaff(p, c, ctx.log);
 }
 
-/** Point a case at the content it was about, once that content has an id. Never throws. */
+/** Point a case at the content it was about, once that content has an id. Never throws.
+ *  `caseId` may be the whole `moderate()` result (followups, agent-bcw-followups): then a case
+ *  the after-the-response AI pass opens later is linked too, whichever of the two comes first. */
 export async function linkCase(p, caseId, type, id) {
+  if (caseId && typeof caseId === 'object') {
+    const res = caseId;
+    const ref = res.subjectRef;
+    if (ref && id) {
+      ref.type = type; ref.id = id;
+      if (ref.laterCaseId && ref.laterCaseId !== res.caseId) await linkCase(p, ref.laterCaseId, type, id);
+    }
+    caseId = res.caseId;
+  }
   if (!caseId || !id) return;
   await p.moderationCase.update({ where: { id: caseId }, data: { subjectType: String(type).slice(0, 40), subjectId: String(id).slice(0, 80) } }).catch(() => {});
 }

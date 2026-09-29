@@ -71,6 +71,7 @@ function useLabels() {
       unavailable: t('aip.r.unavailable', 'The provider did not answer in time, or answered something unreadable.'),
       empty: t('aip.r.empty', 'Nothing left to send once the text was cleaned.'),
       invalid: t('aip.r.invalid', 'Invalid request.'),
+      unconfigured: t('aip.r.unconfigured', 'Laya is not configured: LAYA_API_KEY is not set on the server, so nothing was sent.'), // followups (agent-bcw-followups)
     },
     label: {
       spam: t('aip.l.spam', 'Spam'), phishing: t('aip.l.phishing', 'Phishing'), toxic: t('aip.l.toxic', 'Toxic'),
@@ -174,7 +175,7 @@ export default function AiProviderPanel({ canUnkill = true } = {}) {
           <Cpu size={15} className="text-[var(--accent-ink)]" aria-hidden="true" />
           <div className="font-semibold text-sm">{t('aip.title', 'AI provider')}</div>
           <Badge tone={st.healthy ? 'success' : off ? '' : 'warning'}>
-            {off ? t('aip.h.off', 'Off') : st.killed ? t('aip.h.killed', 'Killed') : st.healthy ? t('aip.h.ok', 'Healthy') : t('aip.h.down', 'Not reachable')}
+            {off ? t('aip.h.off', 'Off') : st.killed ? t('aip.h.killed', 'Killed') : st.healthy ? t('aip.h.ok', 'Healthy') : st.healthDetail === 'unconfigured' ? t('aip.h.unconf', 'Not configured') : t('aip.h.down', 'Not reachable')}
           </Badge>
           <Button size="sm" variant="ghost" className="ml-auto" onClick={load} aria-label={t('aip.refresh', 'Refresh')} title={t('aip.refresh', 'Refresh')}><RefreshCw size={14} /></Button>
         </div>
@@ -221,7 +222,7 @@ export default function AiProviderPanel({ canUnkill = true } = {}) {
           </div>
         )}
         {cfg.provider === 'laya' && !st.layaKeySet && (
-          <p className="text-xs text-warning">{t('aip.laya.nokey', 'LAYA_API_KEY is not set: the sidecar accepts any caller on its network. Set the same key on both sides.')}</p>
+          <p className="text-xs text-warning">{t('aip.laya.unconf', 'LAYA_API_KEY is not set: Laya is not configured and nothing is sent to it. Set the same key for the API and the sidecar, which refuses to start without one.')}</p>
         )}
         {/* Load, as numbers */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">

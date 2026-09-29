@@ -155,6 +155,8 @@ describe('exportUser', () => {
     serverRepo: { findMany: async () => [] },
     auditLogEntry: { findMany: async () => [] },
     backref: { findMany: async () => [] },
+    // followups (agent-bcw-followups): read by the plain-id list (LOOSE_SUBJECT_REFS).
+    moderationCase: { findMany: async ({ where }) => (where.authorId === 'me' ? [{ id: 'mc1', authorId: 'me', decision: 'REVIEW', excerpt: 'my words', note: 'staff only', resolverId: 'mod1', reasons: [{ rule: 'text.keyword', weight: 10, detail: 'listed-term' }] }] : []) },
   };
 
   test('an unknown subject is null, not an empty export', async () => {
@@ -167,5 +169,24 @@ describe('exportUser', () => {
     assert.ok(doc.lookedIn.some((x) => x.startsWith('ServerRepo.ownerId')));
     assert.equal(doc.account.passwordHash, '[redacted]');
     assert.deepEqual(doc.couldNotRead, [], 'present even when empty');
+  });
+});
+
+// followups (agent-bcw-followups): moderation cases name their author by a plain id, which the
+// relation-derived plan cannot see; they are theirs, less what only staff should read.
+describe('moderation cases in the export', () => {
+  const client = {
+    user: { findUnique: async () => ({ id: 'me', email: 'a@b.c', displayName: 'Me' }) },
+    moderationCase: { findMany: async ({ where }) => (where.authorId === 'me' ? [{ id: 'mc1', authorId: 'me', decision: 'REVIEW', excerpt: 'my words', note: 'staff only', resolverId: 'mod1', reasons: [{ rule: 'text.keyword', weight: 10, detail: 'listed-term' }] }] : []) },
+  };
+  test('present, without the staff note, the moderator, or the matched list term', async () => {
+    const doc = await exportUser(client, 'me', { datamodel: { models: [] } }, 'now');
+    const rows = doc.data['ModerationCase.authorId'];
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].excerpt, 'my words');
+    assert.equal('note' in rows[0], false);
+    assert.equal('resolverId' in rows[0], false);
+    assert.deepEqual(rows[0].reasons, [{ rule: 'text.keyword', weight: 10 }]);
+    assert.ok(doc.lookedIn.includes('ModerationCase.authorId (subject)'));
   });
 });

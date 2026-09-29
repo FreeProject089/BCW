@@ -116,6 +116,23 @@ export function buildExportPlan(dmmf) {
   return plan.sort((a, b) => a.model.localeCompare(b.model) || a.fk.localeCompare(b.fk));
 }
 
+// followups (agent-bcw-followups): places that name a person by a PLAIN id column, with no
+// Prisma relation, so the metadata-derived plan above cannot see them. Kept to the rows that
+// are theirs, each with the shape they receive. ModerationCase.authorId: a decision about
+// what they wrote (GDPR Art. 15, and Art. 22's "meaningful information about the logic").
+// Staff-only fields do not travel: the moderator's note, who resolved it, and each reason's
+// `detail`, which can quote the keyword list a rule matched from; the rule and its weight do.
+export const LOOSE_SUBJECT_REFS = Object.freeze([
+  { model: 'ModerationCase', fk: 'authorId', role: 'subject', via: '(plain id, no relation)', shape: moderationCaseForSubject },
+]);
+export function moderationCaseForSubject(row) {
+  const { note, resolverId, ...rest } = row || {};
+  void note; void resolverId;
+  const reasons = Array.isArray(rest.reasons) ? rest.reasons.map((r) => ({ rule: r?.rule ?? null, weight: r?.weight ?? null })) : rest.reasons;
+  return { ...rest, reasons };
+}
+// fin followups
+
 /** Strip credentials and third parties, and anything a caller names, from one row. */
 export function redactRow(row, extra = []) {
   const out = {};
@@ -171,7 +188,7 @@ export async function collectUserData(client, userId, plan) {
       const rows = await delegate.findMany({ where: { [entry.fk]: userId }, take: 5000 });
       if (!rows.length) continue;
       const key = `${entry.model}.${entry.fk}`;
-      data[key] = entry.role === 'subject' ? rows.map((r) => redactRow(r)) : rows.map(referenceRow);
+      data[key] = entry.role === 'subject' ? rows.map((r) => redactRow(entry.shape ? entry.shape(r) : r)) : rows.map(referenceRow);
     } catch (e) {
       errors.push({ ...entry, error: String(e?.message || e).slice(0, 200) });
     }
@@ -183,7 +200,7 @@ export async function collectUserData(client, userId, plan) {
 export async function exportUser(client, userId, dmmf, now) {
   const account = await client.user.findUnique({ where: { id: userId } });
   if (!account) return null;
-  const plan = buildExportPlan(dmmf);
+  const plan = [...buildExportPlan(dmmf), ...LOOSE_SUBJECT_REFS]; // followups (agent-bcw-followups)
   const { data, errors } = await collectUserData(client, userId, plan);
   return {
     generatedAt: now,

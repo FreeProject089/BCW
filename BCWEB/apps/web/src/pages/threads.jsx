@@ -163,7 +163,7 @@ export function ThreadView({ load, post, actions, back, fileBase, expired }) {
           <div className="font-semibold truncate">{KIND_ICON[th.kind] || ''} {th.subject}</div>
           <div className="text-[12px] text-[var(--muted)]">{t('th.about', 'About')} <b className="text-[var(--text)]">{th.targetLabel}</b> · {t('th.between', 'between')} {th.sender?.displayName || th.senderName || t('th.anon', 'an anonymous sender')} {t('th.and', 'and')} {who}</div>
         </div>
-        <Badge tone={th.status === 'open' ? (frozen ? '' : 'success') : th.status === 'blocked' ? 'error' : ''}>{frozen ? t('th.st.frozen', 'frozen') : th.status === 'open' ? t('th.st.open', 'open') : th.status === 'closed' ? t('th.st.closed', 'closed') : th.status === 'archived' ? t('th.st.archived', 'archived') : t('th.st.blocked', 'blocked')}</Badge>
+        <Badge tone={th.status === 'open' ? (frozen ? '' : 'success') : th.status === 'blocked' ? 'error' : ''}>{frozen ? t('th.st.frozen', 'frozen') : th.status === 'open' ? t('th.st.open', 'open') : th.status === 'closed' ? t('th.st.closed', 'closed') : th.status === 'archived' ? t('th.st.archived', 'archived') : th.status === 'held' ? t('th.st.held', 'awaiting review') : t('th.st.blocked', 'blocked')}</Badge>
       </div>
       {side === 'owner' && <SenderCard th={th} />}
       <div className="space-y-2 max-h-[55vh] overflow-auto pr-1">
@@ -177,7 +177,8 @@ export function ThreadView({ load, post, actions, back, fileBase, expired }) {
               : t('th.frozen.site', 'Conversations between members are switched off on this site. Nobody can add to this one, and nothing was deleted.'))
             : th.status === 'closed' ? t('th.closed', 'This conversation is closed.')
               : th.status === 'archived' ? t('th.archivedline', 'This conversation was archived after a long silence. Reopen it to answer.')
-                : t('th.blockedline', 'This sender was blocked by staff.')}
+                : th.status === 'held' ? t('th.heldline', 'Your message is waiting for a moderator. The recipient sees the conversation, and can answer, once it is released.')
+                  : t('th.blockedline', 'This sender was blocked by staff.')}
         </span></p>
       )}
       {actions && <div className="flex gap-2 flex-wrap pt-1 border-t border-[var(--line)]">{actions(th, reload)}</div>}

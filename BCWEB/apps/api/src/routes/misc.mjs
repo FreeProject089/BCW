@@ -2044,7 +2044,7 @@ export default async function miscRoutes(app) {
     const mod = await moderateContact(p, { name: b.data.name, email: b.data.email, body, kind, ip, userId }, req.log);
     if (mod.action === 'hold') return reply.code(201).send({ ok: true });
     const msg = await p.contactMessage.create({ data: { name: b.data.name, email: b.data.email, body, kind, ip, userId } });
-    linkCase(p, mod.caseId, 'contact_message', msg.id);
+    linkCase(p, mod, 'contact_message', msg.id); // followups (agent-bcw-followups): the result, so a later AI case links too
     // fin moderation (agent-moderation)
     forwardContactToDiscord(msg).catch(() => {}); // best-effort
     announceLegalNotice(p, msg).catch(() => {}); // best-effort, and opt-in, see below
@@ -3577,6 +3577,11 @@ export default async function miscRoutes(app) {
     if (dry.blocked?.length) return reply.code(409).send({ error: 'blocked', blocked: dry.blocked });
 
     const done = await eraseUser(p, u.id, plan, { commit: true });
+    // followups (agent-bcw-followups): moderation cases name their author by a plain id (no
+    // relation, so the plan above never walks them). anonymiseAccount detaches them, but the
+    // DELETE path below never runs it: detached here, for both outcomes.
+    await import('../lib/moderation/cases.mjs').then(({ forgetAuthor }) => forgetAuthor(p, u.id)).catch(() => {});
+    // fin followups
 
     // And the ACCOUNT, which eraseUser deliberately does not touch: it walks the relations
     // and skips the User model, so without this the row keeps its address, its display name

@@ -390,6 +390,9 @@ services:
     environment:
       LAYA_MODELS: multilingual
       LAYA_REVISION: ${LAYA_REVISION:-reviewed}
+      # followups (agent-bcw-followups): checked, never used, by the image's entrypoint. This
+      # one-shot runs first and `laya` waits for it, so a missing key stops the profile here.
+      LAYA_API_KEY: ${LAYA_API_KEY:-}
     volumes:
       - laya-models:/models
     security_opt: ["no-new-privileges:true"]
@@ -411,9 +414,13 @@ services:
       LAYA_MAX_CONCURRENT: "2"
       LAYA_MAX_TOKEN_BUDGET: "1024"
       LAYA_REVISION: ${LAYA_REVISION:-reviewed}
-      # The SAME value the api gets: every request carries it as a Bearer token. Empty = the
-      # sidecar answers anyone on the `ai` network (only the api is on it), and the admin
-      # screen says so. Set it: `openssl rand -hex 32`.
+      # The SAME value the api gets: every request carries it as a Bearer token. MANDATORY
+      # (followups, agent-bcw-followups): the image's entrypoint (infra/laya/entrypoint.py)
+      # refuses to start without it, and the api reports Laya "unconfigured". Set it:
+      # `openssl rand -hex 32`.
+      # Not `${LAYA_API_KEY:?…}`, on purpose: Compose (measured on v5.1.4) interpolates EVERY
+      # service before it applies profiles, so a required variable here would make
+      # `docker compose config` / `up` fail on a server that never enabled the `ai` profile.
       LAYA_API_KEY: ${LAYA_API_KEY:-}
       HF_HUB_OFFLINE: "1"
       LAYA_LOG_LEVEL: warning

@@ -8,7 +8,8 @@ import { syncPendingFromEvent } from '../lib/pending-checkout.mjs';
 import { errorReply } from '../lib/error-reply.mjs';
 import { nextTenureStart, graceHoursFor, syncLoyaltyCoupon } from '../lib/loyalty.mjs'; // N-hosting (agent-hosting-N)
 // hosting2 (agent-hosting): calendar-month terms, the lapse rule, catalogue file hosting.
-import { addMonths, normaliseLoyalty, LOYALTY_KEY, catalogTenureOnPayment, syncCatalogLoyaltyCoupon, renewedEnd } from '../lib/loyalty.mjs';
+import { addMonths, normaliseLoyalty, LOYALTY_KEY, catalogTenureOnPayment, syncCatalogLoyaltyCoupon } from '../lib/loyalty.mjs';
+import { checkoutRenewedEnd } from '../lib/loyalty.mjs'; // followups (agent-bcw-followups)
 
 // hosting2 (agent-hosting): the loyalty policy as stored (one row), for the lapse rule and the sync.
 async function loyaltyPolicy(p) {
@@ -438,7 +439,10 @@ export async function dispatchStripeEvent({ p, stripe, event, log = console }) {
           // restarts after a cancellation or a longer lapse (lib/loyalty.mjs). hosting2: or only
           // pauses, when the admin chose the cumulative rule.
           const prevSub = await p.subscription.findUnique({ where: { serverRepoId: repo.id } });
-          const currentPeriodEnd = renewedEnd(prevSub, months, !!s.subscription);
+          // followups (agent-bcw-followups): an auto-renew armed early waits for the paid-up date
+          // (trial_end): nothing is charged yet, so the paid-up date stays where it is.
+          const trialEnd = s.subscription ? Number(meta.trialEnd) || 0 : 0;
+          const currentPeriodEnd = checkoutRenewedEnd(prevSub, months, !!s.subscription, trialEnd);
           const tenure = prevSub ? { tenureStartAt: nextTenureStart(prevSub, new Date(), graceHoursFor(prevSub, await hostingGrace(p)), (await loyaltyPolicy(p)).lapseResets), ...(s.subscription ? { loyaltyPct: Number(meta.loyaltyPct) || 0 } : {}) } : {};
           // fin N-hosting (agent-hosting-N)
           await p.subscription.upsert({
@@ -451,10 +455,12 @@ export async function dispatchStripeEvent({ p, stripe, event, log = console }) {
           });
           await p.payment.create({ data: {
             userId: meta.userId, serverRepoId: repo.id, kind: 'HOSTING',
-            description: `"${repo.name}" renewal — ${months} month${months > 1 ? 's' : ''}`,
+            description: trialEnd ? `"${repo.name}" auto-renewal armed — first charge on ${new Date(trialEnd * 1000).toDateString()}` : `"${repo.name}" renewal — ${months} month${months > 1 ? 's' : ''}`,
             amountCents: s.amount_total ?? 0, currency: s.currency || 'usd', stripeSessionId: s.id,
           } });
-          await notify(p, meta.userId, 'hosting_started', `"${repo.name}" renewed for ${months} month${months > 1 ? 's' : ''}.`);
+          await notify(p, meta.userId, 'hosting_started', trialEnd
+            ? `"${repo.name}" will auto-renew every ${months} month${months > 1 ? 's' : ''} — the first charge is on ${new Date(trialEnd * 1000).toDateString()}, when your paid term ends.`
+            : `"${repo.name}" renewed for ${months} month${months > 1 ? 's' : ''}.`);
         }
         return { received: true };
       }
@@ -468,7 +474,8 @@ export async function dispatchStripeEvent({ p, stripe, event, log = console }) {
           await p.serverRepo.updateMany({ where: { groupId: group.id }, data: { deleteAt: null } });
           await p.communityCatalog.updateMany({ where: { groupId: group.id, status: 'HIDDEN' }, data: { status: 'ACTIVE', deleteAt: null } });
           const existing = await p.subscription.findFirst({ where: { hostingGroupId: group.id } });
-          const currentPeriodEnd = renewedEnd(existing, months, !!s.subscription);
+          const trialEnd = s.subscription ? Number(meta.trialEnd) || 0 : 0; // followups (agent-bcw-followups)
+          const currentPeriodEnd = checkoutRenewedEnd(existing, months, !!s.subscription, trialEnd);
           if (existing) {
             // N-hosting (agent-hosting-N): loyalty tenure kept or restarted (lib/loyalty.mjs).
             // hosting2: or paused, under the cumulative rule.
@@ -479,8 +486,10 @@ export async function dispatchStripeEvent({ p, stripe, event, log = console }) {
             await p.subscription.create({ data: { userId: meta.userId, hostingGroupId: group.id, planId: plan.id, status: 'active', poolContribBytes: group.poolBytes, currentPeriodEnd, stripeSubId: s.subscription || null } });
           }
           await recomputePoolBytes(p, group.id);
-          await p.payment.create({ data: { userId: meta.userId, hostingGroupId: group.id, kind: 'HOSTING', description: `Pool "${group.name}" renewal — ${months} month${months > 1 ? 's' : ''}`, amountCents: s.amount_total ?? 0, currency: s.currency || 'usd', stripeSessionId: s.id } });
-          await notify(p, meta.userId, 'hosting_started', `Pool "${group.name}" renewed for ${months} month${months > 1 ? 's' : ''}.`);
+          await p.payment.create({ data: { userId: meta.userId, hostingGroupId: group.id, kind: 'HOSTING', description: trialEnd ? `Pool "${group.name}" auto-renewal armed — first charge on ${new Date(trialEnd * 1000).toDateString()}` : `Pool "${group.name}" renewal — ${months} month${months > 1 ? 's' : ''}`, amountCents: s.amount_total ?? 0, currency: s.currency || 'usd', stripeSessionId: s.id } });
+          await notify(p, meta.userId, 'hosting_started', trialEnd
+            ? `Pool "${group.name}" will auto-renew every ${months} month${months > 1 ? 's' : ''} — the first charge is on ${new Date(trialEnd * 1000).toDateString()}, when your paid term ends.`
+            : `Pool "${group.name}" renewed for ${months} month${months > 1 ? 's' : ''}.`);
         }
         return { received: true };
       }

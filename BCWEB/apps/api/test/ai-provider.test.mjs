@@ -260,6 +260,31 @@ describe('AI provider layer (fake sidecar)', () => {
   });
 });
 
+// followups (agent-bcw-followups): LAYA_API_KEY is mandatory. Without it Laya is
+// "unconfigured": never called (not even the health probe), not ready for any surface, and the
+// admin screen and the test box say so instead of "not reachable" / "unavailable".
+describe('laya without LAYA_API_KEY', () => {
+  test('unconfigured: no request, no surface, the reason and the status say so', async () => {
+    const saved = process.env.LAYA_API_KEY;
+    delete process.env.LAYA_API_KEY;
+    try {
+      setCfg(ON());
+      assert.equal(await ai.aiAnalyze('contact', { text: 'hello there' }), null);
+      const r = await ai.aiAnalyzeWithReason('contact', { text: 'hello there' }, { adminTest: true });
+      assert.equal(r.value, null);
+      assert.equal(r.reason, 'unconfigured');
+      await ai.aiLoadConfig();
+      assert.equal(ai.aiEnabledFor('contact'), false);
+      const st = await ai.aiStatus();
+      assert.equal(st.layaKeySet, false);
+      assert.equal(st.healthy, false);
+      assert.equal(st.healthDetail, 'unconfigured');
+      assert.equal(seen.length, 0, 'nothing was sent to the sidecar, health probe included');
+    } finally { process.env.LAYA_API_KEY = saved; ai._resetForTests(); }
+  });
+});
+// fin followups
+
 describe('config normalisation', () => {
   test('every knob is bounded, unknown keys (a URL, a key) are dropped', () => {
     const c = ai.normalizeAiConfig({ provider: 'laya', timeoutMs: 1, concurrency: 99, maxQueue: -5, url: 'https://x', key: 'k', externalModel: 'gpt<script>' });

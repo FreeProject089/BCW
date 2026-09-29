@@ -144,6 +144,40 @@ export function renewedEnd(prev, months, isSubscription, now = new Date()) {
   return addMonths(from, months);
 }
 
+// followups (agent-bcw-followups): automatic renewal armed BEFORE the paid-up date.
+// A new Stripe subscription bills the day it is created, so arming auto-renew two months
+// before a prepaid term ends used to charge today and restart the term from today: the two
+// months already paid were lost. The subscription now starts on the paid-up date instead,
+// through Checkout's `subscription_data.trial_end` (no charge until then; the first invoice,
+// full price with the loyalty coupon on it, is a 'subscription_cycle' one on that date, which
+// the invoice.paid branch already turns into the next term from Stripe's own period).
+// `billing_cycle_anchor` is NOT the right tool: Checkout would bill a prorated first period
+// today, which is a charge for days already paid for.
+// Stripe refuses a Checkout trial_end less than 48 hours ahead; with less left than that the
+// subscription bills today, as before (the Payments policy says so).
+export const STRIPE_MIN_TRIAL_MS = 48 * 3600 * 1000;
+/** The unix second an auto-renew subscription's first charge should wait for (the paid-up
+ *  date), or null to bill today: no term, a term already over, or under 48 h left. */
+export function autoRenewTrialEnd(prev, now = new Date()) {
+  const end = prev?.currentPeriodEnd ? new Date(prev.currentPeriodEnd) : null;
+  if (!end || !Number.isFinite(end.getTime())) return null;
+  if (end.getTime() - new Date(now).getTime() < STRIPE_MIN_TRIAL_MS + 60e3) return null; // a minute of slack for the checkout itself
+  return Math.floor(end.getTime() / 1000);
+}
+/** Where the paid-up date stands once a renewal checkout completes. A subscription that
+ *  waits for the paid-up date (`trialEndSec`) has charged nothing yet, so the date does not
+ *  move: the next term is Stripe's, recorded when its first invoice is paid. */
+export function checkoutRenewedEnd(prev, months, isSubscription, trialEndSec, now = new Date()) {
+  const t = Number(trialEndSec);
+  if (isSubscription && Number.isFinite(t) && t > 0) {
+    const trial = new Date(t * 1000);
+    const paid = prev?.currentPeriodEnd ? new Date(prev.currentPeriodEnd) : null;
+    return paid && paid > trial ? paid : trial;
+  }
+  return renewedEnd(prev, months, isSubscription, now);
+}
+// fin followups
+
 /** Whole calendar months from `from` to `to` (0 when `to` is before `from`): the largest k
  *  with addMonths(from, k) ≤ to. Defined through addMonths on purpose (hosting2), so a month
  *  of tenure ends exactly when a month of prepaid term does — including from a month-end

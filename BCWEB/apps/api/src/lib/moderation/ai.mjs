@@ -244,9 +244,19 @@ export async function aiLoadConfig({ force = false } = {}) {
 /** Drop the cached config so the next call re-reads it (the admin routes call this on every write). */
 export function aiInvalidateConfig() { _cfgAt = 0; }
 
+// followups (agent-bcw-followups): the Laya key is mandatory. The sidecar refuses to start
+// without one (infra/laya/entrypoint.py), so a provider with no key here could only ever talk
+// to nothing, or to a sidecar that is not the one this key would have proved. Unconfigured:
+// never called, and said so ('unconfigured') rather than timing out as "unavailable".
+export function layaCheck(env = process.env) {
+  const key = String(env.LAYA_API_KEY || '').trim();
+  return key ? { ok: true, key } : { ok: false, error: 'unconfigured' };
+}
+// fin followups
+
 function providerReady(cfg, { ignoreEnabled = false } = {}) {
   if (!cfg || cfg.killed || (!cfg.enabled && !ignoreEnabled)) return false;
-  if (cfg.provider === 'laya') return true;
+  if (cfg.provider === 'laya') return layaCheck().ok; // followups: no key, no Laya
   if (cfg.provider === 'external') return externalCheck().ok;
   return false;
 }
@@ -527,9 +537,9 @@ function layaQuestions(labels, category, purpose) {
 }
 
 async function callLaya(cfg, text, questions, signal) {
-  const headers = {};
-  const key = String(process.env.LAYA_API_KEY || '').trim();
-  if (key) headers.authorization = `Bearer ${key}`;
+  const lc = layaCheck(); // followups (agent-bcw-followups): never called without its key
+  if (!lc.ok) throw new Error('unconfigured');
+  const headers = { authorization: `Bearer ${lc.key}` };
   const body = { state: { body: text }, questions, model: 'multilingual', max_len: cfg.maxLen };
   const json = await postJson(`${layaBase()}/v1/systemone`, body, headers, signal);
   if (!json || typeof json !== 'object' || !json.answers || typeof json.answers !== 'object') throw new Error('bad_answer');
@@ -598,6 +608,8 @@ async function pipeline({ surface, text: raw, userId, signal, keyParts, run, adm
     // The admin screen's "test" box may run before the global switch and the surface toggle are
     // on (that is what it is for) — never past the kill switch, never with the provider off.
     const ready = adminTest ? providerReady(cfg, { ignoreEnabled: true }) : providerReady(cfg) && surfaceOn(cfg, surface);
+    // followups (agent-bcw-followups): Laya picked but no key: say which, not just "off".
+    if (!ready && cfg.provider === 'laya' && !layaCheck().ok) { bump('disabled'); return { value: null, reason: 'unconfigured' }; }
     if (!ready) { bump('disabled'); return { value: null, reason: 'disabled' }; }
     if (signal?.aborted) return { value: null, reason: 'unavailable' };
     const text = typeof raw === 'string' ? toPlainText(raw, cfg.maxChars) : '';
@@ -758,12 +770,12 @@ async function probeHealth(cfg) {
     return { ok: ext.ok && !breaker.openUntil, detail: ext.ok ? null : ext.error };
   }
   if (cfg.provider !== 'laya') return { ok: false, detail: 'off' };
+  const lc = layaCheck(); // followups (agent-bcw-followups): no key = unconfigured, not probed
+  if (!lc.ok) return { ok: false, detail: 'unconfigured' };
   if (Date.now() - _health.at < 10_000) return _health;
   const dl = deadline(1000);
   try {
-    const headers = {};
-    const key = String(process.env.LAYA_API_KEY || '').trim();
-    if (key) headers.authorization = `Bearer ${key}`;
+    const headers = { authorization: `Bearer ${lc.key}` };
     const res = await fetch(`${layaBase()}/health`, { headers, signal: dl.signal });
     let detail = null;
     try { const j = await readJson(res, 32 * 1024); detail = { device: typeof j?.device === 'string' ? j.device.slice(0, 20) : null }; } catch { /* a non-JSON health is still an answer */ }
@@ -795,7 +807,8 @@ export async function aiStatus() {
       counts: { ...counts },
       breaker: { open: !!breaker.openUntil && Date.now() < breaker.openUntil, fails: breaker.fails, openUntil: breaker.openUntil ? new Date(breaker.openUntil).toISOString() : null },
       external: aiExternalState(),
-      layaKeySet: !!String(process.env.LAYA_API_KEY || '').trim(),
+      layaKeySet: layaCheck().ok,
+      laya: { configured: layaCheck().ok }, // followups (agent-bcw-followups)
       envOverrides: cfg.envOverrides || [],
       config: publicConfig(cfg),
     };

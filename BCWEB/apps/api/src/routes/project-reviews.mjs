@@ -97,7 +97,7 @@ export default async function projectReviewRoutes(app) {
       where: { userId_target: { userId: req.user.uid, target: proj.target } },
       create: { ...data, userId: req.user.uid, target: proj.target }, update: data,
     });
-    linkCase(p, mod.caseId, 'project_review', r.id); // moderation (agent-moderation)
+    linkCase(p, mod, 'project_review', r.id); // moderation (agent-moderation)
     return { review: ownView(r) };
   });
 

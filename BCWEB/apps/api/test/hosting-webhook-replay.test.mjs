@@ -204,3 +204,58 @@ describe('catalogue file hosting, replayed', () => {
     assert.equal(meta._hostingSince, since.toISOString(), 'the replay does not move the tenure');
   });
 });
+
+// followups (agent-bcw-followups): auto-renew armed BEFORE the paid-up date. The Stripe
+// subscription waits for that date (trial_end, set at checkout) and charges nothing today, so
+// the completed checkout must not move the paid-up date; the renewal lands when the first real
+// invoice ('subscription_cycle') is paid on that date. It used to restart the term from today,
+// and the months already paid for were lost.
+describe('auto-renew armed early (trial_end = the paid-up date), replayed', () => {
+  for (const kind of ['repo_renew', 'pool_renew']) {
+    test(`${kind}: the paid days are kept, the coupon recorded, one receipt`, async () => {
+      const paidUpTo = new Date(Math.floor(addMonths(new Date(), 2).getTime() / 1000) * 1000);
+      const trialEnd = Math.floor(paidUpTo.getTime() / 1000);
+      const sub0 = { id: 's1', userId: 'u1', planId: 'pl', stripeSubId: null, status: 'active', poolContribBytes: 10n, createdAt: monthsAgo(4), currentPeriodEnd: paidUpTo };
+      const p = memDb({
+        adminSetting: [LOYALTY],
+        hostingGroup: [{ id: 'g1', name: 'pool', ownerId: 'u1', poolBytes: 10n }],
+        serverRepo: [{ id: 'r1', name: 'repo', ownerId: 'u1', status: 'ONLINE', storageQuotaBytes: 10n }],
+        subscription: [kind === 'pool_renew' ? { ...sub0, hostingGroupId: 'g1' } : { ...sub0, serverRepoId: 'r1' }],
+        user: [{ id: 'u1', notifPrefs: null }],
+      });
+      const stripe = stripeStub();
+      const target = kind === 'pool_renew' ? { groupId: 'g1' } : { repoId: 'r1' };
+      const s = { id: `cs_${kind}_trial`, mode: 'subscription', payment_status: 'no_payment_required', amount_total: 0, currency: 'usd', subscription: 'sub_trial',
+        metadata: { type: kind, kind: 'hosting', userId: 'u1', months: '6', loyaltyPct: '10', trialEnd: String(trialEnd), ...target } };
+      for (let i = 0; i < 3; i++) await dispatchStripeEvent({ p, stripe, event: evt('checkout.session.completed', s), log: quiet });
+
+      const sub = p._t('subscription')[0];
+      assert.equal(sub.currentPeriodEnd.toISOString(), paidUpTo.toISOString(), 'the two months already paid are kept, nothing added before the first charge');
+      assert.equal(sub.stripeSubId, 'sub_trial', 'the subscription is recorded, so its first invoice finds this row');
+      assert.equal(sub.loyaltyPct, 10, 'the loyalty coupon put on at checkout is recorded');
+      assert.equal(p._t('payment').filter((x) => x.stripeSessionId === s.id).length, 1, 'one receipt (the idempotency key)');
+      assert.equal(p._t('notification').length, 1);
+
+      // The first real charge, on the paid-up date: the new term is Stripe's period.
+      const next = addMonths(paidUpTo, 6);
+      const inv = { id: `in_${kind}_first`, billing_reason: 'subscription_cycle', subscription: 'sub_trial', amount_paid: 4860, currency: 'usd', lines: { data: [{ period: { end: Math.floor(next.getTime() / 1000) } }] } };
+      for (let i = 0; i < 2; i++) await dispatchStripeEvent({ p, stripe, event: evt('invoice.paid', inv), log: quiet });
+      assert.equal(p._t('subscription')[0].currentPeriodEnd.toISOString(), next.toISOString(), 'paid-up date + 6 months, not today + 6');
+      assert.equal(p._t('payment').filter((x) => x.stripeSessionId === inv.id).length, 1);
+    });
+  }
+
+  test('without a trial (under 48 h left) the old rule stands: the term starts today', async () => {
+    const p = memDb({
+      adminSetting: [LOYALTY],
+      hostingGroup: [{ id: 'g1', name: 'pool', ownerId: 'u1', poolBytes: 10n }],
+      subscription: [{ id: 's1', userId: 'u1', hostingGroupId: 'g1', planId: 'pl', status: 'active', poolContribBytes: 10n, createdAt: monthsAgo(4), currentPeriodEnd: new Date(Date.now() + 3600e3) }],
+      user: [{ id: 'u1', notifPrefs: null }],
+    });
+    const before = new Date();
+    const s = { id: 'cs_pool_now', mode: 'subscription', payment_status: 'paid', amount_total: 5000, currency: 'usd', subscription: 'sub_now', metadata: { type: 'pool_renew', kind: 'hosting', userId: 'u1', groupId: 'g1', months: '1', loyaltyPct: '0' } };
+    await dispatchStripeEvent({ p, stripe: stripeStub(), event: evt('checkout.session.completed', s), log: quiet });
+    assert.ok(Math.abs(p._t('subscription')[0].currentPeriodEnd.getTime() - addMonths(before, 1).getTime()) < 60e3);
+  });
+});
+// fin followups

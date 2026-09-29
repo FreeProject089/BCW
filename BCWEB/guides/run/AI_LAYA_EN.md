@@ -122,6 +122,14 @@ the rules decide alone. It never throws an error into a request.
    ```
    Put the profile in `.env`, not on the command line: `infra/deploy.sh` runs a plain
    `docker compose up -d`, which reads `.env` and would otherwise stop the sidecar.
+   **The key is mandatory.** Without it (or with the `.env.example` placeholder, or shorter
+   than 16 characters) the image's entrypoint (`infra/laya/entrypoint.py`) refuses to start:
+   `laya-fetch` exits with code 64 and a line in `docker compose logs laya-fetch` saying why,
+   and `laya`, which waits for it, never starts. The API then shows Laya as **"Not
+   configured"** and never calls it. Compose itself does not refuse (`${LAYA_API_KEY:?}`
+   would make every `docker compose` command fail on a server that never enabled the `ai`
+   profile: Compose resolves variables for all services before it applies profiles), so the
+   check lives in the image.
 2. Build and start: `docker compose --profile ai build laya` then `docker compose up -d`.
    The first start runs `laya-fetch` once, which downloads the checkpoint (~0.7 GB) into the
    `laya-models` volume; then `laya` serves it **offline** on the internal `ai` network (no
@@ -184,7 +192,7 @@ In `.env` (a value set here **wins** over the admin screen, which greys the fiel
 | Variable | Purpose |
 |---|---|
 | `COMPOSE_PROFILES` | add `ai` to start the sidecar (`laya-fetch` then `laya`). |
-| `LAYA_API_KEY` | bearer key shared by the API and the sidecar. Empty = the sidecar answers anyone on its internal network (only the API is on it); the admin screen warns. |
+| `LAYA_API_KEY` | bearer key shared by the API and the sidecar. **Mandatory with the `ai` profile**: without it the sidecar refuses to start and the API reports Laya "Not configured" (it is never called). |
 | `LAYA_URL` | the sidecar's address, default `http://laya:8000`. |
 | `LAYA_REVISION` | checkpoint pin: `reviewed` (default) or a commit SHA. |
 | `LAYA_CPUS` / `LAYA_MEM_LIMIT` / `LAYA_THREADS` | the sidecar's ceiling (default 1.5 CPU, 2g, 2 threads). |
@@ -215,7 +223,8 @@ In `.env` (a value set here **wins** over the admin screen, which greys the fiel
 
 | Symptom on the admin screen | Likely cause |
 |---|---|
-| "Not reachable" | The sidecar is not running (profile missing), still loading, or `LAYA_API_KEY` differs between the two sides. `docker compose ps laya`, `docker compose logs laya`. |
+| "Not configured" | `LAYA_API_KEY` is not set for the API. Set it in `.env` (the same value the sidecar gets) and restart the API. |
+| "Not reachable" | The sidecar is not running (profile missing, or it refused to start without its key: `docker compose logs laya-fetch`), still loading, or `LAYA_API_KEY` differs between the two sides. `docker compose ps laya`, `docker compose logs laya`. |
 | Many "timed out" | CPU too small for the load: raise `LAYA_CPUS`, or lower what is sent (fewer places, fewer characters), or raise the timeout a little. |
 | "Paused after repeated failures" | The breaker opened; it retries by itself after the pause. |
 | "Busy" in the test box | The queue is full: concurrency 1 with a slow CPU. That is the guard working. |

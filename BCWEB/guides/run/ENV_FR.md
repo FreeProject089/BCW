@@ -119,7 +119,7 @@ Tout vide = IA éteinte, règles seules. Une valeur fixée ici **l'emporte** sur
 
 | Variable | Rôle |
 |---|---|
-| `LAYA_API_KEY` | clé partagée par l'API et le conteneur annexe Laya (`openssl rand -hex 32`). **Secret.** Vide = le conteneur répond à quiconque sur son réseau interne. |
+| `LAYA_API_KEY` | clé partagée par l'API et le conteneur annexe Laya (`openssl rand -hex 32`). **Secret. Obligatoire avec le profil `ai`** : le conteneur annexe refuse de démarrer sans elle (ou avec la valeur d'exemple de `.env.example`, ou sous 16 caractères), et l'API affiche Laya « Non configuré » et ne l'appelle jamais. Inutile sans le profil, où elle peut rester vide. |
 | `LAYA_URL` | l'adresse du conteneur annexe. Défaut `http://laya:8000` ; à changer seulement si Laya tourne ailleurs. |
 | `LAYA_REVISION` | épinglage du modèle : `reviewed` (défaut, le commit revu par laya 0.3.21) ou un SHA de commit. |
 | `LAYA_CPUS` / `LAYA_MEM_LIMIT` / `LAYA_THREADS` | le plafond du conteneur annexe : `1.5` CPU, `2g`, `2` threads torch par défaut. |

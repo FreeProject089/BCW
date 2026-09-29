@@ -442,10 +442,12 @@ export default async function teamRoutes(app) {
     const p = await db();
     const got = await answering(p, req, reply); if (!got) return;
     const status = String(req.query?.status || 'open');
-    const where = { ownerTeamId: got.t.id, ...(status === 'all' ? {} : { status: ['open', 'archived', 'closed', 'blocked'].includes(status) ? status : 'open' }) };
+    // followups (agent-bcw-followups): a thread held by moderation ('held') is not in the
+    // team's inbox, its counts included, until a moderator releases it.
+    const where = { ownerTeamId: got.t.id, ...(status === 'all' ? { status: { not: 'held' } } : { status: ['open', 'archived', 'closed', 'blocked'].includes(status) ? status : 'open' }) };
     const [rows, counts] = await Promise.all([
       p.contactThread.findMany({ where, orderBy: { lastActivityAt: 'desc' }, take: 200, include: { sender: { select: { id: true, displayName: true, avatar: true } }, _count: { select: { messages: true, attachments: true } } } }),
-      p.contactThread.groupBy({ by: ['status'], where: { ownerTeamId: got.t.id }, _count: { _all: true } }),
+      p.contactThread.groupBy({ by: ['status'], where: { ownerTeamId: got.t.id, status: { not: 'held' } }, _count: { _all: true } }),
     ]);
     return {
       counts: Object.fromEntries(counts.map((c) => [c.status, c._count._all])),
@@ -464,14 +466,14 @@ export default async function teamRoutes(app) {
     const got = await answering(p, req, reply); if (!got) return;
     // Scoped to THIS team's rows in the query itself: an id from another team's inbox is
     // not refused, it simply matches nothing.
-    const { count } = await p.contactThread.updateMany({ where: { id: { in: b.data.ids }, ownerTeamId: got.t.id, status: { not: 'blocked' } }, data: { status: b.data.status } });
+    const { count } = await p.contactThread.updateMany({ where: { id: { in: b.data.ids }, ownerTeamId: got.t.id, status: { notIn: ['blocked', 'held'] } }, data: { status: b.data.status } }); // followups: never un-hold one
     return { ok: true, count };
   });
 
   app.delete('/me/teams/:id/threads/:threadId', { preHandler: requireRole() }, async (req, reply) => {
     const p = await db();
     const got = await load(p, req, reply, ['owner', 'admin']); if (!got) return;
-    const t = await p.contactThread.findFirst({ where: { id: req.params.threadId, ownerTeamId: got.t.id }, select: { id: true, subject: true } });
+    const t = await p.contactThread.findFirst({ where: { id: req.params.threadId, ownerTeamId: got.t.id, status: { not: 'held' } }, select: { id: true, subject: true } }); // followups: a held thread is not theirs to see yet
     if (!t) return reply.code(404).send({ error: 'not_found' });
     await deleteThreadFiles(p, t.id);
     await p.contactThread.delete({ where: { id: t.id } });

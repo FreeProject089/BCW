@@ -128,6 +128,14 @@ répond « rien » et les règles décident seules. Elle ne lève jamais d’err
    ```
    Mets le profil dans `.env`, pas sur la ligne de commande : `infra/deploy.sh` lance un simple
    `docker compose up -d`, qui lit `.env` et arrêterait sinon le conteneur annexe.
+   **La clé est obligatoire.** Sans elle (ou avec la valeur d’exemple de `.env.example`, ou
+   plus courte que 16 caractères), le point d’entrée de l’image (`infra/laya/entrypoint.py`)
+   refuse de démarrer : `laya-fetch` s’arrête avec le code 64 et une ligne dans
+   `docker compose logs laya-fetch` qui dit pourquoi, et `laya`, qui l’attend, ne démarre
+   jamais. L’API affiche alors Laya **« Non configuré »** et ne l’appelle jamais. Compose
+   lui-même ne refuse pas (`${LAYA_API_KEY:?}` ferait échouer toute commande `docker compose`
+   sur un serveur qui n’a jamais activé le profil `ai` : Compose résout les variables de tous
+   les services avant d’appliquer les profils), donc la vérification est dans l’image.
 2. Construire et démarrer : `docker compose --profile ai build laya` puis `docker compose up -d`.
    Le premier démarrage lance une fois `laya-fetch`, qui télécharge le modèle (~0,7 Go) dans le
    volume `laya-models` ; ensuite `laya` le sert **hors ligne** sur le réseau interne `ai` (aucun
@@ -192,7 +200,7 @@ Dans `.env` (une valeur fixée ici **l’emporte** sur l’écran admin, qui gri
 | Variable | Rôle |
 |---|---|
 | `COMPOSE_PROFILES` | ajouter `ai` pour démarrer le conteneur annexe (`laya-fetch` puis `laya`). |
-| `LAYA_API_KEY` | clé partagée par l’API et le conteneur annexe. Vide = il répond à quiconque sur son réseau interne (seule l’API y est) ; l’écran admin prévient. |
+| `LAYA_API_KEY` | clé partagée par l’API et le conteneur annexe. **Obligatoire avec le profil `ai`** : sans elle le conteneur annexe refuse de démarrer et l’API affiche Laya « Non configuré » (il n’est jamais appelé). |
 | `LAYA_URL` | l’adresse du conteneur annexe, `http://laya:8000` par défaut. |
 | `LAYA_REVISION` | épinglage du modèle : `reviewed` (par défaut) ou un SHA de commit. |
 | `LAYA_CPUS` / `LAYA_MEM_LIMIT` / `LAYA_THREADS` | le plafond du conteneur annexe (1,5 CPU, 2g, 2 threads par défaut). |
@@ -224,7 +232,8 @@ Dans `.env` (une valeur fixée ici **l’emporte** sur l’écran admin, qui gri
 
 | Symptôme sur l’écran admin | Cause probable |
 |---|---|
-| « Injoignable » | Le conteneur annexe ne tourne pas (profil absent), charge encore, ou `LAYA_API_KEY` diffère entre les deux côtés. `docker compose ps laya`, `docker compose logs laya`. |
+| « Non configuré » | `LAYA_API_KEY` n’est pas définie pour l’API. Mets-la dans `.env` (la même valeur que le conteneur annexe) et redémarre l’API. |
+| « Injoignable » | Le conteneur annexe ne tourne pas (profil absent, ou il a refusé de démarrer sans sa clé : `docker compose logs laya-fetch`), charge encore, ou `LAYA_API_KEY` diffère entre les deux côtés. `docker compose ps laya`, `docker compose logs laya`. |
 | Beaucoup d’« expirés » | CPU trop petit pour la charge : augmente `LAYA_CPUS`, ou envoie moins (moins d’endroits, moins de caractères), ou augmente un peu le délai. |
 | « En pause après des échecs répétés » | Le disjoncteur s’est ouvert ; il réessaie seul après la pause. |
 | « Occupé » dans la case d’essai | La file est pleine : 1 appel simultané avec un CPU lent. C’est le garde-fou qui fonctionne. |

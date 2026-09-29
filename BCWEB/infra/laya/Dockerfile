@@ -52,11 +52,14 @@ RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu 
 RUN useradd --uid 10001 --user-group --create-home --home-dir /home/laya --shell /usr/sbin/nologin laya \
  && mkdir -p /models/hf \
  && chown -R laya:laya /models
-COPY --chown=root:root --chmod=0644 healthcheck.py fetch_model.py /opt/
+COPY --chown=root:root --chmod=0644 healthcheck.py fetch_model.py entrypoint.py /opt/
 USER laya
 WORKDIR /home/laya
 
 EXPOSE 8000
 # The start period covers loading ~0.7 GB from the volume into memory on a slow disk.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=180s --retries=3 CMD ["python", "/opt/healthcheck.py"]
+# followups (agent-bcw-followups): LAYA_API_KEY is mandatory. entrypoint.py refuses to start
+# any command of this image without it (laya-fetch too, which runs first), then execs the command.
+ENTRYPOINT ["python", "/opt/entrypoint.py"]
 CMD ["laya-serve"]

@@ -119,7 +119,7 @@ Moderation → AI provider), which greys the field.
 
 | Variable | Purpose |
 |---|---|
-| `LAYA_API_KEY` | bearer key shared by the API and the Laya sidecar (`openssl rand -hex 32`). **Secret.** Empty = the sidecar answers anyone on its internal network. |
+| `LAYA_API_KEY` | bearer key shared by the API and the Laya sidecar (`openssl rand -hex 32`). **Secret. Mandatory with the `ai` profile**: the sidecar refuses to start without it (or with the `.env.example` placeholder, or under 16 characters), and the API reports Laya "Not configured" and never calls it. Unused without the profile, where it may stay empty. |
 | `LAYA_URL` | the sidecar's address. Default `http://laya:8000`; change it only if you run Laya elsewhere. |
 | `LAYA_REVISION` | checkpoint pin: `reviewed` (default, the commit laya 0.3.21 reviewed) or a commit SHA. |
 | `LAYA_CPUS` / `LAYA_MEM_LIMIT` / `LAYA_THREADS` | the sidecar's hard ceiling: default `1.5` CPU, `2g`, `2` torch threads. |

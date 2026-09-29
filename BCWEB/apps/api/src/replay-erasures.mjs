@@ -19,6 +19,7 @@ import { db } from './lib/lib.mjs';
 import { readErasures } from './lib/erasure-log.mjs';
 import { anonymiseAccount } from './routes/closure.mjs';
 import { shredUser } from './lib/shred.mjs';
+import { forgetAuthor } from './lib/moderation/cases.mjs'; // followups (agent-bcw-followups)
 
 const WRITE = process.argv.includes('--write');
 
@@ -35,7 +36,7 @@ if (!log.length) {
 
 console.log(`${log.length} erasure(s) recorded.`);
 
-let back = 0, keyBack = 0, done = 0;
+let back = 0, keyBack = 0, done = 0, casesBack = 0;
 for (const e of log) {
     const u = await p.user.findUnique({
         where: { id: e.userId },
@@ -52,6 +53,15 @@ for (const e of log) {
             keyBack += 1;
             console.log(`  ${e.userId}  key restored without its account — shredding`);
             if (WRITE) await shredUser(p, e.userId);
+        }
+        // followups (agent-bcw-followups): moderation cases name their author by a plain id
+        // (no relation, no cascade), so a restore brings them back with the text attached even
+        // when the account stays gone.
+        const cases = await p.moderationCase.count({ where: { authorId: e.userId } }).catch(() => 0);
+        if (cases) {
+            casesBack += 1;
+            console.log(`  ${e.userId}  ${cases} moderation case(s) restored without their account — detaching`);
+            if (WRITE) await forgetAuthor(p, e.userId).catch(() => {});
         }
         continue;
     }
@@ -77,10 +87,11 @@ console.log('');
 console.log(`already erased : ${done}`);
 console.log(`brought back   : ${back}`);
 console.log(`orphan keys    : ${keyBack}`);
-if (!WRITE && (back || keyBack)) {
+console.log(`orphan cases   : ${casesBack}`);
+if (!WRITE && (back || keyBack || casesBack)) {
     console.log('');
     console.log('Nothing was changed. Re-run with --write to re-apply these erasures.');
-} else if (WRITE && (back || keyBack)) {
+} else if (WRITE && (back || keyBack || casesBack)) {
     console.log('');
     console.log('Re-applied. Verify with a spot check before opening the site.');
 }
