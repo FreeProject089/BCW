@@ -59,7 +59,7 @@ export function componentFromBlocks(name, blocks, uid = fallbackUid) {
   };
 }
 
-/** Fresh ids for a copy of blocks that may hold containers: `{ ids, parentOf }`. */
+/** Fresh ids for a copy of blocks that may hold containers: old id → new id. */
 function remapIds(blocks, uid) {
   const map = new Map();
   for (const b of blocks) if (b.id) map.set(b.id, uid());
@@ -87,6 +87,7 @@ export function instantiateComponent(comp, at = { x: 64, y: 64 }, zBase = 0, uid
     return {
       ...b,
       id: (b.id && fresh.get(b.id)) || uid(),
+      ...(Array.isArray(b.action) ? { action: remapStepTargets(b.action, fresh) } : {}),
       ...(inner ? { parent: fresh.get(b.parent) } : { x: x0 + (Number(b.x) || 0), y: y0 + (Number(b.y) || 0) }),
       z: inner ? (Number(b.z) || 0) : zBase + (Number(b.z) || 0),
       component: { id: comp.id, inst },
@@ -139,6 +140,7 @@ export function updateInstances(blocks, comp, uid = fallbackUid) {
     for (const b of comp.blocks) {
       const inner = b.parent && fresh.has(b.parent);
       out.push({ ...b, id: (b.id && fresh.get(b.id)) || uid(),
+        ...(Array.isArray(b.action) ? { action: remapStepTargets(b.action, fresh) } : {}),
         ...(inner ? { parent: fresh.get(b.parent), z: Number(b.z) || 0 } : { x: bb.x + (Number(b.x) || 0), y: bb.y + (Number(b.y) || 0), z: zBase + (Number(b.z) || 0) }),
         component: { id: comp.id, inst } });
     }
@@ -323,9 +325,25 @@ export function duplicatePage(canvas, pageId, title) {
  * ids. A component's copy is linked (tagged with the preset's id, like a saved component).
  */
 export function blocksFromPreset(entry, at = { x: 64, y: 64 }, zBase = 0, uid = fallbackUid) {
-  const blocks = Array.isArray(entry?.doc?.blocks) ? entry.doc.blocks : [];
+  const blocks = (Array.isArray(entry?.doc?.blocks) ? entry.doc.blocks : []).filter((b) => b && typeof b === 'object');
   if (!blocks.length) return [];
-  const bb = boundsOf(blocks);
+  // Every id of the preset gets a fresh one, and every REFERENCE to one follows it: a child's
+  // `parent` (its `slot` is a tab index, not an id, and stays), a step's target. A reference to
+  // an id the preset does not hold is left as it is (a `#top` scroll, a block of the page).
+  const fresh = remapIds(blocks, uid);
+  const inner = (b) => !!b.parent && fresh.has(b.parent);
+  // The group's corner is its TOP blocks' (a child's x/y are relative to its container).
+  const bb = boundsOf(blocks.filter((b) => !inner(b)));
   if (entry.sort === 'component') return instantiateComponent({ id: entry.id, w: bb.w, h: bb.h, blocks }, at, zBase, uid);
-  return blocks.map((b) => ({ ...b, id: uid(), x: (Number(at.x) || 0) + b.x - bb.x, y: (Number(at.y) || 0) + b.y - bb.y, z: zBase + (Number(b.z) || 0) }));
+  return blocks.map((b) => {
+    const o = { ...b, id: (b.id && fresh.get(b.id)) || uid() };
+    if (Array.isArray(b.action)) o.action = remapStepTargets(b.action, fresh);
+    if (inner(b)) return { ...o, parent: fresh.get(b.parent), z: Number(b.z) || 0 };
+    return { ...o, x: (Number(at.x) || 0) + (Number(b.x) || 0) - bb.x, y: (Number(at.y) || 0) + (Number(b.y) || 0) - bb.y, z: zBase + (Number(b.z) || 0) };
+  });
+}
+
+/** Steps whose block target is one of `ids`, pointed at its new id (the others unchanged). */
+function remapStepTargets(steps, ids) {
+  return steps.map((s) => (s && typeof s === 'object' && typeof s.target === 'string' && ids.has(s.target) ? { ...s, target: ids.get(s.target) } : s));
 }

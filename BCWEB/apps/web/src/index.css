@@ -1320,7 +1320,11 @@ label:has(> input[type="radio"]) {
    or the panel inside stops filling the zone. */
 .cst-dock-zone > div { display: contents; }
 .cst-dock-reopen { padding: 6px; font-size: 11px; color: var(--muted); }
-.cst-dock-panel { display: flex; flex-direction: column; min-height: 0; }
+/* studiofix: a panel keeps its own height (flex-shrink 0) and the ZONE scrolls (overflow: auto,
+   the sticky heads are for that). Shrinkable, a long panel (Pages with 30 pages: 2700px of
+   content in a 586px box) was squeezed and its body painted over the panels below it.
+   min-width 0: a long unbreakable name cannot push the panel wider than its zone. */
+.cst-dock-panel { display: flex; flex-direction: column; min-height: 0; min-width: 0; flex-shrink: 0; }
 .cst-dock-panel.is-dragging { opacity: .45; }
 .cst-dock-head {
   display: flex; align-items: center; gap: 4px; padding: 4px 6px;
@@ -1328,7 +1332,10 @@ label:has(> input[type="radio"]) {
   color: var(--faint); background: var(--surface-2); border-bottom: 1px solid var(--line);
   position: sticky; top: 0; z-index: 1;
 }
-.cst-dock-body { padding: 8px; min-height: 0; }
+.cst-dock-body { padding: 8px; min-height: 0; min-width: 0; }
+/* studiofix: the page list scrolls on its own past a dozen pages, so the panels under it stay
+   in reach; "New page" and "Import" stay below it, always visible. */
+.cst-pages-list { max-height: min(55vh, 520px); overflow-y: auto; overscroll-behavior: contain; min-width: 0; }
 .cst-dock-body > * { margin-top: 0 !important; }
 .cst-dock-btn, .cst-dock-fold { display: inline-flex; padding: 3px; border-radius: 6px; color: var(--faint); }
 .cst-dock-btn:hover, .cst-dock-fold:hover { background: var(--bg-solid); color: var(--text); }

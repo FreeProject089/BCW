@@ -42,7 +42,8 @@ version: 1, kind, doc, components?, exposed?, assets }`, pictures and files by a
 site's `/uploads/...` or `/api/media/...`, never another host's). `parseStudioFile(text, { links })`
 reads one with the SAME checks as a save (`validateDoc`, and `libraryEntryProblems` for a
 component or a preset) plus a size cap (2 MB), a nesting cap and a refusal of `__proto__`,
-`constructor` and `prototype` as keys; `freshStudioFile` gives every block and component a new id;
+`constructor` and `prototype` as keys; `freshStudioFile` gives every block and component a new id (a definition linked to a library of
+the site the file comes from keeps its id when imported on that site: `opts.origin`);
 `exportStudioFile` refuses what an import would refuse. A paste of copied blocks is read by the same
 function (`parseBlocksPaste`).
 

@@ -121,7 +121,9 @@ export function useStudioIO(ctx) {
     const sort = entrySortOf(file.kind);
     const title = t('cst.io.refused', 'This file was not imported');
     if (componentMode) { refuse(title, [{ path: 'kind', reason: 'not_here' }]); return; }
-    const fresh = freshStudioFile(file, { uid, componentUid: () => newId('c') });
+    // `origin`: a file exported from THIS site keeps its copies linked to their library
+    // components (io.js freshStudioFile), so "Update the copies" still finds them.
+    const fresh = freshStudioFile(file, { uid, componentUid: () => newId('c'), origin: typeof location !== 'undefined' ? location.origin : '' });
     const note = assetNote(file);
     if (!sort) {
       if (pages?.canEditList && pages.create) {
@@ -199,7 +201,11 @@ export function useStudioIO(ctx) {
     const fresh = freshStudioFile(r.file, { uid, keepComponents: true, taken: canvas.blocks.map((b) => b.id) });
     const blocks = fresh.doc.blocks || [];
     if (!blocks.length) return true;
-    addBlocks(blocks.map((b) => (b.parent ? b : { ...b, x: (Number(b.x) || 0) + GRID * 3, y: (Number(b.y) || 0) + GRID * 3 })));
+    // The definitions the clipboard brought for copies this page did not hold: into the page's
+    // map, under the same ids, so those copies stay linked to their library components.
+    const added = (r.added || []).filter((cid) => r.file.components?.[cid]);
+    const extra = added.length ? { components: { ...(canvas.components || {}), ...Object.fromEntries(added.map((cid) => [cid, r.file.components[cid]])) } } : {};
+    addBlocks(blocks.map((b) => (b.parent ? b : { ...b, x: (Number(b.x) || 0) + GRID * 3, y: (Number(b.y) || 0) + GRID * 3 })), extra);
     return true;
   }, [refuse]);
 

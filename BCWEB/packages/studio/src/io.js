@@ -44,7 +44,9 @@
 // page or entry itself get new ones (`freshStudioFile`), with every reference rewritten (a
 // container link, a step's target, an instance's component, an exposed field's block), so an
 // imported file can never collide with, or overwrite, a block, a page or a component already
-// here. Nothing is written by the import itself either: the result lands in the editor's draft
+// here. One exception, the LIBRARY LINK: a definition naming a library of the site the file
+// comes from, imported on that same site, keeps its id (the library entry's), inside the new
+// page's own map, so its copies still update from the library. Nothing is written by the import itself either: the result lands in the editor's draft
 // or in a library through the normal save routes, which validate it again.
 //
 // Pure, no DOM.
@@ -326,6 +328,8 @@ export function parseStudioFile(text, opts = {}) {
 
 // ── Fresh ids ─────────────────────────────────────────────────────────────────────────────
 const TARGET_STEPS = ['scroll', 'reveal', 'modal', 'tab'];
+/** The scopes of a definition that point at a library an import can find again. */
+const LINKED_SCOPES = ['site', 'project'];
 
 /** Steps with their block targets pointed through `ids` (a scroll to `#top` is not a block). */
 function remapSteps(steps, ids) {
@@ -347,8 +351,11 @@ function counterUid(prefix = 'i') {
  *   · every reference rewritten: `parent`, a step's `target` (scroll, reveal, modal, tab), an
  *     instance's override of an exposed step (its targets are the DEFINITION's blocks), an
  *     exposed field's `block`, an instance's `component.id`;
- *   · each definition of `components`: a new id (unless `keepComponents`: a paste of copies
- *     that stay linked to THIS page's definitions, which are not imported).
+ *   · each definition of `components`: a new id, unless `keepComponents` (a paste of copies
+ *     that stay linked to THIS page's definitions), or unless it names a library (`scope` site
+ *     or project) and the file comes from this site (`opts.origin` equal to the file's
+ *     `origin`): its id is then its library entry's, the link "Update the copies" follows, and
+ *     it is kept (the map is the new page's own, a kept key collides with nothing).
  * `doc` is the document with its definitions put back (`doc.components`), no page id (the
  * caller gives the one of the page or the entry it becomes). `idMap` = { blocks: Map (the
  * document's), components: Map, defs: { [newCid]: Map } }, for the round-trip test.
@@ -361,7 +368,15 @@ export function freshStudioFile(file, opts = {}) {
   const src = isObj(file) ? file : {};
   const doc = isObj(src.doc) ? src.doc : { blocks: [] };
   const comps = isObj(src.components) ? src.components : {};
-  const cmap = new Map(Object.keys(comps).map((cid) => [cid, opts.keepComponents ? cid : next(cuid)]));
+  // A definition that names a LIBRARY (`scope` site or project) is keyed by that library entry's
+  // id: that id is the link "Update the copies" follows. Imported on the site it was exported
+  // from (`opts.origin` = this site, equal to the file's), it keeps it, or the copies would never
+  // update again. The map is the new page's (or entry's) own, so a kept key collides with nothing;
+  // from another site the id names THAT site's library and is made new like every other.
+  const keepLink = (cid) => !!opts.origin && src.origin === opts.origin && isObj(comps[cid]) && LINKED_SCOPES.includes(comps[cid].scope) && ID_SHAPE.test(cid);
+  const kept = new Set(Object.keys(comps).filter((cid) => opts.keepComponents || keepLink(cid)));
+  for (const cid of kept) used.add(cid);
+  const cmap = new Map(Object.keys(comps).map((cid) => [cid, kept.has(cid) ? cid : next(cuid)]));
   const blockIds = (blocks) => new Map((Array.isArray(blocks) ? blocks : []).filter((b) => isObj(b) && typeof b.id === 'string').map((b) => [b.id, next(uid)]));
   // Each definition's block ids, first: an instance's override of an exposed step names them.
   const defIds = new Map(Object.keys(comps).map((cid) => [cid, blockIds(comps[cid]?.doc?.blocks)]));
@@ -448,31 +463,43 @@ export function studioFileName(name, fallback = 'studio') {
 /**
  * A paste of blocks (`{ bcwBlocks: [...] }`, what the studio's Ctrl+C writes), read as a
  * SECTION file and checked by the same function as an imported one. `pageComponents`: the
- * definitions of the page being pasted on; a copy (instance) of one of them stays a linked copy,
- * a copy of anything else is left out (its definition is not on this page), which is what the
- * paste always did. Returns `{ ok, file, dropped }` or `{ ok: false, problems }`, a block's
- * path as `bcwBlocks[i]`, i counted in the clipboard's list.
+ * definitions of the page being pasted on; a copy (instance) of one of them stays a linked copy.
+ * The clipboard may carry the definitions its copies use (`bcwComponents`, what Ctrl+C writes
+ * beside the blocks): a copy of a component this page does not hold yet then comes WITH its
+ * definition, keyed by the same id and naming the same library, so it stays linked to that
+ * library component. The page's own version of a definition wins over the clipboard's. A copy
+ * whose definition neither has is left out. Returns `{ ok, file, dropped, added }` (`added`: the
+ * definitions new to the page, to put in its map) or `{ ok: false, problems }`, a block's path as
+ * `bcwBlocks[i]`, i counted in the clipboard's list.
  */
 export function parseBlocksPaste(input, pageComponents = null, opts = {}) {
   let list;
+  let carried = {};
   if (typeof input === 'string') {
     const j = parseGuardedJson(input, MAX_FILE_BYTES);
     if (!j.ok) return j;
     if (!isObj(j.value) || !Array.isArray(j.value.bcwBlocks)) return { ok: false, problems: [{ path: '', reason: 'bad_format' }] };
+    if (j.value.bcwComponents != null && !isObj(j.value.bcwComponents)) return { ok: false, problems: [{ path: 'bcwComponents', reason: 'bad_type' }] };
     list = j.value.bcwBlocks;
-  } else if (Array.isArray(input)) {
-    // Blocks this tab copied (the in-memory clipboard): the same guard, through their text.
+    carried = isObj(j.value.bcwComponents) ? j.value.bcwComponents : {};
+  } else if (Array.isArray(input) || isObj(input)) {
+    // Blocks this tab copied (the in-memory clipboard, a list or `{ bcwBlocks, bcwComponents }`):
+    // the same guard, through their text.
     let text = '';
-    try { text = JSON.stringify({ bcwBlocks: input }); } catch { return { ok: false, problems: [{ path: '', reason: 'bad_json' }] }; }
+    try { text = JSON.stringify(Array.isArray(input) ? { bcwBlocks: input } : input); } catch { return { ok: false, problems: [{ path: '', reason: 'bad_json' }] }; }
     return parseBlocksPaste(text, pageComponents, opts);
   } else return { ok: false, problems: [{ path: '', reason: 'bad_format' }] };
   if (list.length > LIMITS.blocks) return { ok: false, problems: [{ path: 'doc.blocks', reason: 'too_many' }] };
-  const map = isObj(pageComponents) ? pageComponents : {};
+  const page = isObj(pageComponents) ? pageComponents : {};
+  // The page's definitions first: the clipboard only fills in the ones it does not have.
+  const map = { ...carried };
+  for (const cid of Object.keys(page)) map[cid] = page[cid];
   const kept = list.filter((b) => !(isObj(b) && b.kind === 'instance') || (isObj(b.component) && typeof b.component.id === 'string' && isObj(own(map, b.component.id))));
   // The definitions the kept copies use, and the ones THOSE use (a card holding a badge).
   const used = usedComponentIds(kept.filter((b) => isObj(b) && b.kind === 'instance'), map);
   const components = {};
   for (const cid of used) if (isObj(own(map, cid))) components[cid] = map[cid];
+  const added = [...used].filter((cid) => !isObj(own(page, cid)));
   const file = {
     format: STUDIO_FILE_FORMAT, version: STUDIO_FILE_VERSION, kind: 'preset:section', name: 'Clipboard',
     doc: { v: DOC_VERSION, frames: { desktop: { w: 1200, fit: 'content' }, phone: { w: 390, fit: 'content', mode: 'stack' } }, blocks: kept },
@@ -486,5 +513,5 @@ export function parseBlocksPaste(input, pageComponents = null, opts = {}) {
     const where = (path) => path.replace(/^doc\.blocks\[(\d+)\]/, (_m, k) => `bcwBlocks[${at[Number(k)] ?? k}]`);
     return { ok: false, problems: problems.map((p) => ({ ...p, path: where(p.path) })) };
   }
-  return { ok: true, file, dropped: list.length - kept.length };
+  return { ok: true, file, dropped: list.length - kept.length, added };
 }

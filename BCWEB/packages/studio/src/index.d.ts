@@ -412,11 +412,11 @@ export function libraryEntryProblems(entry: unknown, at?: string, opts?: { links
 export function parseGuardedJson(text: unknown, maxBytes?: number): { ok: true; value: unknown } | { ok: false; problems: FileProblem[] };
 export function studioFileProblems(file: unknown, opts?: { links?: unknown }): FileProblem[];
 export function parseStudioFile(text: unknown, opts?: { links?: unknown }): { ok: true; file: StudioFile } | { ok: false; problems: FileProblem[] };
-export function freshStudioFile(file: StudioFile, opts?: { uid?: () => string; componentUid?: () => string; taken?: Iterable<string>; keepComponents?: boolean }): {
+export function freshStudioFile(file: StudioFile, opts?: { uid?: () => string; componentUid?: () => string; taken?: Iterable<string>; keepComponents?: boolean; origin?: string }): {
   doc: Record<string, unknown>; exposed?: ExposedField[];
   idMap: { blocks: Map<string, string>; components: Map<string, string>; defs: Record<string, Map<string, string>> };
 };
 export function exportStudioFile(input: { kind: StudioFileKind; doc: unknown; id?: string; name?: string; exposed?: ExposedField[] | null; origin?: string; exportedAt?: string }, opts?: { links?: unknown }): { file: StudioFile; problems: FileProblem[] };
 export function studioFileText(file: StudioFile): string;
 export function studioFileName(name: unknown, fallback?: string): string;
-export function parseBlocksPaste(input: unknown, pageComponents?: unknown, opts?: { links?: unknown }): { ok: true; file: StudioFile; dropped: number } | { ok: false; problems: FileProblem[] };
+export function parseBlocksPaste(input: unknown, pageComponents?: unknown, opts?: { links?: unknown }): { ok: true; file: StudioFile; dropped: number; added: string[] } | { ok: false; problems: FileProblem[] };

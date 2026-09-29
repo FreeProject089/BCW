@@ -63,7 +63,7 @@ export function PagesPanel({ t, lang, pages, onImport = null, onExport = null })
     if (v !== was) pages.rename(editing.id, v);
   };
   return (
-    <div className="space-y-2" data-studio-pages data-tour="pages">
+    <div className="space-y-2 min-w-0" data-studio-pages data-tour="pages">
       {!canEditList && <p className="text-[11px] text-[var(--muted)]">{t('cst.pages.home', 'The home page’s sections are added, ordered and switched on or off on the Home page screen. Open one here to draw it.')}</p>}
       {!list.length && (
         <div className="text-center py-6 px-3 rounded-xl border border-dashed border-[var(--line)]">
@@ -71,13 +71,13 @@ export function PagesPanel({ t, lang, pages, onImport = null, onExport = null })
           <div className="text-xs text-[var(--muted)] mt-1">{t('cst.pages.empty.s', 'Start one from a preset with “New page”.')}</div>
         </div>
       )}
-      <ol className="space-y-1" aria-label={t('cst.pages', 'Pages')}>
+      <ol className="cst-pages-list space-y-1" aria-label={t('cst.pages', 'Pages')}>
         {list.map((pg, i) => {
           const cur = pg.id === currentId;
           const label = pg.title || t('pce.canvases.untitled', 'Untitled page');
           return (
             <li key={pg.id} data-page-row={pg.id} aria-current={cur ? 'page' : undefined}
-              className={`rounded-lg border p-1.5 ${cur ? 'border-[var(--accent-ink)] bg-[var(--surface-2)]' : 'border-[var(--line)]'}`}>
+              className={`min-w-0 rounded-lg border p-1.5 ${cur ? 'border-[var(--accent-ink)] bg-[var(--surface-2)]' : 'border-[var(--line)]'}`}>
               {editing?.id === pg.id ? (
                 <div className="flex items-center gap-1">
                   <Input autoFocus className="flex-1 min-w-0" value={editing.value} maxLength={120}
@@ -98,20 +98,22 @@ export function PagesPanel({ t, lang, pages, onImport = null, onExport = null })
                     {pg.dirty && <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-warning" role="img" aria-label={t('cst.pages.dirty', 'Unsaved changes in this tab')} title={t('cst.pages.dirty', 'Unsaved changes in this tab')} data-page-dirty />}
                     <span className="ml-auto shrink-0 text-[10px] text-[var(--faint)] tabular-nums">{pg.blocks}</span>
                   </button>
+                </div>
+              )}
+              {/* studiofix: rename / up / down live in the action row (which wraps), not beside
+                  the title: in a 200px dock they left the title 0px wide. */}
+              {(canEditList || onExport) && editing?.id !== pg.id && (
+                <div className="flex items-center gap-1 mt-1 pl-5 flex-wrap min-w-0">
                   {canEditList && (
                     <>
-                      <Button size="sm" variant="ghost" className="!px-1.5" disabled={busy} onClick={() => setEditing({ id: pg.id, value: pg.title })}
+                      <Button size="sm" variant="ghost" className="!px-1.5 !py-0.5" disabled={busy} onClick={() => setEditing({ id: pg.id, value: pg.title })}
                         aria-label={t('cst.pages.rename', 'Rename {page}').replace('{page}', label)} title={t('cst.pages.rename', 'Rename {page}').replace('{page}', label)} data-page-act="rename"><Pencil size={12} /></Button>
-                      <Button size="sm" variant="ghost" className="!px-1.5" disabled={busy || i === 0} onClick={() => pages.move(pg.id, -1)}
+                      <Button size="sm" variant="ghost" className="!px-1.5 !py-0.5" disabled={busy || i === 0} onClick={() => pages.move(pg.id, -1)}
                         aria-label={t('cst.pages.up', 'Move {page} up').replace('{page}', label)} title={t('cst.pages.up', 'Move {page} up').replace('{page}', label)} data-page-act="up"><ChevronUp size={12} /></Button>
-                      <Button size="sm" variant="ghost" className="!px-1.5" disabled={busy || i === list.length - 1} onClick={() => pages.move(pg.id, 1)}
+                      <Button size="sm" variant="ghost" className="!px-1.5 !py-0.5" disabled={busy || i === list.length - 1} onClick={() => pages.move(pg.id, 1)}
                         aria-label={t('cst.pages.down', 'Move {page} down').replace('{page}', label)} title={t('cst.pages.down', 'Move {page} down').replace('{page}', label)} data-page-act="down"><ChevronDown size={12} /></Button>
                     </>
                   )}
-                </div>
-              )}
-              {(canEditList || onExport) && editing?.id !== pg.id && (
-                <div className="flex items-center gap-1 mt-1 pl-5 flex-wrap">
                   {onExport && (
                     <Button size="sm" variant="ghost" className="!px-1.5 !py-0.5 text-[11px]" onClick={() => onExport(pg.id)}
                       aria-label={t('cst.io.export.page', 'Export {page} as a file').replace('{page}', label)} title={t('cst.io.export.page', 'Export {page} as a file').replace('{page}', label)} data-page-act="export"><Download size={12} /> {t('cst.io.export.s', 'Export')}</Button>

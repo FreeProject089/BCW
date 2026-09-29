@@ -46,10 +46,13 @@ export function DropOverlay({ t, on }) {
 
 export function ImportButton({ t, onImport, label = '' }) {
   if (!onImport) return null;
+  const text = label || t('cst.io.import', 'Import a file');
+  // studiofix: in a narrow dock the label wraps (a .btn is nowrap), so it is never wider than
+  // the panel and never clipped either.
   return (
-    <Button size="sm" variant="ghost" className="w-full justify-center" onClick={onImport} data-io-import
+    <Button size="sm" variant="ghost" className="w-full min-w-0 justify-center" onClick={onImport} data-io-import
       title={t('cst.io.import.h', 'Import a .bcwstudio.json file (you can also drop it on the studio)')}>
-      <Upload size={13} /> {label || t('cst.io.import', 'Import a file')}
+      <Upload size={13} className="shrink-0" /> <span className="min-w-0 whitespace-normal text-center leading-tight">{text}</span>
     </Button>
   );
 }

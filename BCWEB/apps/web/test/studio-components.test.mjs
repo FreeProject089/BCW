@@ -148,6 +148,39 @@ test('presets: saving a section, a component, a background and a page', async ()
   assert.ok(comp.every((x) => x.component?.id === sec.id && x.component.inst === comp[0].component.inst));
 });
 
+// studiofix: a section preset that holds a container. Its blocks get fresh ids when dropped, so
+// every reference to one of them (a child's `parent`, a step's target) must follow, or the child
+// hangs from a container that is not on the page (or, worse, from another block that happens to
+// carry the preset's old id). Born red: blocksFromPreset rewrote `id` and nothing else.
+test('presets: a dropped section keeps its containers, its tabs and its step targets', async () => {
+  const lib = await import('../src/lib/studio-components.js');
+  const sec = {
+    id: 'prS', sort: 'section', doc: { v: 2, blocks: [
+      { id: 'b0', kind: 'group', x: 0, y: 0, w: 400, h: 300, z: 0, props: {} },
+      { id: 'b1', kind: 'text', x: 16, y: 16, w: 200, h: 40, z: 1, parent: 'b0', props: { md: 'in' } },
+      { id: 'b2', kind: 'tabs', x: 0, y: 320, w: 400, h: 200, z: 2, props: { tabs: ['A', 'B'] } },
+      { id: 'b3', kind: 'text', x: 8, y: 8, w: 100, h: 40, z: 3, parent: 'b2', slot: 1, props: { md: 'tab B' } },
+      { id: 'b4', kind: 'button', x: 420, y: 0, w: 120, h: 40, z: 4, props: { label: 'Go' },
+        action: [{ type: 'tab', target: 'b2', index: 1 }, { type: 'scroll', target: '#top' }, { type: 'reveal', target: 'b0', mode: 'toggle' }] },
+    ] },
+  };
+  let k = 0;
+  const out = lib.blocksFromPreset(sec, { x: 100, y: 1000 }, 50, () => `nw${k++}`);
+  const byOld = (i) => out[i];
+  assert.equal(new Set(out.map((x) => x.id)).size, 5, 'fresh, distinct ids');
+  assert.equal(byOld(1).parent, byOld(0).id, 'the child is not inside the copy of its group');
+  assert.equal(byOld(3).parent, byOld(2).id, 'the tab child is not inside the copy of its tab card');
+  assert.equal(byOld(3).slot, 1, 'the child lost its tab');
+  assert.deepEqual(byOld(4).action.map((s) => s.target), [byOld(2).id, '#top', byOld(0).id], 'a step still names the preset\'s block');
+  // Placement: the tops move to `at`, a child keeps its place relative to its container.
+  assert.deepEqual([byOld(0).x, byOld(0).y], [100, 1000]);
+  assert.deepEqual([byOld(1).x, byOld(1).y, byOld(1).z], [16, 16, 1], 'a child was moved as if it were on the page');
+  assert.ok(byOld(0).z >= 50 && byOld(4).z >= 50, 'the tops are not above the page');
+  // Nothing left pointing at a preset id that is not one of the copies.
+  const ids = new Set(out.map((x) => x.id));
+  for (const x of out) if (x.parent) assert.ok(ids.has(x.parent), `${x.id} hangs from ${x.parent}`);
+});
+
 test('presets: a library read back keeps its scope, and drops what it cannot show', async () => {
   const lib = await import('../src/lib/studio-components.js');
   const list = lib.normalizeLibrary([

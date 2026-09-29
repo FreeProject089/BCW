@@ -160,6 +160,7 @@ export default function CanvasStudio({ value, onChange, chrome = null, renderPag
   const [cam, setCam] = useState(() => ({ ...fitFrameView({ w: DESIGN_WIDTH }, DESIGN_WIDTH, 0), fit: true }));
   const [mdFor, setMdFor] = useState(null);           // block id whose text is in the B.MD editor
   const clip = useRef([]);                           // copied blocks (also written to the clipboard)
+  const clipDefs = useRef(null);                     // the component definitions those blocks use
   const [preview, setPreview] = useState('');         // '' | 'desktop' | 'tablet' | 'phone' | 'page'
   // Bumped to remount the preview, which is how "play the animations again" works: an
   // entrance animation runs when its element appears, and a fresh mount is an appearance.
@@ -814,7 +815,12 @@ export default function CanvasStudio({ value, onChange, chrome = null, renderPag
     }
     // A component preset is a LINKED copy (phase 7b): one instance, the definition on the page.
     if (entry.sort === 'component') { insertLinked(entry); return; }
-    addBlocks(blocksFromPreset(entry, { x: 64, y: nextY() }, canvas.blocks.length, uid));
+    // A section may hold copies of components: their definitions come along (the page's own
+    // version of one it already has wins, as for a paste), so the copies stay linked.
+    const defs = entry.doc?.components && typeof entry.doc.components === 'object' ? entry.doc.components : null;
+    const missing = defs ? Object.keys(defs).filter((cid) => !canvas.components?.[cid]) : [];
+    addBlocks(blocksFromPreset(entry, { x: 64, y: nextY() }, canvas.blocks.length, uid),
+      missing.length ? { components: { ...(canvas.components || {}), ...Object.fromEntries(missing.map((cid) => [cid, defs[cid]])) } } : {});
   };
   const saveAsPreset = async (name, sort, scope) => {
     // Phase 7b: containers with what they hold, and the definitions of the copies it holds.
@@ -1217,9 +1223,14 @@ export default function CanvasStudio({ value, onChange, chrome = null, renderPag
         });
         // As STORED (serializeDoc): what the paste reads back is checked like a saved page, and a
         // normalised block carries fields no stored one has.
-        clip.current = serializeDoc(canvas, { blocks: picked }).blocks;
+        const stored = serializeDoc(canvas, { blocks: picked });
+        clip.current = stored.blocks;
+        // The definitions the copied instances use (and the ones those use), so a paste on
+        // another page keeps them linked to their library components (io.js parseBlocksPaste).
+        clipDefs.current = stored.components && Object.keys(stored.components).length ? stored.components : null;
+        const payload = clipDefs.current ? { bcwBlocks: clip.current, bcwComponents: clipDefs.current } : { bcwBlocks: clip.current };
         // A refusal (an unfocused document, no permission) is a REJECTED promise, not a throw.
-        try { navigator.clipboard?.writeText(JSON.stringify({ bcwBlocks: clip.current }))?.catch?.(() => {}); } catch { /* no clipboard: the ref still works */ }
+        try { navigator.clipboard?.writeText(JSON.stringify(payload))?.catch?.(() => {}); } catch { /* no clipboard: the ref still works */ }
         return;
       }
       if (mod && e.key.toLowerCase() === 'v' && !typing) {
@@ -1228,7 +1239,7 @@ export default function CanvasStudio({ value, onChange, chrome = null, renderPag
         // pictures), then gets fresh ids, a copied container's blocks inside the copy of it. A
         // text that is not a paste of blocks falls back to what this tab copied.
         e.preventDefault();
-        const fromTab = () => { if (clip.current.length) io.pasteBlocks(clip.current); };
+        const fromTab = () => { if (clip.current.length) io.pasteBlocks(clipDefs.current ? { bcwBlocks: clip.current, bcwComponents: clipDefs.current } : clip.current); };
         const read = navigator.clipboard?.readText?.();
         if (!read) { fromTab(); return; }
         read.then(async (txt) => { if (!(await io.pasteBlocks(txt))) fromTab(); }).catch(fromTab);

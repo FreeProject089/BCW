@@ -376,6 +376,67 @@ test('a paste keeps a copy of this page\'s component linked, drops one it cannot
   assert.deepEqual(out[2].component, { id: 'card', overrides: { title: 'Mine' } }, 'the pasted copy is not linked to this page\'s component any more');
 });
 
+// studiofix: the LIBRARY LINK. A page's definition is keyed by its library entry's id and says
+// which library (`scope`, `ref`): that pair is how "Update the copies" finds the newer version.
+// Born red: an import renamed every definition, and a paste dropped every copy of a component
+// the destination page did not hold yet, so an imported or pasted copy never updated again.
+test('an import from this site keeps each copy linked to its library component', () => {
+  const here = 'https://bettercommunity.test';
+  const { file } = exportStudioFile({ kind: 'page', doc: STORED, id: 'home1', origin: here });
+  const parsed = parseStudioFile(studioFileText(file));
+  assert.equal(parsed.ok, true);
+  let k = 0;
+  const f = freshStudioFile(parsed.file, { uid: () => `n${k++}`, componentUid: () => `k${k++}`, origin: here });
+  // The definitions keep the library's ids and the library they name.
+  assert.deepEqual(Object.keys(f.doc.components).sort(), ['badge', 'card'], 'a linked definition was renamed: its library entry is lost');
+  assert.equal(f.doc.components.card.scope, 'project');
+  assert.equal(f.doc.components.card.ref, 'bmm');
+  assert.equal(f.doc.components.badge.scope, 'site');
+  // Every copy still names its definition (the page's and the one nested in the card).
+  const inst = f.doc.blocks.filter((b) => b.kind === 'instance');
+  assert.deepEqual(inst.map((b) => b.component.id), ['card', 'card']);
+  assert.equal(f.doc.components.card.doc.blocks.find((b) => b.kind === 'instance').component.id, 'badge');
+  // The blocks themselves are still new (nothing of the file collides with the page).
+  const before = new Set(allIds(STORED));
+  for (const id of allIds(f.doc)) assert.ok(!before.has(id), `block id ${id} was reused`);
+  assert.deepEqual(validateDoc({ ...f.doc, id: 'p9' }), []);
+  // From ANOTHER site the link names that site's library, which is not this one: fresh ids.
+  const other = freshStudioFile(parsed.file, { uid: () => `n${k++}`, componentUid: () => `k${k++}`, origin: 'https://elsewhere.test' });
+  assert.ok(!Object.keys(other.doc.components).some((cid) => ['badge', 'card'].includes(cid)));
+  // A definition with no library behind it (a personal one) is not a link to keep either.
+  const mine = { ...STORED, components: { ...STORED.components, card: { ...STORED.components.card, scope: 'user' } } };
+  const g = freshStudioFile(parseStudioFile(studioFileText(exportStudioFile({ kind: 'page', doc: mine, origin: here }).file)).file, { uid: () => `n${k++}`, componentUid: () => `k${k++}`, origin: here });
+  assert.ok(!('card' in g.doc.components) && 'badge' in g.doc.components);
+  assert.deepEqual(validateDoc({ ...g.doc, id: 'p9' }), []);
+});
+
+test('a paste onto another page brings the copied components along, still linked', () => {
+  const copied = [
+    { id: 'i1', kind: 'instance', x: 0, y: 0, w: 8, h: 8, component: { id: 'card', overrides: { title: 'Mine' } } },
+    { id: 'i2', kind: 'instance', x: 0, y: 400, w: 8, h: 8, component: { id: 'nowhere' } },
+  ];
+  // The destination page has none of these definitions; the clipboard carries them.
+  const r = parseBlocksPaste(JSON.stringify({ bcwBlocks: copied, bcwComponents: { card: CARD, badge: BADGE } }), {});
+  assert.equal(r.ok, true, JSON.stringify(r.problems));
+  assert.equal(r.dropped, 1, 'only the copy of a definition nobody carries is left out');
+  assert.deepEqual(Object.keys(r.file.components).sort(), ['badge', 'card'], 'the definitions (and the one the card uses) came along');
+  assert.deepEqual(r.added.sort(), ['badge', 'card']);
+  const f = freshStudioFile(r.file, { uid: () => 'x' + Math.random().toString(36).slice(2, 8), keepComponents: true });
+  assert.deepEqual(f.doc.blocks[0].component, { id: 'card', overrides: { title: 'Mine' } });
+  assert.equal(f.doc.components.card.scope, 'project');
+  // The page's own version of a definition wins over the clipboard's, and is not "added".
+  const mine = { card: { ...CARD, name: 'Card (this page)' }, badge: BADGE };
+  const r2 = parseBlocksPaste({ bcwBlocks: copied, bcwComponents: { card: CARD, badge: BADGE } }, mine);
+  assert.equal(r2.file.components.card.name, 'Card (this page)');
+  assert.deepEqual(r2.added, []);
+  // The clipboard's definitions are untrusted input: checked by the same reader.
+  const evil = { ...CARD, doc: { ...CARD.doc, blocks: [{ id: 'e', kind: 'image', x: 0, y: 0, w: 9, h: 9, props: { src: 'https://evil.example/p.png' } }] }, exposed: [] };
+  const r3 = parseBlocksPaste(JSON.stringify({ bcwBlocks: copied.slice(0, 1).map((b) => ({ ...b, component: { id: 'card' } })), bcwComponents: { card: evil } }), {});
+  assert.equal(r3.ok, false);
+  has(r3.problems, 'components.card.doc.blocks[0].props.src', 'asset_off_site');
+  assert.equal(parseBlocksPaste(JSON.stringify({ bcwBlocks: copied, bcwComponents: [1] }), {}).ok, false, 'a clipboard map that is not a map');
+});
+
 test('assetRefs finds every address the format carries', () => {
   const refs = assetRefs(STORED).map((r) => r.path).sort();
   assert.deepEqual(refs, [
