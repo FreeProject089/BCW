@@ -155,7 +155,9 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          for t in tarballs/bettercommunity-bmd-[0-9]*.tgz tarballs/bettercommunity-bmd-editor-*.tgz; do
+          # "./" matters: npm reads a bare "tarballs/x.tgz" as a GitHub "owner/repo" shorthand and
+          # tries git ls-remote ssh://git@github.com/tarballs/... (the 3.1.0 run failed exactly so).
+          for t in ./tarballs/bettercommunity-bmd-[0-9]*.tgz ./tarballs/bettercommunity-bmd-editor-*.tgz; do
             version=$(tar -xOzf "$t" package/package.json | node -e "console.log(JSON.parse(require('fs').readFileSync(0,'utf8')).version)")
             name=$(tar -xOzf "$t" package/package.json | node -e "console.log(JSON.parse(require('fs').readFileSync(0,'utf8')).name)")@$version
             if npm view "$name" version >/dev/null 2>&1; then echo "$name is already on npm, skipped"; continue; fi
