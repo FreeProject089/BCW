@@ -897,6 +897,9 @@ export function startSweeper(app) {
       await sweepDeadSessions(p, app.log);
       await sweepUnverifiedAccounts(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'unverified account sweep failed'));
       await sweepLoginAlerts(p, app.log);
+      // notify (agent-notify): expired notifications, and send records past a year.
+      await import('./notify.mjs').then(({ sweepNotifications }) => sweepNotifications(p, app.log))
+        .catch((e) => app.log.warn({ e: String(e) }, 'notification sweep failed'));
       await sweepScheduledPrices(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'scheduled price sweep failed'));
       // N-hosting (agent-hosting-N): loyalty (tenure) coupons on Stripe-billed hosting, hourly.
       await (async () => {
@@ -911,6 +914,11 @@ export function startSweeper(app) {
       await rollupAnalyticsDaily(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'analytics rollup failed'));
       await sweepHostingWaitlist(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'hosting waitlist sweep failed'));
       await sweepReports(p).catch((e) => app.log.warn({ e: String(e) }, 'report sweep failed'));
+      // moderation (agent-moderation): the text of closed moderation cases is kept
+      // moderation.settings.retentionDays, then dropped; the decision and its reasons stay.
+      await import('./moderation/cases.mjs').then(({ purgeCaseText }) => purgeCaseText(p))
+        .then((n) => { if (n) app.log.info(`[sweeper] moderation: purged the text of ${n} closed case(s)`); })
+        .catch((e) => app.log.warn({ e: String(e) }, 'moderation retention sweep failed'));
       // Creator key v5: spent proof nonces, and fingerprint hashes past their retention.
       await import('./creator-identity.mjs').then(({ pruneCreatorIdentity }) => pruneCreatorIdentity(p))
         .catch((e) => app.log.warn({ e: String(e) }, 'creator identity prune failed'));

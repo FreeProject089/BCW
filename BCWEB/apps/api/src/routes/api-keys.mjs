@@ -472,7 +472,8 @@ export default async function apiKeyRoutes(app) {
   // about what is unread.
   app.get('/v1/notifications', { preHandler: apiAuth('notifications:read'), ...RL_READ }, async (req) => {
     const p = await db();
-    const where = { userId: req.user.uid };
+    // notify (agent-notify): an expired notification is not served, here as on the site.
+    const where = { userId: req.user.uid, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] };
     const since = req.query?.since ? new Date(String(req.query.since)) : null;
     // An unparseable date must not silently become "everything since 1970" — that is
     // the shape of a poller that quietly re-sends the user's whole history.

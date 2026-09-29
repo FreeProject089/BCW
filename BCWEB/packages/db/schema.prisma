@@ -298,6 +298,10 @@ model User {
   // erased with the account (closure.mjs anonymiseAccount deletes both explicitly).
   prereleaseSignups    PreReleaseSignup[]
   projectReviews       ProjectReview[]
+  // notify (agent-notify): projects this account follows, and its personal RSS token. Both
+  // theirs, erased with the account (closure.mjs anonymiseAccount deletes both explicitly).
+  projectFollows       ProjectFollow[]
+  feedToken            FeedToken?
 
   @@index([status])
   @@index([closedEmailHash])
@@ -1106,7 +1110,10 @@ model SubmissionComment {
 
 model Notification {
   id        String    @id @default(cuid())
-  user      User      @relation(fields: [userId], references: [id])
+  // notify (agent-notify): Cascade. A notification is its recipient's and nobody else's; once
+  // broadcasts reach every staff account (moderation.case), a hard delete of an account that
+  // has one failed on this key and left the account in place.
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId    String
   kind      String
   // English body. The same convention as SiteReview below: one row carries both
@@ -1130,6 +1137,21 @@ model Notification {
   href      String?
   readAt    DateTime?
   createdAt DateTime  @default(now())
+  // notify (agent-notify): the send this row was fanned out from (lib/notify.mjs). Null for
+  // every notification written by the older one-user helpers in lib.mjs. The unique pair is
+  // what makes a fan-out retry-safe: a send resumed after a crash re-inserts with
+  // skipDuplicates and nobody gets it twice.
+  send      NotificationSend? @relation(fields: [sendId], references: [id], onDelete: SetNull)
+  sendId    String?
+  // 0 normal, 1 high, 2 urgent. Additive: every reader that does not know it shows it as normal.
+  priority  Int       @default(0)
+  // Past this date the row is hidden by the readers and deleted by the sweeper.
+  expiresAt DateTime?
+
+  @@unique([sendId, userId])
+  @@index([userId, createdAt])
+  @@index([expiresAt])
+  // fin notify (agent-notify)
 }
 
 // Admin-curated testimonials/reviews shown on the landing page. The admin provides the
@@ -5268,3 +5290,161 @@ model ProjectReviewSettings {
   updatedAt DateTime @updatedAt
 }
 // ── fin prerelease (agent-prerelease) ─────────────────────────────────────────────────────
+
+// ── notify (agent-notify) ─────────────────────────────────────────────────────────────────
+// The notification engine (lib/notify.mjs), the personal RSS feed and the BMM launch feed.
+
+/// One call to notify(): what was sent, to which audience, and how far the fan-out got.
+///
+/// FAN-OUT: one Notification row per recipient, written by createMany in chunks of 1000. The
+/// alternative, one broadcast row plus a per-user read-state table, would have meant rewriting
+/// every reader of Notification (the bell, the centre, /v1/notifications for BMM, the OAuth
+/// endpoint), each of which reads one table by userId today. At this site's size a broadcast is
+/// thousands of short rows, which Postgres writes in well under a second per chunk; the per-user
+/// row is also what makes mute-at-write, per-row read state and per-row deletion work unchanged.
+///
+/// IDEMPOTENCE: `dedupeKey` is unique. A second notify() with the same key finds this row and
+/// either returns (status done) or resumes the fan-out (status pending, after a crash), and the
+/// (sendId, userId) unique index on Notification makes the resume insert nothing twice.
+model NotificationSend {
+  id            String         @id @default(cuid())
+  dedupeKey     String?        @unique
+  kind          String
+  title         String
+  titleFr       String?
+  body          String         @default("")
+  bodyFr        String?
+  /// In-app path only (safeNotifHref), like Notification.href.
+  href          String?
+  /// The audience as written: "all", "role:MOD", "project:bmm:followers", "users:3".
+  audience      String
+  priority      Int            @default(0)
+  expiresAt     DateTime?
+  /// Listed in the public RSS feed (/feeds/news.xml). Only ever set by staff or a caller that
+  /// says so; a targeted notification is never public by default.
+  public        Boolean        @default(false)
+  /// sha256 of kind, title, body, href and audience: the admin composer's "this exact message
+  /// already went out" guard.
+  contentHash   String
+  /// pending | done
+  status        String         @default("pending")
+  targeted      Int            @default(0)
+  delivered     Int            @default(0)
+  muted         Int            @default(0)
+  createdById   String?
+  createdAt     DateTime       @default(now())
+  finishedAt    DateTime?
+  notifications Notification[]
+
+  @@index([public, createdAt])
+  @@index([contentHash, createdAt])
+  @@index([createdAt])
+}
+
+/// A member following a project: its new blog posts reach them as a notification (kind
+/// project_post, the mutable "Projects you follow" category). `target` is the ProjectRelease
+/// convention: the project key, or `sc:<showcaseId>`.
+model ProjectFollow {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  target    String
+  createdAt DateTime @default(now())
+
+  @@unique([userId, target])
+  @@index([target])
+}
+
+/// The personal RSS/Atom feed token. The URL is `/feeds/u/<id>.<secret>.xml`; only the SHA-256
+/// of the secret is stored, compared with safeEqual. One per account: rotating replaces it,
+/// revoking deletes it. The URL is a credential and is never logged (errorlog.mjs redactPath).
+model FeedToken {
+  id         String    @id @default(cuid())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String    @unique
+  secretHash String
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+}
+
+/// One card BMM may show in its startup modal (GET /bmm/launch, routes/bmm-launch.mjs).
+/// `source`: post (a chosen blog post) | latest (the newest published post of `projectKey`'s
+/// blog) | custom (the fields below). `rev` moves when the RESOLVED content changes, which
+/// resets the client's display count; `contentHash` is what it is compared against.
+model BmmLaunchItem {
+  id          String    @id @default(cuid())
+  source      String    @default("custom")
+  postId      String?
+  projectKey  String    @default("bmm")
+  title       String    @default("")
+  titleFr     String    @default("")
+  summary     String    @default("")
+  summaryFr   String    @default("")
+  url         String    @default("")
+  imageUrl    String    @default("")
+  /// always | once | times
+  displayMode String    @default("once")
+  times       Int       @default(1)
+  startsAt    DateTime?
+  endsAt      DateTime?
+  minVersion  String?
+  maxVersion  String?
+  priority    Int       @default(0)
+  enabled     Boolean   @default(true)
+  rev         Int       @default(1)
+  contentHash String    @default("")
+  createdById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([enabled])
+}
+// ── fin notify (agent-notify) ─────────────────────────────────────────────────────────────
+
+// ── moderation (agent-moderation) ────────────────────────────────────────────────────────
+/// One moderation decision that needs (or had) a human: the review queue of the rules-first
+/// engine in apps/api/src/lib/moderation/. A case POINTS at its content (subjectType +
+/// subjectId) rather than owning it; the text snapshot (`excerpt`) and a held item's payload
+/// are purged `moderation.settings.retentionDays` after the case is resolved. A case on a
+/// sensitive surface (report, legal) never copies the text: the source queue is where it is read.
+///
+/// status: open (in the queue) · resolved · dismissed · logged (analysis only, never queued)
+/// decision: ALLOW · FLAG · REVIEW · QUARANTINE · BLOCK (after the policy); rawDecision: before it
+model ModerationCase {
+  id          String    @id @default(cuid())
+  surface     String
+  /// contact_held · contact_message · report · report_message · rights_notice · thread_message ·
+  /// feedback · project_review · discord_message · refused · text
+  subjectType String    @default("text")
+  subjectId   String    @default("")
+  decision    String
+  rawDecision String    @default("ALLOW")
+  mode        String    @default("flag")
+  score       Int       @default(0)
+  reasons     Json      @default("[]")
+  ai          Json?
+  status      String    @default("open")
+  /// The content is withheld from its audience until a moderator releases it.
+  held        Boolean   @default(false)
+  /// A User id, or null (anonymous, or a Discord member: see authorKey).
+  authorId    String?
+  /// "ip:<hash>" / "discord:<id>" / "" — who, when there is no account.
+  authorKey   String    @default("")
+  excerpt     String?
+  payload     Json?
+  textHash    String    @default("")
+  resolverId  String?
+  resolution  String?
+  note        String?
+  resolvedAt  DateTime?
+  purgedAt    DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([status, createdAt])
+  @@index([surface, status])
+  @@index([subjectType, subjectId])
+  @@index([authorId])
+  @@index([resolvedAt])
+}
+// ── fin moderation (agent-moderation) ────────────────────────────────────────────────────

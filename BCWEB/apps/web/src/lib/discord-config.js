@@ -50,6 +50,19 @@ export const AUTOMOD_DEFAULTS = {
     raid: { enabled: true, action: 'timeout', timeoutMin: 60, joins: 10, windowSec: 30, lockdownMin: 15, raiseVerification: true, alert: true, ...JOIN_PARAMS },
   },
 };
+// laya (agent-laya-bcweb): the AI-assisted check, `automod.ai` (DEFAULT_AI / normalizeAi in
+// the bot's automod.mjs, copied). A PAID feature (plan feature `aiAutomod`): the API refuses to
+// switch it on for a server without it (402 plan_required), and the bot never sees it on.
+// An AI verdict costs at most AI_ACTIONS; the deterministic phishing check keeps `rulesAction`.
+export const AI_ACTIONS = ['log', 'delete', 'warn'];
+export const AI_DEFAULTS = { enabled: false, action: 'log', phishing: true, troll: false, phishingThreshold: 0.9, trollThreshold: 0.92, minChars: 12, rulesAction: 'delete', timeoutMin: 10, ...MSG_PARAMS };
+export const AI_FIELDS = {
+  phishingThreshold: { k: 'phishingThreshold', kind: 'num', min: 0.5, max: 0.99, int: false, step: 0.01 },
+  trollThreshold: { k: 'trollThreshold', kind: 'num', min: 0.5, max: 0.99, int: false, step: 0.01 },
+  minChars: { k: 'minChars', kind: 'num', min: 1, max: 2000, int: true },
+  timeoutMin: { k: 'timeoutMin', kind: 'num', min: 1, max: 40320, int: true },
+};
+// fin laya (agent-laya-bcweb)
 export const LADDER_DEFAULTS = [
   { count: 3, action: 'timeout', minutes: 60 },
   { count: 5, action: 'kick' },
@@ -156,7 +169,29 @@ export function normAutomod(raw) {
     exempt: { roles: idList(ex.roles), channels: idList(ex.channels), users: idList(ex.users), moderators: ex.moderators !== false },
     warnDecayHours: clamp(r.warnDecayHours ?? AUTOMOD_DEFAULTS.warnDecayHours, { min: 0, max: 8760, int: true }, AUTOMOD_DEFAULTS.warnDecayHours),
     rules,
+    // laya (agent-laya-bcweb): carried on every save, or the automod page would wipe it.
+    ai: normAiAutomod(r.ai),
   };
+}
+
+/** laya (agent-laya-bcweb): whatever was stored under automod.ai → the full shape, bounded. */
+export function normAiAutomod(raw) {
+  const s = raw && typeof raw === 'object' ? raw : {};
+  const d = AI_DEFAULTS;
+  const b = (k) => (typeof s[k] === 'boolean' ? s[k] : d[k]);
+  const re = s.exempt && typeof s.exempt === 'object' ? s.exempt : {};
+  const out = {
+    enabled: b('enabled'), phishing: b('phishing'), troll: b('troll'),
+    action: AI_ACTIONS.includes(s.action) ? s.action : d.action,
+    rulesAction: AUTOMOD_ACTIONS.includes(s.rulesAction) ? s.rulesAction : d.rulesAction,
+    dm: b('dm'), logOnly: b('logOnly'), deleteMessage: b('deleteMessage'), countsAsWarn: b('countsAsWarn'),
+    exempt: { roles: idList(re.roles), channels: idList(re.channels) },
+    roleId: snowflake(s.roleId),
+  };
+  for (const f of Object.values(AI_FIELDS)) out[f.k] = clamp(s[f.k] ?? d[f.k], f, d[f.k]);
+  for (const k of ['warnEvery', 'warnWindowMin', 'roleMin']) out[k] = clamp(s[k] ?? d[k], MSG_PARAM_FIELDS[k], d[k]);
+  if (ROLE_ACTIONS.includes(out.rulesAction) && !out.roleId) out.rulesAction = 'delete';
+  return out;
 }
 
 /**

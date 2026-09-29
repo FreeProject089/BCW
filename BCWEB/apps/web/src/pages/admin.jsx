@@ -17,6 +17,7 @@ import { List } from 'lucide-react';
 import { LayoutTemplate } from 'lucide-react'; // studio phase 2: the manage_studio capability
 import { FlaskConical as PrereleaseIcon, MessagesSquare as ProjectReviewsIcon } from 'lucide-react'; // prerelease (agent-prerelease)
 import { AdminPrereleases, AdminProjectReviews } from './admin-prereleases.jsx'; // prerelease (agent-prerelease)
+import { AdminNotify, AdminBmmLaunch } from './admin-notify.jsx'; // notify (agent-notify)
 import { Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, EmptyState, Spinner, Modal, ActionBar, ByteSize, formatBytes, useDialog, useToast, copyText, ColorInput, Explain } from '../ui/ui.jsx';
 import { PointsHistoryTable } from '../ui/points-history.jsx';
 import { AppLogo } from '../ui/brand.jsx';
@@ -117,6 +118,7 @@ import { AdminThreads } from './admin-threads.jsx';
 import { StudioLinksCard } from './admin-studio-links.jsx'; // studio phase 5 (agent-studio-5): the link policy of studio block actions
 import { BmdHostsCard } from './admin-bmd-hosts.jsx'; // sec-infra: hosts live B.MD blocks may fetch (SECURITY_SUMMARY §9)
 import { AdminMediaFlags } from './admin-media-flags.jsx';
+import { AdminModeration } from './admin-moderation.jsx'; // moderation (agent-moderation)
 import ReplayPlayer from '../ui/ReplayPlayer.jsx';
 import { useAsync, Loading, useUndoableDelete, useUndoableToggle, useUndoableSave, useElementWidth, statusTone, KIND_ICON, KIND_LABEL, kindLabel, kindsFor, CATALOG_PROJECTS, csvCell, downloadCsv, toCsv, fmtRemaining, seededAvatar, SideDash, useThreadStream } from './pages.jsx';
 import { JsonEditor, highlightJson, highlightCode } from '../ui/code-highlight.jsx'; // M18 (agent-perf-M18): moved out of pages.jsx with Prism
@@ -292,16 +294,20 @@ export function Admin() {
     // the server lets that USER read and dispatch the board -- a tab hidden from them made the
     // grant look broken. The server still decides what each row shows.
     (isMod || can('view_tasks') || can('manage_tasks') || can('manage_teams')) && { id: 'tasks', label: t('adm.tab.tasks', 'Tasks'), icon: TASKS_TAB_ICON },
-    isMod && { id: 'moderation', label: t('adm.tab.moderation', 'Moderation'), icon: ShieldAlert,
+    // moderation (agent-moderation): also reachable with manage_moderation alone (the engine's
+    // tab below); the leaves that need the MOD role say so themselves.
+    (isMod || can('manage_moderation')) && { id: 'moderation', label: t('adm.tab.moderation', 'Moderation'), icon: ShieldAlert,
       sub: [
-        { id: 'moderation', label: t('adm.tab.submissions', 'Submissions'), icon: Inbox, badge: queue.length || undefined },
+        isMod && { id: 'moderation', label: t('adm.tab.submissions', 'Submissions'), icon: Inbox, badge: queue.length || undefined },
         can('manage_reports') && { id: 'reports', label: t('adm.tab.reports', 'Reports'), icon: AlertTriangle, badge: pc.reports || undefined },
         can('manage_reports') && { id: 'rights', label: t('adm.tab.rights', 'Rights notices'), icon: Scale, badge: pc.rights || undefined },
         can('manage_reports') && { id: 'feedback', label: t('adm.tab.feedback', 'Feedback & crashes'), icon: BugIcon, badge: pc.feedback || undefined },
         can('manage_reports') && { id: 'lookalikes', label: t('adm.tab.lookalikes', 'Lookalike pictures'), icon: ImageIcon },
-        { id: 'messages', label: t('adm.tab.messages', 'Messages'), icon: Mail, badge: pc.contact || undefined },
+        // moderation (agent-moderation): the moderation engine's queue, policies, rules and AI switch.
+        (isMod || can('manage_moderation')) && { id: 'modqueue', label: t('adm.tab.modqueue', 'Moderation engine'), icon: ShieldAlert, badge: pc.moderation || undefined },
+        isMod && { id: 'messages', label: t('adm.tab.messages', 'Messages'), icon: Mail, badge: pc.contact || undefined },
         // Ideas from the contact form, apart from support (M24): read together, badged apart.
-        { id: 'suggestions', label: t('adm.tab.suggestions', 'Suggestions'), icon: Lightbulb, badge: pc.suggestions || undefined },
+        isMod && { id: 'suggestions', label: t('adm.tab.suggestions', 'Suggestions'), icon: Lightbulb, badge: pc.suggestions || undefined },
         can('manage_legal') && { id: 'legal', label: t('adm.tab.legal', 'Legal'), icon: FileText },
         can('manage_sanctions') && { id: 'sanctions', label: t('adm.tab.sanctions', 'Sanctions'), icon: Gavel, badge: pc.contests || undefined },
       ].filter(Boolean) },
@@ -349,6 +355,9 @@ export function Admin() {
         can('manage_announcements') && { id: 'reactions', label: t('adm.tab.reactions', 'Reader feedback'), icon: ThumbsUp },
         // prerelease (agent-prerelease): the moderation queue of every project's reviews.
         { id: 'projectreviews', label: t('adm.tab.projectreviews', 'Project reviews'), icon: ProjectReviewsIcon },
+        // notify (agent-notify): the notification composer and the BMM launch card.
+        { id: 'notify', label: t('adm.tab.notify', 'Send a notification'), icon: Send },
+        { id: 'bmmlaunch', label: t('adm.tab.bmmlaunch', 'BMM launch card'), icon: Rocket },
       ].filter(Boolean) },
     isAdmin && { id: 'badges', label: t('adm.tab.badges', 'Badges'), icon: BadgeCheck },
 
@@ -525,6 +534,7 @@ export function Admin() {
         {s === 'messages' && <AdminMessagesScreen />}
         {s === 'suggestions' && <AdminMessagesScreen only="suggestion" />}
         {s === 'lookalikes' && <AdminMediaFlags />}
+        {s === 'modqueue' && <AdminModeration canConfig={can('manage_moderation')} isAdmin={isAdmin} />}
         {s === 'legal' && <AdminLegal />}
         {s === 'users' && <AdminUsers />}
         {s === 'maillog' && <AdminMailLog />}
@@ -536,6 +546,8 @@ export function Admin() {
         {s === 'statuspage' && <AdminStatusPage />}
         {s === 'serveradv' && <AdminServerAdvanced />}
         {s === 'announcements' && <AdminAnnouncements />}
+        {s === 'notify' && <AdminNotify />}{/* notify (agent-notify) */}
+        {s === 'bmmlaunch' && <AdminBmmLaunch />}{/* notify (agent-notify) */}
         {s === 'badges' && <AdminBadges />}
         {s === 'newsletter' && <AdminNewsletter />}
         {s === 'faq' && <AdminFaq />}
@@ -4780,6 +4792,8 @@ const ADMIN_CAPS = [
   { id: 'manage_economy', cat: 'ops', icon: Coins, label: 'Manage the economy', labelFr: 'Gérer l’économie', desc: 'Grant and reset points, read the ledger, deliver a shop purchase by hand. Points buy things, grant it as you would grant money.', descFr: 'Créditer et remettre à zéro les points, lire le registre, livrer un achat à la main. Les points achètent des choses — accorde-le comme tu accorderais de l’argent.' },
   { id: 'manage_hosting', cat: 'ops', icon: Cloud, label: 'Manage hosting', labelFr: 'Gérer l’hébergement', desc: 'Plans, storage pools, capacity and free-hosting grants.', descFr: 'Formules, pools de stockage, capacité et hébergements gratuits accordés.' },
   { id: 'manage_assets', cat: 'ops', icon: Download, label: 'Manage downloads & assets', labelFr: 'Gérer téléchargements et ressources', desc: 'The installers people download, and the links file the apps read at startup.', descFr: 'Les installeurs que les gens téléchargent, et le fichier de liens que les apps lisent au démarrage.' },
+  // moderation (agent-moderation)
+  { id: 'manage_moderation', cat: 'people', icon: ShieldAlert, label: 'Configure moderation', labelFr: 'Configurer la modération', desc: 'The moderation engine: its policies per surface, its rule lists, the AI layer (provider settings and kill switch; only an admin can switch it back on), and the review queue. Warning an author from the queue also needs Manage users.', descFr: 'Le moteur de modération : ses règles par surface, ses listes, la couche IA (réglages du fournisseur et coupe-circuit ; seul un admin peut la rallumer), et la file de revue. Avertir un auteur depuis la file demande aussi Gérer les utilisateurs.' },
   { id: 'manage_sanctions', cat: 'people', icon: Gavel, label: 'Manage sanctions', labelFr: 'Gérer les sanctions', desc: 'Site bans and the appeals against them.', descFr: 'Les bannissements du site et les recours contre eux.' },
   // The staff task board. Three, ordered: reading every task, dispatching every task, and
   // shaping the teams. Naming a chief or adding a member hands out board standing, so the API

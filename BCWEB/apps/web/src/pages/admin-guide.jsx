@@ -75,6 +75,8 @@ export const GUIDE = [
           { en: 'Lookalike pictures lists uploads whose perceptual hash sits within a few bits of a picture another account holds (or is byte-identical to it) — the copyright queue. Clear a false positive, mark one acted on after handling the account or content; the distance threshold and a manual scan are under Detection.', fr: 'Images ressemblantes liste les envois dont l’empreinte perceptuelle est à quelques bits d’une image détenue par un autre compte (ou identique octet pour octet) — la file droits d’auteur. Efface un faux positif, marque traité après avoir pris en charge le compte ou le contenu ; le seuil de distance et un calcul manuel sont sous Détection.' },
           { en: 'Reports and Messages are what users send you; Sanctions is where account/content suspensions and their appeals live.', fr: 'Signalements et Messages sont ce que les utilisateurs t’envoient ; Sanctions regroupe les suspensions de compte/contenu et leurs appels.' },
           { en: 'Legal holds takedown and rights claims — the closed-source proof for a submission is checked here before it can go live.', fr: 'Légal regroupe les retraits et revendications de droits — la preuve d’un envoi propriétaire est vérifiée ici avant toute mise en ligne.' },
+          // moderation (agent-moderation)
+          { en: 'Moderation engine: every form (contact, reports, legal notices, feedback and crashes, messages between members and teams, project reviews, the Discord bot) runs the same rules. Each surface has a policy: act automatically, flag only, manual review, or analysis only. Reports and legal requests are always reviewed by a person. Held content waits in the queue until you release it; a false positive teaches the rules. The AI is optional, asked only when the rules are unsure, and has a kill switch. Full guide: guides/use/MODERATION_EN.md.', fr: 'Moteur de modération : chaque formulaire (contact, signalements, demandes légales, retours et plantages, messages entre membres et équipes, avis de projet, le bot Discord) passe par les mêmes règles. Chaque surface a sa politique : agir automatiquement, signaler seulement, revue manuelle ou analyse seule. Les signalements et les demandes légales sont toujours relus par une personne. Un contenu retenu attend dans la file jusqu’à ce que tu le libères ; un faux positif apprend aux règles. L’IA est facultative, consultée seulement quand les règles hésitent, et a un coupe-circuit. Guide complet : guides/use/MODERATION_FR.md.' },
         ]),
     ],
   },
@@ -129,6 +131,9 @@ export const GUIDE = [
         'Annonces (actus du site + par projet), FAQ, Newsletter (rédige pour tous / EN / FR / une sélection, avec un envoi de test), réglages d’envoi d’e-mails et modération des avis.',
         [
           { en: 'Publishing a blog post can auto-announce to the newsletter once (guarded so it never double-sends).', fr: 'Publier un article peut annoncer automatiquement à la newsletter une seule fois (protégé pour ne jamais envoyer deux fois).' },
+          // notify (agent-notify)
+          { en: 'Send a notification reaches named accounts, a role, everyone or a project’s followers; the preview counts who is reached after mutes, and the same text to the same audience twice in a day asks first. A message to everyone can also go into the public RSS feed.', fr: 'Envoyer une notification vise des comptes précis, un rôle, tout le monde ou les abonnés d’un projet ; l’aperçu compte qui la reçoit une fois les sourdines appliquées, et le même texte au même public deux fois en un jour demande confirmation. Un message à tous peut aussi aller dans le flux RSS public.' },
+          { en: 'BMM launch card: what BetterModsManager shows at start-up (nothing, a chosen post, the newest BMM post or a custom card), how often, for which versions and dates. Changing what a card says shows it again to everyone.', fr: 'Carte de lancement BMM : ce que BetterModsManager montre au démarrage (rien, un article choisi, le dernier article BMM ou une carte personnalisée), combien de fois, pour quelles versions et quelles dates. Changer ce que dit une carte la remontre à tout le monde.' },
           { en: 'Every user-facing string needs both FR and EN — the newsletter audience picker respects the reader’s language.', fr: 'Chaque texte destiné aux utilisateurs a besoin du FR et de l’EN — le sélecteur d’audience de la newsletter respecte la langue du lecteur.' },
         ]),
       G('badges', BadgeCheck, 'Badges', 'Badges',
@@ -312,14 +317,15 @@ export const GUIDE = [
 export const GUIDE_TABS = {
   needs: ['needs'],
   tasks: ['tasks'],
-  moderation: ['moderation', 'reports', 'rights', 'lookalikes', 'messages', 'legal', 'sanctions'],
+  moderation: ['moderation', 'reports', 'rights', 'lookalikes', 'messages', 'legal', 'sanctions', 'modqueue'], // + modqueue: moderation (agent-moderation)
   feedback: ['feedback', 'suggestions'],
   users: ['users', 'planusers', 'maillog', 'onboarding'],
   access: ['access'],
   security: ['security', 'history'],
   projects: ['projects', 'showcase', 'marketplace', 'prereleases'],
   catalogs: ['catalogs', 'commcatalogs', 'assets'],
-  editorial: ['announcements', 'faq', 'newsletter', 'mail', 'reviews', 'polls', 'reactions', 'projectreviews'],
+  // notify (agent-notify): + the notification composer and the BMM launch card.
+  editorial: ['announcements', 'faq', 'newsletter', 'mail', 'reviews', 'polls', 'reactions', 'projectreviews', 'notify', 'bmmlaunch'],
   badges: ['badges'],
   repos: ['repos', 'pools', 'entityhosting', 'transfers'],
   plans: ['plans', 'payments', 'hosting'],

@@ -165,6 +165,16 @@ Once on: new sign-ups receive a **confirmation email** (link → `/verify-email`
 **password resets** email a one-hour link (→ `/auth?reset=…`). Both tokens are single-use.
 Any SMTP provider works — your host's, SendGrid, Mailgun, Amazon SES, or a self-hosted relay.
 
+## 8d. AI for moderation (optional, off by default)
+
+Nothing to do for a normal install: without it the rules engine moderates alone. To add the
+Laya classifier as a second opinion, put `COMPOSE_PROFILES=ai` and a `LAYA_API_KEY` in `.env`,
+run `docker compose --profile ai build laya` once, then `docker compose up -d`: a one-shot
+`laya-fetch` downloads the model (~0.7 GB) and `laya` serves it on an internal network with no
+published port, capped at 1.5 CPU and 2 GB. Then pick the provider in Admin → Moderation → AI
+provider. The kill switch, the resource figures, the external-API option and what it means for
+privacy: [AI_LAYA_EN.md](AI_LAYA_EN.md).
+
 ## 9. Updating
 
 ### The short way

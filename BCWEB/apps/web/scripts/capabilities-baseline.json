@@ -6,6 +6,8 @@
     ],
     "manage_announcements": [
       "/admin/announcements",
+      "/admin/bmm-launch",
+      "/admin/notify",
       "/admin/notify-all",
       "/admin/project-reviews",
       "/admin/reactions"
@@ -54,6 +56,10 @@
     ],
     "manage_legal": [
       "/admin/legal"
+    ],
+    "manage_moderation": [
+      "/admin/ai",
+      "/admin/moderation"
     ],
     "manage_myo": [
       "/admin/myo"

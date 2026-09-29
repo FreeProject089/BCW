@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { ipOf } from '../lib/client-ip.mjs';
 import crypto from 'node:crypto';
-import { db, requireRole, notify, hashApiKey, safeEqual, ownedContent } from '../lib/lib.mjs';
+import { db, requireRole, notify, hashApiKey, safeEqual, ownedContent, BMM_KEY_SCOPES } from '../lib/lib.mjs';
 import { boundedSet } from '../lib/boundedmap.mjs';
 import { mergeShadowEconomy } from '../lib/economy-curve.mjs';
 import { genKey, prefixOf } from './api-keys.mjs';
@@ -289,7 +289,7 @@ export default async function linkRoutes(app) {
           label: 'BMM notifications',
           prefix: prefixOf(secret),
           hash: hashApiKey(secret),
-          scopes: ['notifications:read'],
+          scopes: [...BMM_KEY_SCOPES],
         } });
         notifKey = secret;
       }
@@ -324,7 +324,7 @@ export default async function linkRoutes(app) {
       label: 'BMM notifications',
       prefix: prefixOf(secret),
       hash: hashApiKey(secret),
-      scopes: ['notifications:read'],
+      scopes: [...BMM_KEY_SCOPES],
     } });
     // Shown once; the hash is all that is kept.
     return { secret };

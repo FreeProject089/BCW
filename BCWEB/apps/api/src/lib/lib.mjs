@@ -398,6 +398,9 @@ export const CAPABILITIES = [
   // Sections that used to be "are you an admin" and are now their own job.
   'manage_bot', 'manage_hosting', 'manage_donations', 'manage_assets',
   'manage_history', 'manage_sanctions', 'manage_legal', 'manage_expenses',
+  // moderation (agent-moderation): the moderation engine (lib/moderation): its policies, rule
+  // lists and the AI kill switch. Its review queue is also open to the MOD role, like reports.
+  'manage_moderation',
   // Its own capability and not part of manage_bot, even though its routes live in
   // bot.mjs. Granting somebody the Discord dashboard must not hand them the ability to
   // mint the currency its shop spends.
@@ -990,7 +993,18 @@ export const API_SCOPES = Object.freeze({
   'economy:read':  'Read your Discord level, XP, points, and what you bought in the points shop.',
   'badges:read':   'List the badges on your profile and when you earned them.',
   'charity:read':  'Read the Community Charity pot: the association, the totals and the month’s vote.',
+  // laya (agent-laya-bcweb): POST /ai/bmm/suggest (routes/ai.mjs). Off unless the admin enables it.
+  'ai:suggest':    'Ask the site’s AI helper to suggest tags, a category, a language or a crash cause for a text you send. The text is classified, never stored.',
 });
+
+/**
+ * The scopes of the key BCWEB mints for BMM when an account is linked (routes/links.mjs, both
+ * at link time and from "get a notifications key"). Written once so the two cannot drift.
+ * `ai:suggest` lets BMM ask POST /ai/bmm/suggest, which stays off until the admin enables
+ * `bmmSuggest` and is rate-limited per user. Only NEW keys get it: a key already issued keeps
+ * exactly the scopes its owner was shown, and is never widened behind their back.
+ */
+export const BMM_KEY_SCOPES = Object.freeze(['notifications:read', 'ai:suggest']);
 
 /** True if the key carries `scope`. A key with no scopes is allowed nothing. */
 function hasScope(key, scope) {
@@ -1215,6 +1229,13 @@ export const NOTIF_CATEGORIES = {
   // "not selected this time"). Mutable. The one early-access message that ignores this switch is
   // the selection MAIL: it answers a request the member made (lib/prerelease-mail.mjs).
   releases: { match: (k) => /^release_|^prerelease_/.test(k), label: 'Releases & early access' },
+  // notify (agent-notify): a new post in the blog of a project you follow (lib/notify.mjs
+  // notifyFollowersOfPost), and the staff alert for a new moderation case (kind moderation.case,
+  // from the moderation engine). The second is staffOnly: the preferences screen lists it for
+  // staff only, since nobody else is ever sent one.
+  projects: { match: (k) => /^project_/.test(k), label: 'Projects you follow' },
+  moderation: { match: (k) => /^moderation[._]/.test(k), label: 'Moderation queue (staff)', staffOnly: true },
+  // fin notify (agent-notify)
   // Not switchable, and deliberately so: these are the ones you would most regret muting —
   // a ban, a revoked key, an app losing access, a closure. An account that can silence its
   // own security notices is one that finds out too late.

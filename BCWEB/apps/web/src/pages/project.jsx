@@ -39,6 +39,7 @@ import { MessageSquare } from 'lucide-react';
 import { Button, Card, Badge, PageHeader, EmptyState, Spinner, Modal, Input, Textarea, Field, useToast } from '../ui/ui.jsx';
 import { useDraft, DraftBanner } from '../ui/drafts.jsx';
 import { ProjectContactBar } from '../ui/project-contact.jsx';
+import { ProjectFollowButton } from '../ui/project-follow.jsx'; // notify (agent-notify)
 import { useFramedDraft, canvasTabsFor } from '../lib/studio-preview.js';
 // G2 + G3: the version timeline, the project's own docs and its legal pages (PLAN-SEPT23).
 import { ProjectVersions, ProjectPages, ProjectLegalTab, useProjectContent } from './project-content.jsx';
@@ -415,6 +416,8 @@ export default function ProjectPage({ preview: previewProp = null }) {
           {hasCatalog && <Link to={`/catalog?project=${key}`}><Button><Boxes size={16} /> {t('proj.browse')}</Button></Link>}
           {/* The project's own contact: write to it, and for whoever answers, its inbox. */}
           {!preview && <ProjectContactBar projectRef={key} />}
+          {/* notify (agent-notify): follow this project's blog */}
+          {!preview && <ProjectFollowButton projectRef={key} />}
           {/* The way BACK to the editor, for somebody who may edit this page.
               The config has always been editable — in an admin section, reached from a menu,
               two pages from the thing it describes. So the person who spots that a diagram is
@@ -1566,6 +1569,8 @@ export function ShowcaseProjectPage({ preview: previewProp = null }) {
         <div className="flex flex-wrap items-center gap-2 mt-4 md:ps-[84px] empty:hidden">
           <DownloadMenu downloads={cfg.downloads} />
           {!preview && <ProjectContactBar projectRef={`sc:${slug}`} />}
+          {/* notify (agent-notify): follow this project's blog */}
+          {!preview && <ProjectFollowButton projectRef={`sc:${slug}`} />}
         </div>
       </div>
 

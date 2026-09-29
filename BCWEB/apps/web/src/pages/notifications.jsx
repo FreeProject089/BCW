@@ -9,6 +9,7 @@ import { useI18n } from '../i18n.jsx';
 import { Card, Button, Badge, EmptyState, Spinner, useToast, useDialog } from '../ui/ui.jsx';
 import { useAuth } from './auth.jsx';
 import NotifApiKeyCard from './notif-api-key.jsx';
+import { NotifRssCard, FollowedProjectsCard } from './notif-rss.jsx'; // notify (agent-notify)
 
 // /notifications — one centre for everybody.
 //
@@ -198,6 +199,9 @@ export default function NotificationCentre() {
 
       <div className="mt-4"><Preferences /></div>
       <div className="mt-4"><NotifApiKeyCard /></div>
+      {/* notify (agent-notify): the personal RSS feed, and the projects followed */}
+      <div className="mt-4"><NotifRssCard /></div>
+      <div className="mt-4"><FollowedProjectsCard /></div>
     </div>
   );
 }

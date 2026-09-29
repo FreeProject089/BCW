@@ -19,7 +19,46 @@ async function call(method, path, body) {
   return res.status === 204 ? null : res.json();
 }
 
+// laya (agent-laya-bcweb): the AI-assisted automod check. Its own request rather than call():
+// it carries a hard deadline, because a message's moderation must never wait on a model. Every
+// failure — timeout, network, 402 without the plan, 5xx — comes back as a plain object and never
+// throws; automod.mjs (aiFollowUp) reads `ok`, `error` and `reason` and otherwise does nothing.
+async function aiAutomod(body, timeoutMs = 2500) {
+  try {
+    const res = await fetch(`${BASE}/bot/ai/automod`, {
+      method: 'POST',
+      headers: { 'x-bot-secret': SECRET, 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(Math.max(200, Math.min(10_000, timeoutMs))),
+    });
+    let json = null; try { json = await res.json(); } catch { /* not JSON */ }
+    if (!res.ok) return { ok: false, error: json?.error || `http_${res.status}` };
+    return json && typeof json === 'object' ? json : { ok: false, reason: 'unavailable' };
+  } catch { return { ok: false, reason: 'unavailable' }; }
+}
+// fin laya (agent-laya-bcweb)
+
+// The site's moderation engine as a second opinion on a link (POST /bot/moderation/check,
+// surface `phishing`): the admin's blocked domains, protected brands and cross-server
+// campaigns, which the bot cannot see. Same contract as aiAutomod: a hard deadline, and every
+// failure comes back as { ok: false } and never throws, so automod falls back to its own rules.
+async function moderationCheck(body, timeoutMs = 1500) {
+  try {
+    const res = await fetch(`${BASE}/bot/moderation/check`, {
+      method: 'POST',
+      headers: { 'x-bot-secret': SECRET, 'content-type': 'application/json' },
+      body: JSON.stringify({ surface: 'phishing', ...body }),
+      signal: AbortSignal.timeout(Math.max(200, Math.min(5_000, timeoutMs))),
+    });
+    let json = null; try { json = await res.json(); } catch { /* not JSON */ }
+    if (!res.ok || !json || typeof json !== 'object') return { ok: false, error: json?.error || `http_${res.status}` };
+    return { ok: true, ...json };
+  } catch { return { ok: false, reason: 'unavailable' }; }
+}
+
 export const api = {
+  aiAutomod,
+  moderationCheck,
   // restartAt travels beside the config, not inside it (see the route). It is folded in
   // here so the 20s supervisor tick sees it without a second request.
   getConfig: () => call('GET', '/bot/config').then((r) => ({ ...r.config, restartAt: r.restartAt || null })),

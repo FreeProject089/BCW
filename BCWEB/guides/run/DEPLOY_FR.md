@@ -168,6 +168,16 @@ Une fois activé : les nouvelles inscriptions reçoivent un **email de confirmat
 `/auth?reset=…`). Les deux tokens sont à usage unique. N'importe quel fournisseur SMTP
 convient — celui de ton hébergeur, SendGrid, Mailgun, Amazon SES, ou un relais auto-hébergé.
 
+## 8d. IA pour la modération (optionnelle, éteinte par défaut)
+
+Rien à faire pour une installation normale : sans elle, le moteur de règles modère seul. Pour
+ajouter le classifieur Laya comme second avis, mets `COMPOSE_PROFILES=ai` et une `LAYA_API_KEY`
+dans `.env`, lance une fois `docker compose --profile ai build laya`, puis `docker compose up -d` :
+un `laya-fetch` ponctuel télécharge le modèle (~0,7 Go) et `laya` le sert sur un réseau interne
+sans port publié, plafonné à 1,5 CPU et 2 Go. Choisis ensuite le fournisseur dans Admin →
+Modération → Fournisseur d'IA. La coupure d'urgence, les chiffres de ressources, l'option d'API
+externe et ce qu'elle implique pour la vie privée : [AI_LAYA_FR.md](AI_LAYA_FR.md).
+
 ## 9. Mise à jour
 
 ### La méthode courte

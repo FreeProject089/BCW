@@ -32,13 +32,16 @@ guides/
 | **Scale it up** (CDN, PgBouncer, replicas, R2, separate DB) | Add-ons | [EN](run/ADDONS_EN.md) | [FR](run/ADDONS_FR.md) |
 | **Know what every GitHub workflow does** (CI, security scans, DAST, CD deploy: triggers, gates, artifacts, variables, PR comment, Code scanning) | CI/CD | [EN](run/CI_CD_EN.md) | [FR](run/CI_CD_FR.md) |
 | **Run, tune or extend the security scans** (Gitleaks, Semgrep, Trivy, ZAP, Nuclei: thresholds, targets, reviewed exclusions, by hand) | Security CI | [EN](run/SECURITY_CI_EN.md) | [FR](run/SECURITY_CI_FR.md) |
+| **Add AI to moderation, or switch it off** (Laya sidecar or external API, kill switch, resource cost, privacy, the paid Discord option) | AI (Laya) | [EN](run/AI_LAYA_EN.md) | [FR](run/AI_LAYA_FR.md) |
 | **Ship app updates through BCWEB** (BMM/BSM release feeds) | Auto-updates | [EN](run/AUTO_UPDATE_EN.md) | [FR](run/AUTO_UPDATE_FR.md) |
 | **Use the site as a member** | User guide | [EN](use/USER_GUIDE_EN.md) | [FR](use/USER_GUIDE_FR.md) |
 | **Moderate** (tools, roles, judgement calls) | Moderator guide | [EN](use/MODERATOR_GUIDE_EN.md) | [FR](use/MODERATOR_GUIDE_FR.md) |
+| **Set up the moderation engine** (surfaces, rules, policies, review queue, the optional AI and its kill switch, what is kept) | Moderation engine | [EN](use/MODERATION_EN.md) | [FR](use/MODERATION_FR.md) |
 | **Host a repo or a catalog** (pools, billing, access) | Host guide | [EN](use/HOST_GUIDE_EN.md) | [FR](use/HOST_GUIDE_FR.md) |
 | **See every feature** | App features | [EN](reference/App_Features_EN.md) | [FR](reference/App_Features_FR.md) |
 | **Call the API** | API reference | [EN](reference/API_Reference_EN.md) | [FR](reference/API_Reference_FR.md) |
 | **Sign users in with BetterCommunity** (OIDC — not public yet) | OIDC provider | [EN](reference/OIDC_PROVIDER_EN.md) | [FR](reference/OIDC_PROVIDER_FR.md) |
+| **Send notifications, run the RSS feeds, set the BMM launch card** (targeting, dedupe, personal feed token, launch-feed contract) | Notifications & feeds | [EN](reference/NOTIFICATIONS_EN.md) | [FR](reference/NOTIFICATIONS_FR.md) |
 | **Understand the design** (subsystems, decisions, roadmap) | Architecture | [EN](reference/ARCHITECTURE_EN.md) | [FR](reference/ARCHITECTURE_FR.md) |
 | **See what the code actually does** (7 admin maps: guards, schema drift, migrations, published ports, secrets, config, data flow) | Codebase maps | [EN](reference/CODEBASE_MAPS_EN.md) | [FR](reference/CODEBASE_MAPS_FR.md) |
 | **Know why storage is versitygw, not MinIO** (the S3 features BCWEB uses, four candidates, what was measured) | ADR: object storage | [EN](reference/ADR_S3_STORAGE_EN.md) | [FR](reference/ADR_S3_STORAGE_FR.md) |

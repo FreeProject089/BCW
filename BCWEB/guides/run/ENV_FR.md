@@ -109,9 +109,26 @@ Callback à déclarer chez chaque fournisseur : `<SITE_URL>/api/auth/oauth/<prov
 | `DATABASE_URL` | override URL complète → pointe la stack vers un **Postgres managé / 2ᵉ VPS** (endpoint poolé). Vide = Postgres local. |
 | `DIRECT_DATABASE_URL` | URL directe (non poolée) — pour les migrations. |
 | `DB_HOST` / `DB_PORT` / `DB_URL_PARAMS` | pour router l'API via **PgBouncer** (`pgbouncer` / `6432` / `?pgbouncer=true`). |
-| `COMPOSE_PROFILES` | quels **profils** compose sont actifs (aujourd'hui : `pgbouncer`). À mettre ici plutôt qu'en flag `--profile` : un flag ne vaut que pour sa commande, et `infra/deploy.sh` lance un `up -d` nu qui arrêterait le pooler alors que `DB_HOST` y envoie l'API. |
+| `COMPOSE_PROFILES` | quels **profils** compose sont actifs (`pgbouncer`, `ai` ; séparés par une virgule pour les deux). À mettre ici plutôt qu'en flag `--profile` : un flag ne vaut que pour sa commande, et `infra/deploy.sh` lance un `up -d` nu qui arrêterait le pooler alors que `DB_HOST` y envoie l'API. |
 | `PGBOUNCER_UPSTREAM_HOST` / `PGBOUNCER_UPSTREAM_PORT` | pour que PgBouncer poole une base managée/distante au lieu du `db` local. |
 | `API_REPLICAS` | nombre de conteneurs `api` (défaut `1`). À monter seulement quand un seul sature, et en activant PgBouncer en même temps. À préférer à `--scale api=N` : le flag ne survit pas au prochain `docker compose up -d`, et `deploy.sh` fait exactement ça. |
+
+## 11b. IA optionnelle pour la modération (voir [AI_LAYA_FR.md](AI_LAYA_FR.md))
+Tout vide = IA éteinte, règles seules. Une valeur fixée ici **l'emporte** sur l'écran admin
+(Admin → Modération → Fournisseur d'IA), qui grise le champ.
+
+| Variable | Rôle |
+|---|---|
+| `LAYA_API_KEY` | clé partagée par l'API et le conteneur annexe Laya (`openssl rand -hex 32`). **Secret.** Vide = le conteneur répond à quiconque sur son réseau interne. |
+| `LAYA_URL` | l'adresse du conteneur annexe. Défaut `http://laya:8000` ; à changer seulement si Laya tourne ailleurs. |
+| `LAYA_REVISION` | épinglage du modèle : `reviewed` (défaut, le commit revu par laya 0.3.21) ou un SHA de commit. |
+| `LAYA_CPUS` / `LAYA_MEM_LIMIT` / `LAYA_THREADS` | le plafond du conteneur annexe : `1.5` CPU, `2g`, `2` threads torch par défaut. |
+| `AI_KILL_SWITCH` | `1` = tout appel d'IA coupé, et un admin **ne peut pas** la lever depuis le site. Les règles continuent. |
+| `AI_PROVIDER` | forcer `off`, `laya` ou `external`. |
+| `AI_TIMEOUT_MS` / `AI_CONCURRENCY` | forcer le délai par appel (1500 par défaut) et les appels simultanés (1 par défaut). |
+| `AI_EXTERNAL_URL` | base d'une API compatible OpenAI, par ex. `https://api.example.com/v1`. https et publique seulement. Un **tiers** : mettre d'abord à jour la politique de confidentialité. |
+| `AI_EXTERNAL_KEY` | sa clé. **Secret.** Lue ici seulement : jamais stockée, journalisée ni affichée. |
+| `AI_EXTERNAL_ALLOW_PRIVATE` | `1` = autoriser http et les adresses privées, pour un modèle hébergé sur ton propre réseau. |
 
 ## 12. Divers
 | Variable | Rôle |

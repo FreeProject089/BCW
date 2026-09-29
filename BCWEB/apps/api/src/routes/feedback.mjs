@@ -438,6 +438,13 @@ export default async function feedbackRoutes(app) {
       if (dup) { await p.feedback.update({ where: { id: dup.id }, data: { count: { increment: 1 } } }); return { ok: true, id: dup.id, threadId: dup.reportId, duplicate: true, linked: !!userId }; }
     }
 
+    // moderation (agent-moderation): rules first (lib/moderation). A refusal answers with the
+    // same `filtered` the blocked-words filter above already sends; a HOLD files the row as
+    // "ignored" (out of the inbox, kept for review) and a moderator's release puts it back.
+    const { moderate, linkCase } = await import('../lib/moderation/index.mjs');
+    const mod = await moderate(d.kind === 'crash' ? 'crash' : d.kind === 'bug' ? 'bug' : 'suggestion', { text: [d.title, d.body].join('\n').slice(0, 20000), authorId: userId, ip, meta: { projectKey: key, kind: d.kind } }, { p, subject: { type: 'feedback' }, canHold: true, canRefuse: true, log: req.log });
+    if (mod.action === 'refuse') return reply.code(422).send({ error: 'filtered' });
+    // fin moderation (agent-moderation)
     // Attachments: decoded, capped, stored. Never served publicly — a crash zip is the
     // sender's machine in a bottle.
     const id = crypto.randomUUID().replace(/-/g, '').slice(0, 24);
@@ -466,7 +473,9 @@ export default async function feedbackRoutes(app) {
     const row = await p.feedback.create({ data: {
       id, projectKey: key, kind: d.kind, title: d.title.slice(0, 200), body: d.body, appVersion: d.appVersion, os: d.os, meta: meta ?? undefined,
       attachments: stored, fingerprint, userId, email: d.email, creatorId, ipHash: ipHash(ip),
+      ...(mod.action === 'hold' ? { status: 'ignored' } : {}), // moderation (agent-moderation)
     } });
+    linkCase(p, mod.caseId, 'feedback', row.id); // moderation (agent-moderation)
 
     // Where the conversation lives.
     let threadId = null;

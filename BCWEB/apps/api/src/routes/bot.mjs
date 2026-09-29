@@ -3130,6 +3130,22 @@ const MODERATION_SCHEMA = z.object({
       selfbot: rule({ channelsPerWindow: z.number().int().min(2).max(50).optional(), windowSec: z.number().int().min(1).max(600).optional(), identicalAcrossSec: z.number().int().min(1).max(3600).optional(), maxPerMinute: z.number().int().min(1).max(1000).optional() }),
       raid: z.object({ enabled: z.boolean().optional(), action: z.enum(['log', 'timeout', 'kick', 'ban']).optional(), timeoutMin: z.number().int().min(1).max(40320).optional(), joins: z.number().int().min(2).max(1000).optional(), windowSec: z.number().int().min(1).max(3600).optional(), lockdownMin: z.number().int().min(1).max(1440).optional(), raiseVerification: z.boolean().optional(), alert: z.boolean().optional(), ...RULE_PARAMS }).optional(),
     }).optional(),
+    // laya (agent-laya-bcweb): the AI-assisted check (paid: entitlement aiAutomod). Its action
+    // is at most a warning — an AI verdict is a signal, never grounds for a timeout, a kick or
+    // a ban on its own. The deterministic phishing check runs first and keeps the full ladder.
+    ai: z.object({
+      enabled: z.boolean().optional(),
+      action: z.enum(['log', 'delete', 'warn']).optional(),
+      phishing: z.boolean().optional(),
+      troll: z.boolean().optional(),
+      phishingThreshold: z.number().min(0.5).max(0.99).optional(),
+      trollThreshold: z.number().min(0.5).max(0.99).optional(),
+      minChars: z.number().int().min(1).max(2000).optional(),
+      rulesAction: AUTOMOD_ACTION.optional(),
+      timeoutMin: z.number().int().min(1).max(40320).optional(),
+      ...MSG_RULE_PARAMS,
+    }).optional(),
+    // fin laya (agent-laya-bcweb)
   }).optional(),
 });
 // ── Where a log category lands ─────────────────────────────────────────────────────────────

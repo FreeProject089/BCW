@@ -213,6 +213,11 @@ export default async function rightsRoutes(app) {
       targets: n.targets, work: n.work, explanation: n.explanation,
       goodFaith: n.goodFaith, accurate: n.accurate, signature: n.signature, ip, ownerIds,
     } });
+    // moderation (agent-moderation): a legal notice is SENSITIVE: the engine annotates it (a
+    // flood of notices, a phishing link in the explanation) and never holds or closes it. The
+    // case does not copy the notice (it names its sender); it points at it.
+    import('../lib/moderation/index.mjs').then(({ moderateLater }) => moderateLater('legal', { text: [n.work?.title, n.explanation].filter(Boolean).join('\n'), links: [...(n.work?.urls || []), ...n.targets.map((x) => x?.url).filter(Boolean)].slice(0, 30), authorId: req.user?.uid || null, ip }, { p, subject: { type: 'rights_notice', id: row.id }, log: req.log })).catch(() => {});
+    // fin moderation (agent-moderation)
     const staff = await p.user.findMany({ where: { OR: [{ role: STAFF }, { permissions: { has: 'manage_reports' } }] }, select: { id: true } });
     for (const s of staff) notify(p, s.id, 'rights_notice', `A ${n.kind} notice arrived — ${row.code} (${n.targets.length} target(s)).`).catch(() => {});
     // The doorbell on Discord, opt-in, without the body — a notice names its sender.

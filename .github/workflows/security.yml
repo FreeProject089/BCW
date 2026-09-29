@@ -12,9 +12,10 @@ name: BCWEB security
 #   trivy-fs    Dockerfile misconfiguration (nothing checked them before), and a second advisory
 #               database over the same lockfiles npm/cargo audit read — scoped to the same
 #               folders, with the same reviewed exception, so the two cannot disagree silently.
-#   trivy-image the five images as built: OS packages and whatever the base image ships (the
+#   trivy-image the six images as built: OS packages and whatever the base image ships (the
 #               node images' own npm), which no lockfile audit can see, plus secrets baked into
-#               a layer.
+#               a layer. The sixth is the optional Laya AI sidecar (compose profile `ai`): its
+#               Python packages (torch, transformers) have no lockfile any other job reads.
 #
 # The gate: every scanner writes a report and exits 0; .github/scripts/security-gate.mjs reads
 # the report and fails the job by severity:
@@ -224,13 +225,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # The five images infra/compose/docker-compose.yml builds, with the same contexts.
+        # The six images infra/compose/docker-compose.yml builds, with the same contexts (laya
+        # only under the `ai` profile, scanned all the same: an optional image still ships).
         include:
           - { image: api, context: BCWEB, dockerfile: BCWEB/apps/api/Dockerfile }
           - { image: web, context: BCWEB, dockerfile: BCWEB/apps/web/Dockerfile }
           - { image: provisioner, context: BCWEB, dockerfile: BCWEB/apps/provisioner/Dockerfile }
           - { image: bot, context: BCWEB/apps/bot, dockerfile: BCWEB/apps/bot/Dockerfile }
           - { image: telemetry, context: BCWEB/bmm/telemetry-dashboard, dockerfile: BCWEB/bmm/telemetry-dashboard/Dockerfile }
+          - { image: laya, context: BCWEB/infra/laya, dockerfile: BCWEB/infra/laya/Dockerfile }
     env:
       IMAGE: ${{ matrix.image }}
       CONTEXT: ${{ matrix.context }}
@@ -282,7 +285,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        report: [semgrep, trivy-fs, trivy-image-api, trivy-image-web, trivy-image-provisioner, trivy-image-bot, trivy-image-telemetry]
+        report: [semgrep, trivy-fs, trivy-image-api, trivy-image-web, trivy-image-provisioner, trivy-image-bot, trivy-image-telemetry, trivy-image-laya]
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1

@@ -51,7 +51,8 @@ export const pathOnly = (url) => String(url || '').split('?')[0].slice(0, PATH_M
  *  Prefix-matched on purpose: a new route under `/threads/t/` is covered the day it is
  *  added, and a route that merely LOOKS similar (`/me/threads/<id>`) is not, because an id
  *  is not a credential and a log with no identifier in it is a log nobody can read. */
-const SECRET_PATH_PREFIXES = ['/threads/t/', '/f/', '/auth/oauth/link/'];
+// notify (agent-notify): '/feeds/u/' is the personal RSS feed, whose file name carries the token.
+const SECRET_PATH_PREFIXES = ['/threads/t/', '/f/', '/auth/oauth/link/', '/feeds/u/'];
 
 /** A request URL with its query string removed AND any credential-bearing path segment
  *  replaced. This is what may be logged or stored; `pathOnly` is what it is built from. */

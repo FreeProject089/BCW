@@ -1313,7 +1313,7 @@ function CreatorLinks() {
                 : t('common.failed', 'Failed.'));
             } finally { setBusy(false); }
           }}><KeyRound size={13} /> {t('cl.keyMake', 'Get a BMM notifications key')}</Button>
-          <span className="text-xs text-[var(--faint)]">{t('cl.keyMakeHint', 'For BMM to show your notifications. Creates a new read-only key.')}</span>
+          <span className="text-xs text-[var(--faint)]">{t('cl.keyMakeHint', 'For BMM to show your notifications and ask the site’s AI helper (when it is on). Creates a new key that can change nothing on your account.')}</span>
         </div>
       )}
 

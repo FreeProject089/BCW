@@ -550,10 +550,17 @@ export async function anonymiseAccount(p, user, { removeObject = deleteObject } 
     // keeps access. A draw's record names sign-ups by id only, which then name nobody.
     p.projectReview.deleteMany({ where: { userId: user.id } }).catch(() => {}),
     p.preReleaseSignup.deleteMany({ where: { userId: user.id } }).catch(() => {}),
+    // notify (agent-notify): the personal RSS token (a way in, written down) and the projects
+    // followed (a list of interests, and no longer anybody's).
+    p.feedToken.deleteMany({ where: { userId: user.id } }).catch(() => {}),
+    p.projectFollow.deleteMany({ where: { userId: user.id } }).catch(() => {}),
     // Outstanding reset and confirmation tokens (F23-2 residual). Hashed and single-use, but a
     // row that outlives the account is a way back in written down; nothing needs them now.
     p.passwordReset.deleteMany({ where: { userId: user.id } }).catch(() => {}),
     p.emailVerification.deleteMany({ where: { userId: user.id } }).catch(() => {}),
+    // moderation (agent-moderation): the person's moderation cases keep their decision and
+    // reasons (the audit of the queue) and lose the text, any held payload, and the link back.
+    import('../lib/moderation/cases.mjs').then(({ forgetAuthor }) => forgetAuthor(p, user.id)).catch(() => {}),
   ]);
   // The bytes, which no database cascade reaches (SECURITY_SUMMARY §9: "avatar and feedback
   // objects left in S3 on erasure").

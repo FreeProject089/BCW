@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import crypto from 'node:crypto';
-import { db, requireRole, requireCap, notify } from '../lib/lib.mjs';
+import { db, requireRole, requireCap, notify, clientIp } from '../lib/lib.mjs';
 import { userBcId, findUserIdByBcId, looksLikeBcId } from '../lib/repofingerprint.mjs';
 import { sendMail, mailShell, emailEnabled, escapeHtml } from '../lib/mail.mjs';
 import { powVerify } from './auth.mjs';
@@ -167,6 +167,11 @@ export default async function reportRoutes(app) {
       reason: b.data.reason, reporterId: req.user.uid, staffUnread: true,
       messages: { create: { authorId: req.user.uid, body: b.data.body, images: b.data.images } },
     } });
+    // moderation (agent-moderation): a report is SENSITIVE, so the engine only annotates it
+    // (a case appears beside it when the text carries phishing links, a flood, a known spam
+    // pattern); it never holds, refuses or closes one. After the response, never in its way.
+    import('../lib/moderation/index.mjs').then(({ moderateLater }) => moderateLater('report', { text: [b.data.targetLabel, b.data.reason, b.data.body].join('\n'), authorId: req.user.uid, ip: clientIp(req) }, { p, subject: { type: 'report', id: report.id }, log: req.log })).catch(() => {});
+    // fin moderation (agent-moderation)
     // Ping staff who can handle reports.
     const staff = await p.user.findMany({ where: { OR: [{ role: { in: ['MOD', 'ADMIN', 'SUPERADMIN'] } }, { permissions: { has: 'manage_reports' } }] }, select: { id: true, email: true } });
     // With a destination: the notification opens THIS thread, and seeing the thread reads
@@ -244,6 +249,8 @@ export default async function reportRoutes(app) {
     // as the "user" side, even if they hold a staff role (they opened the thread as a user).
     const asStaff = (STAFF_ROLES.includes(req.user.role) || req.user.perms?.includes?.('manage_reports')) && r.reporterId !== req.user.uid;
     const m = await p.reportMessage.create({ data: { reportId: r.id, authorId: req.user.uid, staff: asStaff, body: b.data.body, images: b.data.images } });
+    // moderation (agent-moderation): the reporter's side only; annotate, never act (see POST /reports).
+    if (!asStaff && b.data.body.trim()) import('../lib/moderation/index.mjs').then(({ moderateLater }) => moderateLater('report', { text: b.data.body, authorId: req.user.uid, ip: clientIp(req) }, { p, subject: { type: 'report_message', id: m.id }, log: req.log })).catch(() => {});
     // A message reopens an archived thread; flag the "other side" as unread.
     await p.report.update({ where: { id: r.id }, data: { status: 'open', archivedAt: null, staffUnread: !asStaff ? true : r.staffUnread, userUnread: asStaff ? true : r.userUnread, lastActivityAt: new Date() } });
     publishToThread('report', r.id, { type: 'message', message: msgPublic({ ...m, author: null }) });

@@ -4,6 +4,7 @@ import { db, requireRole, requireCap, optionalAuth, slugify, pruneRevisions, blo
 import { emailEnabled } from '../lib/mail.mjs';
 import { sendNewsletter } from './newsletter.mjs';
 import { isProjectKey, KEY_SHAPE } from '../lib/project-keys.mjs';
+import { notifyFollowersOfPost } from '../lib/notify.mjs'; // notify (agent-notify)
 
 const SITE_URL = (process.env.SITE_URL || 'http://localhost:5176').replace(/\/$/, '');
 
@@ -362,6 +363,9 @@ export default async function blogRoutes(app) {
     const post = await p.blogPost.create({ data });
     await snapshotBlog(p, post, req.user.uid);
     await notifyNewsletterOfPost(p, post, b.data, STAFF.includes(req.user.role));
+    // notify (agent-notify): the project's followers hear about a newly published post, once
+    // (dedupe key per post), in the background, and only when the admin setting is on.
+    notifyFollowersOfPost(p, post).catch(() => {});
     return reply.code(201).send({ post });
   });
 
@@ -415,6 +419,9 @@ export default async function blogRoutes(app) {
     const post = await p.blogPost.update({ where: { id: req.params.id }, data });
     if (touchesContent) await snapshotBlog(p, post, req.user.uid);
     await notifyNewsletterOfPost(p, post, d, STAFF.includes(req.user.role));
+    // notify (agent-notify): the project's followers hear about a newly published post, once
+    // (dedupe key per post), in the background, and only when the admin setting is on.
+    notifyFollowersOfPost(p, post).catch(() => {});
     return { post };
   });
 

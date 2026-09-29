@@ -1735,6 +1735,7 @@ Une clé a exactement les droits que ses portées décrivent, et une clé sans p
 | \`economy:read\` | Votre niveau Discord, XP, points et achats de la boutique. |
 | \`badges:read\` | Les badges de votre profil. |
 | \`charity:read\` | La cagnotte solidaire : association, totaux, vote du mois. |
+| \`ai:suggest\` | Demander à l'aide IA du site une étiquette, une catégorie, une langue ou la cause d'un plantage (éteinte tant que l'admin ne l'active pas). La clé que BMM reçoit quand vous liez votre compte la porte avec \`notifications:read\`. |
 
 \`GET /api/v1/scopes\` renvoie cette liste depuis le serveur : c'est toujours la liste actuelle.
 

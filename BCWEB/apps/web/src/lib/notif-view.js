@@ -68,6 +68,9 @@ const PREFIX_LABELS = [
   [/^(catalog_|submission_)/, (t) => t('notif.l.catalog', 'Catalog')],
   [/^(hosting_|feature_)/, (t) => t('notif.l.hosting', 'Hosting')],
   [/^repo_/, (t) => t('notif.l.repo', 'Repository')],
+  // notify (agent-notify): a followed project's new post, and the staff moderation queue.
+  [/^project_/, (t) => t('notif.l.project', 'Project')],
+  [/^moderation[._]/, (t) => t('notif.l.moderation', 'Moderation')],
 ];
 
 export function notifLabel(n, t) {

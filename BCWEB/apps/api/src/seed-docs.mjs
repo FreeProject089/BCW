@@ -1543,6 +1543,7 @@ A key is allowed exactly what its scopes say, and a key with no scopes can do no
 | \`economy:read\` | Your Discord level, XP, points and points-shop purchases. |
 | \`badges:read\` | The badges on your profile. |
 | \`charity:read\` | The Community Charity pot: association, totals, the month's vote. |
+| \`ai:suggest\` | Ask the site's AI helper for a tag, a category, a language or a crash cause (off unless the admin enables it). The key BMM receives when you link your account carries it with \`notifications:read\`. |
 
 \`GET /api/v1/scopes\` returns this list from the server, so it is always the current one.
 

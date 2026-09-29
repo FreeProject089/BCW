@@ -13,6 +13,7 @@
 // Needs a throwaway Postgres (same contract as pool-billing.test.mjs); skipped without one.
 import { test, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { sharedBmmProject } from './helpers/shared-project.mjs';
 
 const RUN = !!process.env.DATABASE_URL;
 const skip = RUN ? false : 'set DATABASE_URL to a throwaway Postgres (see CI) to run catalog-visibility tests';
@@ -26,7 +27,7 @@ before(async () => {
   ({ notInvalid } = await import('../src/routes/catalog.mjs'));
   tag = `vis-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   owner = await p.user.create({ data: { email: `${tag}@test.local`, displayName: 'Vis Test' } });
-  project = await p.project.upsert({ where: { key: 'bmm' }, create: { key: 'bmm', name: 'BMM' }, update: {} });
+  project = await sharedBmmProject(p);
 });
 // Every test asserts on the FULL visible set of its own rows, so they must not inherit each
 // other's items — drop them between tests rather than hand-crafting unique slugs per case.

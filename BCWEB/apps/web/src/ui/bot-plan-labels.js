@@ -5,7 +5,7 @@
 // names from here, so a feature is never called two things on two screens.
 
 /** The feature keys, in the order the API lists them (a fallback when the API is not asked). */
-export const BOT_FEATURE_KEYS = ['welcome', 'welcomeBanner', 'joinToCreate', 'gating', 'rolePanels', 'blog', 'automod', 'logRouting'];
+export const BOT_FEATURE_KEYS = ['welcome', 'welcomeBanner', 'joinToCreate', 'gating', 'rolePanels', 'blog', 'automod', 'logRouting', 'aiAutomod'];
 export const BOT_LIMIT_KEYS = ['joinToCreateLobbies', 'gatingRules', 'rolePanels', 'blogRoutes', 'automodWords'];
 
 export function botFeatureLabel(t, key) {
@@ -18,6 +18,8 @@ export function botFeatureLabel(t, key) {
     case 'blog': return t('botplan.f.blog', 'Blog posts announced in your channels');
     case 'automod': return t('botplan.f.automod', 'Automatic moderation');
     case 'logRouting': return t('botplan.f.logRouting', 'Logs sorted by category, or into a forum');
+    // laya (agent-laya-bcweb): paid by default (PAID_BY_DEFAULT in the API's bot-entitlements.mjs).
+    case 'aiAutomod': return t('botplan.f.aiAutomod', 'AI-assisted anti-phishing and anti-troll checks');
     default: return key;
   }
 }

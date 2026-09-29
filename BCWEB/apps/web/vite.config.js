@@ -231,13 +231,19 @@ export default defineConfig(async () => ({
   // BCWEB_API_URL overrides it. Same default, so nothing changes for the common case.
   server: {
     port: 5176,
-    proxy: {
-      '/api': {
-        target: await findApi(),
-        changeOrigin: true,
-        rewrite: (p) => p.replace(/^\/api/, ''),
-      },
-    },
+    proxy: await (async () => {
+      const target = await findApi();
+      return {
+        '/api': {
+          target,
+          changeOrigin: true,
+          rewrite: (p) => p.replace(/^\/api/, ''),
+        },
+        // notify (agent-notify): the RSS feeds live at /feeds/* on the site (Caddy routes them
+        // to the API unprefixed), so the dev server does the same.
+        '/feeds': { target, changeOrigin: true },
+      };
+    })(),
   },
   build: {
     // Split the heavy, rarely-changing libraries into their own hashed chunks so

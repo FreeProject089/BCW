@@ -489,18 +489,26 @@ export default async function threadRoutes(app) {
     const who = uid ? { senderId: uid } : { senderId: null, OR: [{ senderEmail: email }, { ip }] };
     const [h, d] = await Promise.all([p.contactThread.count({ where: { ...who, createdAt: { gte: hour } } }), p.contactThread.count({ where: { ...who, createdAt: { gte: day } } })]);
     if (h >= (uid ? cfg.userPerHour : cfg.anonPerHour) || d >= (uid ? cfg.userPerDay : cfg.anonPerDay)) return reply.code(429).send({ error: 'rate_limited' });
+    // moderation (agent-moderation): the subject and the first message, before anything is
+    // written. A hold opens the thread with its first message hidden and tells nobody.
+    const { moderateThread, linkCase } = await import('../lib/moderation/index.mjs');
+    const mod = await moderateThread(p, { kind: target.kind, teamId: target.teamId }, `${b.data.subject}\n${b.data.body}`, { authorId: uid, ip }, req.log);
+    if (mod.action === 'refuse') return reply.code(422).send({ error: 'content_refused' });
+    const held = mod.action === 'hold';
+    // fin moderation (agent-moderation)
     const t = await p.contactThread.create({
       data: {
         kind: target.kind, targetId: target.id, targetLabel: target.label,
         ownerUserId: target.teamId ? null : target.ownerId, ownerTeamId: target.teamId || null,
         senderId: uid, senderEmail: email, senderName: uid ? '' : (b.data.name || ''), accessToken: token(),
         subject: b.data.subject, ip, topic,
-        messages: { create: { authorId: uid, side: 'sender', body: b.data.body } },
+        messages: { create: { authorId: uid, side: 'sender', body: b.data.body, hidden: held } },
       },
       include: INCLUDE_FULL,
     });
+    linkCase(p, mod.caseId, 'thread_message', t.messages[0]?.id); // moderation (agent-moderation)
     if (prepared.decoded.length) await commitFiles(p, t, t.messages[0]?.id || null, prepared);
-    await tellManagers(p, t, `New message about “${t.targetLabel}”: ${t.subject}`, `/dashboard?s=reports&thread=${t.id}`);
+    if (!held) await tellManagers(p, t, `New message about “${t.targetLabel}”: ${t.subject}`, `/dashboard?s=reports&thread=${t.id}`);
     await mailAnonSender(t, `Your message to ${t.targetLabel}`, `Your message “${t.subject}” has been sent. You will be e-mailed when they answer; you can also follow the conversation here:`);
     const full = prepared.decoded.length ? await p.contactThread.findUnique({ where: { id: t.id }, include: INCLUDE_FULL }) : t;
     return reply.code(201).send({ thread: serThread(withFiles(full), { withMessages: true, anon: !uid }), ...(uid ? {} : { accessToken: t.accessToken }) });
@@ -572,8 +580,9 @@ export default async function threadRoutes(app) {
     return { thread: th, side: got.side, canWrite: gate.reply, frozen: gate.reply ? '' : gate.why, files: { allowed: files.allowed, why: files.why, maxBytes: files.maxBytes, maxFiles: files.maxFiles } };
   });
 
-  const post = async (p, t, { authorId, side, body }) => {
-    const m = await p.contactThreadMessage.create({ data: { threadId: t.id, authorId, side, body } });
+  // `hidden`: held by the moderation engine (agent-moderation) until a moderator releases it.
+  const post = async (p, t, { authorId, side, body, hidden = false }) => {
+    const m = await p.contactThreadMessage.create({ data: { threadId: t.id, authorId, side, body, hidden } });
     await p.contactThread.update({ where: { id: t.id }, data: { lastActivityAt: new Date(), ownerUnread: side !== 'owner', senderUnread: side !== 'sender' } });
     return m;
   };
@@ -593,11 +602,19 @@ export default async function threadRoutes(app) {
       if (!gate.reply) return reply.code(403).send({ error: gate.why });
     }
     if (got.side !== 'staff' && await overMessageRate(p, cfg, { authorId: req.user.uid })) return reply.code(429).send({ error: 'rate_limited' });
+    // moderation (agent-moderation): staff are not moderated; a refusal is a 422, a hold hides
+    // the message and tells nobody until a moderator releases it.
+    const { moderateThread, linkCase } = await import('../lib/moderation/index.mjs');
+    const mod = got.side === 'staff' ? null : await moderateThread(p, got.t, b.data.body, { authorId: req.user.uid, ip: clientIp(req) }, req.log);
+    if (mod?.action === 'refuse') return reply.code(422).send({ error: 'content_refused' });
+    const held = mod?.action === 'hold';
+    // fin moderation (agent-moderation)
     const prepared = await prepareFiles(p, got.t, b.data.files);
     if (prepared.error) return fileError(reply, prepared);
-    const m = await post(p, got.t, { authorId: req.user.uid, side: got.side, body: b.data.body });
+    const m = await post(p, got.t, { authorId: req.user.uid, side: got.side, body: b.data.body, hidden: held });
+    if (mod) linkCase(p, mod.caseId, 'thread_message', m.id);
     const stored = await commitFiles(p, got.t, m.id, prepared);
-    if (got.side === 'owner' || got.side === 'staff') {
+    if (held) { /* moderation: held for review, nobody is told yet */ } else if (got.side === 'owner' || got.side === 'staff') {
       if (got.t.senderId) notify(p, got.t.senderId, 'thread', `Reply about “${got.t.targetLabel}”: ${got.t.subject}`, { href: `/dashboard?s=reports&thread=${got.t.id}` }).catch(() => {});
       else {
         // One mail per burst, not one per message: see scheduleAnonMail.
@@ -810,11 +827,18 @@ export default async function threadRoutes(app) {
       if (!gate.reply) return reply.code(403).send({ error: gate.why });
     }
     if (await overMessageRate(p, cfg, { senderEmail: t.senderEmail })) return reply.code(429).send({ error: 'rate_limited' });
+    // moderation (agent-moderation): as on the signed-in side.
+    const { moderateThread, linkCase } = await import('../lib/moderation/index.mjs');
+    const mod = await moderateThread(p, t, b.data.body, { ip: clientIp(req) }, req.log);
+    if (mod.action === 'refuse') return reply.code(422).send({ error: 'content_refused' });
+    const held = mod.action === 'hold';
+    // fin moderation (agent-moderation)
     const prepared = await prepareFiles(p, t, b.data.files);
     if (prepared.error) return fileError(reply, prepared);
-    const m = await post(p, t, { authorId: null, side: 'sender', body: b.data.body });
+    const m = await post(p, t, { authorId: null, side: 'sender', body: b.data.body, hidden: held });
+    linkCase(p, mod.caseId, 'thread_message', m.id);
     const stored = await commitFiles(p, t, m.id, prepared);
-    await tellManagers(p, t, `Reply on “${t.targetLabel}”: ${t.subject}`, `/dashboard?s=reports&thread=${t.id}`);
+    if (!held) await tellManagers(p, t, `Reply on “${t.targetLabel}”: ${t.subject}`, `/dashboard?s=reports&thread=${t.id}`);
     return { message: { ...serMsg({ ...m, files: stored.rows.map(serFile) }), receipt: 'sent' } };
   });
 

@@ -215,6 +215,13 @@ recorded warnings.
 Defaults worth knowing: automod on, with spam, mentions, invites, zalgo, attachments,
 selfbot and raid enabled; links, words, caps and account age off.
 
+**AI-assisted check** (`automod.ai`, off by default, the paid plan feature `aiAutomod`): fixed
+phishing checks run first inside the bot (look-alike login domains, punycode, raw IPs, a login
+hidden in the link, a free-Nitro lure on a shortener) and may use any action; only a message no
+rule caught is sent to the site's AI, with a 2.5 s limit, and an AI verdict costs at most a
+delete or a warning. The API checks the plan itself on every call. Setup, costs and privacy:
+[AI_LAYA_EN.md](AI_LAYA_EN.md#6-discord-the-ai-assisted-automod-a-paid-option).
+
 Moderation the website asked for (a ban, a kick, a timeout decided in the admin screens) is
 **queued** by the site and carried out by a poller here, because the website cannot reach
 Discord. The outcome is always reported back, failures included: Discord refuses these

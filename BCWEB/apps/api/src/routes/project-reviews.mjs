@@ -81,6 +81,13 @@ export default async function projectReviewRoutes(app) {
     const me = await p.user.findUnique({ where: { id: req.user.uid }, select: { displayName: true, createdAt: true, status: true } });
     const refusal = reviewerRefusal(me);
     if (refusal) return reply.code(403).send({ error: refusal });
+    // moderation (agent-moderation): every review already waits for approval, so the engine
+    // cannot hold one; it can refuse an obvious one (auto mode, BLOCK) and flags the rest for
+    // the person approving it.
+    const { moderate, linkCase } = await import('../lib/moderation/index.mjs');
+    const mod = await moderate('community', { text: [b.data.role, b.data.body].filter(Boolean).join('\n'), authorId: req.user.uid, ip: clientIp(req), meta: { target: proj.target } }, { p, subject: { type: 'project_review' }, canRefuse: true, log: req.log });
+    if (mod.action === 'refuse') return reply.code(400).send({ error: 'content_refused' });
+    // fin moderation (agent-moderation)
     const lang = b.data.lang || 'en';
     const data = {
       author: String(me.displayName || '').slice(0, 80) || 'Member', role: b.data.role || '', body: b.data.body, lang,
@@ -90,6 +97,7 @@ export default async function projectReviewRoutes(app) {
       where: { userId_target: { userId: req.user.uid, target: proj.target } },
       create: { ...data, userId: req.user.uid, target: proj.target }, update: data,
     });
+    linkCase(p, mod.caseId, 'project_review', r.id); // moderation (agent-moderation)
     return { review: ownView(r) };
   });
 

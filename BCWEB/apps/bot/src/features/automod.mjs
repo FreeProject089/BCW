@@ -71,6 +71,15 @@
 //         selfbot:     { enabled: true,  action: 'kick', channelsPerWindow: 3, windowSec: 5, identicalAcrossSec: 10, maxPerMinute: 40 },
 //         raid:        { enabled: true,  action: 'timeout', timeoutMin: 60, joins: 10, windowSec: 30, lockdownMin: 15, raiseVerification: true, alert: true },
 //       },
+//       // laya (agent-laya-bcweb): the AI-assisted check, a PAID feature (entitlement
+//       // `aiAutomod`, enforced by the API both where the config is written and where the bot
+//       // reads it). NOT one of `rules`: its actions are capped, and it is asked only when no
+//       // rule above fired. Rules first: the deterministic phishing check (phishingSignals)
+//       // runs inside evaluateMessage and may use any action (`rulesAction`); only the grey
+//       // zone goes to the API (POST /bot/ai/automod), with a hard timeout, and an AI verdict
+//       // costs at most `action` ∈ log | delete | warn — a signal is never a kick or a ban.
+//       ai: { enabled: false, action: 'log', phishing: true, troll: false, phishingThreshold: 0.9,
+//             trollThreshold: 0.92, minChars: 12, rulesAction: 'delete', timeoutMin: 10, ...message-rule params },
 //     },
 //   }
 //
@@ -96,9 +105,11 @@
 //   most severe wins, they are never stacked.
 
 import { PermissionFlagsBits } from 'discord.js';
+import { domainToUnicode } from 'node:url';
 import { guildConfig, config } from '../config.mjs';
 import { makeT, localeOf } from '../i18n.mjs';
 import { api } from '../api.mjs';
+import { BRANDS } from './brands.generated.mjs';
 import { modStats } from '../store.mjs';
 
 export const ACTIONS = ['log', 'delete', 'warn', 'timeout', 'kick', 'ban', 'addRole', 'removeRole'];
@@ -139,6 +150,10 @@ export const DEFAULT_AUTOMOD = {
     raid: { enabled: true, action: 'timeout', timeoutMin: 60, joins: 10, windowSec: 30, lockdownMin: 15, raiseVerification: true, alert: true, ...COMMON_PARAMS },
   },
 };
+// laya (agent-laya-bcweb): the AI-assisted check. See the config shape at the top.
+export const AI_ACTIONS = ['log', 'delete', 'warn'];
+export const DEFAULT_AI = { enabled: false, action: 'log', phishing: true, troll: false, phishingThreshold: 0.9, trollThreshold: 0.92, minChars: 12, rulesAction: 'delete', timeoutMin: 10, ...MSG_PARAMS };
+// fin laya (agent-laya-bcweb)
 export const DEFAULT_LADDER = [
   { count: 3, action: 'timeout', minutes: 60 },
   { count: 5, action: 'kick' },
@@ -195,7 +210,37 @@ export function normalizeAutomod(raw) {
     exempt: { roles: strList(ex.roles), channels: strList(ex.channels), users: strList(ex.users), moderators: bool(ex.moderators, true) },
     warnDecayHours: num(r.warnDecayHours, DEFAULT_AUTOMOD.warnDecayHours, 0),
     rules,
+    ai: normalizeAi(r.ai),
   };
+}
+
+/** laya (agent-laya-bcweb): the saved `automod.ai` → the full shape, every value bounded. */
+export function normalizeAi(raw) {
+  const s = raw && typeof raw === 'object' ? raw : {};
+  const d = DEFAULT_AI;
+  const clamp01 = (v, dv) => { const n = Number(v); return Number.isFinite(n) ? Math.min(0.99, Math.max(0.5, n)) : dv; };
+  const re = s.exempt && typeof s.exempt === 'object' ? s.exempt : {};
+  const out = {
+    enabled: bool(s.enabled, d.enabled),
+    action: AI_ACTIONS.find((a) => a === String(s.action || '').toLowerCase()) || d.action,
+    phishing: bool(s.phishing, d.phishing),
+    troll: bool(s.troll, d.troll),
+    phishingThreshold: clamp01(s.phishingThreshold, d.phishingThreshold),
+    trollThreshold: clamp01(s.trollThreshold, d.trollThreshold),
+    minChars: Math.max(1, Math.min(2000, Math.floor(num(s.minChars, d.minChars, 1)))),
+    rulesAction: ACTIONS.find((a) => a.toLowerCase() === String(s.rulesAction || '').toLowerCase()) || d.rulesAction,
+    timeoutMin: num(s.timeoutMin, d.timeoutMin, 1),
+    dm: bool(s.dm, d.dm), logOnly: bool(s.logOnly, d.logOnly), deleteMessage: bool(s.deleteMessage, d.deleteMessage),
+    countsAsWarn: bool(s.countsAsWarn, d.countsAsWarn),
+    warnEvery: Math.max(1, Math.min(50, Math.floor(num(s.warnEvery, d.warnEvery, 1)) || 1)),
+    warnWindowMin: Math.floor(num(s.warnWindowMin, d.warnWindowMin, 0)),
+    roleId: /^\d{5,32}$/.test(String(s.roleId ?? '').trim()) ? String(s.roleId).trim() : '',
+    roleMin: num(s.roleMin, d.roleMin, 0),
+    exempt: { roles: strList(re.roles), channels: strList(re.channels) },
+  };
+  // A role action with no role falls back to deleting, like every message rule.
+  if ((out.rulesAction === 'addRole' || out.rulesAction === 'removeRole') && !out.roleId) out.rulesAction = 'delete';
+  return out;
 }
 
 /**
@@ -362,6 +407,190 @@ export function zalgoScore(text) {
 
 export const extOf = (name) => { const m = String(name || '').toLowerCase().match(/\.([a-z0-9]{1,8})$/); return m ? m[1] : ''; };
 
+// ── laya (agent-laya-bcweb): phishing, rules first ────────────────────────────────────────
+// The deterministic half of the AI-assisted check. Cheap, local, no network: it decides alone
+// whenever the evidence is plain (a look-alike of a brand people log in to, a punycode host, a
+// raw IP, credentials smuggled into the URL, a "free nitro" lure on a shortener) and it is the
+// part of the feature that may use the full action list. Only when it is unsure does the bot
+// spend a call on the model.
+// The brand list is the API's (lib/moderation/links.mjs DEFAULT_BRANDS), copied into the bot by
+// scripts/sync-brands.mjs because this image cannot import apps/api. One list, not two.
+const SHORTENERS = ['bit.ly', 'tinyurl.com', 'cutt.ly', 'is.gd', 'rb.gy', 'goo.gl', 'shorturl.at', 'v.gd', 't.ly', 'rebrand.ly', 'ow.ly', 'bl.ink', 'tiny.cc'];
+const LURE_RE = /\b(free\s*nitro|nitro\s*(gift|free|for\s*free)|steam\s*(gift|free|wallet)|free\s*(skins?|robux|gift|giveaway|vbucks|v-bucks)|claim\s*(your|now|here)|airdrop|verify\s*(your\s*)?account|account\s*(will\s*be\s*)?(suspended|banned|disabled)|gift\s*for\s*you|3\s*months?\s*(of\s*)?nitro|nitro\s*giveaway|login\s*to\s*claim)\b/i;
+/** A host reduced to what it spells: digits and look-alike letters folded onto the letter they imitate. */
+const skeleton = (s) => String(s || '').toLowerCase()
+  .replace(/rn/g, 'm').replace(/vv/g, 'w').replace(/[0]/g, 'o').replace(/[1!|]/g, 'l').replace(/3/g, 'e')
+  .replace(/[4@]/g, 'a').replace(/5/g, 's').replace(/7/g, 't').replace(/[^a-z]/g, '');
+function editDistance(a, b, cap = 3) {
+  if (Math.abs(a.length - b.length) > cap) return cap + 1;
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    let rowMin = i;
+    for (let j = 1; j <= b.length; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      rowMin = Math.min(rowMin, cur[j]);
+    }
+    if (rowMin > cap) return cap + 1;
+    prev = cur;
+  }
+  return prev[b.length];
+}
+const officialOf = (host) => Object.entries(BRANDS).find(([, list]) => list.some((d) => host === d || host.endsWith(`.${d}`)))?.[0] || null;
+// The official names long enough to be typo-squatted on their own (steamcommunlty, dlscordapp).
+const OFFICIAL_NAMES = [...new Set(Object.values(BRANDS).flat().map((d) => d.split('.')[0].replace(/[^a-z]/g, '')).filter((n) => n.length >= 7))];
+/** A punycode label shown as what it spells, accents dropped: xn--dscord-9ra → discord. */
+const unaccent = (host) => { let u = host; try { u = domainToUnicode(host) || host; } catch { /* keep it */ } return u.normalize('NFKD').replace(/\p{M}/gu, ''); };
+const HOST_LURE = /(nitro|gift|free|claim|airdrop|login|verify|giveaway|promo|reward|bonus|wallet)/;
+/**
+ * Which brand this host is pretending to be: { brand, strong } or null. The brand's own domains
+ * are never a look-alike. `strong` = a spelling trick (d1scord, st3am, dlscord, disocrd) or the
+ * brand's exact name on someone else's domain; a name that merely CONTAINS the brand is weak
+ * (steamdb, discordbotlist are real fan sites) unless the name also carries a lure word
+ * (discord-nitro, steamgift). Short brands (steam, paypal) never get the edit-distance test:
+ * "stream" is one letter away from "steam" and is everywhere.
+ */
+export function lookalikeBrand(host) {
+  const h = String(host || '').toLowerCase().replace(/\.+$/, '');
+  if (!h || officialOf(h)) return null;
+  const labels = unaccent(h).split('.');
+  const names = labels.length > 1 ? labels.slice(0, -1) : labels;
+  const whole = names.join('');
+  let weak = null;
+  for (const brand of Object.keys(BRANDS)) {
+    for (const raw of [...names, whole]) {
+      const p = skeleton(raw);
+      if (p.length < 4) continue;
+      if (p === brand) return { brand, strong: true };
+      if (brand.length >= 7) {
+        if (editDistance(p, brand, 2) <= 2) return { brand, strong: true };
+        if (p.length > brand.length && editDistance(p.slice(0, brand.length), brand, 1) === 1) return { brand, strong: true };
+      }
+      for (const o of OFFICIAL_NAMES) if (p !== o && editDistance(p, o, 2) <= 2) return { brand, strong: true };
+      if (p.includes(brand)) {
+        if (HOST_LURE.test(p.replace(brand, ''))) return { brand, strong: true };
+        weak = weak || { brand, strong: false };
+      }
+    }
+  }
+  return weak;
+}
+/**
+ * The deterministic phishing verdict for one message: { score (0..1), reasons[], hosts[] }.
+ * `score` ≥ 0.7 is decided here without the model.
+ */
+export function phishingSignals(text) {
+  const t = String(text || '').slice(0, 4000);
+  const reasons = [];
+  let score = 0;
+  const add = (n, why) => { score += n; reasons.push(why); };
+  const raw = [...t.matchAll(/https?:\/\/[^\s<>()"']+/gi)].map((m) => m[0]).slice(0, 20);
+  const hosts = extractLinks(t).map((l) => l.host).slice(0, 20);
+  const lure = LURE_RE.test(t);
+  if (raw.some((u) => /^https?:\/\/[^/?#]*@/i.test(u))) add(0.6, 'credentials in the link');
+  for (const h of new Set(hosts)) {
+    if (/(^|\.)xn--/.test(h)) add(0.5, `punycode host ${h}`);
+    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(h) || h.startsWith('[')) add(0.4, `raw IP ${h}`);
+    const look = lookalikeBrand(h);
+    if (look) add(look.strong ? 0.75 : 0.3, `${h} ${look.strong ? 'imitates' : 'mentions'} ${look.brand}`);
+    if (SHORTENERS.includes(h) && lure) add(0.35, `shortened link ${h}`);
+  }
+  if (lure && hosts.length) add(0.35, 'gift / nitro / account lure with a link');
+  return { score: Math.min(1, Math.round(score * 100) / 100), reasons, hosts: [...new Set(hosts)] };
+}
+
+/** Which AI checks this message is worth (none when the cheap prefilter says no). Pure. */
+export function aiChecksFor(message, ai) {
+  if (!ai?.enabled) return [];
+  const text = String(message?.content || '');
+  const checks = [];
+  if (ai.phishing && /https?:\/\/|discord\.gg\/|www\./i.test(text)) checks.push('phishing');
+  if (ai.troll && text.replace(/\s+/g, ' ').trim().length >= (ai.minChars || 12)) checks.push('troll');
+  return checks;
+}
+
+/** The API's labels → the actions the AI verdict costs (capped at ai.action). Pure. */
+export function aiVerdict(labels, ai, checks = ['phishing', 'troll']) {
+  const out = [];
+  if (!labels || !ai) return out;
+  const pct = (p) => `${Math.round(p * 100)}%`;
+  const r = { ...ai, action: AI_ACTIONS.includes(ai.action) ? ai.action : 'log' };
+  if (checks.includes('phishing')) {
+    const p = Math.max(Number(labels.phishing) || 0, 0);
+    if (p >= ai.phishingThreshold) out.push(act('ai', r, `AI: likely phishing (${pct(p)})`, { kind: 'ai', label: 'phishing', p }));
+  }
+  if (checks.includes('troll') && !out.length) {
+    const p = Math.max(Number(labels.troll) || 0, Number(labels.toxic) || 0);
+    const toxic = (Number(labels.toxic) || 0) > (Number(labels.troll) || 0);
+    if (p >= ai.trollThreshold) out.push(act('ai', r, `AI: likely ${toxic ? 'toxic' : 'trolling'} (${pct(p)})`, { kind: 'ai', label: toxic ? 'toxic' : 'troll', p }));
+  }
+  return out;
+}
+
+// What the API said "no" to, remembered per guild so a server without the plan (402) or a
+// site with AI switched off does not cost a request per message.
+const aiBackoff = new Map(); // guildId → until (ms)
+export const _resetAiBackoff = () => aiBackoff.clear();
+/**
+ * The grey zone: ask the API, never wait longer than `timeoutMs`, and on ANY failure return
+ * nothing — the rules already ran, and their answer (nothing fired) stands. `callApi` is
+ * injected for the tests; the bot passes api.aiAutomod.
+ */
+export async function aiFollowUp(message, cfg, callApi, { timeoutMs = 2500, now = Date.now() } = {}) {
+  try {
+    const ai = cfg?.ai;
+    if (!ai?.enabled || !message || message.bot) return [];
+    if (isExempt(cfg.exempt, message) || ruleExempt(ai, message)) return [];
+    const checks = aiChecksFor(message, ai);
+    if (!checks.length) return [];
+    if ((aiBackoff.get(message.guildId) || 0) > now) return [];
+    const r = await callApi({ guildId: message.guildId, userId: message.authorId, text: String(message.content || '').slice(0, 4000), checks }, timeoutMs);
+    if (!r || r.ok !== true) {
+      // 402 (no plan) → ten minutes; AI off / killed → one minute; busy / timeout → nothing.
+      const wait = r?.error === 'plan_required' ? 600_000 : r?.reason === 'disabled' ? 60_000 : 0;
+      if (wait) { aiBackoff.set(message.guildId, now + wait); if (aiBackoff.size > 5000) aiBackoff.clear(); }
+      return [];
+    }
+    return aiVerdict(r.labels, ai, checks);
+  } catch { return []; }
+}
+// fin laya (agent-laya-bcweb)
+
+// ── The site's second opinion on a link ──────────────────────────────────────────────────
+// The rules above know the shipped brand list; the SITE also knows what its admins added (the
+// blocked domains, their own protected brands, a campaign seen on other servers). So a message
+// with a link that no rule caught, on a server that turned the phishing check on, is shown to
+// POST /bot/moderation/check. Fail-open by construction: a hard deadline, any failure is
+// "nothing", and a site that keeps failing is left alone for a minute. Only a BLOCK acts, and
+// it acts like the deterministic phishing check does (`rulesAction`): the site's rules are
+// rules, not a model. Anything milder is the site's to queue, not the bot's to punish.
+const siteBackoff = new Map(); // guildId → until (ms)
+export const _resetSiteBackoff = () => siteBackoff.clear();
+export async function siteCheckFollowUp(message, cfg, callApi, { timeoutMs = 1500, now = Date.now() } = {}) {
+  try {
+    const ai = cfg?.ai;
+    if (!ai?.enabled || !ai.phishing || !message || message.bot || typeof callApi !== 'function') return [];
+    if (isExempt(cfg.exempt, message) || ruleExempt(ai, message)) return [];
+    const links = extractLinks(message.content).map((l) => l.url).slice(0, 30);
+    if (!links.length) return [];
+    if ((siteBackoff.get(message.guildId) || 0) > now) return [];
+    const id = (v) => (/^\d{5,25}$/.test(String(v || '')) ? String(v) : undefined);
+    if (!id(message.authorId)) return [];
+    const r = await callApi({
+      text: String(message.content || '').slice(0, 4000), links,
+      discordId: id(message.authorId), guildId: id(message.guildId), channelId: id(message.channelId), messageId: id(message.id),
+    }, timeoutMs);
+    if (!r || r.ok !== true) {
+      siteBackoff.set(message.guildId, now + 60_000);
+      if (siteBackoff.size > 5000) siteBackoff.clear();
+      return [];
+    }
+    if (r.decision !== 'BLOCK') return [];
+    const why = (Array.isArray(r.reasons) ? r.reasons : []).slice(0, 3).map((x) => String(x?.detail || x?.rule || '').slice(0, 80)).filter(Boolean).join(', ');
+    return [act('ai', { ...ai, action: ai.logOnly ? 'log' : ai.rulesAction }, `site: ${why || 'blocked link'}`, { kind: 'site', score: Number(r.score) || 0, caseId: r.caseId || null })];
+  } catch { return []; }
+}
+
 // ── The engine ────────────────────────────────────────────────────────────────────────────
 // One rule firing → one action. `logOnly` downgrades the whole thing to 'log' here, at the
 // single place that builds an action, so every caller downstream (strongest, the delete, the
@@ -506,6 +735,14 @@ export function evaluateMessage(message, state, cfg) {
     if (channels.size >= R.selfbot.channelsPerWindow) out.push(act('selfbot', R.selfbot, `${channels.size} channels in ${R.selfbot.windowSec}s`, { kind: 'multichannel', channels: channels.size }));
     else if (identical >= 2) out.push(act('selfbot', R.selfbot, `identical message in ${identical} channels within ${R.selfbot.identicalAcrossSec}s`, { kind: 'crosspost', channels: identical }));
     else if (perMinute > R.selfbot.maxPerMinute) out.push(act('selfbot', R.selfbot, `${perMinute} messages in a minute`, { kind: 'rate', perMinute }));
+  }
+  // laya (agent-laya-bcweb): the AI check's deterministic half — rules first. Plain evidence
+  // decides here, with the rule's own full action (`rulesAction`); the rest is the grey zone
+  // that aiFollowUp may send to the model once nothing else fired.
+  const AI = cfg.ai;
+  if (AI?.enabled && AI.phishing && !ruleExempt(AI, message)) {
+    const ph = phishingSignals(text);
+    if (ph.score >= 0.7) out.push(act('ai', { ...AI, action: AI.logOnly ? 'log' : AI.rulesAction }, `phishing: ${ph.reasons.slice(0, 3).join(', ')}`, { kind: 'rules', score: ph.score, hosts: ph.hosts }));
   }
   return out;
 }
@@ -698,7 +935,13 @@ export async function onAutomodMessage(msg) {
   }
   const plain = toPlainMessage(msg, inviteGuilds);
   const state = stateFor(msg.guild.id);
-  const actions = evaluateMessage(plain, state, c.automod);
+  let actions = evaluateMessage(plain, state, c.automod);
+  // laya (agent-laya-bcweb): nothing fired — the grey zone, on a server that pays for the AI
+  // check. Bounded by a timeout; on any failure the rules' answer (nothing) stands.
+  // The site's rules (admin lists, other servers' campaigns) on a link nothing here caught;
+  // fail-open, a deadline of 1.5 s.
+  if (!actions.length) actions = await siteCheckFollowUp(plain, c.automod, api.moderationCheck);
+  if (!actions.length) actions = await aiFollowUp(plain, c.automod, api.aiAutomod);
   if (!actions.length) return;
   const best = strongest(actions);
   const reason = actions.map((a) => `${a.rule}: ${a.reason}`).join('; ');

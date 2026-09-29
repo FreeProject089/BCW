@@ -181,6 +181,16 @@ export const PENDING_QUEUES = [
       select: { id: true, code: true, kind: true, status: true, createdAt: true },
     }),
   }, {
+    // moderation (agent-moderation): open cases of the moderation engine (lib/moderation),
+    // held content first: somebody's message is waiting on a person to be released.
+    key: 'moderation', cap: 'manage_moderation', to: '/admin?s=modqueue',
+    count: (p) => p.moderationCase.count({ where: { status: 'open' } }),
+    recent: (p) => p.moderationCase.findMany({
+      where: { status: 'open' }, orderBy: [{ held: 'desc' }, { createdAt: 'desc' }], take: 5,
+      select: { id: true, surface: true, decision: true, held: true, createdAt: true },
+    }).then((rows) => rows.map((r) => ({ id: r.id, title: `${r.decision} · ${r.surface.replace(/_/g, ' ')}`, sub: r.held ? 'held' : r.decision.toLowerCase(), at: r.createdAt }))),
+    // fin moderation (agent-moderation)
+  }, {
     key: 'reports', cap: 'manage_reports', to: '/admin?s=reports',
     count: (p) => p.report.count({ where: { status: 'open' } }),
     recent: (p) => p.report.findMany({
@@ -274,6 +284,7 @@ async function errorGroups(p) {
 import { footerSchema, pageColours, gradients, logoUrl, THEME_KEY, HEX, THEME_DEFAULTS } from '../lib/config-schemas.mjs';
 const APP_ICONS_KEY = 'brand.appIcons';
 import { hostOf, normalizeUrl } from '../lib/urlblock.mjs';
+import { AI_CONFIG_KEY, AI_KILLED_KEY, normalizeAiConfig } from '../lib/moderation/ai.mjs'; // laya (agent-laya-bcweb)
 export { footerSchema, footSocial, pageColours } from '../lib/config-schemas.mjs';
 
 // ── Home page: admin-editable copy and sections ─────────────────────────────
@@ -770,6 +781,18 @@ export async function checkAdminSetting(p, key, value, { role } = {}) {
       }
     }
   }
+  // laya (agent-laya-bcweb): the AI layer's two rows reach this door too (the config import,
+  // a hand-written PUT). Bounded by the same function its own route uses (routes/ai.mjs), so a
+  // seed cannot switch off a guard, and a URL or a key can never be stored in the config.
+  if (key === AI_CONFIG_KEY) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return refuse(400, { error: 'invalid_input' });
+    return { ok: true, value: normalizeAiConfig(value), audit: 'ai.config' };
+  }
+  if (key === AI_KILLED_KEY) {
+    if (typeof value !== 'boolean') return refuse(400, { error: 'invalid_input' });
+    return { ok: true, value, audit: value ? 'AI kill switch ON' : 'AI kill switch OFF' };
+  }
+  // fin laya (agent-laya-bcweb)
   if (key === 'seo.pages') {
     const parsed = SEO_PAGES_SCHEMA.safeParse(value);
     if (!parsed.success) return refuse(400, { error: 'invalid_input', details: parsed.error.flatten() });
@@ -1711,8 +1734,10 @@ export default async function miscRoutes(app) {
     const p = await db();
     const u = await p.user.findUnique({ where: { id: req.user.uid }, select: { notifPrefs: true } });
     const prefs = u?.notifPrefs || {};
+    // notify (agent-notify): a staffOnly category (the moderation queue) is listed for staff only.
+    const staff = ['MOD', 'ADMIN', 'SUPERADMIN'].includes(req.user.role);
     return {
-      categories: Object.entries(NOTIF_CATEGORIES).map(([key, def]) => ({
+      categories: Object.entries(NOTIF_CATEGORIES).filter(([, def]) => staff || !def.staffOnly).map(([key, def]) => ({
         key, label: def.label, locked: !!def.locked,
         enabled: def.locked ? true : prefs[key] !== false,
       })),
@@ -1737,7 +1762,8 @@ export default async function miscRoutes(app) {
 
   app.get('/me/notifications', { preHandler: requireRole() }, async (req) => {
     const p = await db();
-    return { notifications: await p.notification.findMany({ where: { userId: req.user.uid }, orderBy: { createdAt: 'desc' }, take: 100 }) };
+    // notify (agent-notify): an expired notification is hidden here before the sweeper deletes it.
+    return { notifications: await p.notification.findMany({ where: { userId: req.user.uid, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] }, orderBy: { createdAt: 'desc' }, take: 100 }) };
   });
   app.post('/me/notifications/:id/read', { preHandler: requireRole() }, async (req) => {
     const p = await db();
@@ -2011,7 +2037,15 @@ export default async function miscRoutes(app) {
     const since = new Date(Date.now() - 864e5);
     const dailyCount = await p.contactMessage.count({ where: { createdAt: { gte: since }, ...(userId ? { userId } : { ip, userId: null }) } });
     if (dailyCount >= (userId ? 5 : 3)) return reply.code(429).send({ error: 'daily_limit' });
+    // moderation (agent-moderation): rules first (lib/moderation). A HELD message is kept in its
+    // case until a moderator releases it into this inbox; the sender is told the same thing
+    // either way. Every other decision files the message exactly as before.
+    const { moderateContact, linkCase } = await import('../lib/moderation/index.mjs');
+    const mod = await moderateContact(p, { name: b.data.name, email: b.data.email, body, kind, ip, userId }, req.log);
+    if (mod.action === 'hold') return reply.code(201).send({ ok: true });
     const msg = await p.contactMessage.create({ data: { name: b.data.name, email: b.data.email, body, kind, ip, userId } });
+    linkCase(p, mod.caseId, 'contact_message', msg.id);
+    // fin moderation (agent-moderation)
     forwardContactToDiscord(msg).catch(() => {}); // best-effort
     announceLegalNotice(p, msg).catch(() => {}); // best-effort, and opt-in, see below
     if (kind === 'security') alertStaffOfSecurityReport(p, msg).catch(() => {});

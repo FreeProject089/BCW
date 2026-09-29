@@ -229,6 +229,14 @@ attente vivent en mémoire : un redémarrage les oublie, jamais les avertissemen
 Défauts à connaître : automod activé, avec spam, mentions, invitations, zalgo, pièces
 jointes, selfbot et raid actifs ; liens, mots, majuscules et âge du compte inactifs.
 
+**Vérification assistée par IA** (`automod.ai`, éteinte par défaut, la fonction d'offre payante
+`aiAutomod`) : des contrôles fixes anti-hameçonnage passent d'abord dans le bot (domaines de
+connexion imités, punycode, IP brutes, identifiant caché dans le lien, appât Nitro gratuit sur
+un raccourcisseur) et peuvent utiliser n'importe quelle action ; seul un message qu'aucune règle
+n'a arrêté part vers l'IA du site, avec une limite de 2,5 s, et un verdict de l'IA coûte au plus
+une suppression ou un avertissement. L'API vérifie elle-même l'offre à chaque appel. Mise en
+place, coûts et vie privée : [AI_LAYA_FR.md](AI_LAYA_FR.md#6-discord--lautomod-assistée-par-ia-une-option-payante).
+
 La modération demandée depuis le site (un ban, une expulsion, une exclusion décidée dans les
 écrans admin) est **mise en file** par le site et exécutée ici par un poller, parce que le
 site ne peut pas joindre Discord. Le résultat est toujours rapporté, échecs compris : Discord

@@ -109,9 +109,26 @@ Callback to register at each provider: `<SITE_URL>/api/auth/oauth/<provider>/cal
 | `DATABASE_URL` | full-URL override → point the stack at a **managed / 2nd-VPS Postgres** (pooled endpoint). Empty = local Postgres. |
 | `DIRECT_DATABASE_URL` | direct (non-pooled) URL — for migrations. |
 | `DB_HOST` / `DB_PORT` / `DB_URL_PARAMS` | route the API through **PgBouncer** (`pgbouncer` / `6432` / `?pgbouncer=true`). |
-| `COMPOSE_PROFILES` | which compose **profiles** are active (today: `pgbouncer`). Set it here rather than as a `--profile` flag: a flag lasts one command, and `infra/deploy.sh` runs a plain `up -d` that would stop the pooler while `DB_HOST` still points the API at it. |
+| `COMPOSE_PROFILES` | which compose **profiles** are active (`pgbouncer`, `ai`; comma-separated for both). Set it here rather than as a `--profile` flag: a flag lasts one command, and `infra/deploy.sh` runs a plain `up -d` that would stop the pooler while `DB_HOST` still points the API at it. |
 | `PGBOUNCER_UPSTREAM_HOST` / `PGBOUNCER_UPSTREAM_PORT` | make PgBouncer pool a managed/remote DB instead of the local `db`. |
 | `API_REPLICAS` | how many `api` containers to run (default `1`). Raise it only when one saturates, and turn PgBouncer on at the same time. Use this rather than `--scale api=N`: the flag does not survive the next `docker compose up -d`, and `deploy.sh` runs exactly that. |
+
+## 11b. Optional AI for moderation (see [AI_LAYA_EN.md](AI_LAYA_EN.md))
+All empty = AI off, rules only. A value set here **wins** over the admin screen (Admin →
+Moderation → AI provider), which greys the field.
+
+| Variable | Purpose |
+|---|---|
+| `LAYA_API_KEY` | bearer key shared by the API and the Laya sidecar (`openssl rand -hex 32`). **Secret.** Empty = the sidecar answers anyone on its internal network. |
+| `LAYA_URL` | the sidecar's address. Default `http://laya:8000`; change it only if you run Laya elsewhere. |
+| `LAYA_REVISION` | checkpoint pin: `reviewed` (default, the commit laya 0.3.21 reviewed) or a commit SHA. |
+| `LAYA_CPUS` / `LAYA_MEM_LIMIT` / `LAYA_THREADS` | the sidecar's hard ceiling: default `1.5` CPU, `2g`, `2` torch threads. |
+| `AI_KILL_SWITCH` | `1` = every AI call cut, and an admin **cannot** release it from the site. The rules keep running. |
+| `AI_PROVIDER` | force `off`, `laya` or `external`. |
+| `AI_TIMEOUT_MS` / `AI_CONCURRENCY` | force the per-call deadline (default 1500) and the calls at once (default 1). |
+| `AI_EXTERNAL_URL` | base of an OpenAI-compatible API, e.g. `https://api.example.com/v1`. https and public only. A **third party**: update the privacy policy first. |
+| `AI_EXTERNAL_KEY` | its key. **Secret.** Read from here only: never stored, logged or shown. |
+| `AI_EXTERNAL_ALLOW_PRIVATE` | `1` = allow http and private addresses, for a model you host on your own network. |
 
 ## 12. Misc
 | Variable | Purpose |

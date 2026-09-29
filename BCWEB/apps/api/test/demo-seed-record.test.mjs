@@ -14,6 +14,7 @@
 // is snapshotted and put back.
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { sharedBmmProject } from './helpers/shared-project.mjs';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import path from 'node:path';
@@ -34,7 +35,7 @@ before(async () => {
   rec = await import('../src/lib/demo-seed-record.mjs');
   p = await lib.db();
   savedRecord = await p.adminSetting.findUnique({ where: { key: rec.SEED_RECORD_KEY } });
-  project = await p.project.upsert({ where: { key: 'bmm' }, create: { key: 'bmm', name: 'Better Mods Manager' }, update: {} });
+  project = await sharedBmmProject(p);
   owner = await p.user.upsert({
     where: { email: `${TAG}owner@bettercommunity.invalid` },
     create: { email: `${TAG}owner@bettercommunity.invalid`, displayName: 'seed-record fixture' },

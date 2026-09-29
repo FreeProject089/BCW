@@ -269,8 +269,25 @@ services:
       # complete inside Docker, and the operator had to re-run it by hand with `-e`.
       SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-}
       SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-}
+      # laya (agent-laya-bcweb): the OPTIONAL AI provider layer (apps/api/src/lib/moderation/ai.mjs,
+      # guides/run/AI_LAYA_EN.md). All empty = AI stays off until an admin picks a provider; set
+      # here, a value WINS over the admin screen. AI_KILL_SWITCH=1 cuts AI whatever the screen
+      # says (the rules keep running). The external URL and key live ONLY here: never in the
+      # database, never in a log, never sent to a browser.
+      LAYA_URL: ${LAYA_URL:-http://laya:8000}
+      LAYA_API_KEY: ${LAYA_API_KEY:-}
+      AI_PROVIDER: ${AI_PROVIDER:-}
+      AI_KILL_SWITCH: ${AI_KILL_SWITCH:-}
+      AI_TIMEOUT_MS: ${AI_TIMEOUT_MS:-}
+      AI_CONCURRENCY: ${AI_CONCURRENCY:-}
+      AI_EXTERNAL_URL: ${AI_EXTERNAL_URL:-}
+      AI_EXTERNAL_KEY: ${AI_EXTERNAL_KEY:-}
+      AI_EXTERNAL_ALLOW_PRIVATE: ${AI_EXTERNAL_ALLOW_PRIVATE:-}
       AUDIT_ANCHOR_DIR: /var/audit
       NODE_ENV: production
+    # laya (agent-laya-bcweb): `ai` is the internal network the Laya sidecar lives on. Joining it
+    # costs nothing when the sidecar is not started; `default` keeps everything else as it was.
+    networks: [default, ai]
     volumes:
       - audit-anchor:/var/audit
       # The two codebase maps that read FILES rather than the database: the infra map wants
@@ -352,6 +369,65 @@ services:
       BCWEB_API_URL: http://api:3000
       SITE_URL: ${SITE_URL:-http://localhost:5176}
       BOT_SHARED_SECRET: ${BOT_SHARED_SECRET:-dev-bot-secret}
+
+  # ── laya (agent-laya-bcweb): the OPTIONAL AI sidecar ──────────────────────────────────────
+  # convaiinnovations/laya-multilingual behind `laya-serve`, CPU only. Starts ONLY with the
+  # profile: `docker compose --profile ai up -d`, or COMPOSE_PROFILES=ai in .env (which is how
+  # infra/deploy.sh picks it up too: compose reads .env itself). Without the profile neither
+  # service exists, and the API's AI layer answers null to everything: AI off, rules only.
+  # Guide: guides/run/AI_LAYA_EN.md (FR: AI_LAYA_FR.md). Image: infra/laya/Dockerfile.
+  #
+  # Two services, one image. `laya-fetch` runs once, on the default network (the only one with
+  # a route out), and puts the checkpoint (~0.7 GB) into the `laya-models` volume. `laya` then
+  # serves it OFFLINE on the internal `ai` network: no published port, no route to the
+  # internet, reachable only by the API. LAYA_REVISION=reviewed pins the checkpoint to the
+  # commit laya 0.3.21 reviewed (laya/revisions.py); set a commit SHA to pin another.
+  laya-fetch:
+    build: ../laya
+    profiles: ["ai"]
+    restart: "no"
+    command: ["python", "/opt/fetch_model.py"]
+    environment:
+      LAYA_MODELS: multilingual
+      LAYA_REVISION: ${LAYA_REVISION:-reviewed}
+    volumes:
+      - laya-models:/models
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+
+  laya:
+    build: ../laya
+    profiles: ["ai"]
+    restart: unless-stopped
+    depends_on:
+      laya-fetch:
+        condition: service_completed_successfully
+    environment:
+      LAYA_DEVICE: cpu
+      LAYA_MODELS: multilingual
+      LAYA_MAX_LOADED: "1"
+      # Threads = what the cpus limit below allows; more only thrashes (laya/serve.py says so).
+      LAYA_THREADS: ${LAYA_THREADS:-2}
+      LAYA_MAX_CONCURRENT: "2"
+      LAYA_MAX_TOKEN_BUDGET: "1024"
+      LAYA_REVISION: ${LAYA_REVISION:-reviewed}
+      # The SAME value the api gets: every request carries it as a Bearer token. Empty = the
+      # sidecar answers anyone on the `ai` network (only the api is on it), and the admin
+      # screen says so. Set it: `openssl rand -hex 32`.
+      LAYA_API_KEY: ${LAYA_API_KEY:-}
+      HF_HUB_OFFLINE: "1"
+      LAYA_LOG_LEVEL: warning
+    volumes:
+      - laya-models:/models
+    networks: [ai]
+    # The owner's rule: AI must never eat the server. A hard ceiling on what the model can
+    # take, whatever it is asked; the API's own queue, timeout and breaker sit in front of it.
+    cpus: ${LAYA_CPUS:-1.5}
+    mem_limit: ${LAYA_MEM_LIMIT:-2g}
+    pids_limit: 256
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+  # fin laya (agent-laya-bcweb)
 
   # Dedicated Postgres for the telemetry dashboard (kept isolated from the app DB).
   telemetry-db:
@@ -453,3 +529,12 @@ volumes:
   caddy-data:
   caddy-config:
   audit-anchor:
+  # laya (agent-laya-bcweb): the Laya checkpoint (~0.7 GB), filled once by laya-fetch.
+  laya-models:
+
+# laya (agent-laya-bcweb): the AI sidecar's network. `internal: true` = no route to or from
+# outside the host's containers on it (the api and the sidecar). Everything else stays on the
+# implicit `default` network, exactly as before.
+networks:
+  ai:
+    internal: true

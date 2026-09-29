@@ -285,6 +285,14 @@
 		import api_upstream
 	}
 
+	# notify (agent-notify): RSS/Atom feeds, at a clean URL a feed reader keeps for years.
+	# /feeds/news.xml is public; /feeds/u/<token>.xml is a member's personal feed, whose file
+	# name IS the credential. Caddy writes no access log for this site block, and the API
+	# redacts that path in its own logs (errorlog.mjs redactPath), so the token is stored nowhere.
+	handle /feeds/* {
+		import api_upstream
+	}
+
 	# OpenID Connect provider: discovery + JWKS (issuer-root paths, NOT under /api) and
 	# the OAuth2 authorize/token/userinfo endpoints. Specific well-known paths only, so
 	# Caddy still answers /.well-known/acme-challenge/* itself for TLS.

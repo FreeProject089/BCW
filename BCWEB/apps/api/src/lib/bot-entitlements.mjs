@@ -47,7 +47,15 @@
 
 /** The features a plan can grant, in the order the admin editor and the public cards list
  *  them. Each maps onto one piece of the per-guild bot config (see gateGuildPatch). */
-export const BOT_FEATURES = ['welcome', 'welcomeBanner', 'joinToCreate', 'gating', 'rolePanels', 'blog', 'automod', 'logRouting'];
+export const BOT_FEATURES = ['welcome', 'welcomeBanner', 'joinToCreate', 'gating', 'rolePanels', 'blog', 'automod', 'logRouting', 'aiAutomod'];
+
+/** laya (agent-laya-bcweb): features that are PAID even when the admin never set a free tier.
+ *  Decision 4 makes "no setting" mean "everything free" so that shipping plans gated nothing
+ *  that already existed; `aiAutomod` (the AI-assisted anti-phishing / anti-troll check, which
+ *  spends the platform's own CPU or a paid third-party API on every checked message) is new,
+ *  and the owner's call is that it is a paid option from day one. An admin who wants it free
+ *  adds it to the free tier's features, like any other. */
+export const PAID_BY_DEFAULT = ['aiAutomod'];
 
 /** The limits a plan can raise, with their HARD ceiling: the most the API schemas accept
  *  today (bot.mjs zod caps), so no plan can promise more than the config can hold. */
@@ -63,7 +71,7 @@ export const BOT_LIMITS = {
 export const MAX_PLAN_GUILDS = 25;
 
 /** The free tier when the admin has never set one: everything, at the hard caps (decision 4). */
-export const DEFAULT_FREE = Object.freeze({ features: [...BOT_FEATURES], limits: { ...BOT_LIMITS } });
+export const DEFAULT_FREE = Object.freeze({ features: BOT_FEATURES.filter((f) => !PAID_BY_DEFAULT.includes(f)), limits: { ...BOT_LIMITS } });
 
 const SETTING_KEY = 'bot.entitlements';
 export { SETTING_KEY as BOT_ENTITLEMENTS_KEY };
@@ -189,6 +197,8 @@ export function gateGuildPatch(patch, current = {}, ent, { oldBgImage = '' } = {
     const a = { ...(C.moderation?.automod || {}), ...P.moderation.automod };
     if (a.enabled === true && !has(ent, 'automod')) return need('automod');
     if (a.enabled !== false) { const e = over('automodWords', len(P.moderation.automod.rules?.words?.patterns)); if (e) return e; }
+    // laya (agent-laya-bcweb): the AI rule is its own paid feature, on top of automod.
+    if (P.moderation.automod.ai?.enabled === true && !has(ent, 'aiAutomod')) return need('aiAutomod');
   }
   if (P.logs && routesLogs(P.logs) && !has(ent, 'logRouting')) return need('logRouting');
   if (Array.isArray(P.rolePanels)) {
@@ -236,6 +246,8 @@ export function restrictGuildConfig(eff, ent) {
     if (a.enabled && !has(ent, 'automod')) a = { ...a, enabled: false };
     const words = a.rules?.words?.patterns;
     if (len(words) > lim(ent, 'automodWords')) a = { ...a, rules: { ...a.rules, words: { ...a.rules.words, patterns: words.slice(0, lim(ent, 'automodWords')) } } };
+    // laya (agent-laya-bcweb): a lapsed plan switches the AI rule off in the served copy.
+    if (a.ai?.enabled && !has(ent, 'aiAutomod')) a = { ...a, ai: { ...a.ai, enabled: false } };
     if (a !== E.moderation.automod) out.moderation = { ...E.moderation, automod: a };
   }
   if (E.logs && routesLogs(E.logs) && !has(ent, 'logRouting')) out.logs = { ...E.logs, forumId: '', routes: {} };

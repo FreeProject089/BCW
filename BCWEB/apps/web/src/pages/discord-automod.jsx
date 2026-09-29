@@ -40,6 +40,7 @@ import { ChannelPicker, RolePicker, PickerList, ChannelTag, CHANNEL_TYPES, chann
 
 // The vocabulary and the pure rules live in lib/discord-config.js (testable without a DOM);
 // they are re-exported here so every importer keeps one address for them.
+import { AI_ACTIONS, AI_FIELDS, normAiAutomod } from '../lib/discord-config.js'; // laya (agent-laya-bcweb)
 import { clamp, actionsFor, ROLE_ACTIONS, MSG_PARAM_FIELDS, AUTOMOD_ACTIONS, JOIN_ACTIONS, RAID_ACTIONS, AUTOMOD_RULES, JOIN_RULES, LADDER_ACTIONS, AUTOMOD_DEFAULTS, LADDER_DEFAULTS, RULE_FIELDS, LOG_GROUPS, LOG_CATEGORIES, LOG_CATEGORY_KEYS, LOG_GROUP_TAG, LOGS_DEFAULTS, normAutomod, normLadder, ladderForSave, normLogs, logsForSave, resolveLogRoute, MAX_ROUTE_CHANNELS } from '../lib/discord-config.js';
 
 export { AUTOMOD_ACTIONS, JOIN_ACTIONS, RAID_ACTIONS, AUTOMOD_RULES, JOIN_RULES, LADDER_ACTIONS, AUTOMOD_DEFAULTS, LADDER_DEFAULTS, RULE_FIELDS, LOG_GROUPS, LOG_CATEGORIES, LOG_CATEGORY_KEYS, LOG_GROUP_TAG, LOGS_DEFAULTS, normAutomod, normLadder, ladderForSave, normLogs, logsForSave, resolveLogRoute };
@@ -483,6 +484,9 @@ export function AutomodEditor({ value, onChange, roles, channels, memberSearch, 
         </Panel>
       </div>
 
+      {/* laya (agent-laya-bcweb): the paid AI-assisted check, after the rules it only follows. */}
+      <AiAutomodPanel value={v.ai} onChange={(ai) => set({ ai })} LB={LB} />
+
       {/* Exemptions that apply to every rule */}
       <Panel className={SP.stack}>
         <Eyebrow>{t('amod.ex2', 'No rule applies to')}</Eyebrow>
@@ -496,6 +500,64 @@ export function AutomodEditor({ value, onChange, roles, channels, memberSearch, 
     </div>
   );
 }
+
+// ── laya (agent-laya-bcweb): the AI-assisted check ─────────────────────────────────────────
+/**
+ * `automod.ai`: the paid anti-phishing / anti-troll check. Its own panel rather than a twelfth
+ * rule, because it is not one: it has two costs (what the plain-evidence phishing check does,
+ * which may be anything, and what an AI verdict does, which is at most a warning) and it only
+ * runs when no rule above fired. Saving it switched on without the plan is refused by the API
+ * with 402 plan_required, and the page says so in the plan's own words (planErrorText).
+ */
+function AiAutomodPanel({ value, onChange, LB }) {
+  const { t } = useI18n();
+  const a = normAiAutomod(value);
+  const set = (patch) => onChange({ ...a, ...patch });
+  const numF = (k) => (
+    <NumField value={a[k]} f={AI_FIELDS[k]} clamp={clamp} onCommit={(n) => set({ [k]: n })} disabled={!a.enabled} />
+  );
+  return (
+    <Panel className={SP.stack}>
+      <div className="flex flex-wrap items-center gap-2">
+        <Eyebrow>{t('amod.ai.t', 'AI-assisted check')}</Eyebrow>
+        <span className="text-[10.5px] px-1.5 py-0.5 rounded border border-[var(--line)] text-[var(--muted)]">{t('amod.ai.paid', 'Bot plan feature')}</span>
+      </div>
+      <Check checked={a.enabled} onChange={(on) => set({ enabled: on })} className="!text-sm">{t('amod.ai.on', 'Check messages no rule caught, for phishing and trolling')}</Check>
+      <Explain summary={t('amod.ai.sum', 'Plain phishing is caught by fixed checks; only the doubtful rest is asked to an AI.')}>
+        <p>{t('amod.ai.h1', 'Fixed checks come first and cost nothing: a link imitating Discord, Steam or another login page, a punycode or raw-IP address, a login hidden in the link, a free-Nitro lure on a link shortener. When they are sure, they act on their own with the action you pick below.')}</p>
+        <p>{t('amod.ai.h2', 'Only a message none of the rules caught is sent to the site’s AI, with a short time limit. If it does not answer in time, nothing happens. An AI verdict is a signal, so it can at most delete the message or warn the member, never time out, kick or ban.')}</p>
+        <p>{t('amod.ai.h3', 'The text of those messages leaves this server for the site’s AI. It is scored and not kept.')}</p>
+      </Explain>
+      <div className={`grid sm:grid-cols-2 ${SP.grid}`}>
+        <div className={SP.stack}>
+          <Check checked={a.phishing} disabled={!a.enabled} onChange={(on) => set({ phishing: on })}>{t('amod.ai.phish', 'Phishing links')}</Check>
+          <Field label={t('amod.ai.phishTh', 'AI score that acts, phishing (0.5 to 0.99)')}>{numF('phishingThreshold')}</Field>
+          <Field label={t('amod.ai.rulesAction', 'When the fixed checks are sure')}>
+            <Select className="!py-1 text-xs" value={a.rulesAction} disabled={!a.enabled} onChange={(e) => set({ rulesAction: e.target.value })}>
+              {AUTOMOD_ACTIONS.filter((x) => !ROLE_ACTIONS.includes(x)).map((x) => <option key={x} value={x}>{LB.action[x]}</option>)}
+            </Select>
+          </Field>
+          {a.rulesAction === 'timeout' && <Field label={t('amod.ai.timeout', 'Timeout length (minutes)')}>{numF('timeoutMin')}</Field>}
+        </div>
+        <div className={SP.stack}>
+          <Check checked={a.troll} disabled={!a.enabled} onChange={(on) => set({ troll: on })}>{t('amod.ai.troll', 'Trolling and insults')}</Check>
+          <Field label={t('amod.ai.trollTh', 'AI score that acts, trolling (0.5 to 0.99)')}>{numF('trollThreshold')}</Field>
+          <Field label={t('amod.ai.minChars', 'Ignore messages shorter than (characters)')}>{numF('minChars')}</Field>
+          <Field label={t('amod.ai.action', 'When the AI is sure')}>
+            <Select className="!py-1 text-xs" value={a.action} disabled={!a.enabled} onChange={(e) => set({ action: e.target.value })}>
+              {AI_ACTIONS.map((x) => <option key={x} value={x}>{LB.action[x]}</option>)}
+            </Select>
+          </Field>
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        <ToggleChip on={a.dm} disabled={!a.enabled} onChange={(on) => set({ dm: on })} icon={Mail}>{t('amod.p.dm', 'Tell the member by DM')}</ToggleChip>
+        <ToggleChip on={a.logOnly} disabled={!a.enabled} onChange={(on) => set({ logOnly: on })} icon={Eye} tone="warning">{t('amod.p.watch', 'Watch only, carry nothing out')}</ToggleChip>
+      </div>
+    </Panel>
+  );
+}
+// fin laya (agent-laya-bcweb)
 
 // ── The warn ladder ───────────────────────────────────────────────────────────────────────
 /**

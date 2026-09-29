@@ -100,6 +100,10 @@ import connectionRoutes from './routes/connections.mjs';
 import prereleaseRoutes from './routes/prereleases.mjs'; // prerelease (agent-prerelease): early access
 import projectReviewRoutes from './routes/project-reviews.mjs'; // prerelease (agent-prerelease): per-project reviews
 import releaseAnnounceRoutes from './routes/release-announce.mjs'; // prerelease (agent-prerelease): announcing a release
+import notifyRoutes from './routes/notify.mjs'; // notify (agent-notify): feeds, follows, the admin composer
+import bmmLaunchRoutes from './routes/bmm-launch.mjs'; // notify (agent-notify): the BMM launch feed
+import aiRoutes from './routes/ai.mjs'; // laya (agent-laya-bcweb): the optional AI provider layer's doors
+import moderationRoutes from './routes/moderation.mjs'; // moderation (agent-moderation): the rules-first moderation engine's queue and settings
 import { recordRequest } from './lib/monitor.mjs';
 import { registerApiUsageHook, flushApiUsage } from './lib/apiusage.mjs';
 import { installAbuseGuards } from './lib/abuse.mjs';
@@ -466,6 +470,10 @@ await app.register(connectionRoutes); // social profile connections (youtube/twi
 await app.register(prereleaseRoutes); // prerelease (agent-prerelease)
 await app.register(projectReviewRoutes); // prerelease (agent-prerelease)
 await app.register(releaseAnnounceRoutes); // prerelease (agent-prerelease)
+await app.register(notifyRoutes); // notify (agent-notify)
+await app.register(bmmLaunchRoutes); // notify (agent-notify)
+await app.register(aiRoutes); // laya (agent-laya-bcweb): /admin/ai, /ai/bmm/suggest, /bot/ai/automod (lib/moderation/ai.mjs)
+await app.register(moderationRoutes); // moderation (agent-moderation): /admin/moderation/*, /bot/moderation/check
 await app.register(statusRoutes); // public status page: service uptime, incidents, alert sign-up
 await app.register(codeWebhookRoutes); // encapsulated: raw-body for the GitHub HMAC
 await app.register(stripeWebhook); // encapsulated: raw-body for Stripe signature

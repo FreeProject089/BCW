@@ -9,7 +9,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  BOT_FEATURES, BOT_LIMITS, entitlementsFor, normalizePlanBot, normalizeSetting,
+  BOT_FEATURES, BOT_LIMITS, PAID_BY_DEFAULT, entitlementsFor, normalizePlanBot, normalizeSetting,
   gateGuildPatch, restrictGuildConfig, applyEntitlementsToConfig, limitPerGuild, subCounts,
 } from '../src/lib/bot-entitlements.mjs';
 
@@ -26,7 +26,10 @@ const sub = (over = {}) => ({ status: 'active', currentPeriodEnd: FUTURE, botGui
 describe('entitlement computation', () => {
   test('no setting at all = everything, at the hard caps (shipping this gates nothing)', () => {
     const e = entitlementsFor(G, { setting: null, subs: [] }, NOW);
-    assert.deepEqual(e.features, BOT_FEATURES);
+    // …everything that existed before plans. laya (agent-laya-bcweb): aiAutomod is new and
+    // paid from day one (PAID_BY_DEFAULT), so it is the one exception.
+    assert.deepEqual(e.features, BOT_FEATURES.filter((f) => !PAID_BY_DEFAULT.includes(f)));
+    assert.deepEqual(PAID_BY_DEFAULT, ['aiAutomod']);
     assert.deepEqual(e.limits, BOT_LIMITS);
     assert.deepEqual(e.planFeatures, []);
   });
@@ -156,5 +159,34 @@ describe('read filter (what the bot is served)', () => {
     const list = [1, 2, 3, 4, 5].map((n) => ({ id: n, guildId: G })).concat([{ id: 9, guildId: OTHER }]);
     const kept = limitPerGuild(list, 'rolePanels', 'rolePanels', (gid) => (gid === G ? pro : free));
     assert.deepEqual(kept.map((x) => x.id), [1, 2, 3]);
+  });
+});
+
+// laya (agent-laya-bcweb): the AI-assisted automod check is its own paid feature.
+describe('aiAutomod (paid by default)', () => {
+  const none = entitlementsFor(G, { setting: null, subs: [] }, NOW);
+  const AI_PLAN = { guilds: 1, features: ['aiAutomod'], limits: {} };
+  const withAi = entitlementsFor(G, { setting: null, subs: [sub({ plan: { name: 'AI', bot: AI_PLAN } })] }, NOW);
+
+  test('no plan: not granted, even with no free tier ever saved; a plan grants it; the platform guilds have it', () => {
+    assert.equal(none.features.includes('aiAutomod'), false);
+    assert.equal(withAi.features.includes('aiAutomod'), true);
+    assert.deepEqual(withAi.planFeatures.includes('aiAutomod'), true);
+    assert.equal(entitlementsFor(G, { setting: { unlimitedGuildIds: [G] }, subs: [] }, NOW).features.includes('aiAutomod'), true);
+    assert.equal(entitlementsFor(G, { setting: { free: { features: ['automod', 'aiAutomod'], limits: {} } }, subs: [] }, NOW).features.includes('aiAutomod'), true, 'an admin may make it free');
+  });
+
+  test('write gate: switching the AI check on without it is refused by name; off is always allowed', () => {
+    assert.deepEqual(gateGuildPatch({ moderation: { automod: { enabled: true, ai: { enabled: true } } } }, {}, none), { error: 'plan_required', feature: 'aiAutomod' });
+    assert.equal(gateGuildPatch({ moderation: { automod: { enabled: true, ai: { enabled: false } } } }, {}, none), null);
+    assert.equal(gateGuildPatch({ moderation: { automod: { enabled: true, ai: { enabled: true } } } }, {}, withAi), null);
+  });
+
+  test('read filter: a lapsed plan serves the AI check switched off, the rest of automod intact', () => {
+    const cut = restrictGuildConfig({ moderation: { enabled: true, automod: { enabled: true, ai: { enabled: true, phishing: true } } } }, none);
+    assert.equal(cut.moderation.automod.ai.enabled, false);
+    assert.equal(cut.moderation.automod.ai.phishing, true);
+    assert.equal(cut.moderation.automod.enabled, true);
+    assert.deepEqual(restrictGuildConfig({ moderation: { enabled: true, automod: { enabled: true, ai: { enabled: true } } } }, withAi), {});
   });
 });
