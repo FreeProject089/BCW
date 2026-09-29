@@ -21,3 +21,50 @@ vulnerabilities:
       - "BCWEB/bmm/telemetry-dashboard/web/package-lock.json"
     statement: "Mirrors .github/audit-ignore.json GHSA-jrc7-96c5-q579 (BCWEB/SECURITY_AUDIT.md F10-14): sanitizer only fed string literals on admin-only maps; major upgrade scheduled."
     expired_at: 2026-12-31
+
+  # ── Laya sidecar image (BCWEB/infra/laya/Dockerfile) ─────────────────────────────────────
+  # Reviewed 2026-09-29 (agent-bcw-sec-red, run 36599887997). The image was rebuilt on Debian 13
+  # with every package the service never runs purged (perl, bash, ncurses, util-linux, apt,
+  # PAM, systemd libs…) and setuptools fixed: 5 CRITICAL + ~60 HIGH -> the 4 advisories below,
+  # each with NO Debian fix at the date of review and NOT reachable in this container. OS
+  # findings carry no file path, so each entry is scoped by package (purl without version:
+  # a Debian point release that still does not fix it keeps the entry; the expiry re-judges it).
+  # The service process is python + torch only (exec form, no shell), uid 10001, cap_drop ALL,
+  # no-new-privileges, on an internal network reachable only by the API.
+  #
+  # glibc strncasecmp over-read: only the POWER8-optimised variant (ppc64le) is affected, per
+  # the advisory (GLIBC-SA-2026-0024). Every BCWEB image is built and run on amd64, where that
+  # code is never selected. Also covers the same libc6 advisory in the telemetry image
+  # (distroless cc-debian12), for the same architectural reason.
+  - id: CVE-2026-97399
+    purls:
+      - "pkg:deb/debian/libc6"
+      - "pkg:deb/debian/libc-bin"
+    statement: "POWER8-only strncasecmp variant (GLIBC-SA-2026-0024); images are amd64-only, the vulnerable code is never selected. No Debian fix at review."
+    expired_at: 2026-12-31
+  # xz/liblzma: invalid write when a decoder is re-initialised after an allocation failure
+  # (GHSA-5qpq-xqfv-j9pg). Linked only by dpkg-deb (never run) and Python's _lzma module, which
+  # neither laya-serve nor fetch_model.py uses: the model is safetensors + tokenizer JSON, and
+  # the Hugging Face download is not xz. No Debian fix at review.
+  - id: TEMP-1147318-639065
+    purls:
+      - "pkg:deb/debian/liblzma5"
+    statement: "Laya image: liblzma5 linked only by dpkg-deb and Python _lzma, neither used by the service; no xz input is ever decoded. No Debian fix at review."
+    expired_at: 2026-12-31
+  # PCRE2 JIT out-of-bounds write (GHSA-r9hj-j2rw-4q3m). Linked only through libselinux by
+  # coreutils / grep / sed / find / dpkg: no command of the image runs them, and neither Python
+  # (its own `re` engine) nor torch, `regex` or tokenizers (their own bundled engines) loads
+  # PCRE2. No Debian fix at review.
+  - id: TEMP-1149217-B31E38
+    purls:
+      - "pkg:deb/debian/libpcre2-8-0"
+    statement: "Laya image: PCRE2 reachable only via coreutils/grep/sed/dpkg, never run by the service; Python, torch, regex and tokenizers do not load it. No Debian fix at review."
+    expired_at: 2026-12-31
+  # libacl symlink traversal privilege escalation: needs a PRIVILEGED process applying ACLs on
+  # attacker-controlled paths. libacl is linked only by tar / cp / mv / install / sed, never run
+  # here; the service runs as uid 10001 with every capability dropped. No Debian fix at review.
+  - id: CVE-2026-54369
+    purls:
+      - "pkg:deb/debian/libacl1"
+    statement: "Laya image: libacl linked only by tar/cp/mv/install/sed, never run; the service is unprivileged (uid 10001, cap_drop ALL). No Debian fix at review."
+    expired_at: 2026-12-31

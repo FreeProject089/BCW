@@ -16,6 +16,15 @@ import sys
 MIN_LEN = 16
 PLACEHOLDERS = {"change-me", "changeme", "<openssl rand -hex 32>", "your-key-here"}
 
+# Image defaults whose NAMES contain "token", set here rather than as Dockerfile ENV: Trivy's
+# DS-0031 ("secrets passed via build-args or envs") judges an ENV by its name, and neither of
+# these is a secret. An ENV-level ignore would also hide a real secret added to that Dockerfile
+# later, so the defaults moved instead (agent-bcw-sec-red, 2026-09-29). setdefault: a value
+# from compose (LAYA_MAX_TOKEN_BUDGET: "1024") or `docker run -e` still wins.
+#   LAYA_MAX_TOKEN_BUDGET  laya-serve's per-request max_len cap (its own default is 8192).
+#   TOKENIZERS_PARALLELISM Hugging Face tokenizers: no thread pool of its own next to torch's.
+IMAGE_DEFAULTS = {"LAYA_MAX_TOKEN_BUDGET": "1024", "TOKENIZERS_PARALLELISM": "false"}
+
 
 def key_problem(env):
     key = (env.get("LAYA_API_KEY") or "").strip()
@@ -37,6 +46,8 @@ def main(argv):
             "(guides/run/AI_LAYA_EN.md).\n"
         )
         return 64  # EX_USAGE: a configuration error, not a crash
+    for name, value in IMAGE_DEFAULTS.items():
+        os.environ.setdefault(name, value)
     cmd = argv[1:] or ["laya-serve"]
     os.execvp(cmd[0], cmd)
     return 0  # not reached

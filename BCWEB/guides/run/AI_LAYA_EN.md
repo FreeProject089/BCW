@@ -239,7 +239,15 @@ round trip, bot secret and plan), the bot's fixed phishing checks and AI follow-
 dashboard and bot agreeing on the saved shape, `docker compose config` with and without the
 `ai` profile.
 
-**Not verified: the sidecar image was never built and the model never downloaded or run.**
-Package versions, the image size, the RAM figure and the latency on your CPU are estimates
-until you run `docker compose --profile ai build laya` and watch it once. The Laya answer
-format was read from the package source (laya 0.3.21, `laya/serve.py`), not observed live.
+Also verified (2026-09-29, security hardening of the image): `docker build --pull` of
+`infra/laya/Dockerfile` (Debian 13, two stages, no pip at runtime, unused Debian packages
+purged; about **1.35 GB**), the Trivy image scan judged by the CI gate (0 CRITICAL, 0 HIGH
+beyond the four reviewed entries of `.github/security/trivyignore.yaml`), the entrypoint
+refusing to start without `LAYA_API_KEY` (exit 64), the imports of laya, torch 2.9.1+cpu and
+transformers, and `laya-serve` starting as uid 10001 with `--cap-drop ALL`, no network and no
+model preloaded, its HEALTHCHECK answering.
+
+**Not verified: the model was never downloaded nor used to classify anything.** The RAM
+figure and the latency on your CPU are estimates until you run
+`docker compose --profile ai up -d` and watch it once. The Laya answer format was read from the
+package source (laya 0.3.21, `laya/serve.py`), not observed live.

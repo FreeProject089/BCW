@@ -248,8 +248,15 @@ réponse « désactivé », aller-retour de la coupure, secret du bot et offre),
 anti-hameçonnage du bot et sa suite par l’IA, l’accord du tableau de bord et du bot sur la forme
 enregistrée, `docker compose config` avec et sans le profil `ai`.
 
-**Non vérifié : l’image du conteneur annexe n’a jamais été construite, et le modèle jamais
-téléchargé ni lancé.** Les versions de paquets, la taille de l’image, le chiffre de RAM et la
-latence sur ton CPU sont des estimations tant que tu n’as pas lancé
-`docker compose --profile ai build laya` et observé un premier démarrage. Le format de réponse de
+Vérifié aussi (29/09/2026, durcissement sécurité de l’image) : `docker build --pull` de
+`infra/laya/Dockerfile` (Debian 13, deux étapes, pas de pip à l’exécution, paquets Debian
+inutiles purgés ; environ **1,35 Go**), le scan Trivy de l’image jugé par la porte de la CI
+(0 CRITICAL, 0 HIGH hors les quatre entrées revues de `.github/security/trivyignore.yaml`),
+le refus de démarrer sans `LAYA_API_KEY` (code 64), les imports de laya, torch 2.9.1+cpu et
+transformers, et `laya-serve` démarré en uid 10001 avec `--cap-drop ALL`, sans réseau et sans
+modèle préchargé, son HEALTHCHECK répondant.
+
+**Non vérifié : le modèle n’a jamais été téléchargé ni utilisé pour classer quoi que ce soit.**
+Le chiffre de RAM et la latence sur ton CPU sont des estimations tant que tu n’as pas lancé
+`docker compose --profile ai up -d` et observé un premier démarrage. Le format de réponse de
 Laya a été lu dans le code source du paquet (laya 0.3.21, `laya/serve.py`), pas observé en direct.
