@@ -486,6 +486,10 @@ services:
       # Resolve creator ids → linked BetterCommunity accounts (server-to-server).
       BC_API_URL: http://api:3000
       BC_LINK_SECRET: ${LINK_LOOKUP_SECRET:-dev-link-secret}
+      # Laya labels on live BMM issues, asked THROUGH the API (POST /internal/telemetry/
+      # classify-issue) so the sidecar keeps one queue and one key: no `ai` network here. Off
+      # by itself when the API's AI layer is off; 0 turns it off from this side too.
+      ISSUES_AI: ${TELEMETRY_ISSUES_AI:-1}
 
   caddy:
     image: caddy:2-alpine

@@ -29,7 +29,7 @@ function useNames() {
         suggest_tags: t('aic.f.suggest_tags', 'Tag and category suggestions'), detect_language: t('aic.f.detect_language', 'Language detection'),
         content_check: t('aic.f.content_check', 'Check before posting'), describe: t('aic.f.describe', 'Description drafts'),
         triage: t('aiad.f.triage', 'Queue triage'), summarize: t('aiad.f.summarize', 'Thread summaries'), duplicates: t('aiad.f.duplicates', 'Duplicate detection'),
-        crash_clusters: t('aiad.f.crash', 'Crash causes'), bmm_suggest: t('aiad.f.bmm', 'BMM suggestions'), admin_test: t('aiad.f.test', 'Admin test box'), key_test: t('aiad.f.keytest', 'Key tests'),
+        crash_clusters: t('aiad.f.crash', 'Crash causes'), telemetry_issues: t('aiad.f.telemetry', 'Live BMM errors (telemetry)'), bmm_suggest: t('aiad.f.bmm', 'BMM suggestions'), admin_test: t('aiad.f.test', 'Admin test box'), key_test: t('aiad.f.keytest', 'Key tests'),
       })[k] || k;
     },
     provider: (k) => ({ laya: 'Laya', external: t('aiad.p.external', 'External API'), byok: t('aiad.p.byok', 'Members\' own keys'), site: t('aiad.p.site', 'Site key'), rules: t('aiad.p.rules', 'Rules only'), off: t('aiad.p.off', 'Not sent') })[k] || k,
@@ -156,7 +156,7 @@ function Usage() {
 }
 
 const MEMBER_FEATURES = ['suggest_tags', 'detect_language', 'content_check', 'describe'];
-const STAFF_FEATURES = ['triage', 'summarize', 'duplicates', 'crash_clusters'];
+const STAFF_FEATURES = ['triage', 'summarize', 'duplicates', 'crash_clusters', 'telemetry_issues'];
 
 function Settings({ isAdmin }) {
   const { t } = useI18n();

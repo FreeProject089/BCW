@@ -897,6 +897,7 @@ pub async fn compute_stats(pool: &PgPool, cfg: &Config) -> Value {
         "live": live, "live_count": live_count,
         "benchmarks_recent": benchmarks_recent, "benchmarks_ops": benchmarks_ops,
         "users": users_out,
+        "issues": crate::issues::summary(pool).await,
         "privacy": { "retention_days": retention_days, "delete_delay_h": delete_delay_h, "pending_deletions": pending, "pending_requests": pending_requests },
         "updated": now,
     })

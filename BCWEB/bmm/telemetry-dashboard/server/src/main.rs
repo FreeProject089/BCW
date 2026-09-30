@@ -8,6 +8,8 @@ mod config;
 mod db;
 mod gdpr;
 mod geo;
+mod issues;
+mod issues_ai;
 mod sampling;
 mod state;
 mod stats;
@@ -59,6 +61,7 @@ async fn main() -> anyhow::Result<()> {
 
     // background loops
     spawn_loops(st.clone());
+    issues_ai::spawn(st.clone());
 
     // Viewer routes expose collected data → gated behind the PRIVATE admin key
     // (header X-Admin-Key or ?key=). Without it, nothing can be read.
@@ -99,6 +102,13 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/admin/user-packets/download", get(admin_user_packets_download))
         .route("/api/admin/config", get(admin_config_get).post(admin_config_set))
         .route("/api/admin/sampling", get(admin_sampling_get).post(admin_sampling_set))
+        .route("/api/issues", get(issues_list))
+        .route("/api/issues/stream", get(issues_stream))
+        .route("/api/issues/ai", get(issues_ai_status))
+        .route("/api/issues/settings", post(issues_settings))
+        .route("/api/issues/:fp", get(issue_detail).post(issue_update))
+        .route("/api/issues/:fp/labels", post(issue_labels))
+        .route("/api/issues/:fp/reclassify", post(issue_reclassify))
         .route_layer(axum::middleware::from_fn_with_state(st.clone(), require_viewer));
 
     // Public routes: ingest (public api_key) + client-facing helpers + the SPA
@@ -107,6 +117,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/batch", post(ingest_handler))
         .route("/batch/", post(ingest_handler))
         .route("/capture/", post(ingest_handler))
+        .route("/issues", post(issues_ingest))
         .route("/delete-request", post(delete_request))
         .route("/data-request", post(data_request))
         .route("/config", get(client_config))
@@ -185,6 +196,7 @@ fn spawn_loops(st: Shared) {
                 db::run_due_deletions(&st.pool).await;
                 let days = db::get_meta_i64(&st.pool, "retention_days", st.cfg.retention_days).await;
                 db::purge_retention(&st.pool, days).await;
+                issues::purge(&st.pool, chrono::Utc::now().timestamp_millis() - days * 86_400_000).await;
                 db::sweep_crashes(&st.pool, 180_000).await;
                 db::compact_replays(&st.pool).await; // merge closed sessions' chunks
             }
@@ -1051,4 +1063,165 @@ async fn admin_decide(State(st): State<Shared>, headers: HeaderMap, Json(body): 
     let row = db::decide_deletion(&st.pool, pid, action, "dashboard").await;
     refresh(&st).await;
     (StatusCode::OK, Json(json!({ "status": 1, "deletion": row })))
+}
+
+// ── Live issues ────────────────────────────────────────────────────────────────
+// Public ingest: the same public key as /batch, its own rate bucket (an error storm on one
+// machine must not starve that machine's ordinary telemetry, nor the reverse).
+async fn issues_ingest(
+    State(st): State<Shared>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Json(doc): Json<Value>,
+) -> (StatusCode, Json<Value>) {
+    if !ok_key(&st.cfg, doc.get("api_key").and_then(Value::as_str)) {
+        return (StatusCode::UNAUTHORIZED, Json(json!({ "error": "bad key" })));
+    }
+    if let Some(ip) = client_ip(&headers, addr) {
+        if !st.allow(&format!("issues:{ip}"), (st.cfg.rate_per_min / 4).max(30)) {
+            return (StatusCode::TOO_MANY_REQUESTS, Json(json!({ "error": "rate limited", "retry_after_s": 30 })));
+        }
+    }
+    let now = chrono::Utc::now().timestamp_millis();
+    let (env, items) = match issues::parse_payload(&doc, now) {
+        Ok(v) => v,
+        Err(e) => return (StatusCode::BAD_REQUEST, Json(json!({ "error": e }))),
+    };
+    // The dashboard's sampling for the "errors" kind, applied per install.
+    let sampling = db::get_sampling(&st.pool).await;
+    if !sampling::allowed(&sampling, &env.install_id, "errors") {
+        return (StatusCode::OK, Json(json!({ "status": 1, "received": 0, "sampled_out": true })));
+    }
+    let mut n = 0usize;
+    for it in &items {
+        let Some(u) = issues::upsert(&st.pool, &env, it).await else { continue };
+        n += 1;
+        if u.inserted { st.ai.enqueue(&it.fingerprint); }
+        let _ = st.issues_tx.send(json!({
+            "type": "issue", "fingerprint": it.fingerprint, "new": u.inserted, "regressed": u.regressed,
+            "count": it.count, "total": u.total, "level": it.level, "component": it.component,
+            "message": it.message.chars().take(200).collect::<String>(), "last_seen": it.last_seen,
+            "app_version": env.app_version,
+        }).to_string());
+    }
+    if n > 0 { st.dirty.store(true, Ordering::Relaxed); }
+    (StatusCode::OK, Json(json!({ "status": 1, "received": n })))
+}
+
+async fn spike_settings(st: &Shared) -> (f64, i64) {
+    let f = db::get_meta_i64(&st.pool, "issue_spike_factor", 5).await.clamp(2, 100) as f64;
+    let m = db::get_meta_i64(&st.pool, "issue_spike_min", 10).await.clamp(1, 100_000);
+    (f, m)
+}
+
+async fn issues_list(State(st): State<Shared>, Query(q): Query<HashMap<String, String>>) -> Json<Value> {
+    let g = |k: &str| q.get(k).map(|s| s.trim().chars().take(120).collect::<String>()).unwrap_or_default();
+    let f = issues::ListFilter {
+        status: g("status"), level: g("level"), component: g("component"), q: g("q"),
+        category: g("category"), version: g("version"), sort: g("sort"),
+        limit: q.get("limit").and_then(|s| s.parse().ok()).unwrap_or(200),
+    };
+    let (factor, min) = spike_settings(&st).await;
+    Json(issues::list(&st.pool, &f, factor, min).await)
+}
+
+async fn issue_detail(State(st): State<Shared>, Path(fp): Path<String>) -> (StatusCode, Json<Value>) {
+    match issues::detail(&st.pool, &fp.to_ascii_lowercase()).await {
+        Some(v) => (StatusCode::OK, Json(v)),
+        None => (StatusCode::NOT_FOUND, Json(json!({ "error": "not found" }))),
+    }
+}
+
+async fn issue_update(
+    State(st): State<Shared>, headers: HeaderMap, ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    Path(fp): Path<String>, Json(body): Json<Value>,
+) -> (StatusCode, Json<Value>) {
+    let fp = fp.to_ascii_lowercase();
+    let ok = issues::update(&st.pool, &fp,
+        body.get("status").and_then(Value::as_str),
+        body.get("assignee").and_then(Value::as_str),
+        body.get("notes").and_then(Value::as_str)).await;
+    if !ok { return (StatusCode::NOT_FOUND, Json(json!({ "error": "not found" }))); }
+    let (ip, afp) = admin_identity(&headers, addr);
+    let mut detail = body.clone();
+    if let Some(o) = detail.as_object_mut() { o.remove("notes"); }
+    db::audit(&st.pool, "issue_update", &fp, &ip, &afp, detail).await;
+    let _ = st.issues_tx.send(json!({ "type": "update", "fingerprint": fp }).to_string());
+    (StatusCode::OK, Json(json!({ "ok": true })))
+}
+
+async fn issue_labels(
+    State(st): State<Shared>, headers: HeaderMap, ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    Path(fp): Path<String>, Json(body): Json<Value>,
+) -> (StatusCode, Json<Value>) {
+    let fp = fp.to_ascii_lowercase();
+    let labels = issues::normalize_staff_labels(&body);
+    if labels.as_object().map(|o| o.is_empty()).unwrap_or(true) {
+        return (StatusCode::BAD_REQUEST, Json(json!({ "error": "no valid label" })));
+    }
+    let (ip, afp) = admin_identity(&headers, addr);
+    let by = body.get("by").and_then(Value::as_str).map(|s| s.trim().chars().take(60).collect::<String>()).filter(|s| !s.is_empty()).unwrap_or_else(|| afp.clone());
+    if !issues::set_staff_labels(&st.pool, &fp, &labels, &by).await {
+        return (StatusCode::NOT_FOUND, Json(json!({ "error": "not found" })));
+    }
+    db::audit(&st.pool, "issue_labels", &fp, &ip, &afp, labels.clone()).await;
+    let _ = st.issues_tx.send(json!({ "type": "update", "fingerprint": fp }).to_string());
+    (StatusCode::OK, Json(json!({ "ok": true, "staff_labels": labels })))
+}
+
+async fn issue_reclassify(State(st): State<Shared>, Path(fp): Path<String>) -> Json<Value> {
+    let fp = fp.to_ascii_lowercase();
+    let _ = sqlx::query("UPDATE issue_groups SET ai_status = 'pending', ai_attempts = 0 WHERE fingerprint = $1").bind(&fp).execute(&st.pool).await;
+    st.ai.paused_until.store(0, Ordering::Relaxed);
+    st.ai.enqueue(&fp);
+    Json(json!({ "ok": true, "queued": true }))
+}
+
+async fn ai_status_doc(st: &Shared) -> Value {
+    let (factor, min) = spike_settings(st).await;
+    json!({
+        "enabled": issues_ai::enabled(st).await,
+        "switch": db::get_meta_i64(&st.pool, "issues_ai_enabled", 1).await == 1,
+        "env_allowed": st.cfg.issues_ai,
+        "bc_configured": !st.cfg.bc_api_url.is_empty() && !st.cfg.bc_link_secret.is_empty(),
+        "runtime": st.ai.status(),
+        "quality": issues::ai_agreement(&st.pool).await,
+        "vocabulary": { "category": issues::CATEGORIES, "severity": issues::SEVERITIES, "origin": issues::ORIGINS },
+        "spike": { "factor": factor, "min": min },
+    })
+}
+
+async fn issues_ai_status(State(st): State<Shared>) -> Json<Value> {
+    Json(ai_status_doc(&st).await)
+}
+
+async fn issues_settings(
+    State(st): State<Shared>, headers: HeaderMap, ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    Json(body): Json<Value>,
+) -> Json<Value> {
+    if let Some(b) = body.get("ai_enabled").and_then(Value::as_bool) {
+        db::set_meta(&st.pool, "issues_ai_enabled", if b { "1" } else { "0" }).await;
+        st.ai.paused_until.store(0, Ordering::Relaxed);
+    }
+    if let Some(f) = body.get("spike_factor").and_then(Value::as_i64) {
+        db::set_meta(&st.pool, "issue_spike_factor", &f.clamp(2, 100).to_string()).await;
+    }
+    if let Some(m) = body.get("spike_min").and_then(Value::as_i64) {
+        db::set_meta(&st.pool, "issue_spike_min", &m.clamp(1, 100_000).to_string()).await;
+    }
+    let (ip, fp) = admin_identity(&headers, addr);
+    db::audit(&st.pool, "issues_settings", "issues", &ip, &fp, body.clone()).await;
+    Json(ai_status_doc(&st).await)
+}
+
+async fn issues_stream(State(st): State<Shared>) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    let rx = st.issues_tx.subscribe();
+    let head = stream::once(async move { Ok(Event::default().data(json!({ "type": "hello" }).to_string())) });
+    let tail = BroadcastStream::new(rx).filter_map(|msg| async move {
+        match msg {
+            Ok(s) => Some(Ok(Event::default().data(s))),
+            Err(_) => None,
+        }
+    });
+    Sse::new(head.chain(tail)).keep_alive(KeepAlive::new().interval(Duration::from_secs(15)))
 }

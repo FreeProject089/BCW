@@ -371,7 +371,8 @@
 	# api_key (NOT a login session), so these MUST bypass the dashboard's
 	# forward_auth gate below — otherwise the app's telemetry is blocked at the edge.
 	# (These endpoints expose no collected data — see main.rs "public" router.)
-	@ingest path /batch /batch/ /batch/* /capture /capture/* /delete-request /data-request /api/packet-status
+	# /issues is BMM's live error reporting (same public key, its own rate bucket).
+	@ingest path /batch /batch/ /batch/* /capture /capture/* /delete-request /data-request /api/packet-status /issues
 	handle @ingest {
 		reverse_proxy telemetry:8900
 	}

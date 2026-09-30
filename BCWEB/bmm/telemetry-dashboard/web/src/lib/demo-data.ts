@@ -6,6 +6,7 @@
 // Times are the one thing that is not frozen: everything is offset from today's UTC
 // midnight, so two loads on the same day are identical while a demo left up for a month
 // never reads as stale telemetry from March.
+import { demoIssues } from "./issues";
 import { ALL_DIAGRAMS, ALL_MODALS, ALL_PAGES } from "./constants";
 import type { LiveInstance, Stats, UserRow } from "./types";
 
@@ -511,6 +512,18 @@ export function demoApiGet(url: string): any {
   switch (path) {
     case "/api/sessions":
       return { sessions };
+
+    case "/api/issues": {
+      const issues = demoIssues(NOW);
+      return { issues, spikes: issues.filter((i) => i.spike).length, components: [...new Set(issues.map((i) => i.component))], versions: ["3.4.1", "3.4.0"],
+        summary: { open: issues.filter((i) => i.status === "open").length, new_24h: 1, regressed: 0, occurrences: issues.reduce((a, i) => a + i.total_count, 0) } };
+    }
+    case "/api/issues/ai":
+      return { enabled: true, switch: true, env_allowed: true, bc_configured: true,
+        runtime: { counters: { calls: 41, ok: 38, failed: 1, off: 0, busy: 2, breaker_skips: 0, cache_hits: 6, dropped: 0, p50_ms: 420, p95_ms: 1100, last_error: "timeout", last_ok_at: NOW - 60000, last_reason: "" }, queue_depth: 0, breaker_open: false, paused_until: 0 },
+        quality: { corrections: 9, kept: 7, agreement: 0.778, classified: 38, by_status: [{ status: "done", count: 38 }, { status: "pending", count: 1 }] },
+        vocabulary: { category: ["crash", "ui", "network", "filesystem", "permissions", "mod_conflict", "configuration", "performance", "update", "other"], severity: ["critical", "high", "medium", "low"], origin: ["user_environment", "bmm_bug", "unclear"] },
+        spike: { factor: 5, min: 10 } };
 
     case "/api/user": {
       const id = q.get("id") || "";

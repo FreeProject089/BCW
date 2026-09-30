@@ -275,3 +275,29 @@ en mémoire de ce processus ; le tableau montre l’historique stocké.
 Le tableau, les aides aux membres (suggestions de tags et de langue, vérification avant
 publication, brouillons de description), les clés des membres, la clé du site et les outils du
 staff sont décrits dans [AI_FEATURES_FR.md](AI_FEATURES_FR.md) : **Admin → Modération → Aides IA**.
+
+## 12. Erreurs BMM en direct dans le tableau de télémétrie (telemetry-live)
+
+Le service de télémétrie (`bmm/telemetry-dashboard`) reçoit sur `/issues` les rapports d’erreurs
+envoyés en direct par BMM et les regroupe dans son écran **Issues**. Chaque NOUVEAU groupe est
+envoyé à cette couche pour quatre étiquettes : catégorie, gravité, « environnement de l’utilisateur
+ou bug de BMM », et si un groupe antérieur semblable est le même problème. L’appel est de serveur à
+serveur, `POST /internal/telemetry/classify-issue` avec le `x-link-secret` partagé (le même que pour
+les appels d’identité RGPD), et passe par le pipeline ci-dessus : interrupteur d’arrêt, l’unique
+créneau de concurrence, disjoncteur, cache, statistiques d’usage sous la fonction
+`telemetry_issues` (Admin → Modération → Aides IA, fonctions staff, activée par défaut).
+
+- **Pourquoi par l’API et pas directement le sidecar :** une seule clé (`LAYA_API_KEY` reste ici),
+  une seule file (un second client contournerait le budget de concurrence dont dépend la
+  modération), un seul interrupteur, un seul jeu de compteurs. Le conteneur de télémétrie n’a pas
+  besoin du réseau `ai`.
+- **Laya seulement.** La route refuse avec `not_laya` quand le fournisseur est l’externe : le texte
+  des erreurs n’est pas envoyé à un tiers.
+- **Jamais sur le chemin d’ingestion.** Le service de télémétrie met le groupe en file et continue ;
+  son worker a son propre délai (10 s), son disjoncteur (5 échecs, 2 min), son cache (1 h), et se
+  met en pause 5 minutes quand la réponse est `disabled`, `unconfigured`, `feature_off` ou
+  `not_laya`.
+- **Éteindre :** l’un des quatre niveaux du §5, l’interrupteur de la fonction, celui du tableau
+  (Issues → Laya), ou `ISSUES_AI=0` sur le service `telemetry` (`TELEMETRY_ISSUES_AI` dans `.env`).
+- Les corrections du staff sont stockées à côté des étiquettes de Laya, jamais par-dessus ; l’écran
+  Issues montre à quelle fréquence le staff a gardé la catégorie de Laya.

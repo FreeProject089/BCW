@@ -20,6 +20,8 @@ telemetry-dashboard/
     src/gdpr.rs      one person's export package + exact erasure (same table list for both)
     src/bc.rs        server-to-server calls to BetterCommunity (identity, notify)
     src/sampling.rs  deterministic per-install sampling (shared with the BMM client)
+    src/issues.rs    live issues: ingest validation + second scrub, grouping, spikes, GDPR hash
+    src/issues_ai.rs Laya labels through the BCWEB API (queue, breaker, cache, counters)
   web/      React/Tailwind dashboard (built to web/dist, served by the API)
     src/lib/replay-decode.ts   .bmmreplay / rrweb stream decoder (unit-tested)
   Dockerfile, docker-compose.yml
@@ -93,6 +95,7 @@ every figure at once.
 | `BC_API_URL`    | _(empty)_                                      | BetterCommunity API base (compose: `http://api:3000`). Empty = no account lookup, no mail |
 | `BC_LINK_SECRET`| _(empty)_                                      | shared secret sent as `x-link-secret` (= BCWEB `LINK_LOOKUP_SECRET`); also verifies the SSO token |
 | `RATE_PER_MIN` / `MAX_BATCH` / `SOFT_DB_MB` | `240` / `1000` / `5120` | ingest guards |
+| `ISSUES_AI`     | `1`                                            | Laya labels on issue groups, asked through BCWEB (`BC_API_URL` + `BC_LINK_SECRET`). `0` = off |
 
 **Live settings** (Settings screen, or BCWEB → Admin → Hosting settings, or
 `GET/POST /api/admin/config`) are stored in the `meta` table and override the env defaults
@@ -107,6 +110,7 @@ Public (ingest key):
 | POST   | `/batch`                 | ingest a PostHog-style batch (tagged by packet id). The answer carries the current `sampling` document |
 | GET    | `/config?api_key=`       | client handshake: `{ sampling, retention_days, delete_delay_h }` — no collected data |
 | POST   | `/delete-request`        | erasure of ONE packet (applied after the review delay) |
+| POST   | `/issues`                | BMM live errors: `{ api_key, install_id, app_version, os, issues: [{ fingerprint, level, component, message, frames, code?, count, first_seen, last_seen, crash_report?, session_id? }] }` (max 50 lines, scrubbed again on arrival, own rate bucket) |
 | POST   | `/data-request`          | GDPR request `{ api_key, creator_id, kind: export\|delete, email?, source?: bmm\|bcweb }` |
 | GET    | `/api/packet-status?ids=`| deletion status per packet (BMM polls this)        |
 
@@ -118,6 +122,9 @@ Viewer (`X-Admin-Key`, or the BetterCommunity SSO token as `X-BC-Token` / `?bc=`
 | GET    | `/api/sessions` · `/api/event?name=` · `/api/user?id=` · `/api/replay?session_id=` | drill-downs |
 | POST   | `/api/funnel` · `/api/journeys` | funnel / journey queries                    |
 | GET/POST/DELETE | `/api/goals`    | goals                                              |
+| GET    | `/api/issues` · `/api/issues/stream` | grouped issues (filters `status level component category version q sort`) · **SSE** live stream |
+| GET/POST | `/api/issues/:fp` · `/api/issues/:fp/labels` · `/api/issues/:fp/reclassify` | detail · status/assignee/notes · staff label correction (feedback kept) · ask Laya again |
+| GET/POST | `/api/issues/ai` · `/api/issues/settings` | Laya status, counters, agreement · Laya switch + spike thresholds |
 | GET    | `/api/admin/deletions` · POST `/api/admin/decide` | packet-deletion queue · approve / reject now |
 | GET    | `/api/admin/data-requests` | GDPR queue `{ requests, delete_delay_h, bc_configured }`, pending first |
 | POST   | `/api/admin/data-request` | file a request from the dashboard `{ creator_id, kind, email?, note? }` |

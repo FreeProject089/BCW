@@ -126,6 +126,11 @@ anyone's telemetry. It is not a public page: everything on this origin except th
 sits behind the edge's `forward_auth` gate, so `/demo` still needs a BCWEB login with the
 telemetry grant.
 
+**Live errors (Issues).** BMM installs that send errors live post them to `/issues` on the same
+origin; Caddy lets that path through like `/batch` (public ingest key, its own rate bucket). The
+dashboard's **Issues** screen streams them live and asks Laya for labels through the API (see
+[AI_LAYA_EN.md](AI_LAYA_EN.md) §12); `TELEMETRY_ISSUES_AI=0` turns that off from this side.
+
 ## 8b. SSO — "Sign in with BetterCommunity" (OpenID Connect provider)
 
 BCWEB is a standards **OpenID Connect provider** — other services (yours or third-party)

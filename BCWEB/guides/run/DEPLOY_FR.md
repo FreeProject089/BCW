@@ -129,6 +129,12 @@ sans montrer la télémétrie de qui que ce soit. Ce n'est pas une page publique
 origine, tout sauf les chemins d'ingestion passe par le `forward_auth` de l'edge, donc `/demo`
 demande toujours une session BCWEB avec le droit télémétrie.
 
+**Erreurs en direct (Issues).** Les installations BMM qui envoient leurs erreurs en direct les
+postent sur `/issues` sur la même origine ; Caddy laisse passer ce chemin comme `/batch` (clé
+d’ingestion publique, son propre compteur). L’écran **Issues** du tableau les affiche en direct et
+demande les étiquettes de Laya par l’API (voir [AI_LAYA_FR.md](AI_LAYA_FR.md) §12) ;
+`TELEMETRY_ISSUES_AI=0` coupe cela de ce côté.
+
 ## 8b. SSO — « Se connecter avec BetterCommunity » (provider OpenID Connect)
 
 BCWEB est un **fournisseur OpenID Connect** standard — d'autres services (les tiens ou

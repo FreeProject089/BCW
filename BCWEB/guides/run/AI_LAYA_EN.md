@@ -266,3 +266,26 @@ the live, in-memory figures of this process; the dashboard shows the stored hist
 The dashboard, the member helpers (tag and language suggestions, the check before posting,
 description drafts), members' own keys, the site key and the staff tools are documented in
 [AI_FEATURES_EN.md](AI_FEATURES_EN.md): **Admin → Moderation → AI helpers**.
+
+## 12. BMM live errors in the telemetry dashboard (telemetry-live)
+
+The telemetry service (`bmm/telemetry-dashboard`) receives BMM's live error reports on `/issues`
+and groups them in its **Issues** screen. Each NEW group is sent to this layer for four labels:
+category, severity, "user environment or BMM bug", and whether a similar earlier group is the same
+problem. The call is server-to-server, `POST /internal/telemetry/classify-issue` with the shared
+`x-link-secret` (the same secret as the GDPR identity calls), and goes through the pipeline above:
+kill switch, the one concurrency slot, breaker, cache, usage analytics under the feature
+`telemetry_issues` (Admin → Moderation → AI helpers, staff features, on by default).
+
+- **Why through the API and not straight to the sidecar:** one key (`LAYA_API_KEY` stays here),
+  one queue (a second client would bypass the concurrency budget moderation relies on), one
+  switch, one set of usage counters. The telemetry container needs no `ai` network.
+- **Laya only.** The route refuses with `not_laya` when the provider is the external one: issue
+  text is not sent to a third party.
+- **Never on the ingest path.** The telemetry service queues the group and moves on; its worker
+  has its own timeout (10 s), breaker (5 failures, 2 min), cache (1 h) and backs off 5 minutes
+  when the answer is `disabled`, `unconfigured`, `feature_off` or `not_laya`.
+- **Off:** any of the four levels in §5, the feature switch, the dashboard's own switch (Issues →
+  Laya), or `ISSUES_AI=0` on the `telemetry` service (`TELEMETRY_ISSUES_AI` in `.env`).
+- Staff corrections are stored next to Laya's labels, never over them; the Issues screen shows how
+  often staff kept Laya's category.

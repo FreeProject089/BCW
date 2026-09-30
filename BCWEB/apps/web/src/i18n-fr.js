@@ -10139,7 +10139,7 @@ const DICT = {
     'aiad.byfeature': 'Par surface et par fonction', 'aiad.byprovider': 'Par fournisseur', 'aiad.feature': 'Fonction', 'aiad.provider': 'Fournisseur',
     'aiad.none': 'Aucun trafic IA sur cette période.', 'aiad.top': 'Plus gros consommateurs', 'aiad.calls': 'appels',
     'aiad.f.mod': 'Modération', 'aiad.f.triage': 'Tri de la file', 'aiad.f.summarize': 'Résumés de fils', 'aiad.f.duplicates': 'Détection des doublons',
-    'aiad.f.crash': 'Causes de plantage', 'aiad.f.bmm': 'Suggestions BMM', 'aiad.f.test': 'Zone de test admin', 'aiad.f.keytest': 'Tests de clé',
+    'aiad.f.crash': 'Causes de plantage', 'aiad.f.telemetry': 'Erreurs BMM en direct (télémétrie)', 'aiad.f.bmm': 'Suggestions BMM', 'aiad.f.test': 'Zone de test admin', 'aiad.f.keytest': 'Tests de clé',
     'aiad.p.external': 'API externe', 'aiad.p.byok': 'Clés des membres', 'aiad.p.site': 'Clé du site', 'aiad.p.rules': 'Règles seules', 'aiad.p.off': 'Non envoyé',
     'aiad.members': 'Aides aux membres',
     'aiad.members.s': 'Désactivées par défaut. « Payant » veut dire un abonnement actif à une offre qui coûte quelque chose. Les limites quotidiennes comptent les appels par personne et repartent à minuit UTC.',

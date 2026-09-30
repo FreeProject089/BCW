@@ -23,6 +23,10 @@ pub struct AppState {
     pub geo_inflight: Arc<Mutex<HashSet<String>>>,
     /// Per-IP token bucket for ingest rate limiting (tokens, last refill).
     pub rate: std::sync::Mutex<std::collections::HashMap<String, (f64, std::time::Instant)>>,
+    /// Live issues fan-out (GET /api/issues/stream): one JSON line per ingested group / label.
+    pub issues_tx: broadcast::Sender<String>,
+    /// Laya classification queue, counters and breaker (issues_ai.rs).
+    pub ai: crate::issues_ai::AiRuntime,
 }
 
 impl AppState {
@@ -51,6 +55,7 @@ impl AppState {
 impl AppState {
     pub fn new(pool: PgPool, cfg: Config) -> Shared {
         let (tx, _rx) = broadcast::channel(16);
+        let (issues_tx, _irx) = broadcast::channel(256);
         Arc::new(AppState {
             pool,
             cfg,
@@ -59,6 +64,8 @@ impl AppState {
             dirty: AtomicBool::new(false),
             geo_inflight: Arc::new(Mutex::new(HashSet::new())),
             rate: std::sync::Mutex::new(std::collections::HashMap::new()),
+            issues_tx,
+            ai: crate::issues_ai::AiRuntime::new(),
         })
     }
 }

@@ -21,6 +21,9 @@ pub struct Config {
     /// used to resolve creator ids → linked accounts. Empty = feature disabled.
     pub bc_api_url: String,
     pub bc_link_secret: String,
+    /// Laya classification of issue groups (through the BCWEB API). `ISSUES_AI=0` turns it off
+    /// whatever the dashboard switch says; it is also off when BC_API_URL is empty.
+    pub issues_ai: bool,
 }
 
 fn env_or(key: &str, default: &str) -> String {
@@ -45,6 +48,7 @@ impl Config {
             soft_db_mb: env_or("SOFT_DB_MB", "5120").parse().unwrap_or(5120),
             bc_api_url: env_or("BC_API_URL", ""),
             bc_link_secret: env_or("BC_LINK_SECRET", ""),
+            issues_ai: !matches!(env_or("ISSUES_AI", "1").trim(), "0" | "false" | "off" | "no"),
         }
     }
 }

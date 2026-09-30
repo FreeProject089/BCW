@@ -49,6 +49,9 @@ export const FEATURES = Object.freeze({
   summarize: { kind: 'generative', staffOnly: true, fallback: null },
   duplicates: { kind: 'local', staffOnly: true, fallback: 'local' },
   crash_clusters: { kind: 'classifier', staffOnly: true, fallback: 'local' },
+  // telemetry-live: Laya labels on the BMM live-issue groups, asked by the telemetry service
+  // (POST /internal/telemetry/classify-issue). Laya only; no fallback (the dashboard shows none).
+  telemetry_issues: { kind: 'classifier', staffOnly: true, fallback: null },
 });
 export const FEATURE_IDS = Object.freeze(Object.keys(FEATURES));
 export const AUDIENCES = Object.freeze(['all', 'paid', 'staff']);
@@ -69,6 +72,7 @@ const FEATURE_DEFAULTS = {
   summarize: { enabled: false, audience: 'staff', perUserPerDay: 50, paidPerUserPerDay: 50 },
   duplicates: { enabled: true, audience: 'staff', perUserPerDay: 200, paidPerUserPerDay: 200 },
   crash_clusters: { enabled: true, audience: 'staff', perUserPerDay: 100, paidPerUserPerDay: 100 },
+  telemetry_issues: { enabled: true, audience: 'staff', perUserPerDay: 5000, paidPerUserPerDay: 5000 },
 };
 
 /** Hard bounds, so no setting can turn a limit into a no-op. */

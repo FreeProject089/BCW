@@ -190,6 +190,19 @@ export default async function telemetryRoutes(app) {
   // `to.userId` is resolved to the account's CURRENT address here; `to.email` is the
   // address an unlinked install typed. Answers { ok, sent } — ok:false with a reason when
   // mail is off, so the telemetry side records "not notified" instead of guessing.
+  // telemetry-live (agent-telemetry-live): POST /internal/telemetry/classify-issue — Laya's
+  // labels for one new BMM issue group (lib/telemetry-issues-ai.mjs). Body { text, duplicate? }:
+  // text already redacted by BMM and by the telemetry service. Answers { ok, labels } or
+  // { ok: false, reason } (feature_off | disabled | unconfigured | not_laya | busy | …), never 5xx
+  // for an AI failure: the caller backs off on the reason.
+  app.post('/internal/telemetry/classify-issue', { bodyLimit: 16 * 1024 }, async (req, reply) => {
+    if (!linkSecretOk(req, reply)) return;
+    const b = z.object({ text: z.string().min(1).max(4000), duplicate: z.boolean().optional() }).safeParse(req.body || {});
+    if (!b.success) return reply.code(400).send({ ok: false, reason: 'invalid_input' });
+    const { classifyIssue } = await import('../lib/telemetry-issues-ai.mjs');
+    return classifyIssue(b.data);
+  });
+
   app.post('/internal/telemetry/notify', { bodyLimit: 20 * 1024 * 1024 }, async (req, reply) => {
     if (!linkSecretOk(req, reply)) return;
     const b = z.object({

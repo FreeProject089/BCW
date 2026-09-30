@@ -796,6 +796,52 @@ export async function aiClassify(question, input = {}, opts = {}) {
   try { return (await aiClassifyWithReason(question, input, opts)).value; } catch { return null; }
 }
 
+// telemetry-live (agent-telemetry-live): several questions about ONE text in ONE provider call —
+// the telemetry dashboard asks category + severity + origin (+ duplicate) of each new BMM issue
+// group. Same pipeline, same guards as everything above. `opts.layaOnly` refuses any provider
+// but Laya with reason `not_laya` (issue text must not leave for an external provider).
+/**
+ * questions: { id: { type: 'noul'|'choice', instructions, criteria|options } } (max 6).
+ * → { value: { provider, model, latencyMs, answers: { id: { choice, probs, p } | { p } } }, reason }.
+ */
+export async function aiAskWithReason(questions, input = {}, opts = {}) {
+  try {
+    const qs = {};
+    for (const [id, raw] of Object.entries(questions && typeof questions === 'object' ? questions : {}).slice(0, 6)) {
+      if (!/^[a-z_]{2,24}$/.test(id)) continue;
+      const q = normalizeQuestion(raw);
+      if (q) qs[id] = q;
+    }
+    if (!Object.keys(qs).length) return { value: null, reason: 'invalid' };
+    const surface = opts.surface || BMM_SURFACE;
+    if (opts.layaOnly) {
+      const cfg = await aiLoadConfig();
+      if (cfg.provider !== 'laya') { recordAi({ feature: usageFeature(surface), provider: cfg.provider === 'external' ? 'external' : 'off', outcome: 'disabled' }); return { value: null, reason: cfg.provider === 'off' ? 'disabled' : 'not_laya' }; }
+    }
+    return await pipeline({
+      surface, text: input?.text, userId: opts.userId || null, signal: opts.signal,
+      keyParts: ['ask', JSON.stringify(qs)],
+      run: async (cfg, text, signal) => {
+        let answers, model;
+        if (cfg.provider === 'laya') ({ answers, model } = await callLaya(cfg, text, qs, signal));
+        else {
+          const ext = externalCheck();
+          if (!ext.ok || cfg.externalMode !== 'chat') throw new Error('external_cannot_classify');
+          ({ answers, model } = await callExternalChat(cfg, ext, text, qs, signal));
+        }
+        const out = {};
+        for (const [id, q] of Object.entries(qs)) {
+          if (q.type === 'noul') { const p = layaNoul(answers[id]); if (p != null) out[id] = { p }; }
+          else { const c = layaChoice(answers[id], Object.keys(q.criteria)); if (c) out[id] = { choice: c.choice, probs: c.probs, p: c.p ?? null }; }
+        }
+        if (!Object.keys(out).length) throw new Error('bad_answer');
+        return { model, answers: out };
+      },
+    });
+  } catch { return { value: null, reason: 'unavailable' }; }
+}
+// fin telemetry-live
+
 // ── Status ──────────────────────────────────────────────────────────────────────────────────
 let _health = { at: 0, ok: false, detail: null };
 async function probeHealth(cfg) {

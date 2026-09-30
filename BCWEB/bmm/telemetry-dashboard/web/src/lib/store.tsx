@@ -220,6 +220,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 const DEMO_READS = new Set(["/api/funnel", "/api/journeys"]);
 const DEMO_WRITE_REFUSAL = "Demo mode is read-only: nothing is saved.";
 
+/** An SSE URL carrying the viewer credential (EventSource cannot set headers). Null in the demo. */
+export function streamUrl(path: string): string | null {
+  if (demoMode) return null;
+  const k = key();
+  const qs = bcToken() ? `?bc=${encodeURIComponent(bcToken())}` : (k ? `?key=${encodeURIComponent(k)}` : "");
+  return `${path}${qs}`;
+}
+
 export async function apiGet<T = any>(url: string): Promise<T> {
   if (demoMode) return (await demoModule()).demoApiGet(url) as T;
   const r = await fetch(url, { headers: authHeaders() });

@@ -24,6 +24,11 @@ pub const IDENTITY_TABLES: &[(&str, &str)] = &[
     ("data_requests", "creator_id"),
 ];
 
+/// The live-issue install ids of a set of creator ids (same derivation as BMM).
+pub fn issue_install_ids(ids: &[String]) -> Vec<String> {
+    ids.iter().map(|i| crate::issues::install_id_for(i)).collect()
+}
+
 /// Short, stable, non-reversible tag for a creator id — what stays in the audit trail and
 /// in the processed request row once the id itself is gone.
 pub fn erased_tag(creator_id: &str) -> String {
@@ -76,6 +81,9 @@ pub async fn export_identity(pool: &PgPool, ids: &[String]) -> Value {
     }
     let pids = packet_ids(pool, ids).await;
     tables.insert("deletions".into(), if pids.is_empty() { json!([]) } else { rows_of(pool, "deletions", "packet_id", &pids).await });
+    // Live issues: reached through the pseudonymous install id (issues.rs), never the raw id.
+    let iids = issue_install_ids(ids);
+    tables.insert("issue_occurrences".into(), rows_of(pool, "issue_occurrences", "install_id", &iids).await);
     let ips = ips_of(pool, ids).await;
     tables.insert("geo".into(), if ips.is_empty() { json!([]) } else { rows_of(pool, "geo", "key", &ips).await });
 
@@ -122,6 +130,11 @@ pub async fn erase_identity(pool: &PgPool, ids: &[String]) -> Value {
         sqlx::query("DELETE FROM deletions WHERE packet_id = ANY($1)").bind(&pids).execute(pool).await.map(|r| r.rows_affected()).unwrap_or(0)
     };
     out.insert("deletions".into(), json!(n));
+    // Live issues of these installs. The groups themselves (redacted message, totals) hold no
+    // install id and stay; the per-install rows that tie them to this person go.
+    let iids = issue_install_ids(ids);
+    let n = sqlx::query("DELETE FROM issue_occurrences WHERE install_id = ANY($1)").bind(&iids).execute(pool).await.map(|r| r.rows_affected()).unwrap_or(0);
+    out.insert("issue_occurrences".into(), json!(n));
     let n = if ips.is_empty() { 0 } else {
         sqlx::query("DELETE FROM geo WHERE key = ANY($1) AND NOT EXISTS (SELECT 1 FROM user_ips u WHERE u.ip = geo.key)")
             .bind(&ips).execute(pool).await.map(|r| r.rows_affected()).unwrap_or(0)
@@ -162,7 +175,8 @@ under that identity, straight from the database, plus each recorded session repl
 Files
 -----
   tables/<name>.json   raw rows of each table (events, benchmarks, user_ips, live_instances,
-                       geo, deletions, data_requests)
+                       geo, deletions, data_requests, issue_occurrences: the live error
+                       reports of this install, per issue and version)
   replays/<id>.bmmreplay   one rrweb event stream per recorded session (open with BMM's
                        replay player or any rrweb player)
   export.json          the whole package as a single document
