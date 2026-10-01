@@ -361,7 +361,7 @@ export function AdminSanctions() {
             <option value="archived">{t('sanc.s.archived', 'archived')}</option>
             <option value="expired">{t('sanc.s.expired', 'expired')}</option>
           </Select>
-          <Select className="w-auto" value={kind} onChange={(e) => setKind(e.target.value)}>
+          <Select className="w-auto max-w-full" value={kind} onChange={(e) => setKind(e.target.value)}>
             <option value="">{t('sanc.f.anykind', 'Any kind')}</option>
             {(data?.kinds || []).map((k) => <option key={k} value={k}>{t(`sanc.k.${k}`, k)}</option>)}
           </Select>

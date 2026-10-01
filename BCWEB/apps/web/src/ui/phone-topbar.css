@@ -84,3 +84,17 @@
 @media (max-width: 1023.98px) {
   .tbar .tbar-utils .nav-link { padding-inline: 8px; }
 }
+
+/* agent-bcw-nav: the sheet's Projects section. A title row with "See all" at its end, then one
+   row of tiles (or the first few and a "N more" tile opening a one-column list). */
+.msheet-h-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.msheet-h-link {
+  font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none;
+  color: var(--accent-ink); padding: 2px 4px; border-radius: 6px;
+}
+.msheet-h-link:hover { text-decoration: underline; }
+.msheet-projlist {
+  grid-template-columns: minmax(0, 1fr) !important;
+  margin-top: 4px; padding-top: 4px; border-top: 1px dashed var(--line);
+}
+/* fin agent-bcw-nav */

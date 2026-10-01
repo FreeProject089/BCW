@@ -25,7 +25,10 @@ import { fileURLToPath } from 'node:url';
 
 const BCWEB = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const REPO = path.resolve(BCWEB, '..');
-const read = (p) => fs.readFileSync(p, 'utf8');
+// CRLF-normalised: with core.autocrlf=true (Windows) the working tree has CRLF while the index
+// and CI have LF, and the block regexes below anchor on a bare newline. A source-scanning test
+// must not pass or fail depending on how the repository was checked out.
+const read = (p) => fs.readFileSync(p, 'utf8').replace(/\r\n/g, '\n');
 
 /** Dockerfile → stages [{ from, lines }], continuation lines joined into one instruction. */
 function stages(file) {

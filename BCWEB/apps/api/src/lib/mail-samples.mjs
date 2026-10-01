@@ -261,6 +261,15 @@ export const MAIL_SAMPLES = [
             + '<p>It expires in a year.</p>',
             { url: link('/hosting#redeem'), label: 'Redeem it' }),
     },
+    // agent-bcw-pools: the receipt of a payment made through an admin-made payment link.
+    {
+        id: 'paylink-receipt', editable: true, group: 'billing', label: 'Receipt for a payment link',
+        note: 'Sent once the webhook delivered what the link sells (a pool, early access, or a plain payment). Stripe sends its own invoice as well.',
+        build: () => mailShell('Receipt: 50 GB pool for the BSM team',
+            '<p>We received <b>40.00 USD</b> for <b>50 GB pool for the BSM team</b>.</p>'
+            + '<p>Your invoices are in Billing, on your dashboard.</p>',
+            { url: link('/dashboard?s=billing'), label: 'Open Billing' }),
+    },
 ];
 
 export const MAIL_GROUPS = [

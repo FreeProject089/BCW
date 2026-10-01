@@ -172,3 +172,43 @@ describe('a moderator\'s verdict is the AI\'s feedback', () => {
     assert.equal(aiVerdict(null, 'remove'), null);
   });
 });
+
+describe('a member applied or dismissed a suggestion', () => {
+  test('recordAiEvent counts accepted / rejected, bounded, and nothing else', () => {
+    U.recordAiEvent('suggest_tags', 'accepted', 'laya', 3);
+    U.recordAiEvent('suggest_tags', 'rejected', 'laya');
+    U.recordAiEvent('suggest_tags', 'rejected', 'laya', 9999);  // clamped, one call cannot flood
+    U.recordAiEvent('suggest_tags', 'loved', 'laya');           // not an event: ignored
+    const rows = U._peekAiUsageForTests().rows;
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].accepted, 3);
+    assert.equal(rows[0].rejected, 51);
+    assert.equal(rows[0].calls, 0, 'feedback is not a call');
+    assert.ok(!('loved' in rows[0]));
+  });
+  test('buildReport: acceptance rate per feature, per provider and in total; accepted / rejected per day', () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const rows = [
+      { day: today, feature: 'suggest_tags', provider: 'laya', calls: 5, accepted: 6, rejected: 2, latencyHist: [] },
+      { day: today, feature: 'describe', provider: 'byok', calls: 2, accepted: 1, rejected: 3, latencyHist: [] },
+      { day: today, feature: 'triage', provider: 'rules', calls: 1, latencyHist: [] },
+    ];
+    const r = U.buildReport(rows, [], { days: 3 });
+    assert.equal(r.total.accepted, 7);
+    assert.equal(r.total.rejected, 5);
+    assert.equal(r.total.acceptanceRate, 7 / 12);
+    assert.equal(r.byFeature.find((x) => x.key === 'suggest_tags').acceptanceRate, 0.75);
+    assert.equal(r.byFeature.find((x) => x.key === 'describe').acceptanceRate, 0.25);
+    assert.equal(r.byFeature.find((x) => x.key === 'triage').acceptanceRate, null, 'nothing judged: no rate, not 0%');
+    assert.equal(r.byProvider.find((x) => x.key === 'byok').acceptanceRate, 0.25);
+    assert.equal(r.series.at(-1).accepted, 7);
+    assert.equal(r.series.at(-1).rejected, 5);
+    assert.equal(r.series[0].accepted, 0);
+    assert.equal(r.series[0].rejected, 0);
+  });
+  test('a report over rows written before the columns existed still adds up', () => {
+    const r = U.buildReport([{ day: new Date().toISOString().slice(0, 10), feature: 'x', provider: 'laya', calls: 1 }], [], { days: 1 });
+    assert.equal(r.total.accepted, 0);
+    assert.equal(r.total.acceptanceRate, null);
+  });
+});

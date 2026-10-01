@@ -15,7 +15,7 @@
 //                               switching reviews on, broadcasting an announcement.
 //
 // Nothing here parses a target out of a request body: the routes compute it from the URL.
-import { canEditProject, canEditShowcase, canManageProjects, canManageShowcase, canViewPage, currentUser } from './lib.mjs';
+import { canEditProject, canEditShowcase, canManageProjects, canManageShowcase, canViewPage, currentUser, holdsEarlyAccessRight, hasCap, earlyAccessGrants, projectGrants } from './lib.mjs';
 import { isRefShaped } from './project-ref.mjs';
 import { projectKeys } from './project-keys.mjs';
 
@@ -116,6 +116,39 @@ export async function liveUser(req) {
 export async function canEditTarget(user, proj) {
   if (!user?.uid || !proj) return false;
   return proj.official ? canEditProject(user, proj.projectKey) : canEditShowcase(user, proj.showcaseProjectId);
+}
+
+// agent-bcw-pools: who may RUN early access on a project. The page editors (canEditTarget), as
+// before, and now also the people given only that: the manage_prereleases capability (every
+// project) or the early_access right on this one (a direct grant or a scoped role). A pure
+// early-access holder opens, edits and runs pre-releases; the page itself stays out of reach.
+export async function canRunEarlyAccess(user, proj) {
+  if (!user?.uid || !proj) return false;
+  if (await canEditTarget(user, proj)) return true;
+  return holdsEarlyAccessRight(user, proj.official ? 'project' : 'showcase', proj.official ? proj.projectKey : proj.showcaseProjectId);
+}
+
+/** Every project this user may run early access on, as { ref, name, official, target }. For the
+ *  creation form: offering a project the server would refuse is a form that lies. Unpublished
+ *  and private projects included (a pre-release is often prepared before the page is public). */
+export async function earlyAccessProjects(p, user) {
+  if (!user?.uid) return [];
+  const all = new Map();
+  const keys = await projectKeys();
+  const shows = await p.showcaseProject.findMany({ orderBy: [{ order: 'asc' }, { createdAt: 'asc' }], take: 500, select: SHOWCASE_SELECT }).catch(() => []);
+  for (const s of shows) all.set(`${SC}${s.id}`, showcaseRecord(s));
+  const recs = await projectsByTargets(p, keys);
+  for (const k of keys) if (recs.get(k)) all.set(k, recs.get(k));
+  const wide = hasCap(user, 'manage_prereleases');
+  const [pg, eg] = wide ? [null, null] : await Promise.all([projectGrants(user.uid), earlyAccessGrants(user.uid)]);
+  const out = [];
+  for (const proj of all.values()) {
+    let ok = wide;
+    if (!ok && proj.official) ok = canManageProjects(user) || pg.projectKeys.has(proj.projectKey) || eg.projectKeys.has(proj.projectKey);
+    if (!ok && !proj.official) ok = canManageShowcase(user) || pg.allShowcase || pg.showcaseIds.has(proj.showcaseProjectId) || eg.allShowcase || eg.showcaseIds.has(proj.showcaseProjectId);
+    if (ok) out.push({ ref: proj.ref, name: proj.name, official: proj.official, target: proj.target });
+  }
+  return out;
 }
 
 /** May this user use a project's RESERVED controls? The manager capability only. */

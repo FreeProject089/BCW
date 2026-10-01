@@ -173,6 +173,8 @@ export const SHORTCUTS = [
   { id: 'os.desktop', group: 'os', combo: 'alt+shift+d', handler: true, label: (t) => t('sc.os.desktop', 'Show the desktop') },
   { id: 'os.fullscreen', group: 'os', combo: 'alt+shift+f', handler: true, label: (t) => t('sc.os.fullscreen', 'Fullscreen on or off') },
   // fin N-os (agent-os-N)
+  // agent-bcw-os: the site's topbar, auto-hidden in OS mode (ui/os/os-topbar.js).
+  { id: 'os.topbar', group: 'os', combo: 'alt+shift+h', handler: true, label: (t) => t('sc.os.topbar', 'Show or hide the site bar') },
   // The studio's own keys (editor/canvas-studio.jsx). Listed, never run from here.
   { id: 'studio.keys', group: 'page', combo: '?', fixed: true, route: /^\/studio\//, label: (t) => t('sc.studio.keys', 'Studio: every key') },
   { id: 'studio.pan', group: 'page', combo: 'space', fixed: true, route: /^\/studio\//, label: (t) => t('sc.studio.pan', 'Studio: hold to pan') },

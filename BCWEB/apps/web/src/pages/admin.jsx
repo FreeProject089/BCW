@@ -16,6 +16,9 @@ import { Bug as BugIcon } from 'lucide-react';
 import { List } from 'lucide-react';
 import { LayoutTemplate } from 'lucide-react'; // studio phase 2: the manage_studio capability
 import { FlaskConical as PrereleaseIcon, MessagesSquare as ProjectReviewsIcon } from 'lucide-react'; // prerelease (agent-prerelease)
+import { Link2 as PaylinkIcon } from 'lucide-react'; // agent-bcw-pools
+import { AdminPaylinks } from './admin-paylinks.jsx'; // agent-bcw-pools: payment links
+import { AdminProjectPools } from './admin-project-pools.jsx'; // agent-bcw-pools: pools per project
 import { AdminPrereleases, AdminProjectReviews } from './admin-prereleases.jsx'; // prerelease (agent-prerelease)
 import { AdminNotify, AdminBmmLaunch } from './admin-notify.jsx'; // notify (agent-notify)
 import AssetsCiKeyCard from './admin-assets-ci-key.jsx'; // assetskey (agent-assets-key)
@@ -85,6 +88,7 @@ import { AdminEntityHosting } from './admin-entity-hosting.jsx';
 import { ConfigTransferCard } from './admin-config-transfer.jsx';
 import { BotGiveawaysCard as BotGiveawaysCardNew } from './discord-giveaways.jsx';
 import { BotEmojiSyncCard } from './discord-emojis.jsx';
+import BotBillingAdmin from '../ui/bot-billing-admin.jsx'; // agent-bcw-bot: credit packs + a server's wallet
 import { BotPresencePanel } from './discord-presence.jsx';
 import { AlertFocus } from './admin-alert-focus.jsx';
 import { TotpQuickFill } from './twofa-fill.jsx';
@@ -372,6 +376,8 @@ export function Admin() {
         { id: 'repos', label: t('adm.tab.repos2', 'Server repos'), icon: Server },
         { id: 'pools', label: t('adm.tab.pools', 'Storage pools'), icon: HardDrive },
         can('manage_hosting') && { id: 'entityhosting', label: t('adm.tab.entityhosting', 'Storage per blog & inbox'), icon: HardDrive },
+        // agent-bcw-pools: a pool of its own for a project.
+        can('manage_hosting') && { id: 'projectpools', label: t('adm.tab.projectpools', 'Pools per project'), icon: HardDrive },
         { id: 'transfers', label: t('adm.tab.transfers', 'Ownership'), icon: ArrowRightLeft },
         can('manage_hosting') && { id: 'hosting', label: t('adm.tab.hosting', 'Free hosting'), icon: Gift },
       ].filter(Boolean) },
@@ -393,6 +399,8 @@ export function Admin() {
         // Was under Accounts, whose gate was manage_users; that is still its gate.
         can('manage_users') && { id: 'planusers', label: t('adm.tab.planusers', 'Free vs paid'), icon: Receipt },
         can('manage_hosting') && { id: 'payments', label: t('adm.tab.payments', 'Pending payments'), icon: CreditCard },
+        // agent-bcw-pools: admin-made payment links (a pool, early access, or any amount).
+        can('manage_hosting') && { id: 'paylinks', label: t('adm.tab.paylinks', 'Payment links'), icon: PaylinkIcon },
         can('manage_promotions') && { id: 'promotions', label: t('adm.tab.promotions', 'Promotions & codes'), icon: Megaphone },
         // Community Charity used to be a card at the foot of Home page; it is money that is not
         // a sale, like Ko-fi. Same capability as Ko-fi.
@@ -560,6 +568,7 @@ export function Admin() {
         {s === 'repos' && <AdminRepos />}
         {s === 'pools' && <AdminPools />}
         {s === 'entityhosting' && <AdminEntityHosting />}
+        {s === 'projectpools' && <AdminProjectPools />}{/* agent-bcw-pools */}
         {s === 'transfers' && <AdminTransfers />}
         {/* Plugin/theme verification used to live here; the moderation queue now owns that
             review step, so the standalone panels were a second, diverging place to do it. */}
@@ -572,6 +581,7 @@ export function Admin() {
         {s === 'history' && <AdminHistory />}
         {s === 'hosting' && <AdminFreeHost />}
         {s === 'payments' && <AdminPendingPayments />}
+        {s === 'paylinks' && <AdminPaylinks />}{/* agent-bcw-pools */}
         {s === 'promotions' && <><AdminCampaigns /><div className="mt-8"><AdminPromo /></div></>}
         {s === 'kofi' && <AdminKofi />}
         {s === 'charity' && <CharityAdminCard />}
@@ -4785,6 +4795,9 @@ const ADMIN_CAPS = [
   { id: 'manage_events', cat: 'growth', icon: Sparkles, label: 'Manage events', labelFr: 'Gérer les événements', desc: 'Site events (fireworks, themed presentations).', descFr: 'Événements du site (feux d’artifice, présentations thématiques).' },
   { id: 'manage_myo', cat: 'growth', icon: Wand2, label: 'Manage commissions', labelFr: 'Gérer les commandes', desc: 'Handle "Make Your Own" requests, quotes, delivery + the catalog.', descFr: 'Gérer les demandes « Make Your Own », devis, livraisons + le catalogue.' },
   { id: 'manage_api', cat: 'growth', icon: KeyRound, label: 'Manage the public API', labelFr: 'Gérer l’API publique', desc: 'See API usage per key, the sampled call log, and revoke keys.', descFr: 'Voir l’usage de l’API par clé, l’échantillon d’appels, et révoquer des clés.' },
+  // agent-bcw-pools: early access on every project, without editing any page. Per project it is
+  // the `early_access` right below (a grant, or a scoped role).
+  { id: 'manage_prereleases', cat: 'content', icon: PrereleaseIcon, label: 'Manage early access', labelFr: 'Gérer les accès anticipés', desc: 'Open and run the pre-releases of every project, and choose who else runs them. Not the project pages.', descFr: 'Ouvrir et gérer les accès anticipés de chaque projet, et choisir qui d’autre les gère. Pas les pages des projets.' },
   { id: 'manage_polls', cat: 'content', icon: BarChart3, label: 'Manage polls', labelFr: 'Gérer les sondages', desc: 'Create polls, read the results and who answered.', descFr: 'Créer des sondages, lire les résultats et qui a répondu.' },
   { id: 'manage_analytics', cat: 'insight', icon: TrendingUp, label: 'View analytics', labelFr: 'Voir les analyses', desc: 'Analytics, errors and goals.', descFr: 'Analyses, erreurs et objectifs.' },
   { id: 'manage_repos', cat: 'ops', icon: Server, label: 'Manage server repos', labelFr: 'Gérer les dépôts serveur', desc: 'Review, verify and moderate hosted repos.', descFr: 'Vérifier, valider et modérer les dépôts hébergés.' },
@@ -5003,7 +5016,7 @@ function AdminAccess({ isSuperAdmin }) {
       toast.success(t('acc.proj.granted', 'Granted project-edit access to {name}.').replace('{name}', picked.displayName)); projGrants.reload();
     } catch (x) { toast.error(x.data?.error === 'cannot_grant_self' ? t('acc.proj.self', 'You cannot grant yourself a permission.') : x.data?.error === 'cannot_grant_unheld_right' ? t('acc.proj.unheld', 'You cannot grant a right you do not hold on this page.') : x.data?.error || t('acc.failed', 'Failed.')); } finally { setBusy(false); }
   };
-  const projRightsLabel = (g) => (g.rights || ['pages']).map((r) => (r === 'studio' ? t('acc.proj.r.studio', 'studio') : t('acc.proj.r.pages', 'page'))).join(' + ');
+  const projRightsLabel = (g) => (g.rights || ['pages']).map((r) => (r === 'studio' ? t('acc.proj.r.studio', 'studio') : r === 'early_access' ? t('acc.proj.r.ea', 'early access') : t('acc.proj.r.pages', 'page'))).join(' + ');
   const revokeProject = (g) => undoProj.del(g.id, () => api.del(`/admin/project-permissions/${g.id}`), t('acc.revoked', 'Revoked.'));
   const projScopeLabel = (g) => g.allShowcase ? t('acc.proj.all', 'All other-projects') : g.showcase ? t('acc.proj.custom', 'Other · {name}').replace('{name}', g.showcase.name) : g.projectKey ? t('acc.proj.project', 'Project · {key}').replace('{key}', g.projectKey.toUpperCase()) : '';
   const allProjGrants = (projGrants.data?.grants || []).filter((g) => !undoProj.pending.has(g.id));
@@ -5127,7 +5140,7 @@ function AdminAccess({ isSuperAdmin }) {
                 </Select>
                 {/* What the grant allows there. Two rights, granted apart: editing the page's
                     words, and drawing its studio pages (PLAN-STUDIO-2026 3.1). At least one. */}
-                {[['pages', t('acc.proj.r.pages.l', 'Page content'), t('acc.proj.r.pages.h', 'Edit the page: overview, presentation, timeline, config. Not publishing or visibility.')], ['studio', t('acc.proj.r.studio.l', 'Studio'), t('acc.proj.r.studio.h', 'Draw the studio pages of this page, while an administrator has its studio switched on.')]].map(([id, label, h]) => (
+                {[['pages', t('acc.proj.r.pages.l', 'Page content'), t('acc.proj.r.pages.h', 'Edit the page: overview, presentation, timeline, config. Not publishing or visibility.')], ['studio', t('acc.proj.r.studio.l', 'Studio'), t('acc.proj.r.studio.h', 'Draw the studio pages of this page, while an administrator has its studio switched on.')], ['early_access', t('acc.proj.r.ea.l', 'Early access'), t('acc.proj.r.ea.h', 'Open and run the pre-releases of this project. Not the page.')]].map(([id, label, h]) => (
                   <label key={id} className="inline-flex items-center gap-1.5 text-xs cursor-pointer" title={h}>
                     <input type="checkbox" checked={prightsSel.includes(id)}
                       onChange={() => setPrightsSel((r) => (r.includes(id) ? (r.length > 1 ? r.filter((x) => x !== id) : r) : [...r, id]))} />
@@ -5281,7 +5294,7 @@ function RoleManager({ roles }) {
           <Card key={r.id} className="p-3 flex items-center gap-3">
             <RoleBadge color={r.color}>{r.name}</RoleBadge>
             <div className="flex-1 min-w-0 text-xs text-[var(--faint)] truncate">
-              {r.scope && <Badge tone="amber" className="me-1.5"><Lock size={10} /> {(r.scope.rights || ['pages']).map((x) => x === 'blog' ? t('rm.scope.r.blog.s', 'blog') : x === 'market' ? t('rm.scope.r.market.s', 'shop') : x === 'inbox' ? t('rm.scope.r.inbox.s', 'inbox') : x === 'studio' ? t('rm.scope.r.studio.s', 'studio') : t('rm.scope.r.pages.s', 'page')).join(' + ')} · {r.scope.allShowcase ? t('rm.scope.allsc', 'every other project') : [...(r.scope.projectKeys || []), ...(r.scope.showcases || []).map((x) => x.name)].join(', ') || t('rm.scope.some', 'some elements')}</Badge>}
+              {r.scope && <Badge tone="amber" className="me-1.5"><Lock size={10} /> {(r.scope.rights || ['pages']).map((x) => x === 'blog' ? t('rm.scope.r.blog.s', 'blog') : x === 'market' ? t('rm.scope.r.market.s', 'shop') : x === 'inbox' ? t('rm.scope.r.inbox.s', 'inbox') : x === 'studio' ? t('rm.scope.r.studio.s', 'studio') : x === 'early_access' ? t('rm.scope.r.ea.s', 'early access') : t('rm.scope.r.pages.s', 'page')).join(' + ')} · {r.scope.allShowcase ? t('rm.scope.allsc', 'every other project') : [...(r.scope.projectKeys || []), ...(r.scope.showcases || []).map((x) => x.name)].join(', ') || t('rm.scope.some', 'some elements')}</Badge>}
               {(r.capabilities || []).length ? r.capabilities.map((id) => (ADMIN_CAPS.find((c) => c.id === id) ? capLabel(ADMIN_CAPS.find((c) => c.id === id)) : id)).join(' · ') : t('rm.nocaps', 'No capabilities yet')}
             </div>
             <span className="text-xs text-[var(--faint)] shrink-0">{t('rm.members', '{n} members').replace('{n}', r.memberCount || 0)}</span>
@@ -5326,7 +5339,7 @@ function RoleManager({ roles }) {
                   <div>
                     <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1">{t('rm.scope.rights', 'Rights on these elements')}</div>
                     <div className="flex flex-wrap gap-1.5">
-                      {[['pages', t('rm.scope.r.pages', 'Edit the page content'), t('rm.scope.r.pages.h', 'Like a per-project grant: overview, presentation, timeline, config, not publishing or visibility.')], ['blog', t('rm.scope.r.blog', 'Write in its blog'), t('rm.scope.r.blog.h', 'Post and edit articles in the blog of these projects, the same as a blog permission, granted by role.')], ['market', t('rm.scope.r.market', 'Run its marketplace'), t('rm.scope.r.market.h', 'Create, price and delete the products of these projects, upload their files and mint their keys. NOT the platform margin, and not where the money is paid — both stay with a super-admin.')], ['inbox', t('rm.scope.r.inbox', 'Read its contact inbox'), t('rm.scope.r.inbox.h', 'Read and answer the messages visitors send to these projects. No edit right.')], ['studio', t('rm.scope.r.studio', 'Draw its studio pages'), t('rm.scope.r.studio.h', 'Open the studio on these projects and draw their studio pages, while their studio is switched on. Not the page text.')]].map(([id, label, h]) => {
+                      {[['pages', t('rm.scope.r.pages', 'Edit the page content'), t('rm.scope.r.pages.h', 'Like a per-project grant: overview, presentation, timeline, config, not publishing or visibility.')], ['blog', t('rm.scope.r.blog', 'Write in its blog'), t('rm.scope.r.blog.h', 'Post and edit articles in the blog of these projects, the same as a blog permission, granted by role.')], ['market', t('rm.scope.r.market', 'Run its marketplace'), t('rm.scope.r.market.h', 'Create, price and delete the products of these projects, upload their files and mint their keys. NOT the platform margin, and not where the money is paid — both stay with a super-admin.')], ['inbox', t('rm.scope.r.inbox', 'Read its contact inbox'), t('rm.scope.r.inbox.h', 'Read and answer the messages visitors send to these projects. No edit right.')], ['studio', t('rm.scope.r.studio', 'Draw its studio pages'), t('rm.scope.r.studio.h', 'Open the studio on these projects and draw their studio pages, while their studio is switched on. Not the page text.')], ['early_access', t('rm.scope.r.ea', 'Run its early access'), t('rm.scope.r.ea.h', 'Open and run the pre-releases of these projects: sign-ups, selection, the file. Not the page.')]].map(([id, label, h]) => {
                         const on = scopeRights.includes(id);
                         return <button key={id} type="button" title={h} onClick={() => setScopeRights((r) => on ? (r.length > 1 ? r.filter((x) => x !== id) : r) : [...r, id])} className={`px-2.5 py-1 rounded-lg border text-xs ${on ? 'border-[var(--primary)] tint-primary text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)]'}`}>{label}</button>;
                       })}
@@ -8422,6 +8435,8 @@ import { ReportThreadModal, REPORT_TARGET_ICON } from './my-reports.jsx'; // mov
 function AdminHostingPlans() {
   const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
   const data = useAsync(() => api.get('/admin/hosting/plans'), []);
+  // agent-bcw-pools: the loyalty policy, for the plan preview ("from $X after N months").
+  const loyal = useAsync(() => api.get('/admin/hosting/loyalty').catch(() => null), []);
   // Every write here goes through the undo window the rest of the dashboard uses: the
   // request is held for six seconds and only then sent, so "undo" means the change never
   // reached the server at all. That matters more on this tab than most — these rows are
@@ -8593,29 +8608,11 @@ function AdminHostingPlans() {
       {draft && (
         <Card className="p-4 space-y-3">
           <div className="text-sm font-semibold">{draft.id ? t('adm.plans.edit', 'Edit plan') : t('adm.plans.new', 'New plan')}</div>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {/* agent-bcw-pools: the four fields a plan needs first; speed and boosts keep their
+              defaults and sit under "More options". A preview says what the page will print. */}
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <Field label={t('adm.plans.f.name', 'Name')}><Input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} /></Field>
             <Field label={t('adm.plans.f.storage', 'Storage')}><ByteSize value={(Number(draft.storageGB) || 0) * (1024 ** 3)} onChange={(bytes) => setDraft({ ...draft, storageGB: bytes / (1024 ** 3) })} /></Field>
-            <Field label={t('adm.plans.f.upload', 'Upload cap (kbps)')} hint={mbps(Number(draft.uploadLimitKbps) || 0)}><Input type="number" min="0" value={draft.uploadLimitKbps} onChange={(e) => setDraft({ ...draft, uploadLimitKbps: e.target.value })} /></Field>
-            {/* No CPU share field. It was never something a customer could choose (repos.jsx:
-                "no longer user-adjustable") and nothing the pool enforces; the column stays so
-                existing plans keep their value and their price, but an admin has no reason to
-                see or type it. */}
-            {/* Boosts INCLUDED with the plan. Zero is the default and the no-op: every plan
-                that existed before this column did included none, so a save that leaves these
-                alone must not start granting something nobody sold. */}
-            <Field label={t('adm.plans.f.boosts', 'Boosts included')} hint={Number(draft.boostsPerPeriod) > 0
-              ? t('adm.plans.f.boosts.h', '{n} every {m} month(s), {d} days each, usable on a repo or a catalogue.')
-                .replace('{n}', Number(draft.boostsPerPeriod)).replace('{m}', Number(draft.boostPeriodMonths) || 1).replace('{d}', Number(draft.boostDays) || 7)
-              : t('adm.plans.f.boosts.h0', 'None. Set a number to include boosts with this plan.')}>
-              <Input type="number" min="0" max="50" value={draft.boostsPerPeriod} onChange={(e) => setDraft({ ...draft, boostsPerPeriod: e.target.value })} />
-            </Field>
-            <Field label={t('adm.plans.f.boostevery', '…every N months')}>
-              <Input type="number" min="1" max="24" value={draft.boostPeriodMonths} onChange={(e) => setDraft({ ...draft, boostPeriodMonths: e.target.value })} />
-            </Field>
-            <Field label={t('adm.plans.f.boostdays', '…each lasting N days')}>
-              <Input type="number" min="1" max="365" value={draft.boostDays} onChange={(e) => setDraft({ ...draft, boostDays: e.target.value })} />
-            </Field>
             {/* Cents, not dollars: money in floats is how a $9.99 plan quietly becomes
                 $9.98999. The hint shows what the buyer will read. */}
             <Field
@@ -8635,6 +8632,46 @@ function AdminHostingPlans() {
               </Select>
             </Field>
           </div>
+          {(() => {
+            const cents = draft.priceMonthlyCents === '' || draft.priceMonthlyCents == null ? auto : Number(draft.priceMonthlyCents) || 0;
+            const pol = loyal.data?.loyalty;
+            const steps = pol?.enabled ? (pol.tiers || []).map((x) => ({ months: x.months, pct: Math.min(x.pct, pol.maxPct) })).filter((x) => x.pct > 0) : [];
+            const best = steps.length ? steps[steps.length - 1] : null;
+            return (
+              <div className="rounded-lg border border-[var(--line)] px-3 py-2 text-sm flex items-center gap-2 flex-wrap" data-testid="plan-preview">
+                <HardDrive size={14} className="text-[var(--accent-ink)]" aria-hidden />
+                <span className="font-medium">{draft.name || t('adm.plans.pv.noname', 'Unnamed plan')}</span>
+                <span className="text-[var(--muted)]">{formatBytes((Number(draft.storageGB) || 0) * (1024 ** 3))}</span>
+                <span className="font-semibold tabular-nums">{cents == null ? '…' : Number(cents) === 0 ? t('adm.plans.free', 'free') : `${money(cents)}/mo`}</span>
+                {best && cents > 0 && <span className="text-xs text-[var(--muted)]">{t('adm.plans.pv.loyal', 'then {p}/mo after {n} months subscribed').replace('{p}', money(Math.round(cents * (100 - best.pct) / 100))).replace('{n}', String(best.months))}</span>}
+                {!draft.active && <Badge>{t('adm.plans.hidden', 'hidden')}</Badge>}
+              </div>
+            );
+          })()}
+          <Explain label={t('adm.plans.more', 'More options: speed and included boosts')} className="text-sm">
+            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2">
+              <Field label={t('adm.plans.f.upload', 'Upload cap (kbps)')} hint={mbps(Number(draft.uploadLimitKbps) || 0)}><Input type="number" min="0" value={draft.uploadLimitKbps} onChange={(e) => setDraft({ ...draft, uploadLimitKbps: e.target.value })} /></Field>
+              {/* No CPU share field. It was never something a customer could choose (repos.jsx:
+                  "no longer user-adjustable") and nothing the pool enforces; the column stays so
+                  existing plans keep their value and their price, but an admin has no reason to
+                  see or type it. */}
+              {/* Boosts INCLUDED with the plan. Zero is the default and the no-op: every plan
+                  that existed before this column did included none, so a save that leaves these
+                  alone must not start granting something nobody sold. */}
+              <Field label={t('adm.plans.f.boosts', 'Boosts included')} hint={Number(draft.boostsPerPeriod) > 0
+                ? t('adm.plans.f.boosts.h', '{n} every {m} month(s), {d} days each, usable on a repo or a catalogue.')
+                  .replace('{n}', Number(draft.boostsPerPeriod)).replace('{m}', Number(draft.boostPeriodMonths) || 1).replace('{d}', Number(draft.boostDays) || 7)
+                : t('adm.plans.f.boosts.h0', 'None. Set a number to include boosts with this plan.')}>
+                <Input type="number" min="0" max="50" value={draft.boostsPerPeriod} onChange={(e) => setDraft({ ...draft, boostsPerPeriod: e.target.value })} />
+              </Field>
+              <Field label={t('adm.plans.f.boostevery', '…every N months')}>
+                <Input type="number" min="1" max="24" value={draft.boostPeriodMonths} onChange={(e) => setDraft({ ...draft, boostPeriodMonths: e.target.value })} />
+              </Field>
+              <Field label={t('adm.plans.f.boostdays', '…each lasting N days')}>
+                <Input type="number" min="1" max="365" value={draft.boostDays} onChange={(e) => setDraft({ ...draft, boostDays: e.target.value })} />
+              </Field>
+            </div>
+          </Explain>
 
           {/* Appears only once the price has actually been changed on an EXISTING plan —
               the only situation where "when does this start" is a real question. A new
@@ -9376,9 +9413,9 @@ function ProjectVersionHistory({ projectKey, onApply, onSchedule, refreshKey = 0
 
   return (
     <Card className="p-4 mb-4">
-      <div className="flex items-center gap-2 mb-1">
+      <div className="flex items-center gap-2 mb-1 flex-wrap">
         <History size={15} className="text-[var(--accent-ink)] shrink-0" />
-        <span className="font-medium text-sm flex-1">{t('apv.title', 'Version history')}</span>
+        <span className="font-medium text-sm flex-1 min-w-[10rem]">{t('apv.title', 'Version history')}</span>
         <Button size="sm" variant="ghost" onClick={record}><Plus size={13} /> {t('apv.add', 'Record a version')}</Button>
       </div>
       <p className="text-xs text-[var(--muted)] mb-3">
@@ -9492,6 +9529,28 @@ function ShowcaseQueue() {
   const [busy, setBusy] = useState('');
   const [note, setNote] = useState({});
   const [configure, setConfigure] = useState(null); // a request being approved WITH its page configured
+  // agent-bcw-rules: the Project Policy checklist, per request. Seeded from what was saved.
+  const [checks, setChecks] = useState({});
+  const checksOf = (r) => checks[r.id] || r.reviewChecks || {};
+  const needOf = (r) => ['contactVerified', 'sourceChecked', 'testsPassed', 'securityReviewed', ...(r.usesBetterInstaller ? ['installerChecked'] : []), ...(r.causeNote ? ['causeChecked'] : [])];
+  const missingOf = (r) => needOf(r).filter((k) => checksOf(r)[k] !== true);
+  const CHECK_LABEL = {
+    contactVerified: t('sq.ck.contact', 'Contact reachable, checked'),
+    sourceChecked: t('sq.ck.source', 'Source seen (open licence or access given)'),
+    testsPassed: t('sq.ck.tests', 'Tests passed'),
+    securityReviewed: t('sq.ck.security', 'Security review done'),
+    installerChecked: t('sq.ck.installer', 'BetterInstaller use checked'),
+    causeChecked: t('sq.ck.cause', 'Cause support checked'),
+  };
+  const copy = (v) => { navigator.clipboard?.writeText(v); toast.success(t('sq.ct.copied', 'Copied.')); };
+  const toggleCheck = async (r, k, v) => {
+    const next = { ...checksOf(r), [k]: v };
+    setChecks((c) => ({ ...c, [r.id]: next }));
+    // Saved as it is ticked: testing can take days, and a checklist that lives only in this tab
+    // is lost on the next reload.
+    try { await api.put(`/admin/showcase-requests/${r.id}/checks`, { checks: { [k]: v } }); }
+    catch { toast.error(t('sq.ck.fail', 'The checklist was not saved.')); }
+  };
 
   const rows = data?.requests || [];
   const counts = data?.counts || {};
@@ -9500,11 +9559,13 @@ function ShowcaseQueue() {
   const act = async (id, what) => {
     setBusy(id);
     try {
-      await api.post(`/admin/showcase-requests/${id}/${what}`, { note: note[id] || '' });
+      await api.post(`/admin/showcase-requests/${id}/${what}`, { note: note[id] || '', ...(what === 'approve' && checks[id] ? { checks: checks[id] } : {}) });
       toast.success(what === 'approve' ? t('sq.approved', 'Approved \u2014 the page is created, unpublished.') : t('sq.rejected', 'Rejected.'));
       reload();
     } catch (e) {
-      toast.error(e?.body?.error === 'slug_taken' ? t('sq.slugtaken', 'A page already uses that address \u2014 change the slug on the request first.') : t('sq.fail', 'That did not work.'));
+      toast.error(e?.body?.error === 'slug_taken' ? t('sq.slugtaken', 'A page already uses that address \u2014 change the slug on the request first.')
+        : e?.body?.error === 'checklist_incomplete' ? t('sq.ck.incomplete', 'Finish the review checklist first.')
+          : t('sq.fail', 'That did not work.'));
     } finally { setBusy(''); }
   };
 
@@ -9553,14 +9614,42 @@ function ShowcaseQueue() {
                   {r.hasProof && <a href={`/api/showcase-requests/${r.id}/proof`} target="_blank" rel="noreferrer" className="text-[var(--accent-ink)] underline">{t('sq.proof', 'Download proof')}{r.proofName ? ` (${r.proofName})` : ''}</a>}
                   {r.contactReportId && <Link to="/admin?s=reports" className="text-[var(--accent-ink)] underline">{t('sq.thread', 'Contact thread')}</Link>}
                   {!r.isOpenSource && !r.hasProof && <span className="text-warning">{t('sq.noproof', 'closed-source but no proof, do not approve')}</span>}
+                  {!r.isOpenSource && r.sourceAccess && <Badge tone="blue">{t('sq.srcaccess', 'source access offered')}</Badge>}
+                  {r.usesAi && <Badge tone="amber">{t('sq.ai', 'uses AI: tests required')}</Badge>}
+                  {r.usesBetterInstaller && <Badge tone="green">{t('sq.bi', 'BetterInstaller')}</Badge>}
+                  {r.causeNote && <span className="text-[var(--muted)]">{t('sq.cause', 'cause:')} <b>{r.causeNote}</b></span>}
                 </div>
+                {/* agent-bcw-rules: the follow-up contact (staff only), with copy buttons. */}
+                {(r.contactEmail || r.contactDiscord || r.contactUrl) && (
+                  <div className="flex items-center gap-x-3 gap-y-1 flex-wrap mt-2 text-[11px]">
+                    <span className="font-semibold">{t('sq.ct.h', 'Contact')}</span>
+                    {r.contactEmail && <span className="inline-flex items-center gap-1 min-w-0"><span className="break-all">{r.contactEmail}</span><button type="button" className="text-[var(--accent-ink)] underline" onClick={() => copy(r.contactEmail)} aria-label={t('sq.ct.copyEmail', 'Copy the e-mail')}>{t('sq.ct.copy', 'Copy')}</button></span>}
+                    {r.contactDiscord && <span className="inline-flex items-center gap-1">{t('sq.ct.discord', 'Discord:')} <b>{r.contactDiscord}</b><button type="button" className="text-[var(--accent-ink)] underline" onClick={() => copy(r.contactDiscord)} aria-label={t('sq.ct.copyDiscord', 'Copy the Discord username')}>{t('sq.ct.copy', 'Copy')}</button></span>}
+                    {r.contactUrl && <a href={safeHref(r.contactUrl)} target="_blank" rel="noreferrer" className="text-[var(--accent-ink)] underline break-all">{r.contactUrl}</a>}
+                    {r.contactLang && <Badge>{r.contactLang.toUpperCase()}</Badge>}
+                  </div>
+                )}
+                {/* agent-bcw-rules: the Project Policy checklist. Approve stays off until the
+                    required ticks are in; the server refuses too (checklist_incomplete). */}
+                {r.status === 'pending' && (
+                  <div className="flex items-center gap-x-4 gap-y-1.5 flex-wrap mt-2 text-xs">
+                    <span className="font-semibold">{t('sq.ck.h', 'Checklist')}</span>
+                    {needOf(r).map((k) => (
+                      <label key={k} className="inline-flex items-center gap-1.5 cursor-pointer">
+                        <input type="checkbox" checked={checksOf(r)[k] === true} onChange={(e) => toggleCheck(r, k, e.target.checked)} />
+                        {CHECK_LABEL[k]}
+                      </label>
+                    ))}
+                    <Link to="/legal/projects" target="_blank" className="text-[var(--accent-ink)] underline">{t('sq.ck.policy', 'Policy')}</Link>
+                  </div>
+                )}
                 {r.status === 'pending' ? (
                   <div className="flex items-center gap-2 flex-wrap mt-2.5">
                     <Input className="!text-xs flex-1 !min-w-[180px]" value={note[r.id] || ''}
                       onChange={(e) => setNote({ ...note, [r.id]: e.target.value })}
                       placeholder={t('sq.note', 'A line back to them \u2014 a rejection with no reason gets resubmitted unchanged')} />
-                    <Button size="sm" disabled={busy === r.id} onClick={() => act(r.id, 'approve')}>{t('sq.approve', 'Approve')}</Button>
-                    <Button size="sm" variant="primary" disabled={busy === r.id} onClick={() => setConfigure(r)} title={t('sq.configure.h', 'Open the full page editor prefilled from the request; approving creates the page as configured.')}><Wand2 size={13} /> {t('sq.configure', 'Approve & configure')}</Button>
+                    <Button size="sm" disabled={busy === r.id || missingOf(r).length > 0} onClick={() => act(r.id, 'approve')}>{t('sq.approve', 'Approve')}</Button>
+                    <Button size="sm" variant="primary" disabled={busy === r.id || missingOf(r).length > 0} onClick={() => setConfigure(r)} title={t('sq.configure.h', 'Open the full page editor prefilled from the request; approving creates the page as configured.')}><Wand2 size={13} /> {t('sq.configure', 'Approve & configure')}</Button>
                     <Button size="sm" variant="ghost" disabled={busy === r.id} onClick={() => act(r.id, 'reject')}>{t('sq.reject', 'Reject')}</Button>
                   </div>
                 ) : r.reviewNote ? <p className="text-[11px] text-[var(--faint)] mt-2">{t('sq.said', 'You said:')} {r.reviewNote}</p> : null}
@@ -9571,7 +9660,7 @@ function ShowcaseQueue() {
         <ShowcaseEditModal
           draft={{ name: configure.name, short: configure.short, icon: configure.icon || '', published: false, visibility: 'unlisted',
             config: { tagline: (configure.description || '').split('\n')[0].slice(0, 140), links: configure.url ? { website: configure.url } : {}, overview: configure.pitch ? { body: configure.pitch } : undefined } }}
-          onSubmit={async (payload) => { await api.post(`/admin/showcase-requests/${configure.id}/approve`, { note: note[configure.id] || '', project: payload }); }}
+          onSubmit={async (payload) => { await api.post(`/admin/showcase-requests/${configure.id}/approve`, { note: note[configure.id] || '', project: payload, ...(checks[configure.id] ? { checks: checks[configure.id] } : {}) }); }}
           onClose={() => setConfigure(null)} onDone={() => { setConfigure(null); reload(); }} />
       )}
     </Card>
@@ -11056,9 +11145,9 @@ function AdminPromo() {
       {loading ? <Loading /> : codes.length ? <div className="space-y-2">
         {codes.map((c) => (
           <Card key={c.id} className="p-4">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
               <Ticket size={18} className={c.active ? 'text-[var(--accent-ink)]' : 'text-[var(--faint)]'} />
-              <div className="flex-1 min-w-0">
+              <div className="flex-1 min-w-[12rem]">
                 <div className="flex items-center gap-2 flex-wrap"><code className="font-mono font-semibold">{c.code}</code><button onClick={() => { navigator.clipboard?.writeText(c.code); toast.success(t('common.copied', 'Copied.')); }} className="text-[var(--faint)] hover:text-[var(--accent-ink)]"><Copy size={13} /></button>{!c.active && <Badge>{t('pc.disabled', 'Disabled')}</Badge>}{c.stackable && <Badge tone="green"><Layers size={9} /> {t('pc.stackable', 'stackable')}</Badge>}{((c.assignedUserIds?.length || 0) + (c.assignedTokens?.length || 0)) > 0 && <Badge tone="primary"><Gift size={9} /> {t('pc.gift', 'gift · {n}').replace('{n}', (c.assignedUserIds?.length || 0) + (c.assignedTokens?.length || 0))}</Badge>}</div>
                 <div className="text-xs text-[var(--muted)] mt-0.5"><Badge tone="primary">{c.kind.replace('_', ' ')}</Badge> {desc(c)}{c.expiresAt ? ` · exp ${new Date(c.expiresAt).toLocaleDateString()}` : ''}{c.note ? ` · ${c.note}` : ''}</div>
               </div>
@@ -11233,7 +11322,7 @@ function AdminEvents() {
             instead of working down a form. */}
         <div className="mb-4">
           <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-2 pb-1 border-b border-[var(--line)]">{t('ev.g.event', 'The event')}</div>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 [&>*]:min-w-0">
           <Field label={t('ev.f.name', 'Name (internal)')}><Input value={f.name} onChange={(e) => set('name', e.target.value)} placeholder={t('adm2.ph.newyear', "New Year 2027")} /></Field>
           <Field label={t('ev.f.kind', 'Kind')}><Dropdown className="w-full" value={f.kind} onChange={(v) => set('kind', v)} options={[{ value: 'custom', label: t('ev.k.custom', 'Custom') }, { value: 'new_year', label: t('ev.k.ny', 'New Year') }, { value: 'national_holiday', label: t('ev.k.holiday', 'National holiday') }]} /></Field>
           {f.kind === 'national_holiday' && <Field label={t('ev.f.country', 'Country code (ISO, e.g. FR, US)')}><Input value={f.countryCode} onChange={(e) => set('countryCode', e.target.value.toUpperCase().slice(0, 2))} placeholder="FR" /></Field>}
@@ -11244,7 +11333,7 @@ function AdminEvents() {
         </div>
         <div className="mb-4">
           <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-2 pb-1 border-b border-[var(--line)]">{t('ev.g.badge', 'Announcement badge')}</div>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 [&>*]:min-w-0">
           <Field label={t('ev.f.icon', 'Announcement icon (no emoji)')}><Select value={f.badgeIcon} onChange={(e) => set('badgeIcon', e.target.value)}><option value="sparkles">Sparkles</option><option value="party">Party</option><option value="flag">Flag</option><option value="gift">Gift</option><option value="star">Star</option><option value="rocket">Rocket</option><option value="calendar">Calendar</option><option value="bell">Bell</option></Select></Field>
           <Field label={t('ev.f.titleen', 'Title (EN)')}><Input value={f.titleEn} onChange={(e) => set('titleEn', e.target.value)} placeholder={t('adm2.ph.happynewyear', "Happy New Year!")} /></Field>
           <Field label={t('ev.f.titlefr', 'Title (FR)')}><Input value={f.titleFr} onChange={(e) => set('titleFr', e.target.value)} placeholder="Bonne année !" /></Field>
@@ -11255,7 +11344,7 @@ function AdminEvents() {
         </div>
         <div className="mb-4">
           <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-2 pb-1 border-b border-[var(--line)]">{t('ev.g.fx', 'Fireworks')}</div>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 [&>*]:min-w-0">
           <Field label={t('ev.f.effect', 'Fireworks')} hint={t('ev.f.effect.h', 'New Year and national days play them by default, this is how you run one quietly.')}>
             <Dropdown className="w-full" value={f.effect || ''} onChange={(v) => set('effect', v)} options={[
               { value: '', label: t('ev.fx.auto', 'Automatic (on for New Year / national day)') },
@@ -11270,7 +11359,7 @@ function AdminEvents() {
         </div>
         <div className="mb-4">
           <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-2 pb-1 border-b border-[var(--line)]">{t('ev.g.promo', 'Promotion')}</div>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 [&>*]:min-w-0">
           <Field label={t('ev.f.promo', 'Event discount % (0 = none)')} hint={t('ev.f.promo.h', 'Creates a site-wide discount + badge for the event window, and (with a code below) an event-only code carrying this %.')}><Input type="number" min="0" max="100" value={f.promoPercent} onChange={(e) => set('promoPercent', e.target.value)} /></Field>
           <Field label={t('ev.f.code', 'Event-only promo code (optional)')} hint={t('ev.f.code.h', 'A code valid ONLY during the event window, broadcast to users in the event notification.')}><Input value={f.eventCode} onChange={(e) => set('eventCode', e.target.value.toUpperCase())} placeholder="NY2027" /></Field>
           </div>
@@ -14025,6 +14114,7 @@ const BOT_PAGES = [
   ['members', 'Members', Users],
   ['economy', 'Levels & economy', Sparkles],
   ['limits', 'Limits', Sliders],
+  ['billing', 'Plans & credits', Coins], // agent-bcw-bot
 ];
 function BotModuleRail({ page, setPage }) {
   const { t } = useI18n();
@@ -14450,7 +14540,7 @@ function MemberDatabaseCard({ cfg, set }) {
           <b className="tabular-nums">{loading ? '…' : ago(data?.lastScanAt)}</b>
           {busyScan && <span className="inline-flex items-center gap-1 text-[11px] text-[var(--accent-ink)]"><Spinner /> {t('db.mdb.scanning', 'scanning…')}</span>}
         </div>
-        <div className="ms-auto flex items-center gap-2">
+        <div className="ms-auto flex items-center gap-2 flex-wrap min-w-0">
           <Button size="sm" variant="ghost" onClick={refresh} disabled={refreshing} aria-busy={refreshing || undefined} title={t('db.mdb.refresh.h', 'Re-read the numbers below')}>
             <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} /> {refreshing ? t('db.mdb.refreshing', 'Refreshing…') : t('db.mdb.refresh', 'Refresh numbers')}
           </Button>
@@ -15168,6 +15258,7 @@ function AdminBot() {
       </div>
       </>)}
 
+      {page === 'billing' && <BotBillingAdmin />}
       {page === 'economy' && (() => {
         const eco = cfg.economy || {};
         const num = (path, def) => { const v = eco[path]; return v == null || v === '' ? def : v; };
@@ -18811,7 +18902,7 @@ function AdminAnalytics() {
           <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
             <div className="text-xs font-semibold text-[var(--faint)] uppercase">{gran === 'hour' ? t('an.traffic.hour', 'Traffic per hour · last 24h') : t('an.traffic.day', 'Traffic per day')}</div>
             <div className="flex items-center gap-3 text-[11px] text-[var(--muted)]">
-              <span className="hidden sm:flex items-center gap-1 text-[var(--faint)]"><Search size={11} /> {t('an.zoomhint', 'Ctrl + scroll to zoom')}</span>
+              <span className="hidden sm:flex only-desktop items-center gap-1 text-[var(--faint)]"><Search size={11} /> {t('an.zoomhint', 'Ctrl + scroll to zoom')}</span>
               <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-gradient-to-t from-brand to-brand-2" /> {t('an.views', 'Views')}</span><span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-info" /> {t('an.visitors', 'Visitors')}</span></div>
           </div>
           {loading ? <div className="h-40 grid place-items-center text-[var(--faint)] text-sm"><Spinner /></div> : <TrafficChart series={series} gran={gran} onZoom={onZoom} compare={data?.compare} />}
@@ -20397,7 +20488,7 @@ const NAV_ICON_CHOICES = ['Boxes', 'Music2', 'Newspaper', 'Server', 'Rocket', 'S
 // three apps (with their logos), then Blog / Docs / Server repos / Hosting as flat links.
 // Mirrors DEFAULT_ITEMS in App.jsx.
 const DEFAULT_NAV_SEED = [
-  { type: 'group', label: 'Apps', labelFr: 'Applications', to: '', icon: 'Boxes', children: [
+  { type: 'group', label: 'Projects', labelFr: 'Projets', to: '', icon: 'Orbit', children: [
     { label: 'BetterModsManager', labelFr: 'BetterModsManager', to: '/p/bmm', desc: '', descFr: '', icon: 'app:bmm' },
     { label: 'BetterSoundMaker', labelFr: 'BetterSoundMaker', to: '/p/bsm', desc: '', descFr: '', icon: 'app:bsm' },
     { label: 'BetterInstaller', labelFr: 'BetterInstaller', to: '/p/installer', desc: '', descFr: '', icon: 'app:bi' },
@@ -25089,7 +25180,7 @@ function AdminSettings() {
               <span className="text-[10px] text-[var(--faint)] tabular-nums shrink-0">{g.keys.length}</span>
             </div>
             {isOpen && (
-            <div className="p-3 grid md:grid-cols-2 gap-3">
+            <div className="p-3 grid lg:grid-cols-2 gap-3 [&>*]:min-w-0">
               {g.keys.map(([k, label, desc, kind, nativeUnit]) => {
                 const L = t(`hs.l.${k}`, label);
                 const D = t(`hs.d.${k}`, desc);

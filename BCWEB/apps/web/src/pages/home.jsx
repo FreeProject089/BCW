@@ -486,7 +486,7 @@ export function Home({ draft: draftProp = null }) {
           <h1 className="anim-slide font-extrabold leading-[0.98] tracking-[-0.035em] text-[clamp(2.25rem,9.5vw,7rem)]" style={{ animationDelay: '80ms' }}>
             <Marker delay={560}>{t('home.brand')}<span className="gradient-text">{t('home.brand2', 'Community')}</span></Marker>
           </h1>
-          <p className="anim-slide plate text-[var(--muted)] text-lg md:text-xl max-w-xl mx-auto mt-7 leading-relaxed" style={{ animationDelay: '160ms' }}>{t('home.sub2', 'Catalogues, presets and Server-Repos for every Better* project, browse them, publish your own, and host them here.')}</p>
+          <p className="anim-slide plate text-[var(--muted)] text-lg md:text-xl max-w-xl mx-auto mt-7 leading-relaxed" style={{ animationDelay: '160ms' }}>{t('home.sub3', 'One hub for every Better* project, and yours can be part of it.')}</p>
           <div className="anim-slide flex flex-wrap gap-3 justify-center mt-10" style={{ animationDelay: '240ms' }}>
             {heroCtas(user, t).map((c) => (
               <Link key={c.to} to={c.to}>

@@ -444,7 +444,11 @@ export default function DevConfig() {
   }
   return (
     <div className="max-w-3xl mx-auto py-8">
-      <Link to="/dev" className="text-[12px] text-[var(--muted)] hover:text-[var(--text)] inline-flex items-center gap-1 mb-3"><ArrowLeft size={13} /> {t('devc.back', 'Developer hub')}</Link>
+      {/* agent-bcw-nav: the way back, and the way on: a key is made to be tried. */}
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <Link to="/dev" className="text-[12px] text-[var(--muted)] hover:text-[var(--text)] inline-flex items-center gap-1"><ArrowLeft size={13} /> {t('devc.back', 'Developer hub')}</Link>
+        <Link to="/dev/tools#try" className="text-[12px] text-[var(--accent-ink)] hover:underline inline-flex items-center gap-1">{t('devc.try', 'Try a key in the console')}</Link>
+      </div>
       <h1 className="text-2xl font-bold mb-1">{t('devc.title', 'Credentials')}</h1>
       <p className="text-sm text-[var(--muted)] mb-6">
         {t('devc.sub', 'Two different things, for two different jobs: a key acts as you, an app acts for other people with their permission.')}

@@ -901,6 +901,11 @@ export function startSweeper(app) {
       await import('./notify.mjs').then(({ sweepNotifications }) => sweepNotifications(p, app.log))
         .catch((e) => app.log.warn({ e: String(e) }, 'notification sweep failed'));
       await sweepScheduledPrices(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'scheduled price sweep failed'));
+      // agent-bcw-bot: expired bot credit lots, and purchased Discord roles whose grace ran out.
+      await import('./bot-billing.mjs').then(({ expireCredits }) => expireCredits(p, new Date(), app.log))
+        .catch((e) => app.log.warn({ e: String(e) }, 'bot credit expiry failed'));
+      await import('./purchased-roles.mjs').then(({ runDueRoleRemovals }) => runDueRoleRemovals(p, new Date(), app.log))
+        .catch((e) => app.log.warn({ e: String(e) }, 'purchased role removal failed'));
       // N-hosting (agent-hosting-N): loyalty (tenure) coupons on Stripe-billed hosting, hourly.
       await (async () => {
         const sk = await stripe();
@@ -946,6 +951,14 @@ export function startSweeper(app) {
         const { cfg } = await loadFeatures();
         await pruneAiUsage(p, cfg.retentionDays, app.log);
       })().catch((e) => app.log.warn({ e: String(e) }, 'AI usage prune failed'));
+      // agent-laya-triage: feedback triage backfill. Rows older than the feature get the rules'
+      // triage; rows Laya has not seen yet are refined once it is up. Bounded (20 + 20 per
+      // tick), stops at the first "Laya down/busy", staff-set rows never selected. Counts only
+      // in the log, never report text.
+      await import('./feedback-triage.mjs').then(({ backfillTriage }) => backfillTriage(p, { log: app.log }))
+        .then((r) => { if (r.ruled || r.refined || r.confirmed) app.log.info(`[sweeper] feedback triage: ${r.ruled} ruled, ${r.refined} refined by Laya, ${r.confirmed} confirmed${r.stoppedBy ? ` (stopped: ${r.stoppedBy})` : ''}`); })
+        .catch((e) => app.log.warn({ e: String(e?.message || e).slice(0, 120) }, 'feedback triage backfill failed'));
+      // fin agent-laya-triage
       // Pictures uploaded since the last tick get their perceptual hash and, if they look
       // like another account's, a flag for staff.
       await sweepMediaHashes(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'media hash sweep failed'));

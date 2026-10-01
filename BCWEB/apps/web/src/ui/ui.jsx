@@ -725,7 +725,7 @@ export function DialogProvider({ children }) {
         {/* Said HERE, in the thing it skips. A shortcut nobody is told about is not a
             shortcut, it is a surprise the first time somebody leans on Shift. */}
         {state?.kind === 'confirm' && !getForceConfirm() && (
-          <p className="text-[11px] text-[var(--faint)] mt-3">
+          <p className="text-[11px] text-[var(--faint)] mt-3 only-desktop">
             Hold <kbd className="px-1 py-0.5 rounded border border-[var(--line)] font-mono">Shift</kbd> while clicking to skip this next time.
           </p>
         )}

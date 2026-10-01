@@ -17,23 +17,58 @@ import { useI18n } from '../i18n.jsx';
 const HARD_MAX = 90;
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, Math.round(Number(v) || 0)));
 
+// agent-bcw-pools: the SIMPLE form, offered first. "Every N months subscribed, the month costs
+// X % less, up to Y %. Cancel, and the price is full again." The server derives the steps from
+// it (lib/loyalty.mjs simpleTiers) and forces the continuous rule; this mirrors the derivation
+// for the preview only.
+function simpleSteps(every, step, max) {
+  const e = clamp(every, 1, 24); const s = clamp(step, 1, 50); const m = clamp(max, 0, HARD_MAX);
+  const out = [];
+  for (let k = 1; out.length < 12 && k * e <= 120; k++) {
+    const pct = Math.min(k * s, m);
+    out.push({ months: k * e, pct });
+    if (pct >= m) break;
+  }
+  return out;
+}
+
+/** The body PUT /admin/hosting/loyalty takes, for a policy edited in `mode`. Also what "unsaved
+ *  changes" compares against, so opening the screen is never itself a change. */
+function bodyFrom(pol, mode, simple) {
+  const max = clamp(pol.maxPct, 0, HARD_MAX);
+  if (mode === 'simple') {
+    const sm = { everyMonths: clamp(simple.everyMonths, 1, 24), stepPct: clamp(simple.stepPct, 1, 50) };
+    return { enabled: !!pol.enabled, tiers: simpleSteps(sm.everyMonths, sm.stepPct, max), maxPct: max, appliesTo: pol.appliesTo || 'repos', lapseResets: true, simple: sm };
+  }
+  const tiers = [...pol.tiers].map((x) => ({ months: clamp(x.months, 1, 120), pct: clamp(x.pct, 0, HARD_MAX) })).sort((a, b) => a.months - b.months);
+  return { enabled: !!pol.enabled, tiers, maxPct: max, appliesTo: pol.appliesTo || 'repos', lapseResets: pol.lapseResets !== false, simple: null };
+}
+
 export default function HostingLoyaltyEditor() {
   const { t } = useI18n(); const toast = useToast();
   const [pol, setPol] = useState(null);
   const [saved, setSaved] = useState(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(false);
+  const [mode, setMode] = useState('simple');
+  const [simple, setSimple] = useState({ everyMonths: 3, stepPct: 5 });
 
   useEffect(() => {
     api.get('/admin/hosting/loyalty')
-      .then((r) => { setPol(r.loyalty); setSaved(JSON.stringify(r.loyalty)); })
+      .then((r) => {
+        const sm = r.loyalty.simple || { everyMonths: 3, stepPct: 5 };
+        // Hand-written steps that are already on stay in the custom editor; anything else opens simple.
+        const m = r.loyalty.simple || !r.loyalty.enabled ? 'simple' : 'custom';
+        setPol(r.loyalty); setSimple(sm); setMode(m);
+        // A policy that is off is not "changed" by being shown in the simple form.
+        setSaved(JSON.stringify(bodyFrom(r.loyalty, m, sm)));
+      })
       .catch(() => setErr(true));
   }, []);
 
   if (err) return <Card className="p-5 mt-6 text-sm text-[var(--muted)]">{t('adm.loyal.err', 'Could not load the loyalty pricing settings.')}</Card>;
   if (!pol) return <div className="py-6 grid place-items-center"><Spinner /></div>;
 
-  const dirty = JSON.stringify(pol) !== saved;
   const setTier = (i, k, v) => setPol((p) => ({ ...p, tiers: p.tiers.map((x, j) => (j === i ? { ...x, [k]: v } : x)) }));
   const addTier = () => setPol((p) => {
     const last = p.tiers[p.tiers.length - 1];
@@ -43,110 +78,114 @@ export default function HostingLoyaltyEditor() {
 
   // What the policy will actually charge, step by step, with the cap applied: the sentence an
   // admin checks before saving, in the same terms the public page prints.
-  const sorted = [...pol.tiers].map((x) => ({ months: clamp(x.months, 1, 120), pct: clamp(x.pct, 0, HARD_MAX) })).sort((a, b) => a.months - b.months);
   const max = clamp(pol.maxPct, 0, HARD_MAX);
+  const body = () => bodyFrom(pol, mode, simple);
+  const sorted = body().tiers;
+  const continuous = mode === 'simple' || pol.lapseResets !== false;
+  const dirty = JSON.stringify(body()) !== saved;
 
   const save = async () => {
     setBusy(true);
     try {
-      const r = await api.put('/admin/hosting/loyalty', { enabled: !!pol.enabled, tiers: sorted, maxPct: max, appliesTo: pol.appliesTo || 'repos', lapseResets: pol.lapseResets !== false });
-      setPol(r.loyalty); setSaved(JSON.stringify(r.loyalty));
+      const r = await api.put('/admin/hosting/loyalty', body());
+      const sm = r.loyalty.simple || simple;
+      setPol(r.loyalty); setSimple(sm); setSaved(JSON.stringify(bodyFrom(r.loyalty, mode, sm)));
       toast.success(t('adm.loyal.saved', 'Loyalty pricing saved. It applies from each subscription\'s next renewal.'));
     } catch { toast.error(t('common.failed', 'Failed.')); }
     finally { setBusy(false); }
   };
+  const num = (v) => (v === '' ? '' : Math.round(Number(v)));
 
   return (
-    <Card className="p-5 sm:p-6 mt-6">
+    <Card className="p-5 sm:p-6 mt-6" data-testid="loyalty-editor">
       <div className="flex items-start gap-2.5">
         <TrendingDown size={18} className="text-[var(--accent-ink)] shrink-0 mt-[2px]" aria-hidden />
         <div className="min-w-0 flex-1">
           <h3 className="font-semibold text-[15px]">{t('adm.loyal.t', 'Loyalty pricing')}</h3>
           <p className="text-[13px] text-[var(--muted)] mt-1 leading-relaxed max-w-3xl">
-            {t('adm.loyal.s', 'The longer a hosting subscription runs without a break, the less its renewals cost. The discount comes on top of the term price and is applied at renewal, never to a term already paid.')}
+            {t('adm.loyal.one', 'The longer someone stays subscribed, the cheaper each month; if they cancel, the price goes back to full.')}
           </p>
-          <Explain className="text-[12.5px] mt-1.5 max-w-3xl" label={t('adm.loyal.how', 'What "without a break" means')}>
-            {t('adm.loyal.rule2', 'The count is in calendar months from the day the subscription is first paid (a prepaid term of N months ends the same day N months later, so a subscription paid without a gap has exactly as many months as it paid for). What a gap does is the choice below. Automatic renewals get the discount as a Stripe coupon placed on the subscription before it renews (checked every hour, and right after each renewal), for future invoices only; renewals paid by hand get it priced in, at the step reached on the day the new term starts. Bot-only plans are not included.')}
-          </Explain>
         </div>
       </div>
 
-      <label className="mt-5 flex items-center gap-2 text-sm font-medium cursor-pointer w-fit">
-        <input type="checkbox" checked={!!pol.enabled} onChange={(e) => setPol((p) => ({ ...p, enabled: e.target.checked }))} />
-        {t('adm.loyal.on', 'Offer loyalty discounts')}
-      </label>
-
-      {/* hosting2 (agent-hosting): which subscriptions earn it. */}
-      <fieldset className="mt-4 max-w-xl">
-        <legend className="text-sm font-medium mb-1.5">{t('adm.loyal2.scope', 'Who gets it')}</legend>
-        <div className="grid gap-1.5 text-[13px]">
-          {[
-            ['repos', t('adm.loyal2.repos', 'Storage hosting: the pools and repos sold on the Hosting page')],
-            ['catalogs', t('adm.loyal2.catalogs', 'Catalogue file hosting: the monthly subscription of a paid catalogue upload')],
-            ['both', t('adm.loyal2.both', 'Both')],
-          ].map(([v, label]) => (
-            <label key={v} className="flex items-start gap-2 cursor-pointer">
-              <input type="radio" name="loyal-scope" className="mt-[3px]" checked={(pol.appliesTo || 'repos') === v} onChange={() => setPol((p) => ({ ...p, appliesTo: v }))} />
-              <span>{label}</span>
-            </label>
+      <div className="mt-4 flex items-center gap-4 flex-wrap">
+        <label className="flex items-center gap-2 text-sm font-medium cursor-pointer w-fit">
+          <input type="checkbox" checked={!!pol.enabled} onChange={(e) => setPol((p) => ({ ...p, enabled: e.target.checked }))} />
+          {t('adm.loyal.on', 'Offer loyalty discounts')}
+        </label>
+        <div className="inline-flex rounded-lg border border-[var(--line)] p-0.5 text-xs" role="group" aria-label={t('adm.loyal.mode', 'How the steps are set')}>
+          {[['simple', t('adm.loyal.m.simple', 'Simple')], ['custom', t('adm.loyal.m.custom', 'Custom steps')]].map(([m, label]) => (
+            <button key={m} type="button" aria-pressed={mode === m} onClick={() => setMode(m)}
+              className={`px-2.5 py-1 rounded-md ${mode === m ? 'tint-primary font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{label}</button>
           ))}
         </div>
-      </fieldset>
-
-      {/* hosting2 (agent-hosting): what a gap does to the count. */}
-      <fieldset className="mt-4 max-w-xl">
-        <legend className="text-sm font-medium mb-1.5">{t('adm.loyal2.lapse', 'When a renewal comes late, or after a cancellation')}</legend>
-        <div className="grid gap-1.5 text-[13px]">
-          <label className="flex items-start gap-2 cursor-pointer">
-            <input type="radio" name="loyal-lapse" className="mt-[3px]" checked={pol.lapseResets !== false} onChange={() => setPol((p) => ({ ...p, lapseResets: true }))} />
-            <span>{t('adm.loyal2.reset', 'The count starts again from zero (continuous): after a cancellation, or a renewal later than the grace period (Hosting settings, 72 hours by default for a term renewed by hand, a week after a failed card).')}</span>
-          </label>
-          <label className="flex items-start gap-2 cursor-pointer">
-            <input type="radio" name="loyal-lapse" className="mt-[3px]" checked={pol.lapseResets === false} onChange={() => setPol((p) => ({ ...p, lapseResets: false }))} />
-            <span>{t('adm.loyal2.pause', 'The count only pauses (cumulative): the unpaid months are not counted, and it resumes where it stopped at the next renewal.')}</span>
-          </label>
-        </div>
-      </fieldset>
-
-      <div className="mt-4 grid gap-2 max-w-xl">
-        <div className="grid grid-cols-[1fr_1fr_auto] gap-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)]">
-          <span>{t('adm.loyal.months', 'After (months)')}</span>
-          <span>{t('adm.loyal.pct', 'Discount (%)')}</span>
-          <span className="w-9" aria-hidden />
-        </div>
-        {pol.tiers.map((x, i) => (
-          <div key={i} className="grid grid-cols-[1fr_1fr_auto] gap-2 items-center">
-            <Input type="number" min={1} max={120} value={x.months} aria-label={t('adm.loyal.months', 'After (months)')}
-              onChange={(e) => setTier(i, 'months', e.target.value)} />
-            <Input type="number" min={0} max={HARD_MAX} value={x.pct} aria-label={t('adm.loyal.pct', 'Discount (%)')}
-              onChange={(e) => setTier(i, 'pct', e.target.value)} />
-            <Button size="sm" variant="ghost" className="!w-9 !px-0" onClick={() => dropTier(i)} aria-label={t('adm.loyal.drop', 'Remove this step')} title={t('adm.loyal.drop', 'Remove this step')}>
-              <Trash2 size={14} />
-            </Button>
-          </div>
-        ))}
-        {pol.tiers.length < 12 && (
-          <Button size="sm" className="w-fit" onClick={addTier}><Plus size={14} /> {t('adm.loyal.add', 'Add a step')}</Button>
-        )}
       </div>
 
-      <label className="mt-5 text-sm flex flex-col gap-1 max-w-xs">
-        <span className="font-medium">{t('adm.loyal.max', 'Maximum discount (%)')}</span>
-        <Input type="number" min={0} max={HARD_MAX} value={pol.maxPct} onChange={(e) => setPol((p) => ({ ...p, maxPct: e.target.value }))} />
-        <span className="text-[12px] text-[var(--muted)]">{t('adm.loyal.max.h', 'A hard ceiling: a step above it is sold at this figure. The server never goes past {n}%, whatever is set.').replace('{n}', HARD_MAX)}</span>
-      </label>
+      {mode === 'simple' ? (
+        <div className="mt-4 text-sm flex flex-wrap items-center gap-x-2 gap-y-2 max-w-3xl" data-testid="loyalty-simple">
+          <span>{t('adm.loyal.s.every', 'Every')}</span>
+          <Input type="number" min={1} max={24} className="!w-20" value={simple.everyMonths} aria-label={t('adm.loyal.s.months', 'Months')} onChange={(e) => setSimple((x) => ({ ...x, everyMonths: num(e.target.value) }))} />
+          <span>{t('adm.loyal.s.mid', 'months subscribed, the month costs')}</span>
+          <Input type="number" min={1} max={50} className="!w-20" value={simple.stepPct} aria-label={t('adm.loyal.s.step', 'Percent less per step')} onChange={(e) => setSimple((x) => ({ ...x, stepPct: num(e.target.value) }))} />
+          <span>{t('adm.loyal.s.less', '% less, up to')}</span>
+          <Input type="number" min={0} max={HARD_MAX} className="!w-20" value={pol.maxPct} aria-label={t('adm.loyal.max', 'Maximum discount (%)')} onChange={(e) => setPol((p) => ({ ...p, maxPct: e.target.value }))} />
+          <span>%.</span>
+        </div>
+      ) : (
+        <>
+          {/* hosting2 (agent-hosting): what a gap does to the count. */}
+          <fieldset className="mt-4 max-w-xl">
+            <legend className="text-sm font-medium mb-1.5">{t('adm.loyal2.lapse', 'When a renewal comes late, or after a cancellation')}</legend>
+            <div className="grid gap-1.5 text-[13px]">
+              <label className="flex items-start gap-2 cursor-pointer">
+                <input type="radio" name="loyal-lapse" className="mt-[3px]" checked={pol.lapseResets !== false} onChange={() => setPol((p) => ({ ...p, lapseResets: true }))} />
+                <span>{t('adm.loyal2.reset.s', 'The count starts again from zero (continuous).')}</span>
+              </label>
+              <label className="flex items-start gap-2 cursor-pointer">
+                <input type="radio" name="loyal-lapse" className="mt-[3px]" checked={pol.lapseResets === false} onChange={() => setPol((p) => ({ ...p, lapseResets: false }))} />
+                <span>{t('adm.loyal2.pause.s', 'The count only pauses (cumulative): unpaid months are not counted.')}</span>
+              </label>
+            </div>
+          </fieldset>
+          <div className="mt-4 grid gap-2 max-w-xl">
+            <div className="grid grid-cols-[1fr_1fr_auto] gap-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)]">
+              <span>{t('adm.loyal.months', 'After (months)')}</span>
+              <span>{t('adm.loyal.pct', 'Discount (%)')}</span>
+              <span className="w-9" aria-hidden />
+            </div>
+            {pol.tiers.map((x, i) => (
+              <div key={i} className="grid grid-cols-[1fr_1fr_auto] gap-2 items-center">
+                <Input type="number" min={1} max={120} value={x.months} aria-label={t('adm.loyal.months', 'After (months)')}
+                  onChange={(e) => setTier(i, 'months', e.target.value)} />
+                <Input type="number" min={0} max={HARD_MAX} value={x.pct} aria-label={t('adm.loyal.pct', 'Discount (%)')}
+                  onChange={(e) => setTier(i, 'pct', e.target.value)} />
+                <Button size="sm" variant="ghost" className="!w-9 !px-0" onClick={() => dropTier(i)} aria-label={t('adm.loyal.drop', 'Remove this step')} title={t('adm.loyal.drop', 'Remove this step')}>
+                  <Trash2 size={14} />
+                </Button>
+              </div>
+            ))}
+            {pol.tiers.length < 12 && (
+              <Button size="sm" className="w-fit" onClick={addTier}><Plus size={14} /> {t('adm.loyal.add', 'Add a step')}</Button>
+            )}
+          </div>
+          <label className="mt-4 text-sm flex flex-col gap-1 max-w-xs">
+            <span className="font-medium">{t('adm.loyal.max', 'Maximum discount (%)')}</span>
+            <Input type="number" min={0} max={HARD_MAX} value={pol.maxPct} onChange={(e) => setPol((p) => ({ ...p, maxPct: e.target.value }))} />
+          </label>
+        </>
+      )}
 
-      <div className="mt-5 text-[13px] rounded-lg border border-[var(--line)] p-3 max-w-xl">
+      <div className="mt-5 text-[13px] rounded-lg border border-[var(--line)] p-3 max-w-xl" data-testid="loyalty-preview">
         <div className="font-medium mb-1.5">{t('adm.loyal.preview', 'What renewals will get')}</div>
         {!pol.enabled ? (
-          <div className="text-[var(--muted)]">{t('adm.loyal.off', 'Off: every renewal is billed at the normal term price, and the public page shows no loyalty steps.')}</div>
+          <div className="text-[var(--muted)]">{t('adm.loyal.off2', 'Off: every renewal is billed at the normal price.')}</div>
         ) : !sorted.some((x) => x.pct > 0) ? (
           <div className="text-[var(--muted)]">{t('adm.loyal.none', 'No step gives a discount yet.')}</div>
         ) : (
           <ul className="flex flex-col gap-1">
             {sorted.map((x) => (
               <li key={x.months} className="flex justify-between gap-3 tabular-nums">
-                <span className="text-[var(--muted)]">{pol.lapseResets === false ? t('adm.loyal2.rowpaid', 'After {n} months paid for').replace('{n}', x.months) : t('adm.loyal.row', 'After {n} months without a break').replace('{n}', x.months)}</span>
+                <span className="text-[var(--muted)]">{continuous ? t('adm.loyal.row', 'After {n} months without a break').replace('{n}', x.months) : t('adm.loyal2.rowpaid', 'After {n} months paid for').replace('{n}', x.months)}</span>
                 <span className="font-semibold">{`−${Math.min(x.pct, max)}%`}{x.pct > max ? ` ${t('adm.loyal.capped', '(capped)')}` : ''}</span>
               </li>
             ))}
@@ -154,11 +193,27 @@ export default function HostingLoyaltyEditor() {
         )}
       </div>
 
-      {/* The Payments policy treats a lower or removed step as a price increase: said here,
-          where the change is made, because nothing on the server holds the change back. */}
-      <p className="mt-4 text-[12px] text-[var(--muted)] max-w-xl leading-relaxed">
-        {t('adm.loyal2.warn', 'Lowering a step, narrowing who gets it, switching to the continuous rule or turning it off is a price increase for those who would have got it: the Payments & Refunds policy promises them the same notice as any price change. Announce it first.')}
-      </p>
+      <Explain className="text-[12.5px] mt-3 max-w-3xl" label={t('adm.loyal.details', 'Details: who gets it, when it applies')}>
+        {/* hosting2 (agent-hosting): which subscriptions earn it. */}
+        <fieldset className="mt-2 max-w-xl">
+          <legend className="text-sm font-medium mb-1.5">{t('adm.loyal2.scope', 'Who gets it')}</legend>
+          <div className="grid gap-1.5 text-[13px]">
+            {[
+              ['repos', t('adm.loyal2.repos', 'Storage hosting: the pools and repos sold on the Hosting page')],
+              ['catalogs', t('adm.loyal2.catalogs', 'Catalogue file hosting: the monthly subscription of a paid catalogue upload')],
+              ['both', t('adm.loyal2.both', 'Both')],
+            ].map(([v, label]) => (
+              <label key={v} className="flex items-start gap-2 cursor-pointer">
+                <input type="radio" name="loyal-scope" className="mt-[3px]" checked={(pol.appliesTo || 'repos') === v} onChange={() => setPol((p) => ({ ...p, appliesTo: v }))} />
+                <span>{label}</span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+        <p className="mt-3">{t('adm.loyal.rule3', 'Months are calendar months from the first payment. A late renewal inside the grace period keeps the count. Automatic renewals get the discount as a Stripe coupon before they renew; renewals paid by hand get it priced in. Never on a term already paid. Bot-only plans are not included.')}</p>
+        {/* The Payments policy treats a lower or removed step as a price increase. */}
+        <p className="mt-2">{t('adm.loyal2.warn', 'Lowering a step, narrowing who gets it, switching to the continuous rule or turning it off is a price increase for those who would have got it: the Payments & Refunds policy promises them the same notice as any price change. Announce it first.')}</p>
+      </Explain>
 
       <div className="mt-5 flex items-center gap-3">
         <Button variant="primary" disabled={busy || !dirty} onClick={save}>{busy ? <Spinner /> : <Save size={15} />} {t('common.save', 'Save')}</Button>

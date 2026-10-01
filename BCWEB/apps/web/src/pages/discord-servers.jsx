@@ -1,15 +1,13 @@
-import { safeHref } from '../lib/safe-href.js';
 import { useCallback, useEffect, useState } from 'react';
 import { MessageSquare, Server, Shield, Database, Users, Check, ScrollText, Sparkles, Mic, Plus, Trash2, Ban, Clock, UserMinus, Newspaper, ShieldAlert } from 'lucide-react';
 import { AutomodEditor, LogsEditor, WarnLadderEditor, normAutomod, normLadder, normLogs, logsForSave, ladderForSave } from './discord-automod.jsx';
 import { WelcomeEditor, normWelcome } from './discord-welcome.jsx';
 import { ChannelPicker, RolePicker, CHANNEL_TYPES } from './discord-pickers.jsx';
-import { DiscordIcon } from '../ui/brand.jsx';
 import { SP, Panel, Head, Eyebrow } from '../ui/discord-kit.jsx';
 import { api, uploadImage } from '../lib/api.js';
 import { planErrorText } from '../ui/bot-plan-labels.js'; // M-plans (agent-plans-M)
 import { useI18n } from '../i18n.jsx';
-import { Card, Button, Badge, Input, Field, Spinner, EmptyState, useToast, useDialog, Textarea, Select, ColorInput, Explain } from '../ui/ui.jsx';
+import { Button, Badge, Input, Field, Spinner, EmptyState, useToast, useDialog, Textarea, Select, ColorInput, Explain } from '../ui/ui.jsx';
 
 // B10 — the user-facing copy of the per-server Discord dashboard. A logged-in user who owns
 // (or holds Manage-Server on) a Discord server the bot is in configures it here: no admin
@@ -179,14 +177,18 @@ function GuildMembers({ guildId }) {
 }
 
 // One server's editable config. Fetches its own detail so a save reflects immediately.
-function GuildConfig({ guildId, onSaved }) {
+// agent-bcw-bot: the new dashboard (discord-dashboard.jsx) hosts it one module at a time:
+// `section` picks the module, `embedded` drops the hero and the section bar (the host draws
+// its own), `onPaywall` turns a 402 into the plans prompt instead of a toast.
+export function GuildConfig({ guildId, onSaved, section: sectionProp, embedded = false, onPaywall }) {
   const { t, lang } = useI18n();
   const toast = useToast();
   const [data, setData] = useState(null);
   const [draft, setDraft] = useState(null);
   const [busy, setBusy] = useState(false);
   const [buyingBanner, setBuyingBanner] = useState(false);
-  const [section, setSection] = useState('automod'); // which config section is shown
+  const [sectionState, setSection] = useState('automod'); // which config section is shown
+  const section = sectionProp || sectionState;
   // What the member picker searches: this server's stored roster. The endpoint pins the query
   // to the guild id server-side, so it can never answer with another server's members.
   const memberSearch = useCallback((q) => api.get(`/me/discord/guilds/${guildId}/members?q=${encodeURIComponent(q || '')}&take=15`).then((r) => r.members || []).catch(() => []), [guildId]);
@@ -270,6 +272,7 @@ function GuildConfig({ guildId, onSaved }) {
       onSaved?.();
     } catch (x) {
       // M-plans: a 402 names the feature or the limit the server's plan does not cover.
+      if (onPaywall && (x?.data?.error === 'plan_required' || x?.data?.error === 'plan_limit')) { onPaywall(x.data); return; }
       toast.error(planErrorText(t, x?.data) || (x?.data?.error === 'log_channel_required' ? t('ds.needchannel', 'Set a log channel first.')
         : x?.data?.error === 'not_found' ? t('ds.gone', 'You can no longer manage this server')
         : t('common.failed', 'Failed.')));
@@ -293,6 +296,7 @@ function GuildConfig({ guildId, onSaved }) {
   const here = SECTIONS.find((x) => x.id === section) || SECTIONS[0];
   return (
     <div className={SP.page}>
+      {!embedded && <>
       {/* Server hero — the same idiom as the admin bot dashboard: identity tile with a live
           dot, what you are here, then stat tiles. One card that says "this server, this bot,
           this state" before any control. */}
@@ -339,6 +343,7 @@ function GuildConfig({ guildId, onSaved }) {
         ))}
       </div>
       </div>
+      </>}
 
       {/* Automod + the warn ladder. The editors are shared with the admin's bot tab so the
           two doors save one shape. */}
@@ -585,7 +590,7 @@ function GuildConfig({ guildId, onSaved }) {
 // Inline Discord account linking — the same code-redeem the profile page uses, so a server
 // owner can link without leaving the dashboard. Calls onLinked() so the parent re-fetches
 // its guild list once the account is attached.
-function DiscordLinkInline({ onLinked }) {
+export function DiscordLinkInline({ onLinked }) {
   const { t } = useI18n();
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
@@ -611,66 +616,5 @@ function DiscordLinkInline({ onLinked }) {
   );
 }
 
-export function MyDiscordServers() {
-  const { t } = useI18n();
-  const [state, setState] = useState(null); // { linked, guilds }
-  const [sel, setSel] = useState(null);
-  const load = () => api.get('/me/discord/guilds').then((r) => { setState(r); setSel((s) => s || r.guilds?.[0]?.guildId || null); }).catch(() => setState({ linked: false, guilds: [] }));
-  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
-  if (!state) return <div className="py-10 flex justify-center"><Spinner /></div>;
-  // The bot's OAuth2 invite URL, built from its application id. A curated permission set (manage
-  // roles/channels, kick/ban/timeout, move members, send/embed/history/view) — not Administrator.
-  const inviteUrl = state.appId ? `https://discord.com/oauth2/authorize?client_id=${state.appId}&permissions=1099796925462&scope=bot%20applications.commands` : null;
-  const InviteBtn = inviteUrl ? <a href={safeHref(inviteUrl)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-medium text-white bg-[#5865F2] hover:opacity-90 transition"><DiscordIcon size={16} className="text-white" /> {t('ds.invite', 'Invite the bot')}</a> : null;
-  if (!state.linked) {
-    return (
-      <div className="max-w-md mx-auto text-center py-8">
-        <span className="grid place-items-center w-14 h-14 rounded-2xl bg-[#5865F2]/10 mx-auto mb-3"><DiscordIcon size={26} className="text-[#5865F2]" /></span>
-        <h2 className="font-semibold text-lg">{t('ds.nolink', 'Link your Discord account')}</h2>
-        <p className="text-sm text-[var(--muted)] mt-1 mb-4">{t('ds.nolink.s2', 'Run')} <code className="px-1 rounded bg-[var(--surface-2)]">/link</code> {t('ds.nolink.s3', 'in any server the bot is in to get a code, then paste it here, no need to leave this page. The servers you own or manage then appear here.')}</p>
-        {/* Link right here rather than bouncing to the profile page — this IS where someone
-            arrives wanting to manage their server. Same redeem flow. */}
-        <DiscordLinkInline onLinked={load} />
-        <div className="mt-4 pt-4 border-t border-[var(--line)] flex items-center justify-center gap-2 flex-wrap">
-          <span className="text-xs text-[var(--faint)]">{t('ds.nolink.notin', 'Bot not in your server yet?')}</span>
-          {InviteBtn}
-        </div>
-      </div>
-    );
-  }
-  if (!state.guilds.length) {
-    return <EmptyState icon={MessageSquare} title={t('ds.noguilds', 'No servers to manage yet')}
-      sub={t('ds.noguilds.s', 'You’ll see a server here once our Discord bot is in a server you own or have Manage Server on. Add it below.')}>
-      {InviteBtn}
-    </EmptyState>;
-  }
-  return (
-    <div>
-      <div className="flex items-center gap-2 mb-4 flex-wrap">
-        <MessageSquare size={16} className="text-[var(--accent-ink)]" /><h2 className="font-semibold">{t('ds.title', 'My Discord servers')}</h2>
-        {inviteUrl && <a href={safeHref(inviteUrl)} target="_blank" rel="noreferrer" className="ms-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-white bg-[#5865F2] hover:opacity-90 transition"><DiscordIcon size={15} className="text-white" /> {t('ds.invite', 'Invite the bot')}</a>}
-      </div>
-      <div className="grid md:grid-cols-[minmax(0,240px)_1fr] gap-4">
-        {/* Server picker — a column on desktop, a scrolling row on mobile. */}
-        <div className="flex md:flex-col gap-2 overflow-x-auto md:overflow-visible pb-1 md:pb-0">
-          {state.guilds.map((g) => (
-            <button key={g.guildId} type="button" onClick={() => setSel(g.guildId)}
-              className={`text-start rounded-xl border px-3 py-2.5 shrink-0 md:shrink w-56 md:w-auto transition ${sel === g.guildId ? 'border-[var(--primary)] tint-primary' : 'border-[var(--line)] hover:b-primary'}`}>
-              <div className="text-sm font-medium truncate flex items-center gap-2">
-                {g.icon ? <img src={g.icon} alt="" className="w-6 h-6 rounded-lg shrink-0 object-cover" /> : <span className="grid place-items-center w-6 h-6 rounded-lg bg-[#5865F2]/15 shrink-0"><Server size={12} className="text-[#5865F2]" /></span>}
-                <span className="truncate" title={g.name || g.guildId}>{g.name || g.guildId}</span>
-              </div>
-              <div className="text-[11px] text-[var(--faint)] mt-0.5 flex items-center gap-2">
-                <span>{(g.memberCount ?? 0).toLocaleString()} {t('ds.membersshort', 'members')}</span>
-                {g.storedMembers != null && <span>· {g.storedMembers.toLocaleString()} {t('ds.hero.stored', 'stored')}</span>}
-              </div>
-            </button>
-          ))}
-        </div>
-        <Card className="p-4 min-w-0">
-          {sel ? <GuildConfig guildId={sel} onSaved={load} /> : <div className="text-sm text-[var(--muted)]">{t('ds.pick', 'Pick a server.')}</div>}
-        </Card>
-      </div>
-    </div>
-  );
-}
+// agent-bcw-bot: the server list and its dashboard moved to discord-dashboard.jsx (rebuilt:
+// server rail, overview, modules grid with plan badges, per-module pages, plan and credits).

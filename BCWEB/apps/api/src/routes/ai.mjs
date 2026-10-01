@@ -182,9 +182,25 @@ export default async function aiRoutes(app) {
     try { entitled = await guildHasAi(guildId); } catch { entitled = false; }
     if (!entitled) return reply.code(402).send({ ok: false, error: 'plan_required', feature: 'aiAutomod' });
     if (!guildAllows(guildId)) return { ok: false, reason: 'rate_limited' };
+    // agent-bcw-bot: the server's monthly AI allowance, then its credits (lib/bot-billing.mjs).
+    // Always the platform's budget: this check runs on the site's classifier, never on the
+    // server's own key. A spent budget is a 402 the bot backs off from (automod.mjs), and the
+    // rules keep running without the AI.
+    let budget = null;
+    try {
+      const { aiState, aiDecision } = await import('../lib/bot-billing.mjs');
+      const st = await aiState(await db(), guildId, _ent.entOf(String(guildId)));
+      budget = { ...aiDecision({ ...st, source: 'platform' }), source: 'platform' };
+    } catch { budget = null; }
+    if (budget && !budget.ok) return reply.code(402).send({ ok: false, error: budget.error });
     const labels = [...new Set(checks.flatMap((c) => CHECK_LABELS[c]))];
     const r = await aiAnalyzeWithReason('discord_automod', { text, meta: { labels, userId: userId ? `discord:${userId}` : null } }, {});
     if (!r.value) return { ok: false, reason: r.reason === 'empty' ? 'unavailable' : r.reason === 'unconfigured' ? 'disabled' : r.reason }; // followups: the bot's contract
+    // Moderation stays fail-open (an unreadable budget never blocks the check), but a call the
+    // classifier really made is always counted: with nothing charged when the budget was
+    // unknown, and a failed commit is counted and logged rather than swallowed.
+    if (!r.value.cached) { try { const { recordAutomodUsage } = await import('../lib/bot-billing.mjs'); await recordAutomodUsage(await db(), guildId, budget, req.log); } catch { /* never fails the check */ } }
+    // fin agent-bcw-bot
     return { ok: true, provider: r.value.provider, latencyMs: r.value.latencyMs, labels: r.value.labels };
   });
 }

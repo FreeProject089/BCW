@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Code2, Shield, KeyRound, BookOpen, Send, Copy, FlaskConical, ArrowRight, Puzzle, Webhook, Palette, Activity, ExternalLink } from 'lucide-react';
+import { Code2, Shield, KeyRound, BookOpen, Send, Copy, FlaskConical, ArrowRight, Puzzle, Webhook, Palette, Activity, ExternalLink, Wrench, Terminal, CheckCircle2, Link2, Fingerprint } from 'lucide-react';
 import { SnippetTabs } from '../ui/dev-snippet.jsx';
 import { BmdNpmCompact } from '../ui/bmd-npm.jsx';
 import { api } from '../lib/api.js';
@@ -442,6 +442,12 @@ export const SURFACES = [
     ] },
 ];
 
+// agent-bcw-nav: the five tools of /dev/tools, drawn on /dev as their own band. They were
+// reachable only through a "Try a call" link here and there, so most visitors never learned
+// the page existed. Same words as the Tools card (DEFAULT_DEV_CARDS), one source.
+const TOOL_ICONS = { terminal: Terminal, 'check-circle-2': CheckCircle2, 'link-2': Link2, fingerprint: Fingerprint, activity: Activity };
+export const DEV_TOOLS = (DEFAULT_DEV_CARDS.find((c) => c.id === 'tools')?.chips || []).map((c) => ({ ...c, Icon: TOOL_ICONS[c.icon] || Wrench }));
+
 /** The first call of each surface. Keys come from the environment, never from the page. */
 function quickStart(base, t) {
   const origin = base || 'https://bettercommunity.ch';
@@ -538,6 +544,10 @@ export default function DevHub() {
           <Link to={hero.refUrl || '/docs/bcweb-api'}>
             <Button><BookOpen size={15} /> {hero.refLabel || t('dev.hub.ref', 'API reference')}</Button>
           </Link>
+          {/* agent-bcw-nav: the tools, from the top of the page. */}
+          <Link to="/dev/tools">
+            <Button><Wrench size={15} /> {t('dev.hub.tools', 'Tools')}</Button>
+          </Link>
         </div>
         {/* Said once, at the top, because it is the number that decides whether somebody
             starts today or bookmarks the page. Pointless once they have started. */}
@@ -604,13 +614,34 @@ export default function DevHub() {
         ))}
       </div>
 
+      {/* agent-bcw-nav: the tools as a band of their own, each a link to its section. */}
+      <section className="mb-12" aria-labelledby="dev-tools-h">
+        <div className="flex flex-wrap items-baseline justify-between gap-2 mb-4">
+          <h2 id="dev-tools-h" className="text-xl sm:text-2xl font-extrabold tracking-tight">{t('dev.tools.h', 'Tools in the browser')}</h2>
+          <Link to="/dev/tools" className="text-sm text-[var(--accent-ink)] inline-flex items-center gap-1 hover:gap-2 transition-all">{t('dev.tools.all', 'Open the tools')} <ArrowRight size={13} /></Link>
+        </div>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-3">
+          {DEV_TOOLS.map((tool) => (
+            <Link key={tool.to} to={tool.to} className="group rounded-xl border border-[var(--line)] p-4 min-w-0 transition hover:border-[var(--line-strong)]" style={{ background: 'var(--surface)' }}>
+              <tool.Icon size={16} className="text-[var(--accent-ink)]" aria-hidden />
+              <div className="font-semibold text-[14px] mt-2">{t(tool.labelKey, tool.label)}</div>
+              <p className="text-[12.5px] text-[var(--muted)] mt-0.5">{t(tool.hintKey, tool.hint)}</p>
+            </Link>
+          ))}
+        </div>
+      </section>
+
       {/* Quick start: the first call of each surface, copyable. The key is read from the
           environment in every snippet, never pasted in (see ApiConsole's note). */}
       {show.quickstart !== false && (
         <section className="mb-12">
           <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
             <h2 className="text-xl sm:text-2xl font-extrabold tracking-tight">{t('devp.qs', 'Quick start')}</h2>
-            <Link to={hero.refUrl || '/docs/bcweb-api'} className="text-sm text-[var(--accent-ink)] inline-flex items-center gap-1 hover:gap-2 transition-all">{t('devp.qs.ref', 'Full API reference')} <ArrowRight size={13} /></Link>
+            <span className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+              {/* agent-bcw-nav: run the snippet without leaving the browser. */}
+              <Link to="/dev/tools#try" className="text-sm text-[var(--accent-ink)] inline-flex items-center gap-1 hover:gap-2 transition-all">{t('devp.qs.try', 'Try it live')} <ArrowRight size={13} /></Link>
+              <Link to={hero.refUrl || '/docs/bcweb-api'} className="text-sm text-[var(--accent-ink)] inline-flex items-center gap-1 hover:gap-2 transition-all">{t('devp.qs.ref', 'Full API reference')} <ArrowRight size={13} /></Link>
+            </span>
           </div>
           <SnippetTabs tabs={quickStart(base, t)} />
         </section>

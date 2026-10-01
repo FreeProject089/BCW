@@ -20,6 +20,9 @@ const skip = RUN ? false : 'set DATABASE_URL to run the AI feature route tests';
 delete process.env.REDIS_URL;
 process.env.JWT_SECRET ||= 'ai-features-routes-secret';
 process.env.AI_EXTERNAL_ALLOW_PRIVATE = '1';
+// A MEMBER key on 127.0.0.1 is refused even with the operator's switch (ai-secfix, finding 6);
+// the test-runner-only door lets these tests keep using their fake provider.
+process.env.AI_TEST_ALLOW_PRIVATE_BYOK = '1';
 process.env.LAYA_API_KEY = ['laya', 'routes', 'test'].join('-');
 delete process.env.AI_KILL_SWITCH;
 delete process.env.AI_PROVIDER;
@@ -315,5 +318,54 @@ describe('OS mode site-wide switch', { skip }, () => {
     const { checkAdminSetting } = await import('../src/routes/misc.mjs');
     assert.equal((await checkAdminSetting(p, 'os.enabled', 'no')).ok, false, 'a boolean or nothing');
     assert.equal((await checkAdminSetting(p, 'ai.siteKey', { keySecret: 'x' })).status, 409, 'the site key never goes through the generic door');
+  });
+});
+
+describe('suggestion feedback (POST /ai/feedback)', { skip }, () => {
+  const peek = (feature) => U._peekAiUsageForTests().rows.filter((r) => r.feature === feature);
+  test('applied / dismissed become counts under the helper and its provider, and nothing else', async () => {
+    U._resetAiUsageForTests();
+    let r = await call(member, 'POST', '/ai/feedback', { feature: 'suggest_tags', outcome: 'accepted', provider: 'laya', field: 'tags', n: 2 });
+    assert.equal(r.statusCode, 200, r.body);
+    r = await call(member, 'POST', '/ai/feedback', { feature: 'suggest_tags', outcome: 'rejected', provider: 'local', field: 'tags' });
+    assert.equal(r.statusCode, 200, r.body);
+    r = await call(member, 'POST', '/ai/feedback', { feature: 'describe', outcome: 'rejected', provider: 'byok', field: 'description' });
+    assert.equal(r.statusCode, 200, r.body);
+    const tags = peek('suggest_tags');
+    assert.equal(tags.find((x) => x.provider === 'laya').accepted, 2);
+    assert.equal(tags.find((x) => x.provider === 'rules').rejected, 1, 'word matching is counted as rules');
+    assert.equal(peek('describe')[0].rejected, 1);
+    assert.equal(U._peekAiUsageForTests().users.length, 0, 'feedback is never tied to an account');
+    // The old verdict shape still works.
+    r = await call(member, 'POST', '/ai/feedback', { feature: 'content_check', verdict: 'wrong' });
+    assert.equal(r.statusCode, 200, r.body);
+    assert.equal(peek('content_check')[0].falsePositive, 1);
+    U._resetAiUsageForTests();
+  });
+  test('validation: unknown helper, outcome, provider, field or count, text, a staff helper from a member, no session', async () => {
+    U._resetAiUsageForTests();
+    const bad = [
+      { feature: 'nope', outcome: 'accepted' },
+      { feature: 'suggest_tags', outcome: 'loved' },
+      { feature: 'suggest_tags', outcome: 'accepted', provider: 'https://x' },
+      { feature: 'suggest_tags', outcome: 'accepted', field: 'password' },
+      { feature: 'suggest_tags', outcome: 'accepted', n: 0 },
+      { feature: 'suggest_tags', outcome: 'accepted', n: 21 },
+      { feature: 'suggest_tags', outcome: 'accepted', text: SECRET_WORDS },
+      { feature: 'suggest_tags', outcome: 'accepted', verdict: 'wrong' },
+    ];
+    for (const body of bad) {
+      const r = await call(member, 'POST', '/ai/feedback', body);
+      assert.equal(r.statusCode, 400, JSON.stringify(body));
+    }
+    let r = await call(member, 'POST', '/ai/feedback', { feature: 'summarize', outcome: 'accepted' });
+    assert.equal(r.statusCode, 403);
+    r = await call(null, 'POST', '/ai/feedback', { feature: 'suggest_tags', outcome: 'accepted' });
+    assert.equal(r.statusCode, 401);
+    assert.equal(U._peekAiUsageForTests().rows.length, 0, 'nothing refused was counted');
+    r = await call(mod, 'POST', '/ai/feedback', { feature: 'summarize', outcome: 'accepted', provider: 'site' });
+    assert.equal(r.statusCode, 200, 'staff may rate a staff helper');
+    assert.ok(!JSON.stringify(U._peekAiUsageForTests()).includes(SECRET_WORDS));
+    U._resetAiUsageForTests();
   });
 });

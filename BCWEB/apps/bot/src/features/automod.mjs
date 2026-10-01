@@ -111,6 +111,8 @@ import { makeT, localeOf } from '../i18n.mjs';
 import { api } from '../api.mjs';
 import { BRANDS } from './brands.generated.mjs';
 import { modStats } from '../store.mjs';
+import { gates } from '../throttle.mjs'; // agent-bcw-bot
+const aiBucket = gates.aiAutomodGuild;
 
 export const ACTIONS = ['log', 'delete', 'warn', 'timeout', 'kick', 'ban', 'addRole', 'removeRole'];
 // A role taken away sits between a warning and a timeout; a restrictive role given is a timeout
@@ -544,10 +546,13 @@ export async function aiFollowUp(message, cfg, callApi, { timeoutMs = 2500, now 
     const checks = aiChecksFor(message, ai);
     if (!checks.length) return [];
     if ((aiBackoff.get(message.guildId) || 0) > now) return [];
+    // agent-bcw-bot: a per-server bucket before the API (throttle.mjs): a spam wave is 30 checks a minute, not 300.
+    if (!aiBucket.take(String(message.guildId || '')).ok) return [];
     const r = await callApi({ guildId: message.guildId, userId: message.authorId, text: String(message.content || '').slice(0, 4000), checks }, timeoutMs);
     if (!r || r.ok !== true) {
       // 402 (no plan) → ten minutes; AI off / killed → one minute; busy / timeout → nothing.
-      const wait = r?.error === 'plan_required' ? 600_000 : r?.reason === 'disabled' ? 60_000 : 0;
+      // agent-bcw-bot: a spent AI budget (ai_quota / ai_cap) backs off like a missing plan.
+      const wait = ['plan_required', 'ai_quota', 'ai_cap', 'ai_credits'].includes(r?.error) ? 600_000 : r?.reason === 'disabled' ? 60_000 : 0;
       if (wait) { aiBackoff.set(message.guildId, now + wait); if (aiBackoff.size > 5000) aiBackoff.clear(); }
       return [];
     }

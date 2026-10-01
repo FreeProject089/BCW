@@ -26,7 +26,7 @@ page is the reference for what each answer means, and for editing a .env you alr
 | Variable | Purpose |
 |---|---|
 | `JWT_SECRET` | signs sessions/cookies. **Long random string** (`openssl rand -hex 32`). In production the API refuses to boot with the example value. |
-| `LINK_LOOKUP_SECRET` | signs the BMM↔BCWEB link lookup and the telemetry SSO handoff (the telemetry service verifies the same value as `BC_LINK_SECRET`). Has a fallback — but it's `dev-link-secret`, committed in this repo, so set it. `openssl rand -hex 32`. |
+| `LINK_LOOKUP_SECRET` | signs the BMM↔BCWEB link lookup and the telemetry SSO handoff (the telemetry service verifies the same value as `BC_LINK_SECRET`). Has a fallback — but it's `dev-link-secret`, committed in this repo, so set it. `openssl rand -hex 32`. Its own value: it never falls back to `JWT_SECRET`, and the production boot refuses a value equal to `JWT_SECRET` (the telemetry service holds it). |
 | `BOT_SHARED_SECRET` | the Discord bot's API credential. Unset, compose gives **both** the api and the bot `LINK_LOOKUP_SECRET`'s value, so they agree — **set it in production**: the API code reads only this one since September 2026 (no `LINK_LOOKUP_SECRET` fallback, SECURITY_SUMMARY §9 #4), and compose's own fallback to the link secret is what still makes an unset value work — the two services must not share a secret. |
 | `AUDIT_SECRET` | HMAC key for the tamper-evident staff audit chain. Unset → falls back to `JWT_SECRET` (fine). ⚠️ **Changing it once entries exist invalidates verification of every earlier entry** — set it once, before going live. |
 | `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` | The first SUPERADMIN account, created by `npm run setup`. **Set both before the first run**: the account is only created when it does not already exist, so changing them later does nothing. Left unset, every install ships with the same published default (`admin@bettercommunity.local` / `change-me-now`). |
@@ -86,6 +86,7 @@ Callback to register at each provider: `<SITE_URL>/api/auth/oauth/<provider>/cal
 | `TELEMETRY_ADMIN_KEY` | server-to-server admin key to manage the telemetry limits. |
 | `TELEMETRY_RETENTION_DAYS` | how many days of telemetry events are kept before purging. |
 | `TELEMETRY_DELETE_DELAY_H` | delay (hours) before a data-deletion request is carried out — the window in which it can still be cancelled. |
+| `TELEMETRY_ISSUES_AI` | `1` (default) lets the dashboard ask Laya, through the API, to label live BMM issue groups (category, severity, likely duplicate); `0` turns it off from the telemetry side. Also off when the API's AI layer or the dashboard switch is off. |
 | `TELEMETRY_API_KEY` | telemetry ingestion key. |
 
 ## 9. Transactional email (optional — confirmation + password reset)
@@ -128,7 +129,7 @@ Moderation → AI provider), which greys the field.
 | `AI_TIMEOUT_MS` / `AI_CONCURRENCY` | force the per-call deadline (default 1500) and the calls at once (default 1). |
 | `AI_EXTERNAL_URL` | base of an OpenAI-compatible API, e.g. `https://api.example.com/v1`. https and public only. A **third party**: update the privacy policy first. |
 | `AI_EXTERNAL_KEY` | its key. **Secret.** Read from here only: never stored, logged or shown. |
-| `AI_EXTERNAL_ALLOW_PRIVATE` | `1` = allow http and private addresses, for a model you host on your own network. Also applies to the keys typed into the site (members' own keys, the site key). |
+| `AI_EXTERNAL_ALLOW_PRIVATE` | `1` = allow http and private addresses, for a model you host on your own network. Applies to the operator's provider and the **site key** only; a member's own key or a Discord server's key never gets it (that would be SSRF from the API's network). |
 | `AI_KEYS_SECRET` | seals the AI keys stored in the database (members' own keys, the site key; [AI_FEATURES_EN.md](AI_FEATURES_EN.md)). **Secret.** Empty = derived from `JWT_SECRET`. Changing it makes every stored key unreadable: they must be typed again. |
 
 ## 12. Misc

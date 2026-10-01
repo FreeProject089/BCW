@@ -9,6 +9,7 @@ import { grantAutoBadges } from './social.mjs';
 import { expectedProofAudience } from '../lib/creator-proof.mjs';
 import { acceptCreatorProof, creatorProofGate } from '../lib/creator-identity.mjs';
 import { ciEquals } from '../lib/ci-equals.mjs';
+import { linkSecret } from '../lib/link-secret.mjs';
 
 // Human-friendly pairing code (no ambiguous chars): e.g. "K7P3-9QMX".
 function genCode() {
@@ -158,7 +159,8 @@ export default async function linkRoutes(app) {
   // ── Server-to-server: resolve creator ids → linked accounts (for BMM telemetry) ──
   // Protected by a shared secret so only trusted backends (the telemetry dashboard) can call it.
   app.post('/link/lookup', async (req, reply) => {
-    const secret = process.env.LINK_LOOKUP_SECRET || process.env.JWT_SECRET;
+    // Its own secret, never JWT_SECRET (audit Oct 2026, finding 9: lib/link-secret.mjs).
+    const secret = linkSecret();
     // safeEqual, not `!==`. A string comparison returns at the first differing byte, so
     // it leaks the length of the matching prefix — and this endpoint hands back
     // creator-id -> account joins with Discord ids and display names attached.

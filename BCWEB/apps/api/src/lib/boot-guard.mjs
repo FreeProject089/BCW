@@ -43,6 +43,9 @@ export const PRODUCTION_SECRETS = [
     purpose: 'telemetry and server-control link lookup',
     vars: ['BC_LINK_SECRET', 'LINK_LOOKUP_SECRET'],
     insecure: ['dev-link-secret'],
+    // Its own value (audit Oct 2026, finding 9): the telemetry service holds it, and a copy of
+    // JWT_SECRET there would let that service forge any session, ADMIN included.
+    distinctFrom: ['JWT_SECRET'],
     consequence: 'the link lookup and server-control endpoints would accept anyone',
   },
   {
@@ -86,6 +89,11 @@ export function productionSecretProblems(env, secrets = PRODUCTION_SECRETS) {
       problems.push({ purpose: s.purpose, vars: [used], reason: 'insecure_default', consequence: s.consequence });
       continue;
     }
+    const twin = (s.distinctFrom || []).find((o) => env[o] && env[o] === env[used]);
+    if (twin) {
+      problems.push({ purpose: s.purpose, vars: [used], reason: 'shared', with: twin, consequence: s.consequence });
+      continue;
+    }
     // Only where a length is declared: the older entries judge "is it the repository's
     // value", and adding a length rule to them would refuse deploys that boot today.
     if (s.minLength && String(env[used]).length < s.minLength) {
@@ -103,6 +111,8 @@ export function formatProblems(problems) {
         ? `set one of ${p.vars.join(' / ')}`
         : p.reason === 'too_short'
           ? `${p.vars[0]} is shorter than ${p.minLength} characters — use a long random value`
+          : p.reason === 'shared'
+            ? `${p.vars[0]} has the same value as ${p.with} — give it its own random value`
           : `${p.vars[0]} is still the value from the repository — change it`;
       return `  · ${p.purpose}: ${what} (otherwise ${p.consequence})`;
     })

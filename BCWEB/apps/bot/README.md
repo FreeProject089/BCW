@@ -38,3 +38,24 @@ then `docker compose up -d bot`.
 - Requires the **Server Members** and **Message Content** privileged intents enabled
   in the Discord developer portal, plus **Manage Roles** (above the gate role in the
   hierarchy) for gated access, and **Manage Channels / Move Members** for join-to-create.
+
+## Plans, credits and the voice panel: what came from the OFD bot (agent-bcw-bot, 2026-09-30)
+
+The owner's other bot (`OFD/BotDiscord`, TypeScript/pnpm, proprietary licence that allows reuse
+in the owner's own projects) was the model. Nothing was copied wholesale (no `.env`, no
+`node_modules`, no TypeScript packages): the ideas were ported into BCWEB's JavaScript and its
+existing plan model (a plan is a `HostingPlan` row, entitlements are computed).
+
+| From OFD | Adapted here |
+|---|---|
+| `packages/shared/src/plans.ts` Free / Premium / Ultra, `TIER_FEATURES`, AI limits `ai.platform_monthly` | `apps/api/src/lib/bot-billing.mjs` `TIER_PRESETS` (Free / Pro / Ultra), limits `aiMonthly` and `storageMB` in `bot-entitlements.mjs`; `npm run seed:bot-plans` writes Pro and Ultra as plan rows |
+| `docs/features/ia.md`: platform AI quota, then 1 AI credit per call; BYOK on paid plans | allowance, then credits (`BotCreditLedger`, idempotent on the Stripe session); BYOK allowed on every plan with a small credit fee, free with `aiByok`; the owner's own monthly cap; only successful calls count |
+| AI key sealed, last 4 chars shown | `BotAiSettings`, sealed with `lib/ai-keys.mjs` for `guild:<id>` only |
+| `rate-limits.ts` / Redis `rateLimit(key, n, window)` | `src/throttle.mjs`: in-process token buckets + a bounded work queue (AI calls, welcome banners); the API keeps its own burst limit |
+| `PREMIUM_REQUIRED` / `LIMIT_REACHED` replies, `PremiumLock` | `src/paywall.mjs` card with link buttons to `/bot/pricing?feature=…&guild=…` and `/bot/features#…`; the dashboard's `PaywallModal` |
+| `jtc-panel.ts`: owner panel, user selects, bitrate by boost tier, transfer | `src/features/panel.mjs`: dropdowns (privacy, limit, settings, members), bitrate and transfer behind `jtcPro`; every old custom id still answers |
+| `DashboardLayout.tsx`, `PremiumPage.tsx`, pricing page | `apps/web/src/pages/discord-dashboard.jsx` (server rail, overview, modules, plan and credits) and `pages/bot-public.jsx` (`/bot/features`, `/bot/pricing`) |
+
+Not ported: OFD's OS mode, Discord SKUs, dynamic pricing/loyalty rules, the linked text channel of
+voice rooms, and the per-plan storage enforcement (`storageMB` is shown; member storage stays on
+the site-wide policy).

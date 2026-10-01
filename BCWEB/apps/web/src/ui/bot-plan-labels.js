@@ -5,8 +5,10 @@
 // names from here, so a feature is never called two things on two screens.
 
 /** The feature keys, in the order the API lists them (a fallback when the API is not asked). */
-export const BOT_FEATURE_KEYS = ['welcome', 'welcomeBanner', 'joinToCreate', 'gating', 'rolePanels', 'blog', 'automod', 'logRouting', 'aiAutomod'];
-export const BOT_LIMIT_KEYS = ['joinToCreateLobbies', 'gatingRules', 'rolePanels', 'blogRoutes', 'automodWords'];
+export const BOT_FEATURE_KEYS = ['welcome', 'welcomeBanner', 'joinToCreate', 'gating', 'rolePanels', 'blog', 'automod', 'logRouting', 'aiAutomod', 'aiAsk', 'jtcPro', 'aiByok'];
+export const BOT_LIMIT_KEYS = ['joinToCreateLobbies', 'gatingRules', 'rolePanels', 'blogRoutes', 'automodWords', 'aiMonthly', 'storageMB'];
+/** agent-bcw-bot: paid until an admin makes them free (PAID_BY_DEFAULT in the API). */
+export const BOT_PAID_BY_DEFAULT = ['aiAutomod', 'jtcPro', 'aiByok'];
 
 export function botFeatureLabel(t, key) {
   switch (key) {
@@ -20,6 +22,10 @@ export function botFeatureLabel(t, key) {
     case 'logRouting': return t('botplan.f.logRouting', 'Logs sorted by category, or into a forum');
     // laya (agent-laya-bcweb): paid by default (PAID_BY_DEFAULT in the API's bot-entitlements.mjs).
     case 'aiAutomod': return t('botplan.f.aiAutomod', 'AI-assisted anti-phishing and anti-troll checks');
+    // agent-bcw-bot
+    case 'aiAsk': return t('botplan.f.aiAsk', 'AI helper for members (/ask)');
+    case 'jtcPro': return t('botplan.f.jtcPro', 'Voice room pro controls (transfer, audio quality)');
+    case 'aiByok': return t('botplan.f.aiByok', 'Your own AI key, no fee per call');
     default: return key;
   }
 }
@@ -33,6 +39,8 @@ export function botLimitLabel(t, key, n) {
       case 'rolePanels': return t('botplan.l.rolePanels', 'Up to {n} role panels');
       case 'blogRoutes': return t('botplan.l.blogRoutes', 'Up to {n} blog announcement channels');
       case 'automodWords': return t('botplan.l.automodWords', 'Up to {n} blocked words or patterns');
+      case 'aiMonthly': return t('botplan.l.aiMonthly', '{n} AI calls a month included');
+      case 'storageMB': return t('botplan.l.storageMB', '{n} MB of member storage');
       default: return `${key}: {n}`;
     }
   })();
@@ -47,6 +55,8 @@ export function botLimitName(t, key) {
     case 'rolePanels': return t('botplan.ln.rolePanels', 'Role panels');
     case 'blogRoutes': return t('botplan.ln.blogRoutes', 'Blog channels');
     case 'automodWords': return t('botplan.ln.automodWords', 'Blocked words');
+    case 'aiMonthly': return t('botplan.ln.aiMonthly', 'AI calls a month');
+    case 'storageMB': return t('botplan.ln.storageMB', 'Member storage (MB)');
     default: return key;
   }
 }

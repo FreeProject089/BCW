@@ -11,6 +11,8 @@ import FeedLink, { FeedMenu } from '../ui/feed-link.jsx';
 import { useAsync, Loading, KIND_ICON, kindLabel, ALL_KINDS, kindsFor, CATALOG_PROJECTS } from './pages.jsx';
 import { ProjectPicker, ProjectLogo, TagFilter, projectId, tagText } from '../ui/catalog-pickers.jsx';
 import { IconGlyph } from '../ui/md-lite.js'; // M18: icons without the renderer
+import { useSmartSearch, SmartSearchHint } from '../ui/smart-search.jsx'; // agent-bcw-nav: Laya, optional
+import { toCandidates, applyOrder } from '../lib/smart-search-core.js';
 
 /* ─────────────────────────  Catalog  ───────────────────────── */
 const SORTS = [['recent', 'Newest'], ['popular', 'Most popular'], ['month', 'Popular this month'], ['views', 'Most viewed']];
@@ -54,7 +56,13 @@ export function Catalog() {
   // Reaching this page is the whole of "browse". The home page's second step reads it back.
   useEffect(markCatalogSeen, []);
   const [sel, setSel] = useState(new Set());
-  const items = data?.items || [];
+  // agent-bcw-nav: the server's results, then (optionally) Laya's order for the first few and a
+  // hint when the query belongs elsewhere. The plain list is always what arrives first.
+  const rawItems = data?.items || [];
+  const [plainOrder, setPlainOrder] = useState(false);
+  useEffect(() => { setPlainOrder(false); }, [q]);
+  const smart = useSmartSearch({ q, scope: 'catalog', candidates: toCandidates(rawItems, (it) => it.id, (it) => it.name), enabled: !showcase && !loading && !!q });
+  const items = plainOrder || !smart.order ? rawItems : applyOrder(rawItems, (it) => it.id, smart.order);
   // Multi-select download makes sense for presets (small JSON files).
   const multi = project === 'bsm' || kind === 'PRESET';
   const toggle = (slug) => setSel((s) => { const n = new Set(s); n.has(slug) ? n.delete(slug) : n.add(slug); return n; });
@@ -108,6 +116,8 @@ export function Catalog() {
           </div>
         </div>}
       </div>
+      {!showcase && q && <SmartSearchHint className="-mt-3 mb-4 px-1" intent={smart.intent} q={q} here="catalog"
+        reordered={items !== rawItems && items.some((it, i) => it !== rawItems[i])} onPlain={() => setPlainOrder(true)} />}
       {extra.length > 0 && current && <ProjectCatalogsStrip project={current} catalogs={extra} />}
       {showcase && !extra.length && (
         <EmptyState icon={Inbox} title={t('pcat.none.t', 'No catalogue here yet')} sub={t('pcat.none.s', 'This project has not published a catalogue.')} />

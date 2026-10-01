@@ -13,7 +13,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
-import { senderIdFrom } from '../src/routes/feedback.mjs';
+import { senderIdFrom, needsContact } from '../src/routes/feedback.mjs';
 
 const AUD = 'https://bettercommunity.test';
 const NOW = 1_760_000_000;
@@ -159,5 +159,21 @@ describe('senderIdFrom', () => {
       byBcId: async () => { scanned = true; return null; },
     });
     assert.equal(scanned, false);
+  });
+});
+
+// The contact rule BMM restates (features/feedback/feedback-contact.ts): an e-mail is asked
+// for only when nobody could answer the report otherwise.
+describe('needsContact', () => {
+  test('a recognised account never needs an e-mail', () => {
+    assert.equal(needsContact({ userId: 'u1', email: '', requireContact: true }), false);
+  });
+  test('an unknown sender needs one only on a project that asks', () => {
+    assert.equal(needsContact({ userId: null, email: '', requireContact: true }), true);
+    assert.equal(needsContact({ userId: null, email: '', requireContact: false }), false);
+  });
+  test('an address satisfies it; blanks do not', () => {
+    assert.equal(needsContact({ userId: null, email: 'a@b.ch', requireContact: true }), false);
+    assert.equal(needsContact({ userId: null, email: '   ', requireContact: true }), true);
   });
 });

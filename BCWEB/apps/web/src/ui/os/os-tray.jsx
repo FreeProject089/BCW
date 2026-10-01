@@ -17,6 +17,7 @@ import { useAuth } from '../../pages/auth.jsx';
 import { NotifList, NotifFilter } from '../notif-bell.jsx';
 import { listNotifs, onNotifsChanged, applyNotifChange, markNotifRead, markAllNotifsRead } from '../../lib/notifs.js';
 import { notifHref } from '../../lib/notif-view.js';
+import { calendarCells, dayOf, sameDay, shiftMonth, stepDay } from './calendar.js';
 
 /** A tray popover: above the taskbar, right-aligned, closes on Escape and on a click outside. */
 function useTrayPop() {
@@ -119,38 +120,52 @@ function fmt(d, lang, opts) {
   try { return new Intl.DateTimeFormat(locOf(lang), opts).format(d); } catch { return d.toISOString().slice(0, 10); }
 }
 
-/** The weeks of a month, Monday first (both locales the site speaks start on Monday). */
-export function monthGrid(year, month) {
-  const first = new Date(year, month, 1);
-  const lead = (first.getDay() + 6) % 7;
-  const days = new Date(year, month + 1, 0).getDate();
-  const cells = [];
-  for (let i = 0; i < lead; i++) cells.push(null);
-  for (let d = 1; d <= days; d++) cells.push(d);
-  while (cells.length % 7) cells.push(null);
-  const weeks = [];
-  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
-  return weeks;
-}
-
 function ClockTray({ seconds, top }) {
   const { t, lang } = useI18n();
   const p = useTrayPop();
   const [now, setNow] = useState(() => new Date());
-  const [view, setView] = useState(() => ({ y: now.getFullYear(), m: now.getMonth() }));
+  const today = dayOf(now);
+  // The month on screen and the day that holds the keyboard focus (roving tabindex).
+  const [view, setView] = useState(() => ({ y: today.y, m: today.m }));
+  const [focus, setFocus] = useState(today);
+  const gridRef = useRef(null);
+  const moved = useRef(false);
   useEffect(() => {
     const h = setInterval(() => setNow(new Date()), seconds ? 1000 : 15_000);
     return () => clearInterval(h);
   }, [seconds]);
-  useEffect(() => { if (p.open) setView({ y: now.getFullYear(), m: now.getMonth() }); }, [p.open]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (p.open) { const d = dayOf(new Date()); setView({ y: d.y, m: d.m }); setFocus(d); moved.current = false; } }, [p.open]);
+  // After a key moved the focused day, focus follows it (the month may have changed under it).
+  useEffect(() => {
+    if (!moved.current) return;
+    gridRef.current?.querySelector('[tabindex="0"]')?.focus({ preventScroll: true });
+  }, [focus, view]);
   const time = fmt(now, lang, { hour: '2-digit', minute: '2-digit', ...(seconds ? { second: '2-digit' } : {}) });
   const date = fmt(now, lang, { day: '2-digit', month: '2-digit', year: 'numeric' });
   const full = fmt(now, lang, { dateStyle: 'full' });
-  const weeks = monthGrid(view.y, view.m);
+  const cells = calendarCells(view.y, view.m);
   const monthLabel = fmt(new Date(view.y, view.m, 1), lang, { month: 'long', year: 'numeric' });
-  const dayNames = Array.from({ length: 7 }, (_, i) => fmt(new Date(2024, 0, 1 + i), lang, { weekday: 'narrow' }));
-  const isToday = (d) => d && view.y === now.getFullYear() && view.m === now.getMonth() && d === now.getDate();
-  const shift = (n) => setView((v) => { const d = new Date(v.y, v.m + n, 1); return { y: d.getFullYear(), m: d.getMonth() }; });
+  // 2024-01-01 was a Monday.
+  const dayNames = Array.from({ length: 7 }, (_, i) => ({
+    short: fmt(new Date(2024, 0, 1 + i), lang, { weekday: 'short' }).replace('.', ''),
+    long: fmt(new Date(2024, 0, 1 + i), lang, { weekday: 'long' }),
+  }));
+  const shift = (n) => {
+    const v = shiftMonth(view, n);
+    moved.current = false;
+    setView(v);
+    setFocus((f) => ({ y: v.y, m: v.m, d: Math.min(f.d, new Date(v.y, v.m + 1, 0).getDate()) }));
+  };
+  const goToday = () => { const d = dayOf(new Date()); moved.current = true; setView({ y: d.y, m: d.m }); setFocus(d); };
+  const focusIn = cells.some((c) => !c.out && sameDay(c, focus)) ? focus : { y: view.y, m: view.m, d: 1 };
+  const onGridKey = (e) => {
+    const next = stepDay(focusIn, e.key, e.shiftKey);
+    if (!next) return;
+    e.preventDefault();
+    moved.current = true;
+    setFocus(next);
+    if (next.y !== view.y || next.m !== view.m) setView({ y: next.y, m: next.m });
+  };
   return (
     <>
       <button ref={p.btn} type="button" className={`os-clock${p.open ? ' is-on' : ''}`} aria-expanded={p.open} aria-haspopup="dialog"
@@ -165,19 +180,33 @@ function ClockTray({ seconds, top }) {
             <div className="os-cal-full">{full}</div>
           </div>
           <div className="os-cal-head">
-            <span className="os-cal-month" aria-live="polite">{monthLabel}</span>
+            <span className="os-cal-month" aria-live="polite" id="os-cal-month">{monthLabel}</span>
             <button type="button" className="os-cal-nav" onClick={() => shift(-1)} aria-label={t('os.tray.cal.prev', 'Previous month')} title={t('os.tray.cal.prev', 'Previous month')}><ChevronLeft size={16} aria-hidden /></button>
             <button type="button" className="os-cal-nav" onClick={() => shift(1)} aria-label={t('os.tray.cal.next', 'Next month')} title={t('os.tray.cal.next', 'Next month')}><ChevronRight size={16} aria-hidden /></button>
           </div>
-          <table className="os-cal-grid">
-            <thead><tr>{dayNames.map((d, i) => <th key={i} scope="col">{d}</th>)}</tr></thead>
-            <tbody>
-              {weeks.map((w, i) => (
-                <tr key={i}>{w.map((d, j) => <td key={j} className={isToday(d) ? 'is-today' : ''} aria-current={isToday(d) ? 'date' : undefined}>{d || ''}</td>)}</tr>
-              ))}
-            </tbody>
-          </table>
-          <button type="button" className="os-cal-today" onClick={() => setView({ y: now.getFullYear(), m: now.getMonth() })}>{t('os.tray.cal.today', 'Today')}</button>
+          <div ref={gridRef} className="os-cal-grid" role="grid" aria-labelledby="os-cal-month" onKeyDown={onGridKey}>
+            <div className="os-cal-row" role="row">
+              {dayNames.map((d, i) => <span key={i} className="os-cal-dow" role="columnheader" title={d.long} aria-label={d.long}>{d.short}</span>)}
+            </div>
+            {[0, 1, 2, 3, 4, 5].map((w) => (
+              <div key={w} className="os-cal-row" role="row">
+                {cells.slice(w * 7, w * 7 + 7).map((c) => {
+                  const isToday = sameDay(c, today);
+                  const isFocus = !c.out && sameDay(c, focusIn);
+                  const label = fmt(new Date(c.y, c.m, c.d), lang, { dateStyle: 'full' });
+                  return (
+                    <span key={`${c.m}-${c.d}`} role="gridcell" aria-selected={isFocus} aria-current={isToday ? 'date' : undefined}
+                      className={`os-cal-day${c.out ? ' is-out' : ''}${isToday ? ' is-today' : ''}${isFocus ? ' is-focus' : ''}`}
+                      tabIndex={isFocus ? 0 : -1} aria-label={label} title={label}
+                      onClick={() => { moved.current = false; if (c.out) setView({ y: c.y, m: c.m }); setFocus({ y: c.y, m: c.m, d: c.d }); }}>
+                      {c.d}
+                    </span>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+          <button type="button" className="os-cal-today" onClick={goToday}>{t('os.tray.cal.today', 'Today')}</button>
         </Pop>
       )}
     </>

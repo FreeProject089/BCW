@@ -24,6 +24,8 @@ import LoyaltyStatus from '../ui/loyalty-status.jsx';
 import { normaliseTerm, snapTerm } from '../lib/hosting-term.js';
 import FeedLink, { FeedMenu } from '../ui/feed-link.jsx';
 import { useAuth } from './auth.jsx';
+import { useSmartSearch, SmartSearchHint } from '../ui/smart-search.jsx'; // agent-bcw-nav: Laya, optional
+import { toCandidates, applyOrder } from '../lib/smart-search-core.js';
 
 // Either spelling is a manifest — the API accepts both (see MANIFEST_NAMES in
 // hosting-content.mjs). Kept as one predicate so the icon, the "ready to publish" check
@@ -73,7 +75,8 @@ export function ReposPage() {
 
   // Keep the public listing live — statuses refresh automatically.
   useEffect(() => { const id = setInterval(reload, 60_000); return () => clearInterval(id); /* eslint-disable-next-line */ }, []);
-  const [q, setQ] = useState('');
+  // agent-bcw-nav: ?q= carries a search over from another box (the palette's hint).
+  const [q, setQ] = useState(() => { try { return new URLSearchParams(window.location.search).get('q') || ''; } catch { return ''; } });
   const [tag, setTag] = useState('');
   const [hostedOnly, setHostedOnly] = useState(false);
   const [onlineOnly, setOnlineOnly] = useState(false);
@@ -111,9 +114,15 @@ export function ReposPage() {
   // 'best' is deliberately a no-op: the server already ranks official, then partner, then a
   // rotating slice of boosted community repos, then the rest. Re-sorting it here by anything
   // would throw that away, and the boost is a thing people pay for.
-  const shown = sort === 'best' ? filtered
+  const sorted = sort === 'best' ? filtered
     : sort === 'favorites' ? [...filtered].sort((a, b) => (b.favoriteCount || 0) - (a.favoriteCount || 0))
       : [...filtered].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  // agent-bcw-nav: only while searching, and only in the Recommended order (a sort the visitor
+  // picked is theirs): Laya may lift the clearly better answers among the first few.
+  const [plainOrder, setPlainOrder] = useState(false);
+  useEffect(() => { setPlainOrder(false); }, [q]);
+  const smart = useSmartSearch({ q, scope: 'repos', candidates: toCandidates(sorted, (r) => r.id, (r) => r.name), enabled: sort === 'best' && q.trim().length > 0 });
+  const shown = plainOrder || !smart.order ? sorted : applyOrder(sorted, (r) => r.id, smart.order);
   const anyFilter = !!(q || tag || hostedOnly || onlineOnly || favOnly || cat !== 'all');
   const clearAll = () => { setQ(''); setTag(''); setHostedOnly(false); setOnlineOnly(false); setFavOnly(false); setCat('all'); };
   // One chip shape for both rows. They used to be two different treatments (the tiers were
@@ -156,6 +165,8 @@ export function ReposPage() {
           { value: 'name', label: t('repos.sort.az', 'Name (A-Z)') },
         ]} />
       </div>
+      {q.trim() && <SmartSearchHint className="mb-2 px-1" intent={smart.intent} q={q} here="repos"
+        reordered={shown !== sorted && shown.some((r, i) => r !== sorted[i])} onPlain={() => setPlainOrder(true)} />}
       <div className="flex gap-1.5 mb-2 overflow-x-auto no-scrollbar -mx-1 px-1 py-0.5">
         {[['all', t('repos.tier.all', 'All tiers'), null],
           ['official', t('repos.cat.official', 'Official'), BadgeCheck],

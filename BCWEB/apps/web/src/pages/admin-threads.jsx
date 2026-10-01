@@ -109,7 +109,7 @@ export function AdminThreads() {
           <MessageSquare size={16} className="text-[var(--accent-ink)]" />
           <div className="font-semibold">{t('adm.th.title', 'Member conversations')}</div>
           {data?.flagged > 0 && <Badge tone="warning"><Flag size={10} /> {data.flagged}</Badge>}
-          <div className="ms-auto flex items-center gap-2">
+          <div className="ms-auto flex items-center gap-2 flex-wrap min-w-0">
             <Select value={status} className="!w-auto" onChange={(e) => setStatus(e.target.value)}>
               <option value="flagged">{t('adm.th.f.flagged', 'Flagged')}</option><option value="">{t('adm.th.f.all', 'All')}</option><option value="open">{t('th.st.open', 'open')}</option><option value="archived">{t('th.st.archived', 'archived')}</option><option value="closed">{t('th.st.closed', 'closed')}</option><option value="blocked">{t('th.st.blocked', 'blocked')}</option>
             </Select>

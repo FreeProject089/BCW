@@ -176,6 +176,31 @@ the button, because somebody about to pay deserves to know it before they click 
 after they are rejected. If you reject a paid request, a refund is owed and no code issues it —
 that is a conversation.
 
+### The Project Policy: what a request must meet
+
+The public rules are at `/legal/projects` (short link `/policy/projects`, also in the footer).
+The form shows them in four lines and the API enforces them (`declarationError` in
+`showcase-requests.mjs`):
+
+| Rule | Form | Server refuses with |
+|---|---|---|
+| Consent to tests and a security review (every request) | checkbox | `tests_consent_required` |
+| A follow-up contact: e-mail or Discord username (website optional, https only; preferred language) | prefilled from the account | `contact_required` |
+| Open source: a licence is named | licence field | `license_required` |
+| Not open source: owner + proof of rights + source access for reviewers | proof upload + checkbox | `closed_needs_owner`, `closed_needs_proof`, `closed_needs_source` |
+| Uses AI and not open source: source access | same checkbox | `ai_needs_source` |
+
+Pluses (optional): **BetterInstaller as the official installer**, and **a cause the project
+supports** (a feature or donation proposal: cancer research, animal welfare…). They help choose
+between good projects and never replace a rule.
+
+**The review checklist.** Each pending request shows the applicant's contact (staff only, with copy buttons) and a checklist: *contact reachable, checked*, *source seen*, *tests passed*,
+*security review done*, plus *BetterInstaller checked* and *cause checked* when the applicant
+claimed them. Ticks are saved as you go (`PUT /admin/showcase-requests/:id/checks`), because
+testing can take days. **Approve stays disabled until every required tick is in**, and the API
+refuses too (`409 checklist_incomplete`). This is how "AI projects must pass our tests" is
+enforced: nobody can approve one before *tests passed* is ticked.
+
 ### Reviewing them
 
 The queue sits at the top of **Admin → Content → Projects**, above the per-project editors,

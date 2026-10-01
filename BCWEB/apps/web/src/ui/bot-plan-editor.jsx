@@ -20,12 +20,12 @@ import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { BOT_FEATURE_KEYS, BOT_LIMIT_KEYS, botFeatureLabel, botLimitName } from './bot-plan-labels.js';
 
-const LIMIT_CAPS = { joinToCreateLobbies: 20, gatingRules: 30, rolePanels: 20, blogRoutes: 20, automodWords: 500 };
+const LIMIT_CAPS = { joinToCreateLobbies: 20, gatingRules: 30, rolePanels: 20, blogRoutes: 20, automodWords: 500, aiMonthly: 100000, storageMB: 51200 };
 
 /** A plan's `bot` as the editor holds it: always an object with all three parts. */
 export function draftBot(bot) {
   const b = bot && typeof bot === 'object' ? bot : {};
-  return { guilds: b.guilds || 1, features: Array.isArray(b.features) ? b.features : [], limits: { ...(b.limits || {}) } };
+  return { guilds: b.guilds || 1, features: Array.isArray(b.features) ? b.features : [], limits: { ...(b.limits || {}) }, tier: ['pro', 'ultra'].includes(b.tier) ? b.tier : '' };
 }
 /** Does this plan grant anything on the bot? */
 export const grantsBot = (bot) => !!bot && ((bot.features || []).length > 0 || Object.values(bot.limits || {}).some((n) => Number(n) > 0));
@@ -34,7 +34,7 @@ export const grantsBot = (bot) => !!bot && ((bot.features || []).length > 0 || O
 export function botPlanBody(draft) {
   const b = draftBot(draft.bot);
   const limits = Object.fromEntries(BOT_LIMIT_KEYS.map((k) => [k, Math.max(0, Math.round(Number(b.limits[k]) || 0))]));
-  return { kind: draft.kind === 'bot' ? 'bot' : 'hosting', bot: grantsBot({ ...b, limits }) ? { guilds: Math.max(1, Number(b.guilds) || 1), features: b.features, limits } : {} };
+  return { kind: draft.kind === 'bot' ? 'bot' : 'hosting', bot: grantsBot({ ...b, limits }) ? { guilds: Math.max(1, Number(b.guilds) || 1), features: b.features, limits, ...(b.tier ? { tier: b.tier } : {}) } : {} };
 }
 
 /** One line for the plan list: what the plan does on Discord, or null. */
@@ -88,6 +88,15 @@ export function BotPlanFields({ draft, setDraft }) {
         </div>
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+        {/* agent-bcw-bot: which card of /bot/pricing this plan is. */}
+        <label className="text-[11px] text-[var(--muted)] flex flex-col gap-1 min-w-0">
+          {t('adm.botplan.tier', 'Pricing card')}
+          <select className="input" value={b.tier} onChange={(e) => setBot({ tier: e.target.value })}>
+            <option value="">{t('adm.botplan.tier.none', 'None')}</option>
+            <option value="pro">Pro</option>
+            <option value="ultra">Ultra</option>
+          </select>
+        </label>
         <label className="text-[11px] text-[var(--muted)] flex flex-col gap-1 min-w-0">
           {t('adm.botplan.guilds', 'Servers covered')}
           <Input type="number" min="1" max="25" value={b.guilds} onChange={(e) => setBot({ guilds: e.target.value })} />

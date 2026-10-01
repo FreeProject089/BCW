@@ -175,7 +175,8 @@ export default function PublicProfile() {
 // A small standalone user search page (/users). Type a name → click through to a profile.
 export function UserSearch() {
   const { t } = useI18n();
-  const [q, setQ] = useState('');
+  // agent-bcw-nav: ?q= carries a search over from another box (the palette's hint).
+  const [q, setQ] = useState(() => { try { return new URLSearchParams(window.location.search).get('q') || ''; } catch { return ''; } });
   const { data, loading } = useAsync(() => q.trim().length >= 2 ? api.get(`/users/search?q=${encodeURIComponent(q.trim())}`) : Promise.resolve({ users: [] }), [q]);
   const users = data?.users || [];
   return (

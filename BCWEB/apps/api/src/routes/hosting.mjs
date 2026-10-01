@@ -445,6 +445,7 @@ export const planShape = {
     guilds: z.number().int().min(1).max(100).optional(),
     features: z.array(z.string().max(40)).max(40).optional(),
     limits: z.record(z.string().max(40), z.number().int().min(0).max(1_000_000)).optional(),
+    tier: z.enum(['pro', 'ultra']).optional(), // agent-bcw-bot: the /bot/pricing card it is
   }).optional(),
 };
 
@@ -743,11 +744,14 @@ export default async function hostingRoutes(app) {
       // not send them keeps what is stored.
       appliesTo: z.enum(LOYALTY_SCOPES).optional(),
       lapseResets: z.boolean().optional(),
+      // agent-bcw-pools: the simple form ("every N months, X % less, up to the maximum"); null
+      // goes back to hand-written steps. Absent keeps what is stored.
+      simple: z.object({ everyMonths: z.number().int().min(1).max(24), stepPct: z.number().int().min(1).max(50) }).nullable().optional(),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input', details: b.error.flatten() });
     const p = await db();
     const cur = normaliseLoyalty((await p.adminSetting.findUnique({ where: { key: LOYALTY_KEY } }).catch(() => null))?.value);
-    const value = normaliseLoyalty({ appliesTo: cur.appliesTo, lapseResets: cur.lapseResets, ...b.data });
+    const value = normaliseLoyalty({ appliesTo: cur.appliesTo, lapseResets: cur.lapseResets, simple: cur.simple || null, ...b.data });
     await p.adminSetting.upsert({ where: { key: LOYALTY_KEY }, create: { key: LOYALTY_KEY, value }, update: { value } });
     await logAudit(p, req.user.uid, 'hosting.loyalty.update', `enabled=${value.enabled} max=${value.maxPct} scope=${value.appliesTo} lapseResets=${value.lapseResets} tiers=${value.tiers.map((x) => `${x.months}:${x.pct}`).join(',')}`, clientIp(req)).catch(() => {});
     return { ok: true, loyalty: value };

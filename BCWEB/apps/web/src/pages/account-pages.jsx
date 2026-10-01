@@ -1,7 +1,7 @@
 import { safeHref } from '../lib/safe-href.js';
 import { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { BadgeCheck, Lock, Cookie, Palette, Shield, CheckCircle2, XCircle, Eye, Globe, Mail, Orbit, Package, Server, ShieldCheck, Users, Activity, Box, Clapperboard, Moon, Sun, Play, PartyPopper, SprayCan, MousePointerClick, Settings as SettingsIcon, Undo2, LogOut, AlertTriangle, FileText, Download, AppWindow, Keyboard } from 'lucide-react';
+import { BadgeCheck, Lock, Cookie, Palette, Shield, CheckCircle2, XCircle, Eye, Globe, Mail, Orbit, Package, Server, ShieldCheck, Users, Activity, Box, Clapperboard, Moon, Sun, Play, PartyPopper, SprayCan, MousePointerClick, Settings as SettingsIcon, Undo2, LogOut, AlertTriangle, FileText, Download, AppWindow, Keyboard, Sparkles } from 'lucide-react';
 import { Button, Card, Explain, PageHeader, Select, Spinner, useToast, useDialog } from '../ui/ui.jsx';
 import { fxPref, setFxPref, prefersReducedMotion } from '../lib/fx-pref.js';
 import { useI18n } from '../i18n.jsx';
@@ -16,7 +16,10 @@ import { InstallAppCard } from '../ui/pwa-install.jsx';
 import { ShortcutsCard } from '../ui/shortcuts.jsx';
 import { OsModeSettingsCard } from '../ui/os/os-settings.jsx'; // M1 OS mode
 import { useOsSiteEnabled } from '../ui/os/os-mode.jsx'; // aios (agent-bcw-ai-os)
-import AiAccountCard from '../ui/ai-account-card.jsx'; // aios (agent-bcw-ai-os): AI helpers + own key (BYOK)
+import { useDevice } from '../lib/device.js'; // agent-bcw-nav: desktop-only / touch-only settings
+import { SectionPicker } from '../ui/section-picker.jsx'; // agent-bcw-nav: the phone's section picker
+import AiAccountCard from '../ui/ai-account-card.jsx';
+import { useAiMe } from '../ui/ai-assist.jsx'; // agent-bcw-nav: list the AI card only when it draws // aios (agent-bcw-ai-os): AI helpers + own key (BYOK)
 
 /* ──────────────  BMM telemetry: my data (GDPR export / erasure)  ────────────── */
 // Only for a signed-in account with at least one linked BMM install (creator id). The
@@ -102,9 +105,19 @@ export function Settings() {
   const { user: authUser } = useAuth();
   const osSite = useOsSiteEnabled(); // aios (agent-bcw-ai-os): OS mode switched off site-wide
   const [active, setActive] = useState('set-appearance');
+  // agent-bcw-nav: what only makes sense on one kind of screen. The OS mode is a window
+  // manager (not on a phone: it cannot even show under 768px); keyboard shortcuts and "hold
+  // Shift" need a keyboard.
+  const device = useDevice();
+  const showOs = !device.narrow && !device.touchOnly;
+  const showKeys = !device.touchOnly;
+  // The AI card renders nothing when every helper is off: its entry must not point at nothing.
+  // Same test as ui/ai-account-card.jsx.
+  const aiMe = useAiMe(!!authUser);
+  const aiShown = !!aiMe?.features && (Object.entries(aiMe.features).some(([id, f]) => ['suggest_tags', 'detect_language', 'content_check', 'describe'].includes(id) && (f.available || f.reason !== 'feature_off')) || !!aiMe.byok?.enabled);
   useEffect(() => {
     if (typeof IntersectionObserver === 'undefined') return undefined;
-    const ids = ['set-appearance', 'set-motion', 'set-actions', 'set-privacy', 'install-app', 'os-mode', 'shortcuts'];
+    const ids = ['set-appearance', 'set-motion', 'set-actions', 'set-privacy', 'install-app', 'os-mode', 'ai', 'shortcuts'];
     const io = new IntersectionObserver((entries) => {
       const seen = entries.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
       if (seen[0]) setActive(seen[0].target.id);
@@ -197,8 +210,9 @@ export function Settings() {
     ['set-actions', MousePointerClick, t('set.behaviour', 'Actions')],
     ['set-privacy', Lock, t('set.privacy', 'Cookies & privacy')],
     ['install-app', Download, t('pwa.set.t', 'Install the app')],
-    ...(authUser && osSite ? [['os-mode', AppWindow, t('set.nav.os', 'OS mode')]] : []), // aios: no link to a card the site switched off
-    ['shortcuts', Keyboard, t('sc.overlay.t', 'Keyboard shortcuts')],
+    ...(authUser && osSite && showOs ? [['os-mode', AppWindow, t('set.nav.os', 'OS mode')]] : []), // aios: no link to a card the site switched off
+    ...(authUser && aiShown ? [['ai', Sparkles, t('aic.t', 'AI helpers')]] : []),
+    ...(showKeys ? [['shortcuts', Keyboard, t('sc.overlay.t', 'Keyboard shortcuts')]] : []),
   ];
   const go = (id) => {
     const el = document.getElementById(id);
@@ -217,8 +231,12 @@ export function Settings() {
           qui défile en haut. Remplace la grille à deux colonnes où l'ordre de lecture sautait
           d'une carte à l'autre. */}
       <div className="grid gap-6 lg:grid-cols-[13rem_minmax(0,1fr)] items-start">
-        <nav aria-label={t('set.nav', 'Settings sections')} className="min-w-0 lg:sticky lg:top-24">
-          <ul className="flex lg:flex-col gap-1 overflow-x-auto lg:overflow-visible -mx-1 px-1 pb-1 lg:pb-0 [scrollbar-width:thin]">
+        {/* agent-bcw-nav: below lg, a picker (the dashboards' pattern) instead of a row of
+            anchors scrolling sideways; it stays under the topbar so it is also the way to jump. */}
+        <SectionPicker className="lg:hidden" sticky label={t('set.nav', 'Settings sections')}
+          items={sections.map(([id, I, label]) => ({ id, icon: I, label }))} active={active} onPick={go} />
+        <nav aria-label={t('set.nav', 'Settings sections')} className="hidden lg:block min-w-0 lg:sticky lg:top-24">
+          <ul className="flex flex-col gap-1">
             {sections.map(([id, I, label]) => (
               <li key={id} className="shrink-0">
                 <button type="button" onClick={() => go(id)} aria-current={active === id ? 'true' : undefined}
@@ -295,10 +313,10 @@ export function Settings() {
           <Row icon={LogOut} title={t('set.logoutconfirm', 'Ask before signing out')} more={t('set.logoutconfirm.d', 'The sign-out button is an icon in the topbar, one mis-click from your profile, and with 2FA on, getting back in is not one click.')}>
             <Switch on={logoutConfirm} onChange={(v) => { setLogoutConfirmState(v); setLogoutConfirm(v); }} />
           </Row>
-          <Row icon={AlertTriangle} title={t('set.forceconfirm', 'Always ask, even with Shift held')}
+          {showKeys && <Row icon={AlertTriangle} title={t('set.forceconfirm', 'Always ask, even with Shift held')}
             more={t('set.forceconfirm.d', 'Holding Shift while clicking normally answers a confirmation without showing it — clearing a queue is one decision, not forty. Turn this on to make every confirmation unskippable, which is what you want on a shared or supervised machine. It never applies to the prompts that ask you to type something.')}>
             <Switch on={forceConfirm} onChange={(v) => { setForceConfirmState(v); setForceConfirm(v); }} />
-          </Row>
+          </Row>}
         </Group>
 
         <Group id="set-privacy" icon={Lock} title={t('set.privacy', 'Cookies & privacy')}>
@@ -312,7 +330,7 @@ export function Settings() {
         </Group>
 
         <InstallAppCard />
-        <OsModeSettingsCard className="scroll-mt-24" />
+        {showOs && <OsModeSettingsCard className="scroll-mt-24" />}
         <AiAccountCard className="scroll-mt-24" />
         <ShortcutsCard className="scroll-mt-24" />
         </div>

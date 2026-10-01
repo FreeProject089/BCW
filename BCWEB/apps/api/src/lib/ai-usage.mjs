@@ -22,7 +22,9 @@ const FLUSH_MS = 15_000;
 /** Upper bounds (ms) of the latency buckets; the last bucket is "slower than all of these". */
 export const LAT_BOUNDS = Object.freeze([50, 100, 200, 400, 800, 1500, 3000, 6000, 12000, 30000]);
 export const OUTCOMES = Object.freeze(['ok', 'failed', 'timeout', 'dropped', 'rateLimited', 'cacheHit', 'breakerOpen', 'breakerRefused', 'killed', 'disabled', 'badAnswer']);
-export const EVENTS = Object.freeze(['changed', 'falsePositive', 'confirmed']);
+// accepted / rejected: a member applied an AI suggestion, or dismissed it (unticked a tag,
+// closed the draft without using it). A count per (day, feature, provider), never what it was.
+export const EVENTS = Object.freeze(['changed', 'falsePositive', 'confirmed', 'accepted', 'rejected']);
 export const PROVIDERS = Object.freeze(['laya', 'external', 'byok', 'site', 'rules', 'off']);
 
 const FEATURE_RE = /^[a-z][a-z0-9_:.-]{0,47}$/;
@@ -126,13 +128,15 @@ export function recordAi(e = {}) {
   } catch { /* statistics must never break a call */ }
 }
 
-/** Record a decision-level event: the AI changed a moderation decision, or a human judged it. */
-export function recordAiEvent(feature, event, provider = 'laya') {
+/** Record a decision-level event: the AI changed a moderation decision, a human judged it, or
+ *  a member accepted / rejected a suggestion. `n` (1..50) counts several at once (three tags
+ *  applied out of four suggested = accepted 3, rejected 1). */
+export function recordAiEvent(feature, event, provider = 'laya', n = 1) {
   try {
     if (!EVENTS.includes(event)) return;
     const r = rowFor(dayKey(), cleanFeature(feature), cleanProvider(provider));
     if (!r) return;
-    r[event] += 1;
+    r[event] += Math.max(1, Math.min(50, Math.round(Number(n) || 1)));
     schedule();
   } catch { /* never */ }
 }
@@ -209,7 +213,7 @@ export const RANGES = Object.freeze({ '24h': 1, '7d': 7, '30d': 30, '90d': 90 })
  * the reading), so the arithmetic is testable without a database.
  */
 export function buildReport(rowsIn = [], userRows = [], { days = 7, names = {} } = {}) {
-  const sumRow = () => ({ calls: 0, ok: 0, failed: 0, timeout: 0, dropped: 0, rateLimited: 0, cacheHit: 0, breakerOpen: 0, breakerRefused: 0, killed: 0, disabled: 0, badAnswer: 0, changed: 0, falsePositive: 0, confirmed: 0, tokensIn: 0, tokensOut: 0, costUsd: 0, latencySumMs: 0, latencyHist: [] });
+  const sumRow = () => ({ calls: 0, ok: 0, failed: 0, timeout: 0, dropped: 0, rateLimited: 0, cacheHit: 0, breakerOpen: 0, breakerRefused: 0, killed: 0, disabled: 0, badAnswer: 0, changed: 0, falsePositive: 0, confirmed: 0, accepted: 0, rejected: 0, tokensIn: 0, tokensOut: 0, costUsd: 0, latencySumMs: 0, latencyHist: [] });
   const add = (acc, r) => {
     for (const k of Object.keys(acc)) {
       if (k === 'latencyHist') acc.latencyHist = addHist(acc.latencyHist, r.latencyHist);
@@ -219,12 +223,14 @@ export function buildReport(rowsIn = [], userRows = [], { days = 7, names = {} }
   };
   const finish = (a) => {
     const lookedUp = a.calls + a.cacheHit;
+    const judged = a.accepted + a.rejected;
     return {
       ...a,
       latencyHist: undefined,
       errors: a.failed + a.timeout + a.badAnswer,
       errorRate: a.calls ? (a.failed + a.timeout + a.badAnswer) / a.calls : null,
       cacheHitRate: lookedUp ? a.cacheHit / lookedUp : null,
+      acceptanceRate: judged ? a.accepted / judged : null,
       avgMs: a.calls ? Math.round(a.latencySumMs / a.calls) : null,
       p50: percentileFromHist(a.latencyHist, 50),
       p95: percentileFromHist(a.latencyHist, 95),
@@ -257,7 +263,7 @@ export function buildReport(rowsIn = [], userRows = [], { days = 7, names = {} }
   for (let i = days - 1; i >= 0; i--) {
     const d = dayKey(new Date(today.getTime() - i * 86400_000));
     const a = byDay.get(d);
-    series.push(a ? { day: d, calls: a.calls, errors: a.failed + a.timeout + a.badAnswer, cacheHit: a.cacheHit, rateLimited: a.rateLimited, p95: percentileFromHist(a.latencyHist, 95), costUsd: Math.round(a.costUsd * 10000) / 10000 } : { day: d, calls: 0, errors: 0, cacheHit: 0, rateLimited: 0, p95: null, costUsd: 0 });
+    series.push(a ? { day: d, calls: a.calls, errors: a.failed + a.timeout + a.badAnswer, cacheHit: a.cacheHit, rateLimited: a.rateLimited, accepted: a.accepted, rejected: a.rejected, p95: percentileFromHist(a.latencyHist, 95), costUsd: Math.round(a.costUsd * 10000) / 10000 } : { day: d, calls: 0, errors: 0, cacheHit: 0, rateLimited: 0, accepted: 0, rejected: 0, p95: null, costUsd: 0 });
   }
   const sortEntries = (m) => [...m.entries()].map(([k, a]) => ({ key: k, ...finish(a) })).sort((a, b) => (b.calls + b.cacheHit) - (a.calls + a.cacheHit));
   return { days, total: finish(total), byFeature: sortEntries(byFeature), byProvider: sortEntries(byProvider), series, topUsers };

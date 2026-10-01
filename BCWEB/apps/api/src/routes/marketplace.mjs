@@ -11,6 +11,8 @@ import { sendMail, mailShell, emailEnabled } from '../lib/mail.mjs';
 import { stripe, ensureCustomer } from './hosting.mjs';
 import { recordPendingCheckout, purchaseStatusForSession } from '../lib/pending-checkout.mjs';
 import { safeFetch } from '../lib/net.mjs';
+import { checkProjectRoom, targetOf } from '../lib/project-pool.mjs'; // agent-bcw-pools
+import { poolRoom } from '../lib/entity-hosting.mjs'; // agent-bcw-pools
 
 // What a product HANDS OVER. The first five were the whole of it, and between them they
 // could not sell the most ordinary thing a project sells — a file. The workaround was to paste
@@ -875,7 +877,13 @@ export default async function marketplaceRoutes(app) {
     // megabyte it adds, not on the forty-one it would be if the old file were staying.
     const store = await marketplaceStorage(p);
     const delta = buf.length - Number(product.fileBytes || 0);
-    if (store.capBytes > 0 && delta > 0 && store.usedBytes + delta > store.capBytes) {
+    // agent-bcw-pools: a project with a DEDICATED pool stores its shop files there, so the pool
+    // is what is asked (lib/project-pool.mjs); the site-wide ceiling is for the others.
+    const pooled = await checkProjectRoom(p, targetOf(product), buf.length, { replacedBytes: Number(product.fileBytes || 0), room: poolRoom });
+    if (pooled.pooled && !pooled.ok) {
+      return reply.code(413).send({ error: 'pool_full', poolName: pooled.poolName, freeBytes: pooled.freeBytes, needBytes: pooled.needBytes });
+    }
+    if (!pooled.pooled && store.capBytes > 0 && delta > 0 && store.usedBytes + delta > store.capBytes) {
       return reply.code(413).send({
         error: 'marketplace_storage_full',
         usedBytes: store.usedBytes, capBytes: store.capBytes, needBytes: delta,

@@ -12,6 +12,7 @@ import { db, requireRole, requireCanControlServer, requireElevated, issueElevate
 import { verifyTotp } from '../lib/totp.mjs';
 import { sealForOwner, openBackup } from '../lib/shred.mjs';
 import { FILES_ROOT, FILES_BACKUP_ROOT, DB_BACKUP_ROOT, backupFile, fileHistory, fileAtCommit, repoSizeBytes, gcRepo, deletedFiles, bundleRepo, backupLog, snapshotTree, inspectBundle, restoreFromBundle, bundleTree, bundleFile } from '../lib/gitbackup.mjs';
+import { linkSecret } from '../lib/link-secret.mjs';
 import { createSnapshot, listSnapshots, snapshotBytes, deleteSnapshot, pruneSnapshots, validSnapshotId, SNAPSHOT_KINDS, importSnapshot, snapshotPath, checkSnapshotDir, SNAPSHOT_ROOT } from '../lib/snapshots.mjs';
 
 // A lightweight "type to confirm" server-side check — the frontend already
@@ -700,7 +701,7 @@ export default async function serverControlRoutes(app) {
     // agreement. SUPERADMIN is always allowed.
     const me = await (await db()).user.findUnique({ where: { id: req.user.uid }, select: { canViewTelemetry: true, telemetryEpoch: true } });
     if (req.user.role !== 'SUPERADMIN' && !me?.canViewTelemetry) return reply.code(403).send({ error: 'no_telemetry_access' });
-    const secret = process.env.BC_LINK_SECRET || process.env.LINK_LOOKUP_SECRET || 'dev-link-secret';
+    const secret = linkSecret();
     // `ep` binds the token to the user's current logout epoch — logging out bumps it
     // (auth.mjs) so this token (and the cookie minted from it) stops validating.
     const payload = Buffer.from(JSON.stringify({ role: req.user.role, uid: req.user.uid, ep: me?.telemetryEpoch || 0, exp: Date.now() + 4 * 3600 * 1000 })).toString('base64url');

@@ -22,6 +22,10 @@
 // desktop and the recently opened screens. They are ids of tabs, never tabs: the shell draws
 // only the ones present in the dashboard's tab list TODAY, so a pin never grants anything.
 
+// agent-bcw-os: the desktop's icons (cells, folders) and the taskbar groups live in the same
+// saved layout; their rules are desk.js.
+import { folderOp, groupOp, sanitiseIcons, sanitiseGroups, sanitisePos, emptyIcons } from './desk.js';
+
 export const MIN_W = 360;
 export const MIN_H = 220;
 export const TITLE_H = 36;
@@ -124,12 +128,16 @@ export function snapZoneAt(px, py, vp, edge = 10, corner = 120) {
 
 // ── Snap layouts (the grid that opens from the maximise button) ────────────────
 const T3 = 1 / 3;
+// The order is the picker's (Windows 11's): side by side first, then the uneven splits, then
+// the grids. assistZones() looks a zone up in this order, so main-stack stays before quarters.
 export const SNAP_LAYOUTS = [
   { id: 'halves', zones: [{ x: 0, y: 0, w: 0.5, h: 1 }, { x: 0.5, y: 0, w: 0.5, h: 1 }] },
   { id: 'two-thirds', zones: [{ x: 0, y: 0, w: 2 * T3, h: 1 }, { x: 2 * T3, y: 0, w: T3, h: 1 }] },
-  { id: 'main-stack', zones: [{ x: 0, y: 0, w: 0.5, h: 1 }, { x: 0.5, y: 0, w: 0.5, h: 0.5 }, { x: 0.5, y: 0.5, w: 0.5, h: 0.5 }] },
-  { id: 'quarters', zones: [{ x: 0, y: 0, w: 0.5, h: 0.5 }, { x: 0.5, y: 0, w: 0.5, h: 0.5 }, { x: 0, y: 0.5, w: 0.5, h: 0.5 }, { x: 0.5, y: 0.5, w: 0.5, h: 0.5 }] },
+  { id: 'one-third', zones: [{ x: 0, y: 0, w: T3, h: 1 }, { x: T3, y: 0, w: 2 * T3, h: 1 }] },
   { id: 'thirds', zones: [{ x: 0, y: 0, w: T3, h: 1 }, { x: T3, y: 0, w: T3, h: 1 }, { x: 2 * T3, y: 0, w: T3, h: 1 }], minWidth: 1100 },
+  { id: 'main-stack', zones: [{ x: 0, y: 0, w: 0.5, h: 1 }, { x: 0.5, y: 0, w: 0.5, h: 0.5 }, { x: 0.5, y: 0.5, w: 0.5, h: 0.5 }] },
+  { id: 'stack-main', zones: [{ x: 0, y: 0, w: 0.5, h: 0.5 }, { x: 0, y: 0.5, w: 0.5, h: 0.5 }, { x: 0.5, y: 0, w: 0.5, h: 1 }] },
+  { id: 'quarters', zones: [{ x: 0, y: 0, w: 0.5, h: 0.5 }, { x: 0.5, y: 0, w: 0.5, h: 0.5 }, { x: 0, y: 0.5, w: 0.5, h: 0.5 }, { x: 0.5, y: 0.5, w: 0.5, h: 0.5 }] },
   { id: 'wide-center', zones: [{ x: 0, y: 0, w: 0.25, h: 1 }, { x: 0.25, y: 0, w: 0.5, h: 1 }, { x: 0.75, y: 0, w: 0.25, h: 1 }], minWidth: 1500 },
 ];
 /** The layouts whose every zone can hold a window of (almost) the minimum size. */
@@ -147,10 +155,13 @@ export const fracOf = (t) => (typeof t === 'string' ? NAMED_FRAC[t] || null : is
  * offered to the other windows. A half offers the other half; a quarter, the three others; a
  * layout zone, the rest of that layout. 'max' and a free zone (fill) offer nothing.
  */
-export function assistZones(target) {
+export function assistZones(target, layoutId = null) {
   const named = typeof target === 'string';
   const f = fracOf(target);
   if (!f) return [];
+  // Picked from a given layout (the snap grid says which): that layout's other zones.
+  const given = layoutId && SNAP_LAYOUTS.find((l) => l.id === layoutId && l.zones.some((z) => sameFrac(z, f)));
+  if (given) return given.zones.filter((z) => !sameFrac(z, f));
   const layout = named
     ? SNAP_LAYOUTS.find((l) => l.id === (target === 'left' || target === 'right' ? 'halves' : 'quarters'))
     : SNAP_LAYOUTS.find((l) => l.zones.some((z) => sameFrac(z, f)));
@@ -266,6 +277,7 @@ export function initialState(vp = { w: 1280, h: 720 }) {
   return {
     wins: [], active: null, seq: 0, vp: { w: Math.max(1, num(vp.w, 1280)), h: Math.max(1, num(vp.h, 720)) }, peek: null,
     pins: [], start: [], hidden: [], recent: [],
+    icons: emptyIcons(), groups: [],
   };
 }
 
@@ -493,6 +505,24 @@ export function reduce(s, a) {
     }
     case 'deskReset':
       return s.hidden?.length ? { ...s, hidden: [] } : s;
+    // agent-bcw-os: icons moved on the grid, folders, taskbar groups (desk.js).
+    case 'iconsPos': {
+      const pos = sanitisePos(a.pos);
+      return { ...s, icons: { ...(s.icons || emptyIcons()), pos } };
+    }
+    case 'folder': {
+      const icons = folderOp(s.icons || emptyIcons(), a);
+      if (icons === s.icons) return s;
+      // A deleted folder's window closes with it.
+      const gone = a.op === 'delete' && !icons.folders.some((f) => f.id === a.id);
+      if (!gone || !s.wins.some((w) => w.id === a.id)) return { ...s, icons };
+      const wins = s.wins.filter((w) => w.id !== a.id);
+      return { ...s, icons, wins, active: s.active === a.id ? topId(wins) : s.active };
+    }
+    case 'group': {
+      const groups = groupOp(s.groups || [], a);
+      return groups === s.groups ? s : { ...s, groups };
+    }
     case 'hydrate': {
       const wins = sanitise(a.saved, s.vp);
       const seq = wins.reduce((m, w) => Math.max(m, w.used), 0);
@@ -501,6 +531,7 @@ export function reduce(s, a) {
         ...s, wins, active, seq, peek: null,
         pins: idList(a.saved?.pins, MAX_PINS), start: idList(a.saved?.start, MAX_PINS),
         hidden: idList(a.saved?.hidden, MAX_SAVED), recent: idList(a.saved?.recent, MAX_RECENT),
+        icons: sanitiseIcons(a.saved?.icons), groups: sanitiseGroups(a.saved?.groups),
       };
     }
     case 'reset':
@@ -542,6 +573,8 @@ export function serialize(s) {
     start: (s.start || []).slice(0, MAX_PINS),
     hidden: (s.hidden || []).slice(0, MAX_SAVED),
     recent: (s.recent || []).slice(0, MAX_RECENT),
+    icons: s.icons || emptyIcons(),
+    groups: s.groups || [],
   };
 }
 

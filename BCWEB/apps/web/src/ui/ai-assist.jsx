@@ -7,9 +7,9 @@
 // language fall back to plain word matching on our server when no AI is on; a generative
 // feature with no key says how to get one (your own key in Settings, or a plan that has it).
 // Nothing here is required to submit: the form works the same with every helper gone.
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Sparkles, Tags, Languages, PenLine, ShieldCheck, ThumbsDown, Loader2 } from 'lucide-react';
+import { Sparkles, Tags, Languages, PenLine, ShieldCheck, ThumbsDown, Loader2, Check, X } from 'lucide-react';
 import { Button, useToast } from './ui.jsx';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
@@ -70,13 +70,21 @@ async function post(url, body) {
   try { return await api.post(url, body); } catch (e) { return { ok: false, reason: e?.data?.error || e?.data?.reason || 'unavailable' }; }
 }
 
+/** What the member did with a suggestion: a count for the staff's acceptance rate. Only the
+ *  helper, where it ran and how many; never the text or what it was for. Fire and forget. */
+function report(o, outcome, n) {
+  if (!o || n < 1) return;
+  post('/ai/feedback', { feature: o.feature, outcome, provider: o.provider, field: o.field, n: Math.min(20, n) });
+}
+
 /**
  * The helper bar under a text field.
  *   kind       what is being written ('plugin' | 'theme' | 'app' | 'preset' | 'catalog' | 'repo')
  *   name       its name (for the description draft)
  *   text       the current text (description)
  *   tagOptions the tags this form offers (the suggestions are always a subset)
- *   onTags(list) / onDescription(text) — applied only when the member presses the button
+ *   onTags(list) / onDescription(text) — applied only when the member presses Apply on the
+ *              suggestion (Dismiss, or leaving the form, counts it as not used: a count only)
  */
 export default function AiAssist({ kind = 'plugin', name = '', text = '', tagOptions = null, onTags, onDescription, className = '' }) {
   const { t } = useI18n();
@@ -88,6 +96,13 @@ export default function AiAssist({ kind = 'plugin', name = '', text = '', tagOpt
   const [check, setCheck] = useState(null);   // { level, categories, source }
   const [lang, setLang] = useState(null);     // { lang, source }
   const [note, setNote] = useState(null);     // the last disclosure shown
+  // A suggestion waiting for the member: { feature, provider, field, list, picked } for tags,
+  // { ..., text } for a draft. Nothing is written into the form until they press Apply.
+  const [offer, setOfferState] = useState(null);
+  const pending = useRef(null);
+  const setOffer = (o) => { pending.current = o; setOfferState(o); };
+  // Leaving the form with a suggestion still open counts as a dismissal.
+  useEffect(() => () => { const o = pending.current; if (o) report(o, 'rejected', o.list ? o.list.length : 1); }, []);
   if (!me?.features) return null;
   const f = me.features;
   const can = (id) => f[id]?.available;
@@ -103,8 +118,7 @@ export default function AiAssist({ kind = 'plugin', name = '', text = '', tagOpt
     const list = (r.result?.tags || []).map((x) => x.tag);
     setNote(where(r.source === 'ai' ? r.provider : 'local'));
     if (!list.length) return toast.info(t('aia.tags.none', 'No tag from the list fits this text clearly.'));
-    onTags?.(list);
-    toast.success(t('aia.tags.done', 'Suggested: {l}. Review them before you submit.').replace('{l}', list.join(', ')));
+    replaceOffer({ feature: 'suggest_tags', provider: r.source === 'ai' ? r.provider : 'local', field: 'tags', list, picked: list });
   });
   const detect = () => run('lang', async () => {
     const r = await post('/ai/suggest', { task: 'language', text: text.slice(0, 6000) });
@@ -116,9 +130,26 @@ export default function AiAssist({ kind = 'plugin', name = '', text = '', tagOpt
     const r = await post('/ai/describe', { kind, name: name.trim() || t('aia.untitled', 'Untitled'), notes: text.slice(0, 4000), lang: document?.documentElement?.lang === 'fr' ? 'fr' : 'en' });
     if (!r?.ok) return fail(r?.error || r?.reason);
     setNote(where(r.provider, r.host));
-    onDescription?.(r.text);
-    toast.success(t('aia.desc.done', 'Draft written into the description. Edit it: you are the author.'));
+    replaceOffer({ feature: 'describe', provider: r.provider, field: 'description', text: r.text });
   });
+  // A new suggestion replaces one the member never answered: that one was not used.
+  const replaceOffer = (o) => { const old = pending.current; if (old) report(old, 'rejected', old.list ? old.list.length : 1); setOffer(o); };
+  const toggle = (tag) => setOffer({ ...offer, picked: offer.picked.includes(tag) ? offer.picked.filter((x) => x !== tag) : [...offer.picked, tag] });
+  const apply = () => {
+    const o = offer;
+    setOffer(null);
+    if (o.list) {
+      if (o.picked.length) onTags?.(o.picked);
+      report(o, 'accepted', o.picked.length);
+      report(o, 'rejected', o.list.length - o.picked.length);
+      if (o.picked.length) toast.success(t('aia.tags.added', 'Tags added. Review them before you submit.'));
+    } else {
+      onDescription?.(o.text);
+      report(o, 'accepted', 1);
+      toast.success(t('aia.desc.done', 'Draft written into the description. Edit it: you are the author.'));
+    }
+  };
+  const dismiss = () => { const o = offer; setOffer(null); report(o, 'rejected', o.list ? o.list.length : 1); };
   const doCheck = () => run('check', async () => {
     const r = await post('/ai/check', { text: `${name}\n${text}`.slice(0, 8000) });
     if (!r?.ok) return fail(r?.error || r?.reason);
@@ -156,6 +187,28 @@ export default function AiAssist({ kind = 'plugin', name = '', text = '', tagOpt
         {f.describe && onDescription && btn('describe', 'describe', PenLine, t('aia.desc', 'Draft a description'), describe, !name.trim())}
         {f.content_check && btn('content_check', 'check', ShieldCheck, t('aia.check', 'Check before posting'), doCheck, !long)}
       </div>
+      {offer && (
+        <div className="mt-2 rounded-lg border border-[var(--line)] p-2" role="status">
+          <p className="font-medium">{offer.list ? t('aia.offer.tags', 'Suggested tags') : t('aia.offer.desc', 'Suggested description')}</p>
+          {offer.list
+            ? <div className="mt-1 flex flex-wrap gap-1">
+                {offer.list.map((tag) => {
+                  const on = offer.picked.includes(tag);
+                  return (
+                    <button key={tag} type="button" aria-pressed={on} onClick={() => toggle(tag)}
+                      className={`rounded-full border px-2 py-0.5 ${on ? 'border-[var(--line-strong)] text-[var(--text)]' : 'border-[var(--line)] text-[var(--faint)] line-through'}`}>
+                      {tag}
+                    </button>
+                  );
+                })}
+              </div>
+            : <p className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap text-[var(--muted)]">{offer.text}</p>}
+          <div className="mt-1.5 flex gap-1.5">
+            <Button size="sm" onClick={apply} disabled={!!offer.list && !offer.picked.length}><Check size={14} aria-hidden /> {t('aia.offer.apply', 'Apply')}</Button>
+            <Button size="sm" variant="ghost" onClick={dismiss}><X size={14} aria-hidden /> {t('aia.offer.dismiss', 'Dismiss')}</Button>
+          </div>
+        </div>
+      )}
       {lang && (
         <p className="mt-2">{lang.lang ? t('aia.lang.is', 'This text looks like {l}.').replace('{l}', LANG[lang.lang] || lang.lang) : t('aia.lang.unsure', 'Too short to tell the language.')}</p>
       )}

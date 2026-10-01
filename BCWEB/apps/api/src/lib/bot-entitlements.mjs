@@ -47,7 +47,7 @@
 
 /** The features a plan can grant, in the order the admin editor and the public cards list
  *  them. Each maps onto one piece of the per-guild bot config (see gateGuildPatch). */
-export const BOT_FEATURES = ['welcome', 'welcomeBanner', 'joinToCreate', 'gating', 'rolePanels', 'blog', 'automod', 'logRouting', 'aiAutomod'];
+export const BOT_FEATURES = ['welcome', 'welcomeBanner', 'joinToCreate', 'gating', 'rolePanels', 'blog', 'automod', 'logRouting', 'aiAutomod', 'aiAsk', 'jtcPro', 'aiByok'];
 
 /** laya (agent-laya-bcweb): features that are PAID even when the admin never set a free tier.
  *  Decision 4 makes "no setting" mean "everything free" so that shipping plans gated nothing
@@ -55,7 +55,12 @@ export const BOT_FEATURES = ['welcome', 'welcomeBanner', 'joinToCreate', 'gating
  *  spends the platform's own CPU or a paid third-party API on every checked message) is new,
  *  and the owner's call is that it is a paid option from day one. An admin who wants it free
  *  adds it to the free tier's features, like any other. */
-export const PAID_BY_DEFAULT = ['aiAutomod'];
+//
+// agent-bcw-bot: `jtcPro` (the voice room's pro controls: transfer, bitrate, member blocks from
+// the panel's dropdowns) and `aiByok` (the server's own AI key without the per-call fee) are new
+// too, and paid from day one. `aiAsk` (/ask, the members' AI helper) is FREE, bounded by the
+// monthly allowance `aiMonthly` and then by credits (lib/bot-billing.mjs).
+export const PAID_BY_DEFAULT = ['aiAutomod', 'jtcPro', 'aiByok'];
 
 /** The limits a plan can raise, with their HARD ceiling: the most the API schemas accept
  *  today (bot.mjs zod caps), so no plan can promise more than the config can hold. */
@@ -65,13 +70,25 @@ export const BOT_LIMITS = {
   rolePanels: 20,
   blogRoutes: 20,
   automodWords: 500,
+  // agent-bcw-bot: AI calls on the platform's AI per month (then credits), and the member
+  // storage a plan brings (MB, the bot's pool for this server; the admin's own quota wins when
+  // it is larger, lib/discord-storage.mjs is untouched).
+  aiMonthly: 100000,
+  storageMB: 51200,
 };
+
+/** agent-bcw-bot: limits that did not exist when an admin saved a free tier. A saved tier that
+ *  does not mention them gets these values, not 0 (0 would switch the free AI off on upgrade). */
+export const NEW_LIMIT_DEFAULTS = Object.freeze({ aiMonthly: 100, storageMB: 250 });
+
+/** agent-bcw-bot: the public tiers a paid plan can be (the free one is the admin setting). */
+export const BOT_TIER_KEYS = ['pro', 'ultra'];
 
 /** How many servers one plan can cover, at most. */
 export const MAX_PLAN_GUILDS = 25;
 
 /** The free tier when the admin has never set one: everything, at the hard caps (decision 4). */
-export const DEFAULT_FREE = Object.freeze({ features: BOT_FEATURES.filter((f) => !PAID_BY_DEFAULT.includes(f)), limits: { ...BOT_LIMITS } });
+export const DEFAULT_FREE = Object.freeze({ features: BOT_FEATURES.filter((f) => !PAID_BY_DEFAULT.includes(f)), limits: { ...BOT_LIMITS, ...NEW_LIMIT_DEFAULTS } });
 
 const SETTING_KEY = 'bot.entitlements';
 export { SETTING_KEY as BOT_ENTITLEMENTS_KEY };
@@ -88,7 +105,10 @@ export function normalizeTier(raw, { fillMissing = 0 } = {}) {
   const features = [...new Set((Array.isArray(r.features) ? r.features : []).map(String))].filter((f) => BOT_FEATURES.includes(f));
   const limits = {};
   for (const [k, cap] of Object.entries(BOT_LIMITS)) {
-    const v = r.limits && r.limits[k] != null ? r.limits[k] : fillMissing === 'cap' ? cap : fillMissing;
+    const v = r.limits && r.limits[k] != null ? r.limits[k]
+      : fillMissing === 'cap' ? cap
+      : fillMissing && typeof fillMissing === 'object' ? (fillMissing[k] ?? 0)
+      : fillMissing;
     limits[k] = int(v, 0, cap);
   }
   return { features, limits };
@@ -100,13 +120,15 @@ export function normalizePlanBot(raw) {
   const tier = normalizeTier(raw);
   const guilds = int(raw.guilds ?? 1, 1, MAX_PLAN_GUILDS);
   if (!tier.features.length && !Object.values(tier.limits).some((n) => n > 0)) return null;
-  return { guilds, ...tier };
+  // agent-bcw-bot: which public tier this plan is (the pricing page's cards), when it says.
+  const t = String(raw.tier || '').toLowerCase();
+  return { guilds, ...tier, ...(BOT_TIER_KEYS.includes(t) ? { tier: t } : {}) };
 }
 
 /** The admin setting cleaned. Absent → DEFAULT_FREE (everything), per decision 4. */
 export function normalizeSetting(raw) {
   const r = raw && typeof raw === 'object' ? raw : {};
-  const free = r.free ? normalizeTier(r.free) : { features: [...DEFAULT_FREE.features], limits: { ...DEFAULT_FREE.limits } };
+  const free = r.free ? normalizeTier(r.free, { fillMissing: NEW_LIMIT_DEFAULTS }) : { features: [...DEFAULT_FREE.features], limits: { ...DEFAULT_FREE.limits } };
   const unlimitedGuildIds = [...new Set((Array.isArray(r.unlimitedGuildIds) ? r.unlimitedGuildIds : []).map(String))].filter((id) => /^\d{1,32}$/.test(id)).slice(0, 50);
   return { free, unlimitedGuildIds };
 }

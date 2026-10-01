@@ -79,6 +79,31 @@ const clampInt = (v, lo, hi, d) => {
   return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d;
 };
 
+// agent-bcw-pools: the SIMPLE form of the policy, the one the admin screen offers first.
+// "Every `everyMonths` months subscribed, the month costs `stepPct` % less, up to `maxPct` %;
+// cancel and the price is full again." Stored as { simple: { everyMonths, stepPct } } beside
+// the tiers, and the tiers are DERIVED from it (so every reader of `tiers` needs no change),
+// with the continuous rule forced on: that last clause is what "simple" promises.
+export const SIMPLE_LIMITS = Object.freeze({ everyMin: 1, everyMax: 24, stepMin: 1, stepMax: 50 });
+export function simpleTiers(simple, maxPct) {
+  const every = clampInt(simple?.everyMonths, SIMPLE_LIMITS.everyMin, SIMPLE_LIMITS.everyMax, 3);
+  const step = clampInt(simple?.stepPct, SIMPLE_LIMITS.stepMin, SIMPLE_LIMITS.stepMax, 5);
+  const cap = clampInt(maxPct, 0, LOYALTY_HARD_MAX_PCT, LOYALTY_DEFAULT.maxPct);
+  const out = [];
+  for (let k = 1; out.length < 12 && k * every <= 120; k++) {
+    const pct = Math.min(k * step, cap);
+    out.push({ months: k * every, pct });
+    if (pct >= cap) break;
+  }
+  return out;
+}
+function normaliseSimple(v) {
+  if (!v || typeof v !== 'object') return null;
+  const everyMonths = clampInt(v.everyMonths, SIMPLE_LIMITS.everyMin, SIMPLE_LIMITS.everyMax, NaN);
+  const stepPct = clampInt(v.stepPct, SIMPLE_LIMITS.stepMin, SIMPLE_LIMITS.stepMax, NaN);
+  return Number.isFinite(everyMonths) && Number.isFinite(stepPct) ? { everyMonths, stepPct } : null;
+}
+
 /** The stored setting, made safe: integer months 1..120 and percentages 0..90, one tier per
  *  month count (the last one written wins), sorted by months, at most 12 tiers. Anything
  *  missing falls back to the default rather than to "no policy". */
@@ -91,15 +116,19 @@ export function normaliseLoyalty(raw) {
     if (Number.isFinite(months) && Number.isFinite(pct)) byMonths.set(months, pct);
   }
   const tiers = [...byMonths].map(([months, pct]) => ({ months, pct })).sort((a, b) => a.months - b.months).slice(0, 12);
-  return {
+  const maxPct = clampInt(r.maxPct, 0, LOYALTY_HARD_MAX_PCT, LOYALTY_DEFAULT.maxPct);
+  const simple = normaliseSimple(r.simple); // agent-bcw-pools
+  const out = {
     enabled: r.enabled === true,
-    tiers,
-    maxPct: clampInt(r.maxPct, 0, LOYALTY_HARD_MAX_PCT, LOYALTY_DEFAULT.maxPct),
+    tiers: simple ? simpleTiers(simple, maxPct) : tiers,
+    maxPct,
     appliesTo: LOYALTY_SCOPES.includes(r.appliesTo) ? r.appliesTo : LOYALTY_DEFAULT.appliesTo,
     // Only a literal false turns the continuous rule off: a missing field keeps the rule the
-    // first version shipped with.
-    lapseResets: r.lapseResets !== false,
+    // first version shipped with. The simple form is always continuous (agent-bcw-pools).
+    lapseResets: simple ? true : r.lapseResets !== false,
   };
+  if (simple) out.simple = simple;
+  return out;
 }
 
 /** Does the policy cover this kind of subscription? kind: 'repos' | 'catalogs'. */

@@ -29,8 +29,10 @@ describe('entitlement computation', () => {
     // …everything that existed before plans. laya (agent-laya-bcweb): aiAutomod is new and
     // paid from day one (PAID_BY_DEFAULT), so it is the one exception.
     assert.deepEqual(e.features, BOT_FEATURES.filter((f) => !PAID_BY_DEFAULT.includes(f)));
-    assert.deepEqual(PAID_BY_DEFAULT, ['aiAutomod']);
-    assert.deepEqual(e.limits, BOT_LIMITS);
+    // agent-bcw-bot: jtcPro and aiByok are new too, and paid from day one; the AI allowance
+    // and the storage a plan brings are the two limits the free tier does NOT get at the cap.
+    assert.deepEqual(PAID_BY_DEFAULT, ['aiAutomod', 'jtcPro', 'aiByok']);
+    assert.deepEqual(e.limits, { ...BOT_LIMITS, aiMonthly: 100, storageMB: 250 });
     assert.deepEqual(e.planFeatures, []);
   });
 

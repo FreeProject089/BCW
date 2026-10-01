@@ -32,6 +32,12 @@ describe('askedPermissions, as BMM reads it', () => {
   test('resources and tasks are read like the others', () => {
     assert.deepEqual(perms({ perms: { resources: true, tasks: true } }), ['resources', 'tasks']);
   });
+  // BMM added `ai` (Laya in scheduled tasks, Oct 2026): a task granted it must not be
+  // reported to a moderator as asking for nothing.
+  test('ai (Laya in a task) is a permission like the others', () => {
+    assert.ok(RISK_KEYS.includes('ai'), 'RISK_KEYS must carry `ai`, as BMM does');
+    assert.deepEqual(perms({ perms: { ai: true } }), ['ai']);
+  });
 });
 
 describe('the web inspector has words for every permission code', () => {

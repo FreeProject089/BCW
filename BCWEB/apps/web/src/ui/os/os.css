@@ -65,21 +65,22 @@ html[data-os-full] .os-shell { top: 0; }
 /* In fullscreen the scene wallpaper would show the page's own background only. */
 html[data-os-full] .os-shell[data-wallpaper="scene"] .os-desktop { background: transparent; }
 
+/* The icons sit on a grid of cells (desk.js CELLS, GRID_PAD): each <li> is placed by the shell,
+   so a moved icon stays where it was dropped. The list covers the desktop, and a press on its
+   empty part draws the rubber band. */
 .os-icons {
   position: absolute;
-  inset: 12px;
+  inset: 0;
   margin: 0; padding: 0; list-style: none;
-  display: grid;
-  grid-auto-flow: column;
-  grid-template-rows: repeat(auto-fill, calc(var(--os-icon-h) + 8px));
-  grid-auto-columns: var(--os-icon-w);
-  gap: 4px;
-  align-content: start;
   z-index: 0;
+  touch-action: none;
 }
+.os-icon-cell { position: absolute; display: flex; flex-direction: column; align-items: center; }
 .os-icon {
   position: relative;
-  width: var(--os-icon-w);
+  width: 100%;
+  max-width: var(--os-icon-w);
+  touch-action: none;
   min-height: var(--os-icon-h);
   display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
   gap: 6px;
@@ -90,6 +91,38 @@ html[data-os-full] .os-shell[data-wallpaper="scene"] .os-desktop { background: t
   cursor: pointer;
 }
 .os-icon:hover, .os-icon:focus-visible { background: color-mix(in srgb, var(--primary) 12%, transparent); border-color: color-mix(in srgb, var(--primary) 32%, transparent); }
+.os-icon.is-sel { background: color-mix(in srgb, var(--primary) 20%, transparent); border-color: color-mix(in srgb, var(--primary) 55%, transparent); }
+.os-icon-cell.is-dragging { z-index: 5; pointer-events: none; opacity: .85; }
+.os-icon-cell.is-drop .os-icon { background: color-mix(in srgb, var(--primary) 26%, transparent); border-color: var(--primary); }
+.os-icon-folder { color: var(--accent-ink); background: color-mix(in srgb, var(--primary) 10%, var(--bg-solid)); }
+.os-icon-rename {
+  width: calc(var(--os-icon-w) - 4px);
+  margin-top: -2px;
+  padding: 1px 4px;
+  border-radius: 6px;
+  border: 1px solid var(--ring);
+  background: var(--bg-solid);
+  color: var(--text);
+  font-size: 12px; text-align: center;
+  outline: none;
+}
+.os-band {
+  position: absolute;
+  z-index: 1;
+  pointer-events: none;
+  border: 1px solid var(--primary);
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  border-radius: 2px;
+}
+.os-drag-ghost {
+  position: fixed; z-index: 49; pointer-events: none;
+  transform: translate(8px, 8px);
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 10px; border-radius: 8px;
+  background: var(--bg-solid); border: 1px solid var(--line-strong); box-shadow: var(--shadow);
+  color: var(--text); font-size: 12.5px;
+}
+.os-drag-ghost svg { color: var(--accent-ink); }
 .os-icon:active .os-icon-tile { transform: scale(.96); }
 .os-icon-tile {
   position: relative;
@@ -307,30 +340,34 @@ html[data-os-full] .os-shell[data-wallpaper="scene"] .os-desktop { background: t
 .os-snapfly {
   position: fixed;
   z-index: 48;
-  width: 300px;
   padding: 10px;
   background: var(--bg-solid);
   border: 1px solid var(--line-strong);
   border-radius: 12px;
   box-shadow: var(--shadow-lg);
 }
-.os-snapfly-t { font-size: 12px; font-weight: 600; color: var(--muted); margin: 0 2px 8px; }
-.os-snapfly-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+/* Windows 11's picker: miniature screens in rows of three, each zone a rounded block with a
+   gap around it, the zone under the pointer filled with the accent and drawn on the desktop. */
+.os-snapfly-grid { display: grid; grid-template-columns: repeat(var(--per-row, 3), 92px); gap: 8px; }
 .os-snapfly-lay {
   position: relative;
-  height: 54px;
-  border-radius: 6px;
+  aspect-ratio: 16 / 10;
+  border-radius: 7px;
   background: var(--surface-2);
   border: 1px solid var(--line);
+  transition: border-color .12s;
 }
+.os-snapfly-lay.is-hot { border-color: color-mix(in srgb, var(--primary) 45%, var(--line)); }
 .os-snapfly-zone {
   position: absolute;
-  border: 2px solid var(--surface-2);
-  border-radius: 5px;
-  background: color-mix(in srgb, var(--text) 16%, var(--bg-solid));
-  transition: background .1s;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--text) 18%, var(--bg-solid));
+  border: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
+  transition: background .1s, border-color .1s;
 }
-.os-snapfly-zone:hover, .os-snapfly-zone:focus-visible { background: var(--primary); }
+.os-snapfly-lay.is-hot .os-snapfly-zone { background: color-mix(in srgb, var(--text) 26%, var(--bg-solid)); }
+.os-snapfly-zone.is-hot, .os-snapfly-lay.is-hot .os-snapfly-zone.is-hot, .os-snapfly-zone:focus-visible { background: var(--primary); border-color: var(--primary); }
+.os-snapfly .os-snapfly-zone:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
 
 .os-assist {
   position: absolute;
@@ -529,7 +566,7 @@ html[data-os-full] { --os-top: 0px; }
 }
 .os-pop.os-pop-top { bottom: auto; top: calc(var(--os-top) + var(--os-bar-h) + 8px); }
 .os-pop-notif { width: min(23rem, calc(100vw - 16px)); height: min(34rem, calc(100vh - var(--os-top) - var(--os-bar-h) - 16px)); }
-.os-pop-cal { width: 300px; padding: 12px; gap: 10px; }
+.os-pop-cal { width: 312px; padding: 14px; gap: 10px; }
 .os-cal-now { padding-bottom: 10px; border-bottom: 1px solid var(--line); }
 .os-cal-time { font-size: 26px; font-weight: 300; font-variant-numeric: tabular-nums; line-height: 1.1; }
 .os-cal-full { font-size: 12.5px; color: var(--accent-ink); margin-top: 2px; }
@@ -537,10 +574,26 @@ html[data-os-full] { --os-top: 0px; }
 .os-cal-month { flex: 1; font-size: 13px; font-weight: 600; text-transform: capitalize; }
 .os-cal-nav { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; }
 .os-cal-nav:hover { background: var(--surface-2); }
-.os-cal-grid { width: 100%; border-collapse: collapse; font-size: 12.5px; text-align: center; font-variant-numeric: tabular-nums; }
-.os-cal-grid th { font-weight: 500; color: var(--faint); padding: 4px 0; text-transform: uppercase; font-size: 11px; }
-.os-cal-grid td { padding: 0; height: 32px; }
-.os-cal-grid td.is-today { background: var(--primary); color: var(--on-primary); border-radius: 999px; font-weight: 700; }
+/* A grid of seven equal columns, never a <table>: the site's `table { display: block }` (the
+   phone-overflow guard in index.css) collapsed the old table into one run of digits. Each day
+   is a square cell, so the round "today" mark is never clipped by its row. */
+.os-cal-grid { display: flex; flex-direction: column; gap: 2px; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.os-cal-row { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; }
+.os-cal-dow { display: grid; place-items: center; height: 24px; font-size: 11px; font-weight: 500; color: var(--faint); text-transform: capitalize; }
+.os-cal-day {
+  display: grid; place-items: center;
+  aspect-ratio: 1; min-height: 32px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  color: var(--text);
+  cursor: pointer;
+  user-select: none;
+}
+.os-cal-day:hover { background: var(--surface-2); }
+.os-cal-day.is-out { color: var(--faint); }
+.os-cal-day.is-focus { border-color: color-mix(in srgb, var(--primary) 55%, transparent); }
+.os-cal-day.is-today { background: var(--primary); color: var(--on-primary); font-weight: 700; border-color: var(--primary); }
+.os-cal-day:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
 .os-cal-today { align-self: flex-start; font-size: 12.5px; color: var(--accent-ink); }
 .os-cal-today:hover { text-decoration: underline; }
 
@@ -682,6 +735,99 @@ html[data-os-full] { --os-top: 0px; }
 .os-pz-switch.is-on { background: var(--primary); border-color: var(--primary); }
 .os-pz-switch.is-on > span { transform: translateX(16px); }
 
+/* ── Folder windows (os-desktop.jsx FolderView) ───────────────────────────── */
+.os-fold { min-height: 100%; display: flex; flex-direction: column; gap: 10px; border-radius: 8px; }
+.os-fold.is-drop { outline: 2px dashed var(--primary); outline-offset: -2px; background: color-mix(in srgb, var(--primary) 6%, transparent); }
+.os-fold-bar { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.os-fold-name { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.os-fold-name-in { flex: 1; min-width: 0; height: 30px; padding: 0 8px; border-radius: 7px; border: 1px solid var(--ring); background: var(--bg-solid); color: var(--text); font-size: 13px; outline: none; }
+.os-fold-count { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 0 7px; }
+.os-fold-act { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 7px; color: var(--muted); }
+.os-fold-act:hover { background: var(--surface-2); color: var(--text); }
+.os-fold-act.is-danger:hover { color: var(--error); }
+.os-fold-grid { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 4px; }
+.os-fold-item {
+  width: 100%;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 8px 4px; border-radius: 10px; border: 1px solid transparent;
+  font-size: 12px; text-align: center; color: var(--text);
+  touch-action: none;
+}
+.os-fold-item:hover, .os-fold-item:focus-visible { background: color-mix(in srgb, var(--primary) 12%, transparent); border-color: color-mix(in srgb, var(--primary) 32%, transparent); }
+.os-fold-item .os-icon-tile { width: 40px; height: 40px; }
+.os-fold-l { max-width: 100%; overflow-wrap: anywhere; line-height: 1.25; }
+.os-fold-empty { margin: auto; padding: 24px; font-size: 13px; color: var(--muted); text-align: center; }
+
+/* ── The shell's own apps (os-apps.jsx): edge to edge in their window ─────── */
+.os-win-body:has(> .os-app) { padding: 0; overflow: hidden; }
+.os-app { height: 100%; display: flex; flex-direction: column; }
+.os-app-bar { flex: 0 0 auto; display: flex; align-items: center; gap: 4px; padding: 4px 8px; border-bottom: 1px solid var(--line); background: var(--bg-solid); }
+.os-app-t { flex: 1; min-width: 0; font-size: 12px; color: var(--muted); }
+.os-app-btn { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 8px; border-radius: 7px; font-size: 12.5px; color: var(--text); }
+.os-app-btn:hover { background: var(--surface-2); }
+.os-app-btn svg { color: var(--accent-ink); }
+.os-app-body { position: relative; flex: 1; min-height: 0; }
+.os-app-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: var(--bg); }
+.os-app-wait { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); }
+
+/* ── Taskbar groups (os-groups.jsx) ────────────────────────────────────────── */
+.os-task-grp { gap: 6px; }
+.os-task-grp.is-drop { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 16%, var(--bg-solid)); }
+.os-grp-stack { display: inline-flex; flex-shrink: 0; }
+.os-grp-stack-i {
+  display: grid; place-items: center; width: 20px; height: 20px; margin-inline-start: -6px;
+  border-radius: 6px; background: var(--bg-solid); border: 1px solid var(--line-strong); color: var(--accent-ink);
+}
+.os-grp-stack-i:first-child { margin-inline-start: 0; }
+.os-grp-n { margin-inline-start: auto; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--surface-3); color: var(--text); font-size: 10.5px; font-weight: 700; line-height: 18px; text-align: center; }
+.os-taskbar.is-compact .os-task-grp .os-grp-n { display: none; }
+.os-grp-pop {
+  position: fixed; z-index: 48;
+  width: min(300px, calc(100vw - 12px));
+  max-height: calc(100vh - 24px);
+  display: flex; flex-direction: column;
+  background: var(--bg-solid); color: var(--text);
+  border: 1px solid var(--line-strong); border-radius: 12px; box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+.os-grp-head { display: flex; align-items: center; gap: 6px; padding: 8px 8px 6px 12px; border-bottom: 1px solid var(--line); min-width: 0; }
+.os-grp-name { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.os-grp-name-in { flex: 1; min-width: 0; height: 28px; padding: 0 8px; border-radius: 7px; border: 1px solid var(--ring); background: var(--bg-solid); color: var(--text); font-size: 13px; outline: none; }
+.os-grp-ic { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 7px; color: var(--muted); flex-shrink: 0; }
+.os-grp-ic:hover { background: var(--surface-2); color: var(--text); }
+.os-grp-list { margin: 0; padding: 4px; list-style: none; overflow-y: auto; }
+.os-grp-row { display: flex; align-items: center; gap: 2px; }
+.os-grp-item { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 7px; font-size: 13px; text-align: start; color: var(--text); }
+.os-grp-item svg { color: var(--accent-ink); }
+.os-grp-item:hover, .os-grp-item:focus-visible { background: var(--surface-2); }
+.os-grp-item.is-on { background: color-mix(in srgb, var(--primary) 12%, var(--bg-solid)); }
+.os-grp-l { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.os-grp-dot { width: 6px; height: 6px; border-radius: 999px; background: var(--primary); flex-shrink: 0; }
+.os-grp-x { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 7px; color: var(--faint); flex-shrink: 0; }
+.os-grp-x:hover, .os-grp-x:focus-visible { background: var(--surface-2); color: var(--text); }
+.os-grp-foot { display: flex; flex-wrap: wrap; gap: 4px; padding: 8px; border-top: 1px solid var(--line); background: var(--surface-2); }
+.os-grp-act { display: inline-flex; align-items: center; gap: 5px; padding: 5px 9px; border-radius: 7px; border: 1px solid var(--line); background: var(--bg-solid); font-size: 12px; color: var(--text); }
+.os-grp-act:hover:not(:disabled) { border-color: var(--line-strong); background: var(--surface-3); }
+.os-grp-act:disabled { color: var(--faint); cursor: default; }
+.os-grp-act svg { color: var(--accent-ink); }
+.os-grp-pop :is(button, input):focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+
+/* ── The site's topbar, auto-hidden in OS mode (os-topbar.js) ─────────────────
+   Out of the flow and slid up out of sight; the shell takes the whole height. Shown, it lies
+   OVER the desktop (it is not in <main>, whose stacking context holds the shell), and in
+   fullscreen above main's raised context too. The 4 px zone at the top edge brings it back. */
+html[data-os-autohide] { --os-top: 0px; }
+html[data-os-autohide] .os-shell { top: 0; }
+html[data-os-autohide] header[data-os-topbar] {
+  position: fixed; top: 0; left: 0; right: 0;
+  transform: translateY(calc(-100% - 12px));
+  transition: transform .18s ease;
+}
+html[data-os-autohide] header[data-os-topbar="shown"] { transform: none; }
+html[data-os-full] header[data-os-topbar="shown"] { z-index: 46; }
+@media (prefers-reduced-motion: reduce) { html[data-os-autohide] header[data-os-topbar] { transition: none; } }
+.os-topzone { position: fixed; top: 0; left: 0; right: 0; height: 4px; z-index: 47; }
+
 /* ── Translucent surfaces: the windows' frames and the taskbar frost like the cards. The
    start menu, the menus, the tray popovers and Personalise are popups, so they stay opaque. ── */
 [data-surface-glass] .os-win {
@@ -697,7 +843,8 @@ html[data-os-full] { --os-top: 0px; }
 
 /* Forced colours: keep the frames visible. */
 @media (forced-colors: active) {
-  .os-win, .os-taskbar, .os-launcher, .os-menu, .os-pop, .os-snapfly, .os-pz { border: 1px solid CanvasText; }
+  .os-win, .os-taskbar, .os-launcher, .os-menu, .os-pop, .os-snapfly, .os-pz, .os-grp-pop { border: 1px solid CanvasText; }
+  .os-icon.is-sel, .os-snapfly-zone.is-hot { outline: 2px solid Highlight; }
   .os-task.is-on { outline: 2px solid Highlight; }
   .os-snapfly-zone { border: 1px solid CanvasText; }
 }

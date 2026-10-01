@@ -10,6 +10,7 @@ mod gdpr;
 mod geo;
 mod issues;
 mod issues_ai;
+mod laya;
 mod sampling;
 mod state;
 mod stats;
@@ -70,6 +71,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/stream", get(stream_handler))
         .route("/api/sessions", get(get_sessions))
         .route("/api/versions", get(get_versions))
+        .route("/api/laya", get(get_laya))
         .route("/api/funnel", post(post_funnel))
         .route("/api/journeys", post(post_journeys))
         .route("/api/goals", get(get_goals).post(post_goal))
@@ -810,6 +812,16 @@ async fn get_sessions(State(st): State<Shared>) -> Json<Value> {
 
 async fn get_versions(State(st): State<Shared>) -> Json<Value> {
     Json(json!({ "versions": db::version_stats(&st.pool).await }))
+}
+
+async fn get_laya(State(st): State<Shared>, Query(q): Query<HashMap<String, String>>) -> Json<Value> {
+    let days = laya::clamp_days(q.get("days").map(String::as_str));
+    let now = chrono::Utc::now().timestamp_millis();
+    let (rows, active) = laya::fetch(&st.pool, laya::window_start(now, days)).await;
+    let truncated = rows.len() as i64 >= laya::MAX_ROWS;
+    let mut out = laya::aggregate(&rows, active, days, now);
+    out["truncated"] = json!(truncated);
+    Json(out)
 }
 
 async fn get_replay(State(st): State<Shared>, Query(q): Query<HashMap<String, String>>) -> (StatusCode, Json<Value>) {

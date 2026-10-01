@@ -14,33 +14,59 @@ import { createPortal } from 'react-dom';
 import { useI18n } from '../../i18n.jsx';
 import { availableLayouts, targetKey } from './wm.js';
 
-export function SnapFlyout({ anchor, vp, viaKeyboard, onPick, onClose, onHover }) {
+const PER_ROW = 3;
+
+export function SnapFlyout({ anchor, vp, viaKeyboard, onPick, onClose, onHover, onPreview }) {
   const { t } = useI18n();
   const ref = useRef(null);
-  const [pos, setPos] = useState({ left: anchor.right - 300, top: anchor.bottom + 6 });
+  const [pos, setPos] = useState({ left: anchor.right - 320, top: anchor.bottom + 6 });
+  const [hot, setHot] = useState(null); // `${layoutIndex}:${zoneIndex}` under the pointer or the focus
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
+  const previewRef = useRef(onPreview);
+  previewRef.current = onPreview;
   const layouts = availableLayouts(vp);
 
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
     const r = el.getBoundingClientRect();
-    const left = Math.max(6, Math.min(anchor.right - r.width, window.innerWidth - r.width - 6));
+    // Centred under the maximise button (Windows 11), kept on screen; above it when there is no room below.
+    const left = Math.max(6, Math.min((anchor.left + anchor.right) / 2 - r.width / 2, window.innerWidth - r.width - 6));
     const top = anchor.bottom + r.height + 6 > window.innerHeight ? Math.max(6, anchor.top - r.height - 6) : anchor.bottom + 6;
     setPos({ left, top });
-  }, [anchor.right, anchor.bottom, anchor.top]);
+  }, [anchor.left, anchor.right, anchor.bottom, anchor.top]);
+
+  // The zone under the pointer or the focus is drawn on the desktop, where the window would go.
+  const light = (li, zi) => {
+    const k = li === null ? null : `${li}:${zi}`;
+    setHot(k);
+    previewRef.current?.(li === null ? null : layouts[li]?.zones[zi] || null);
+  };
+  useEffect(() => () => previewRef.current?.(null), []);
 
   useEffect(() => {
     if (viaKeyboard) ref.current?.querySelector('button')?.focus({ preventScroll: true });
     const onKey = (e) => {
       if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeRef.current(true); return; }
-      if (!['ArrowRight', 'ArrowLeft', 'ArrowDown', 'ArrowUp'].includes(e.key) || !ref.current?.contains(document.activeElement)) return;
+      if (!['ArrowRight', 'ArrowLeft', 'ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key) || !ref.current?.contains(document.activeElement)) return;
       e.preventDefault();
-      const all = [...ref.current.querySelectorAll('button')];
-      const i = all.indexOf(document.activeElement);
-      const d = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : -1;
-      all[(i + d + all.length) % all.length]?.focus();
+      const all = [...ref.current.querySelectorAll('button[data-l]')];
+      const cur = document.activeElement;
+      const li = Number(cur?.dataset?.l ?? 0); const zi = Number(cur?.dataset?.z ?? 0);
+      const i = all.indexOf(cur);
+      let next = null;
+      if (e.key === 'ArrowRight') next = all[(i + 1) % all.length];
+      else if (e.key === 'ArrowLeft') next = all[(i - 1 + all.length) % all.length];
+      else if (e.key === 'Home') next = all[0];
+      else if (e.key === 'End') next = all[all.length - 1];
+      else {
+        // Up/Down: the layout above/below, the same zone when it has one.
+        const nl = li + (e.key === 'ArrowDown' ? PER_ROW : -PER_ROW);
+        const row = all.filter((b) => Number(b.dataset.l) === nl);
+        next = row.length ? row[Math.min(zi, row.length - 1)] : null;
+      }
+      next?.focus();
     };
     const onDown = (e) => { if (!ref.current?.contains(e.target)) closeRef.current(false); };
     window.addEventListener('keydown', onKey, true);
@@ -48,19 +74,20 @@ export function SnapFlyout({ anchor, vp, viaKeyboard, onPick, onClose, onHover }
     return () => { window.removeEventListener('keydown', onKey, true); window.removeEventListener('pointerdown', onDown, true); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const zoneLabel = (l, li, zi) => t('os.snap.zone', 'Layout {n}, zone {i} of {c}').replace('{n}', String(li + 1)).replace('{i}', String(zi + 1)).replace('{c}', String(l.zones.length));
   return createPortal(
     <div ref={ref} className="os-snapfly" role="dialog" aria-label={t('os.snap.layouts', 'Snap layouts')} style={pos}
-      onPointerEnter={() => onHover?.(true)} onPointerLeave={() => onHover?.(false)}>
-      <div className="os-snapfly-t">{t('os.snap.layouts', 'Snap layouts')}</div>
-      <div className="os-snapfly-grid">
+      onPointerEnter={() => onHover?.(true)} onPointerLeave={() => { onHover?.(false); light(null); }}>
+      <div className="os-snapfly-grid" style={{ '--per-row': Math.min(PER_ROW, layouts.length) }}>
         {layouts.map((l, li) => (
-          <div key={l.id} className="os-snapfly-lay" role="group" aria-label={t('os.snap.layout', 'Layout {n}').replace('{n}', String(li + 1))}>
+          <div key={l.id} className={`os-snapfly-lay${hot?.startsWith(`${li}:`) ? ' is-hot' : ''}`} role="group" aria-label={t('os.snap.layout', 'Layout {n}').replace('{n}', String(li + 1))}>
             {l.zones.map((z, zi) => (
-              <button key={targetKey(z)} type="button" className="os-snapfly-zone"
-                style={{ left: `${z.x * 100}%`, top: `${z.y * 100}%`, width: `${z.w * 100}%`, height: `${z.h * 100}%` }}
-                aria-label={t('os.snap.zone', 'Layout {n}, zone {i} of {c}').replace('{n}', String(li + 1)).replace('{i}', String(zi + 1)).replace('{c}', String(l.zones.length))}
-                title={t('os.snap.zone', 'Layout {n}, zone {i} of {c}').replace('{n}', String(li + 1)).replace('{i}', String(zi + 1)).replace('{c}', String(l.zones.length))}
-                onClick={() => onPick(z)} />
+              <button key={targetKey(z)} type="button" data-l={li} data-z={zi}
+                className={`os-snapfly-zone${hot === `${li}:${zi}` ? ' is-hot' : ''}`}
+                style={{ left: `calc(${z.x * 100}% + 2px)`, top: `calc(${z.y * 100}% + 2px)`, width: `calc(${z.w * 100}% - 4px)`, height: `calc(${z.h * 100}% - 4px)` }}
+                aria-label={zoneLabel(l, li, zi)}
+                onPointerEnter={() => light(li, zi)} onFocus={() => light(li, zi)}
+                onClick={() => onPick(z, l.id)} />
             ))}
           </div>
         ))}

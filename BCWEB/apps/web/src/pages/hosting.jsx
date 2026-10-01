@@ -103,7 +103,7 @@ function TermControl({ months, setMonths, term, sample, t, priceMult, loyalty, g
           </dl>
         ) : <div className="text-[var(--muted)]">{t('hosting.term2.noplan', 'Prices appear here once the plans have loaded.')}</div>}
         <p className="mt-2 pt-2 border-t border-[var(--line)] text-[12px] text-[var(--muted)] leading-relaxed">
-          {t('hosting.term2.end', 'On {d}: with auto-renew (on by default in the cart) the same length renews and is charged again; without it nothing is charged, the pool is paused that day and deleted {g} later unless you renew.')
+          {t('hosting.term3.end', 'On {d}: auto-renew charges the same length again. Without it, the pool pauses and is deleted {g} later.')
             .replace('{d}', day(ends)).replace('{g}', graceText(grace?.lapseHours || 72))}
         </p>
       </div>
@@ -577,8 +577,13 @@ export function Hosting() {
                     zero and applies it on the spot). Free, yes; without an end date, no. */}
                 <div className="text-[13px] text-[var(--muted)] mt-0.5">{t('hosting.freeplan.sub2', 'Host a small repo at no cost: {gb} GB storage, {mbps} Mbps upload, no card.').replace('{gb}', free.storageGB).replace('{mbps}', (free.uploadLimitKbps / 1024).toFixed(1))}</div>
                 <div className="text-[12px] text-[var(--muted)] mt-1">{freeTierSoldOut
-                  ? t('hosting.freeplan.soldout.d', 'The free allowance is fully taken right now. It is metered on its own, so the paid sizes below are unaffected — leave your name and we will tell you the moment one frees up.')
-                  : t('hosting.freeplan.note2', 'One free repo per account (and per linked creator id). It runs for the term chosen above and renewing it costs nothing. You can always upgrade the size later — the free floor still applies, so you only ever pay for what\'s above it.')}</div>
+                  ? t('hosting.freeplan.soldout.d2', 'The free places are all taken. Leave your address and we tell you when one frees up.')
+                  : t('hosting.freeplan.note3', 'One per account. Renewing it is free, and you can grow it later.')}</div>
+                {!freeTierSoldOut && (
+                  <Explain className="text-[12px] mt-1" label={t('common.learnmore', 'Learn more')}>
+                    {t('hosting.freeplan.more', 'One free repo per account and per linked creator id. It runs for the term chosen above. Grow it later and you only pay for what is above the free size. The free places are counted apart, so the paid sizes are never short because of them.')}
+                  </Explain>
+                )}
               </div>
               <Button variant="primary" className="!bg-success hover:!bg-success !border-transparent shrink-0" disabled={freeDisabled} onClick={() => checkout({ planId: free.id })}>
                 {freeTierSoldOut ? t('hosting.freeplan.soldout', 'Free plan sold out') : freeDisabled ? t('hosting.nospace', 'Not enough space') : t('hosting.freeplan.cta', 'Get it free')}</Button>
@@ -617,7 +622,7 @@ export function Hosting() {
       {user && (myRepos.data?.repos || []).some((r) => r.hosted || r.listed) && (<>
         <SubLead icon={ChevronsUp}
           title={t('hosting.boost.t', 'Already hosting something?')}
-          sub={t('hosting.boost.s2', 'Put one of them in front of more people for a few days. Priced per day, in the same cart — it re-bills only if you leave auto-renew ticked on that line.')} />
+          sub={t('hosting.boost.s3', 'Feature one of them for a few days. Priced per day, in the same cart.')} />
         <BoostAddCard repos={(myRepos.data?.repos || []).filter((r) => r.hosted || r.listed)} onAdd={addBoost} />
       </>)}
       </section>
@@ -1073,7 +1078,7 @@ function TermBar({ months, setMonths, term, sample, priceMult, loyalty, grace })
             maximum; the sentence says the range the server will accept, never a list the admin
             did not set. Nothing longer than 12 months is sold (see the Terms). */}
         <p className="text-[12.5px] text-[var(--muted)] mt-1 leading-relaxed max-w-3xl">
-          {t('hosting.term2.s', 'Type how many months you want, from {min} to {max}. Every price below is for that length, paid once today; from 6 months on it costs less per month.').replace('{min}', term.min).replace('{max}', term.max)}
+          {t('hosting.term3.s', '{min} to {max} months, paid once today. From 6 months, each month costs less.').replace('{min}', term.min).replace('{max}', term.max)}
         </p>
         <Explain className="text-[12.5px] mt-1.5 max-w-3xl" label={t('hosting.termbar.what', 'What paying ahead means')}>
           <span className="block">{t('hosting.termbar.s7', 'You pay the whole term today, and the pool is yours until its last day: we commit to running it for exactly the term you paid, never less. We sell nothing longer than 12 months because we do not promise the service years ahead. If we ever had to stop it before your term ends, the part you have not used is refunded, to the day.')}</span>
@@ -1114,7 +1119,7 @@ function LoyaltyTable({ loyalty, sample, months, tiers, priceMult }) {
         <div className="min-w-0 flex-1">
           <div className="font-semibold text-[14.5px]" id="loyalty-title">{t('hosting.loyal.t', 'The longer you stay, the less it costs')}</div>
           <p className="text-[12.5px] text-[var(--muted)] mt-1 leading-relaxed max-w-3xl">
-            {t('hosting.loyal2.s', 'Each renewal is cheaper once your subscription has lasted long enough. The discount comes on top of the term price, from the first renewal after you reach a step, and never changes a term you have already paid.')} {covers}
+            {t('hosting.loyal3.s', 'Each renewal costs less the longer you stay.')} {loyalty.lapseResets ? t('hosting.loyal3.reset', 'Cancel, and it is full price again.') : t('hosting.loyal3.pause', 'Unpaid months simply do not count.')}
           </p>
           <table className="mt-3 w-full max-w-2xl table-fixed text-[13px] border-collapse" aria-labelledby="loyalty-title">
             <thead>
@@ -1135,7 +1140,7 @@ function LoyaltyTable({ loyalty, sample, months, tiers, priceMult }) {
             </tbody>
           </table>
           <Explain className="text-[12.5px] mt-2 max-w-3xl" label={t('hosting.loyal.how', 'What counts as staying')}>
-            {rule} {t('hosting.loyal2.tail', 'A new pool is a new subscription, so it starts at zero. The discount never goes past {max}%. The steps can change, with the same notice as any price.').replace('{max}', loyalty.maxPct)}
+            {covers} {t('hosting.loyal3.when', 'The discount starts at the first renewal after a step and never changes a term already paid.')} {rule} {t('hosting.loyal2.tail', 'A new pool is a new subscription, so it starts at zero. The discount never goes past {max}%. The steps can change, with the same notice as any price.').replace('{max}', loyalty.maxPct)}
           </Explain>
         </div>
       </div>

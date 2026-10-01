@@ -30,7 +30,7 @@ export const layoutKey = (scope, uid) => `${LAYOUT_PREFIX}${scope}:${uid || 'ano
 /** { admin: bool, dashboard: bool, wallpaper, and the look (N-os): icons, bar, labels,
  *  seconds, anim } for this account, on this browser. */
 export function readOsPrefs(uid) {
-  const out = { admin: false, dashboard: false, wallpaper: 'scene', icons: 'md', bar: 'bottom', labels: true, seconds: false, anim: true };
+  const out = { admin: false, dashboard: false, wallpaper: 'scene', icons: 'md', bar: 'bottom', labels: true, seconds: false, anim: true, topbar: 'auto' };
   try {
     const v = JSON.parse(localStorage.getItem(`${PREF_PREFIX}${uid || 'anon'}`) || '{}');
     if (v && typeof v === 'object') {
@@ -44,6 +44,8 @@ export function readOsPrefs(uid) {
       out.seconds = v.seconds === true;
       out.anim = v.anim !== false;
       // fin N-os (agent-os-N)
+      // agent-bcw-os: the site's topbar hides itself in OS mode unless asked to stay.
+      out.topbar = v.topbar === 'show' ? 'show' : 'auto';
     }
   } catch { /* private window or storage refused: classic, this session */ }
   return out;

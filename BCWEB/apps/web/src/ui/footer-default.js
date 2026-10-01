@@ -52,6 +52,9 @@ export const DEFAULT_FOOTER_COLUMNS = [
       { key: 'foot.terms', label: 'Terms', to: '/legal/terms' },
       { key: 'foot.cookies', label: 'Cookies', to: '/legal/cookies' },
       { key: 'foot.refunds', label: 'Payments & Refunds', to: '/legal/refunds' },
+      // agent-bcw-rules: how "Other projects" are chosen. The other new documents (pools, bot)
+      // are one click away under "All".
+      { key: 'foot.projects', label: 'Project Policy', to: '/legal/projects' },
     ],
   },
 ];

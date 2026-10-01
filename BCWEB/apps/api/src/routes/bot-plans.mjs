@@ -23,6 +23,7 @@ import {
   BOT_FEATURES, BOT_LIMITS, MAX_PLAN_GUILDS, BOT_ENTITLEMENTS_KEY,
   normalizePlanBot, normalizeSetting, normalizeTier, subCounts,
 } from '../lib/bot-entitlements.mjs';
+import { TIER_PRESETS, loadBilling, packMonths } from '../lib/bot-billing.mjs'; // agent-bcw-bot
 
 /** The Discord ids linked to this account, and the guilds they manage (owner or Manage-Server,
  *  as the bot reports on its heartbeat). The same predicate bot.mjs uses for the dashboard. */
@@ -49,11 +50,27 @@ export default async function botPlanRoutes(app) {
       p.adminSetting.findUnique({ where: { key: BOT_ENTITLEMENTS_KEY } }).catch(() => null),
     ]);
     const withBot = rows.map(serPlan).filter((pl) => pl.bot);
+    const free = normalizeSetting(setting?.value).free;
+    const plans = withBot.filter((pl) => pl.kind === 'bot');
+    // agent-bcw-bot: the public tiers for /bot/pricing. Free is the admin's free tier; a paid
+    // tier shows the plan row on sale for it (its real price and grant) or, when none is on
+    // sale yet, the default offer marked `available: false`, so the page never sells a card
+    // the checkout would refuse.
+    const billing = await loadBilling(p).catch(() => null);
+    const tiers = ['free', 'pro', 'ultra'].map((key) => {
+      if (key === 'free') return { key, name: TIER_PRESETS.free.name, priceMonthlyCents: 0, guilds: 1, features: free.features, limits: free.limits, available: true };
+      const row = plans.find((pl) => pl.bot?.tier === key);
+      const d = TIER_PRESETS[key];
+      return row
+        ? { key, name: row.name, planId: row.id, priceMonthlyCents: row.priceMonthlyCents, guilds: row.bot.guilds, features: row.bot.features, limits: row.bot.limits, available: true }
+        : { key, name: d.name, planId: null, priceMonthlyCents: d.priceMonthlyCents, guilds: d.guilds, features: d.features, limits: d.limits, available: false };
+    });
     return {
-      plans: withBot.filter((pl) => pl.kind === 'bot'),
+      plans,
       bundles: withBot.filter((pl) => pl.kind !== 'bot'),
-      free: normalizeSetting(setting?.value).free,
+      free,
       catalog: { features: BOT_FEATURES, limits: BOT_LIMITS },
+      tiers, packs: (billing?.packs || []).map((x) => ({ ...x, months: packMonths(x, billing) })), cost: billing?.cost || null, expiryMonths: billing?.expiryMonths ?? null,
     };
   });
 

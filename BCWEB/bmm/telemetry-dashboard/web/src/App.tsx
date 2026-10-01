@@ -21,6 +21,7 @@ const Goals = lazy(() => import("./pages/Goals"));
 const Users = lazy(() => import("./pages/Users"));
 const UserDetail = lazy(() => import("./pages/UserDetail"));
 const Bmm = lazy(() => import("./pages/Bmm"));
+const Laya = lazy(() => import("./pages/Laya"));
 const Admin = lazy(() => import("./pages/Admin"));
 const Storage = lazy(() => import("./pages/Storage"));
 const Docs = lazy(() => import("./pages/Docs"));
@@ -118,6 +119,7 @@ function Shell() {
           <Route path="users" element={<Gate><Users /></Gate>} />
           <Route path="users/:id" element={<Gate><UserDetail /></Gate>} />
           <Route path="bmm" element={<Gate><Bmm /></Gate>} />
+          <Route path="laya" element={<Gate><Laya /></Gate>} />
           <Route path="admin" element={<Gate><Admin /></Gate>} />
           <Route path="storage" element={<Gate><Storage /></Gate>} />
           <Route path="docs" element={<Gate><Docs /></Gate>} />

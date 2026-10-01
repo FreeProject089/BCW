@@ -2146,7 +2146,7 @@ export default async function miscRoutes(app) {
   // The five that ship with the app. Not the list of what exists — the list of what has a
   // compiled-in fallback in the web bundle, which is a different and much smaller claim. It
   // is what `revert` may hand back to, and what may not be deleted.
-  const BUILTIN_DOCS = ['privacy', 'terms', 'cookies', 'about', 'refunds', 'submissions', 'dpa'];
+  const BUILTIN_DOCS = ['privacy', 'terms', 'cookies', 'about', 'refunds', 'submissions', 'dpa', 'projects', 'pools', 'bot'];
   // OPTIONAL documents: shipped in the bundle, but OFF until somebody publishes them. The
   // Data Processing Addendum is a contract a deployment chooses to offer — it is not true of
   // every site that runs this code, and a policy page that claims a contract nobody signed is
@@ -2157,11 +2157,13 @@ export default async function miscRoutes(app) {
   const DOC_LABEL = {
     privacy: 'Privacy Policy', terms: 'Terms of Service', cookies: 'Cookie Policy',
     about: 'About', refunds: 'Payments & Refunds', submissions: 'Submission Terms', dpa: 'Data Processing Addendum',
+    projects: 'Project Policy', pools: 'Pools & payment links', bot: 'Discord bot terms',
   };
   const DOC_LABEL_FR = {
     privacy: 'Politique de confidentialité', terms: 'Conditions d’utilisation',
     cookies: 'Politique de cookies', about: 'À propos', refunds: 'Paiements & remboursements',
     submissions: 'Conditions de soumission', dpa: 'Accord de traitement des données',
+    projects: 'Politique des projets', pools: 'Pools et liens de paiement', bot: 'Conditions du bot Discord',
   };
 
   /**

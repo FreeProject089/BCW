@@ -578,6 +578,11 @@ model HostingGroup {
   // A pool attributed to a team: every member manages what sits in it.
   team            Team?              @relation(fields: [teamId], references: [id])
   teamId          String?
+  // agent-bcw-pools: a pool DEDICATED to one project (the ProjectRelease target convention:
+  // a project key, or `sc:<showcaseId>`). Everything that project stores on our disk (its
+  // pre-release files, its shop files, its blog) is then counted against this pool, on top of
+  // the repos and catalogues placed in it (lib/project-pool.mjs). One pool per project.
+  projectTarget   String?            @unique
   createdAt       DateTime           @default(now())
   repos           ServerRepo[]
   catalogs        CommunityCatalog[]
@@ -2257,11 +2262,22 @@ model Feedback {
   reportId    String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  // Automatic triage (agent-laya-triage, lib/feedback-triage.mjs): rules at intake, refined by
+  // Laya when it runs, editable by staff (source=staff is never overwritten). Hints, not verdicts.
+  triageTags     String[]  @default([]) // fixed vocabulary, TRIAGE_TAGS
+  triageCategory String? // bug | crash | suggestion | question | other
+  triageSeverity String? // low | medium | high | critical
+  triageDupOfId  String? // the most similar older open report of the same project
+  triageDupScore Float?
+  triageSource   String? // rules | laya | staff (null = never triaged)
+  triagedAt      DateTime?
+  triagePending  Boolean   @default(false) // Laya has not looked at it yet (backfill)
 
   @@index([projectKey, status])
   @@index([fingerprint])
   @@index([userId])
   @@index([createdAt])
+  @@index([triagePending, triageSource])
 }
 
 model PasswordReset {
@@ -2860,6 +2876,27 @@ model ShowcaseRequest {
   /// The Report thread opened for this submission — the dashboard "Reports & contact" chat box
   /// where staff can ask for more detail. Null until the thread is created (on submit).
   contactReportId String?
+  /// agent-bcw-rules: the Project Policy (/legal/projects). The applicant declares these;
+  /// staff tick `reviewChecks` before approving. Closed source needs `sourceAccess`, and a
+  /// project that uses AI can only be approved once `reviewChecks.testsPassed` is ticked.
+  usesAi              Boolean @default(false)
+  /// We get read access to the source (a private repo invite, an archive). Required when not open source.
+  sourceAccess        Boolean @default(false)
+  /// The applicant lets us run tests and a security review. Required for every request.
+  testsConsent        Boolean @default(false)
+  /// Pluses: BetterInstaller as the official installer, and a cause the project supports.
+  usesBetterInstaller Boolean @default(false)
+  causeNote           String  @default("")
+  /// Staff checklist: { sourceChecked, testsPassed, securityReviewed, installerChecked, causeChecked } → true.
+  reviewChecks        Json    @default("{}")
+  /// agent-bcw-rules: how staff reach the applicant after the request (at least an e-mail or a
+  /// Discord handle). Seen by the applicant and staff only; never on the public page.
+  contactEmail        String  @default("")
+  contactDiscord      String  @default("")
+  /// https only (checked server-side: a URL validator alone accepts javascript:).
+  contactUrl          String  @default("")
+  /// "en" | "fr" | "" (no preference)
+  contactLang         String  @default("")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -3083,6 +3120,9 @@ enum PaymentKind {
   TEAM_SLOT
   /// M21: a Discord bot plan (bot-only subscription), appended last.
   BOT_PLAN
+  /// agent-bcw-pools: a payment through an admin-made payment link (lib/paylinks.mjs) that is
+  /// not hosting (a pool bought through a link is recorded as HOSTING). Appended last.
+  CUSTOM
 }
 
 // Billing history / invoices (one-time feature promotions, hosting charges…).
@@ -5504,6 +5544,10 @@ model AiUsageDay {
   falsePositive Int     @default(0)
   /// A human agreed with the AI (a case it flagged ended removed or sanctioned).
   confirmed    Int      @default(0)
+  /// A member applied an AI suggestion (a tag, a drafted description). A count, never the text.
+  accepted     Int      @default(0)
+  /// A member dismissed one (unticked a tag, closed the draft without using it).
+  rejected     Int      @default(0)
 
   @@unique([day, feature, provider])
   @@index([day])
@@ -5541,3 +5585,145 @@ model AiUserKey {
   updatedAt  DateTime  @updatedAt
 }
 // ── fin aios (agent-bcw-ai-os) ─────────────────────────────────────────────────────────────
+
+// ── agent-bcw-bot : crédits, usage IA et clé BYOK par serveur Discord ──────────────────────
+/// A Discord server's credit wallet, as a LEDGER: the balance is the sum of `delta`. Credits
+/// buy AI calls past the plan's monthly allowance (lib/bot-billing.mjs). `ref` makes every
+/// movement idempotent: a Stripe session id for a purchase (a replayed webhook finds the row),
+/// `usage:<guild>:<month>:<n>` is never used (usage debits carry no ref), an admin grant a cuid.
+model BotCreditLedger {
+  id        String   @id @default(cuid())
+  guildId   String
+  delta     Int
+  /// purchase | usage | grant | refund
+  reason    String
+  ref       String?  @unique
+  userId    String?
+  note      String   @default("")
+  createdAt DateTime @default(now())
+  /// A purchased lot runs out at this date (null = never: admin gifts, corrections). The owner's
+  /// decision (2026-10-01): packs are valid N months, spent oldest first.
+  expiresAt DateTime?
+  /// What is left of this lot (positive rows only). Spending takes from the oldest lots first;
+  /// the sweeper writes an `expire` row for what an expired lot still held and zeroes it.
+  remaining Int      @default(0)
+
+  @@index([guildId, createdAt])
+  @@index([expiresAt])
+}
+
+/// AI calls one server made in one month, by source. Counted only for calls that succeeded.
+model BotAiUsage {
+  id           String @id @default(cuid())
+  guildId      String
+  /// YYYY-MM (UTC)
+  month        String
+  platform     Int    @default(0)
+  byok         Int    @default(0)
+  /// Of `platform`, how many were past the monthly allowance (paid with credits).
+  overQuota    Int    @default(0)
+  creditsSpent Int    @default(0)
+
+  @@unique([guildId, month])
+}
+
+/// A server's AI source: the platform's AI (quota, then credits) or the server's own key
+/// (BYOK, sealed like AiUserKey; a small credit fee per call unless the plan includes aiByok).
+model BotAiSettings {
+  guildId    String   @id
+  source     String   @default("platform")
+  baseUrl    String   @default("")
+  model      String   @default("")
+  /// The sealed envelope (lib/ai-keys.mjs). Named *Secret so exports drop it by name.
+  keySecret  String   @default("")
+  keyLast4   String   @default("")
+  /// The owner's own ceiling on AI calls per month (0 = the plan's allowance + credits).
+  monthlyCap Int      @default(0)
+  updatedBy  String?
+  updatedAt  DateTime @updatedAt
+}
+
+/// A Discord role bought on the marketplace whose subscription ended: when the bot takes it
+/// back (lib/purchased-roles.mjs). The server's policy decides: now, never, or after a grace
+/// period. One row per purchase and Discord account; the sweeper queues a BotAction role_remove
+/// when `removeAt` passes, unless the buyer is paying again for the same role by then.
+model BotRoleRemoval {
+  id         String    @id @default(cuid())
+  purchaseId String
+  productId  String
+  buyerId    String
+  discordId  String
+  guildId    String
+  roleId     String
+  removeAt   DateTime
+  /// removed (queued to the bot) | renewed (the buyer paid again, nothing taken)
+  outcome    String?
+  doneAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@unique([purchaseId, discordId])
+  @@index([doneAt, removeAt])
+}
+// ── fin agent-bcw-bot ──────────────────────────────────────────────────────────────────────
+
+// ── agent-bcw-pools : liens de paiement sur mesure ─────────────────────────────────────────
+// An admin-made payment link (routes/paylinks.mjs, rules in lib/paylinks.mjs). The admin says
+// WHAT a payment provisions (a storage pool of N GB, early access to a pre-release, or nothing
+// but a receipt), its price (the usual hosting tariff, or a custom amount), whether it is one
+// payment or a monthly subscription, and how many accounts may use it. Paying goes through
+// Stripe Checkout; the webhook provisions, once per checkout session (PaymentLinkUse.sessionId
+// is unique and its status is claimed pending -> paid in one conditional write).
+model PaymentLink {
+  id          String    @id @default(cuid())
+  /// The public URL is /pay/<token>: 24 random url-safe characters, not guessable.
+  token       String    @unique
+  title       String
+  description String    @default("")
+  /// pool | prerelease | custom
+  kind        String    @default("custom")
+  /// What a paid use provisions. pool: { storageGB, uploadMbps, months, projectTarget? };
+  /// prerelease: { prereleaseId }; custom: {}.
+  provision   Json      @default("{}")
+  /// auto (pool only: the hosting tariff for these specs) | custom
+  priceMode   String    @default("custom")
+  amountCents Int       @default(0)
+  currency    String    @default("usd")
+  /// once | month
+  interval    String    @default("once")
+  /// How many accounts may pay through it. Null = no limit.
+  maxUses     Int?
+  /// Restrict the link to one account's e-mail address (lower-cased). Empty = anyone signed in.
+  onlyEmail   String    @default("")
+  expiresAt   DateTime?
+  revokedAt   DateTime?
+  createdById String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  uses        PaymentLinkUse[]
+
+  @@index([createdAt])
+}
+
+/// One checkout through a link. `pending` from the moment the Checkout session is opened (it
+/// holds a place against maxUses until it expires), `paid` once the webhook provisioned it,
+/// `expired` when Stripe expired the session, `revoked` when the admin ended what it gave.
+model PaymentLinkUse {
+  id           String      @id @default(cuid())
+  link         PaymentLink @relation(fields: [linkId], references: [id], onDelete: Cascade)
+  linkId       String
+  userId       String
+  sessionId    String      @unique
+  status       String      @default("pending")
+  amountCents  Int         @default(0)
+  currency     String      @default("usd")
+  /// What was provisioned: { poolId } | { signupId } | {}.
+  result       Json        @default("{}")
+  stripeSubId  String?
+  holdUntil    DateTime
+  paidAt       DateTime?
+  createdAt    DateTime    @default(now())
+
+  @@index([linkId, status])
+  @@index([userId])
+}
+// ── fin agent-bcw-pools ────────────────────────────────────────────────────────────────────

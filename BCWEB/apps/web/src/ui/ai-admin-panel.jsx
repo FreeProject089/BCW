@@ -30,6 +30,7 @@ function useNames() {
         content_check: t('aic.f.content_check', 'Check before posting'), describe: t('aic.f.describe', 'Description drafts'),
         triage: t('aiad.f.triage', 'Queue triage'), summarize: t('aiad.f.summarize', 'Thread summaries'), duplicates: t('aiad.f.duplicates', 'Duplicate detection'),
         crash_clusters: t('aiad.f.crash', 'Crash causes'), telemetry_issues: t('aiad.f.telemetry', 'Live BMM errors (telemetry)'), bmm_suggest: t('aiad.f.bmm', 'BMM suggestions'), admin_test: t('aiad.f.test', 'Admin test box'), key_test: t('aiad.f.keytest', 'Key tests'),
+        search: t('aiad.f.search', 'Search bars (intent and order)'), // agent-bcw-nav
       })[k] || k;
     },
     provider: (k) => ({ laya: 'Laya', external: t('aiad.p.external', 'External API'), byok: t('aiad.p.byok', 'Members\' own keys'), site: t('aiad.p.site', 'Site key'), rules: t('aiad.p.rules', 'Rules only'), off: t('aiad.p.off', 'Not sent') })[k] || k,
@@ -61,8 +62,10 @@ function Usage() {
   const labels = { avg: t('st.m.avg', 'avg'), min: t('st.m.min', 'min'), peak: t('st.m.peak', 'peak'), warn: t('st.m.warnat', 'warn at'), gaps: t('st.m.gaps', '{n} day(s) with no reading') };
   const table = (rows, name) => (
     <div className="overflow-x-auto scroll-thin">
+      {/* agent-bcw-nav: headers on one line; the strip scrolls on a phone instead of crushing
+          "Timeouts" into a 60px column, one word per line. */}
       <table className="w-full text-xs">
-        <thead className="text-[var(--muted)] text-left">
+        <thead className="text-[var(--muted)] text-left whitespace-nowrap">
           <tr>
             <th className="py-1.5 pe-3 font-medium">{name}</th>
             <th className="py-1.5 pe-3 font-medium text-right">{t('aiad.c.calls', 'Calls')}</th>
@@ -73,6 +76,7 @@ function Usage() {
             <th className="py-1.5 pe-3 font-medium text-right">{t('aiad.c.cache', 'Cache hits')}</th>
             <th className="py-1.5 pe-3 font-medium text-right">{t('aiad.c.limited', 'Rate-limited')}</th>
             <th className="py-1.5 pe-3 font-medium text-right">{t('aiad.c.dropped', 'Dropped')}</th>
+            <th className="py-1.5 pe-3 font-medium text-right" title={t('aiad.c.accepted.s', 'Suggestions applied, out of those applied or dismissed')}>{t('aiad.c.accepted', 'Accepted')}</th>
             <th className="py-1.5 font-medium text-right">{t('aiad.c.cost', 'Est. cost')}</th>
           </tr>
         </thead>
@@ -88,6 +92,7 @@ function Usage() {
               <td className="py-1.5 pe-3 text-right">{pct(r.cacheHitRate)}</td>
               <td className="py-1.5 pe-3 text-right">{num(r.rateLimited)}</td>
               <td className="py-1.5 pe-3 text-right">{num(r.dropped + r.breakerRefused)}</td>
+              <td className="py-1.5 pe-3 text-right" title={`${num(r.accepted)} / ${num(r.accepted + r.rejected)}`}>{pct(r.acceptanceRate)}</td>
               <td className="py-1.5 text-right">{usd(r.costUsd)}</td>
             </tr>
           ))}
@@ -122,6 +127,14 @@ function Usage() {
         <Card className="p-3"><MetricChart title={t('aiad.ch.cost', 'Estimated cost per day')} unit=" $" points={points('costUsd')} labels={labels} /></Card>
       </div>
       <Card className="p-4">
+        <h3 className="text-sm font-semibold mb-2">{t('aiad.sugg', 'Suggestions members used')}</h3>
+        <div className="grid gap-3 md:grid-cols-3">
+          <Tile label={t('aiad.acc', 'Acceptance rate')} value={pct(T.acceptanceRate)} sub={`${num(T.accepted)} ${t('aiad.acc.a', 'applied')} · ${num(T.rejected)} ${t('aiad.acc.r', 'dismissed')}`} />
+          <MetricChart title={t('aiad.ch.accepted', 'Applied per day')} points={points('accepted')} labels={labels} />
+          <MetricChart title={t('aiad.ch.rejected', 'Dismissed per day')} points={points('rejected')} labels={labels} />
+        </div>
+      </Card>
+      <Card className="p-4">
         <h3 className="text-sm font-semibold mb-2">{t('aiad.decisions', 'AI and the moderation decisions')}</h3>
         <div className="grid gap-2 grid-cols-1 sm:grid-cols-3">
           <Tile label={t('aiad.changed', 'Raised by the AI')} value={num(T.changed)} sub={t('aiad.changed.s', 'decisions the AI moved above the rules')} />
@@ -155,7 +168,7 @@ function Usage() {
   );
 }
 
-const MEMBER_FEATURES = ['suggest_tags', 'detect_language', 'content_check', 'describe'];
+const MEMBER_FEATURES = ['suggest_tags', 'detect_language', 'content_check', 'describe', 'search']; // search: agent-bcw-nav
 const STAFF_FEATURES = ['triage', 'summarize', 'duplicates', 'crash_clusters', 'telemetry_issues'];
 
 function Settings({ isAdmin }) {
@@ -185,6 +198,7 @@ function Settings({ isAdmin }) {
         gen: { maxTokens: n(cfg.gen.maxTokens), timeoutMs: n(cfg.gen.timeoutMs), concurrency: n(cfg.gen.concurrency) },
         pricing: { external: { inPerMTok: Number(cfg.pricing.external.inPerMTok) || 0, outPerMTok: Number(cfg.pricing.external.outPerMTok) || 0 }, site: { inPerMTok: Number(cfg.pricing.site.inPerMTok) || 0, outPerMTok: Number(cfg.pricing.site.outPerMTok) || 0 } },
         retentionDays: n(cfg.retentionDays),
+        ...(cfg.search ? { search: { anon: !!cfg.search.anon, perUserPerMin: n(cfg.search.perUserPerMin), perAnonPerMin: n(cfg.search.perAnonPerMin), perIpPerMin: n(cfg.search.perIpPerMin), anonPerIpPerDay: n(cfg.search.anonPerIpPerDay), cacheTtlSec: n(cfg.search.cacheTtlSec) } } : {}), // agent-bcw-nav
       });
       setCfg(r.config);
       toast.success(t('aiad.saved', 'AI feature settings saved.'));
@@ -250,6 +264,23 @@ function Settings({ isAdmin }) {
         </div>
         <p className="text-xs text-[var(--faint)] mt-2">{t('aiad.l.note', 'The moderation surfaces keep their own per-minute limits on the Moderation engine screen.')} <Link className="underline" to="/admin?s=modqueue">{t('adm.tab.modqueue', 'Moderation engine')}</Link></p>
       </Card>
+      {/* agent-bcw-nav: the search bars have their own limits: people type, so a search asks
+          far more often than a helper, and signed-out visitors can use it too. */}
+      {cfg.search && (
+        <Card className="p-4">
+          <h3 className="text-sm font-semibold mb-1">{t('aiad.s.t', 'Search bars')}</h3>
+          <p className="text-xs text-[var(--muted)] mb-2">{t('aiad.s.s', 'Laya suggests where a query belongs and reorders the first results. The plain search always works; this only adds to it.')}</p>
+          <label className="flex items-center gap-2 text-[13px] mb-2"><input type="checkbox" checked={cfg.search.anon} onChange={(e) => setG('search', { anon: e.target.checked })} />{t('aiad.s.anon', 'Signed-out visitors too')}</label>
+          <div className="flex flex-wrap gap-x-5 gap-y-2 text-[13px] items-center">
+            <label className="inline-flex items-center gap-2">{t('aiad.s.user', 'Per account per minute')} {numIn(cfg.search.perUserPerMin, (v) => setG('search', { perUserPerMin: v }), t('aiad.s.user', 'Per account per minute'))}</label>
+            <label className="inline-flex items-center gap-2">{t('aiad.s.anonmin', 'Per signed-out visitor per minute')} {numIn(cfg.search.perAnonPerMin, (v) => setG('search', { perAnonPerMin: v }), t('aiad.s.anonmin', 'Per signed-out visitor per minute'))}</label>
+            <label className="inline-flex items-center gap-2">{t('aiad.s.ip', 'Per IP address per minute')} {numIn(cfg.search.perIpPerMin, (v) => setG('search', { perIpPerMin: v }), t('aiad.s.ip', 'Per IP address per minute'))}</label>
+            <label className="inline-flex items-center gap-2">{t('aiad.s.anonday', 'Per signed-out visitor per day')} {numIn(cfg.search.anonPerIpPerDay, (v) => setG('search', { anonPerIpPerDay: v }), t('aiad.s.anonday', 'Per signed-out visitor per day'))}</label>
+            <label className="inline-flex items-center gap-2">{t('aiad.s.cache', 'Reuse an answer for (seconds)')} {numIn(cfg.search.cacheTtlSec, (v) => setG('search', { cacheTtlSec: v }), t('aiad.s.cache', 'Reuse an answer for (seconds)'))}</label>
+          </div>
+          <p className="text-xs text-[var(--faint)] mt-2">{t('aiad.s.note', 'A signed-in account also has the daily limit set in the table above. Only the query and the result titles are sent.')}</p>
+        </Card>
+      )}
       <Card className="p-4">
         <h3 className="text-sm font-semibold mb-2 flex items-center gap-2"><KeyRound size={14} className="text-[var(--accent-ink)]" aria-hidden />{t('aiad.keys', 'Keys for the writing helpers')}</h3>
         <label className="flex items-center gap-2 text-[13px]"><input type="checkbox" checked={cfg.byok.enabled} onChange={(e) => setG('byok', { enabled: e.target.checked })} />{t('aiad.byok', 'Members may bring their own key (BYOK)')}</label>
@@ -267,7 +298,7 @@ function Settings({ isAdmin }) {
                   <div className="sm:col-span-2"><Button size="sm" onClick={saveKey} disabled={busy || sk.key.trim().length < 8}><Save size={14} aria-hidden /> {t('aiad.sk.save', 'Seal and save')}</Button></div>
                 </div>
               : <p className="text-xs text-[var(--muted)]">{t('aiad.sk.admin', 'Only an admin can set the site key.')}</p>}
-          <label className="flex items-center gap-2 text-[13px] mt-2"><input type="checkbox" checked={cfg.site.forStaff} onChange={(e) => setG('site', { forStaff: e.target.checked })} />{t('aiad.sk.staff', 'Use it for the staff tools (summaries)')}</label>
+          <label className="flex items-center gap-2 text-[13px] mt-2"><input type="checkbox" checked={cfg.site.forStaff} onChange={(e) => setG('site', { forStaff: e.target.checked })} />{t('aiad.sk.staff', 'Let staff use it for their own drafts')}</label>
           <label className="flex items-center gap-2 text-[13px] mt-1"><input type="checkbox" checked={cfg.site.forPaid} onChange={(e) => setG('site', { forPaid: e.target.checked })} />{t('aiad.sk.paid', 'Include it in paid plans (paying members use it without a key of their own)')}</label>
           <div className="flex flex-wrap gap-x-5 gap-y-2 text-[13px] items-center mt-2">
             <label className="inline-flex items-center gap-2">{t('aiad.sk.user', 'Per person per day')} {numIn(cfg.site.perUserPerDay, (v) => setG('site', { perUserPerDay: v }), t('aiad.sk.user', 'Per person per day'))}</label>
@@ -312,7 +343,7 @@ function StaffTools() {
     try {
       const r = await api.post('/admin/ai/summarize', { kind: sum.kind, id: sum.id.trim() });
       if (r.ok) setSum((s) => ({ ...s, text: r.text, host: r.host, busy: false }));
-      else { toast.error(r.reason === 'no_key' ? t('aiad.sum.nokey', 'No key: set the site key (and tick "staff tools"), or your own key in Settings.') : t('common.failed', 'Failed.')); setSum((s) => ({ ...s, busy: false })); }
+      else { toast.error(r.reason === 'no_site_key' || r.reason === 'no_key' ? t('aiad.sum.nokey', 'No site key: summaries use the site key only.') : t('common.failed', 'Failed.')); setSum((s) => ({ ...s, busy: false })); }
     } catch (e) { fail(e); setSum((s) => ({ ...s, busy: false })); }
   };
   const CAUSE = {
@@ -379,7 +410,7 @@ function StaffTools() {
       </Card>
       <Card className="p-4">
         <div className="flex items-center gap-2 mb-2"><FileText size={15} className="text-[var(--accent-ink)]" aria-hidden /><h3 className="text-sm font-semibold">{t('aiad.f.summarize', 'Thread summaries')}</h3></div>
-        <p className="text-xs text-[var(--muted)] mb-2">{t('aiad.sum.s', 'Summarises a report thread or a feedback item in a few points. It is sent to the site key\'s provider (or your own key); roles are sent, names are not.')}</p>
+        <p className="text-xs text-[var(--muted)] mb-2">{t('aiad.sum.s', 'Summarises a report thread or a feedback item in a few points. Sent to the site key\'s provider only, never with your own key. Roles are sent, names are not.')}</p>
         <div className="flex flex-wrap gap-2 items-center">
           <Select className="!w-auto" value={sum.kind} onChange={(e) => setSum({ ...sum, kind: e.target.value })} aria-label={t('aiad.sum.kind', 'What to summarise')}>
             <option value="report">{t('aiad.sum.report', 'Report')}</option>

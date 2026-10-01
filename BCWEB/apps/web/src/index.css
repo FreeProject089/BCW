@@ -2514,3 +2514,10 @@ body::before {
   opacity: var(--grain-k-hero);
 }
 /* END N-landing */
+
+/* agent-bcw-nav: one kind of screen only. A keyboard hint on a phone, or a touch gesture on a
+   desktop, is noise. .only-desktop hides without a fine pointer (touch-only), .only-touch hides
+   with one. For lists that must not offer a hidden entry, use lib/device.js (useDevice). */
+@media (any-pointer: fine) { .only-touch { display: none !important; } }
+@media not all and (any-pointer: fine) { .only-desktop { display: none !important; } }
+/* fin agent-bcw-nav */

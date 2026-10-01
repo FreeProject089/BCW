@@ -40,12 +40,14 @@ import {
   Bug as BugIcon, Sliders, AlertTriangle, Clock, Trash2, Download, Users, Layers,
   Inbox, ShieldAlert, XCircle, Info, ChevronRight, ChevronLeft, Copy, Link2, FileText,
   Image as ImageIcon, Eye, EyeOff, Search, Filter, ClipboardList, MessageSquare, Paperclip,
+  Files, Pencil, RotateCcw, Hourglass,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { Button, Card, Badge, Input, Textarea, Select, Field, Spinner, Explain, Modal, useToast, copyText } from '../ui/ui.jsx';
 import { useAsync } from './pages.jsx';
 import { analyseBundle, LIMITS } from '../lib/crash-bundle.js';
+import { TRIAGE_TAGS, TRIAGE_CATEGORIES, TRIAGE_SEVERITIES, MAX_TAGS, SEVERITY_TONE, KIND_CATEGORY, triageLabels } from '../lib/feedback-triage.js';
 
 const FB_KIND_TONE = { feedback: 'success', bug: 'warning', crash: 'red' };
 const FB_STATUS_TONE = { new: 'red', triaged: 'warning', resolved: 'success', ignored: '' };
@@ -301,6 +303,103 @@ function summaryOf(f, t) {
   return lines.join('\n');
 }
 
+/* ── Automatic triage (agent-laya-triage) ──────────────────────────────────────────────────
+ *
+ * The API tags every report (rules at intake, Laya after, staff on top; lib/feedback-triage.mjs).
+ * The row shows it as a few chips, the detail as one line; editing sits behind a small button.
+ * Hints only: nothing here changes the status, and the sort by severity reads the hint.
+ */
+function TriageChips({ tr, kind, L }) {
+  if (!tr?.source) return null;
+  const cat = tr.category && tr.category !== KIND_CATEGORY[kind] ? tr.category : null;
+  const tags = (tr.tags || []).filter((x) => x !== 'other' && !(x === 'feature-request' && tr.category === 'suggestion') && !(x === 'crash' && kind === 'crash'));
+  return (
+    <div className="flex items-center gap-1 flex-wrap mt-1 text-[10.5px]">
+      {tr.severity && <Badge tone={SEVERITY_TONE[tr.severity]}>{L.severity[tr.severity] || tr.severity}</Badge>}
+      {cat && <Badge>{L.category[cat] || cat}</Badge>}
+      {tags.slice(0, 3).map((x) => <span key={x} className="px-1.5 py-px rounded-md border border-[var(--line)] text-[var(--muted)]">{L.tag[x] || x}</span>)}
+      {tags.length > 3 && <span className="text-[var(--faint)]">+{tags.length - 3}</span>}
+      {tr.dupOfId && <span className="inline-flex items-center gap-0.5 text-warning"><Files size={10} /> {L.dup}</span>}
+      {tr.pending && <Hourglass size={10} className="text-[var(--faint)]" aria-label={L.pending} />}
+    </div>
+  );
+}
+
+function TriagePanel({ item, L, onSaved, onOpen, onTag }) {
+  const { t } = useI18n(); const toast = useToast();
+  const tr = item.triage || {};
+  const [edit, setEdit] = useState(null);   // null | draft
+  const [busy, setBusy] = useState(false);
+  const start = () => setEdit({
+    tags: (tr.tags || []).filter((x) => TRIAGE_TAGS.includes(x)),
+    category: tr.category || KIND_CATEGORY[item.kind] || 'other',
+    severity: tr.severity || 'medium',
+    dupOfId: tr.dupOfId || '',
+  });
+  const save = async (body) => {
+    setBusy(true);
+    try {
+      const r = await api.post(`/admin/feedback/${item.id}/triage`, body);
+      onSaved(r.item); setEdit(null);
+      toast.success(body.reset ? t('fbt.reset.done', 'Back to the automatic triage.') : t('fbt.saved', 'Triage saved.'));
+    } catch (x) {
+      toast.error(x?.data?.error === 'bad_duplicate' ? t('fbt.baddup', 'That reference is not a report of this project.') : t('common.failed', 'Failed.'));
+    } finally { setBusy(false); }
+  };
+  const toggleTag = (x) => setEdit((d) => {
+    const has = d.tags.includes(x);
+    if (!has && d.tags.length >= MAX_TAGS) return d;
+    return { ...d, tags: has ? d.tags.filter((y) => y !== x) : TRIAGE_TAGS.filter((y) => y === x || d.tags.includes(y)) };
+  });
+  const tags = (tr.tags || []).filter((x) => x !== 'other');
+  return (
+    <section className="rounded-xl border border-[var(--line)] p-2.5 space-y-2">
+      <div className="flex items-center gap-1.5 flex-wrap text-xs">
+        <span className="text-[var(--faint)]">{t('fbt.h', 'Triage')}</span>
+        {!tr.source ? <span className="text-[var(--faint)]">{t('fbt.none', 'not yet')}</span> : <>
+          {tr.severity && <Badge tone={SEVERITY_TONE[tr.severity]}>{L.severity[tr.severity] || tr.severity}</Badge>}
+          {tr.category && <Badge>{L.category[tr.category] || tr.category}</Badge>}
+          {tags.map((x) => (
+            <button key={x} type="button" onClick={() => onTag(x)} title={t('fbt.bytag', 'Show only this tag')}
+              className="px-1.5 py-px rounded-md border border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--line-strong)]">{L.tag[x] || x}</button>
+          ))}
+          {tr.dupOfId && (
+            <button type="button" onClick={() => onOpen(tr.dupOfId)} className="inline-flex items-center gap-1 text-warning hover:underline" title={t('fbt.dup.open', 'Open the earlier report')}>
+              <Files size={12} /> {t('fbt.dup.like', 'Looks like {id}').replace('{id}', tr.dupOfId.slice(0, 8))}{tr.dupScore != null ? ` · ${Math.round(tr.dupScore * 100)}%` : ''}
+            </button>
+          )}
+          <span className="text-[var(--faint)]">· {L.source[tr.source] || tr.source}</span>
+          {tr.pending && <span className="inline-flex items-center gap-0.5 text-[var(--faint)]" title={t('fbt.pending.d', 'Laya has not looked at it yet. The rules triage stands meanwhile.')}><Hourglass size={11} /> {L.pending}</span>}
+        </>}
+        <span className="flex-1" />
+        <Button size="sm" variant={edit ? 'primary' : 'ghost'} onClick={() => (edit ? setEdit(null) : start())} title={t('fbt.edit', 'Edit the triage')} aria-label={t('fbt.edit', 'Edit the triage')}><Pencil size={12} /></Button>
+      </div>
+      {edit && <div className="space-y-2 border-t border-[var(--line)] pt-2">
+        <div className="flex flex-wrap gap-1" role="group" aria-label={t('fbt.tags', 'Tags')}>
+          {TRIAGE_TAGS.map((x) => { const on = edit.tags.includes(x); return (
+            <button key={x} type="button" aria-pressed={on} onClick={() => toggleTag(x)} disabled={!on && edit.tags.length >= MAX_TAGS}
+              className={`px-1.5 py-0.5 rounded-md border text-[11px] disabled:opacity-40 ${on ? 'border-[var(--primary)] bg-[var(--surface-2)] font-medium' : 'border-[var(--line)] text-[var(--muted)]'}`}>{L.tag[x] || x}</button>
+          ); })}
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Select value={edit.category} onChange={(e) => setEdit({ ...edit, category: e.target.value })} className="!w-auto" aria-label={t('fbt.category', 'Category')}>
+            {TRIAGE_CATEGORIES.map((c) => <option key={c} value={c}>{L.category[c]}</option>)}
+          </Select>
+          <Select value={edit.severity} onChange={(e) => setEdit({ ...edit, severity: e.target.value })} className="!w-auto" aria-label={t('fbt.severity', 'Severity')}>
+            {TRIAGE_SEVERITIES.map((s) => <option key={s} value={s}>{L.severity[s]}</option>)}
+          </Select>
+          <Input value={edit.dupOfId} onChange={(e) => setEdit({ ...edit, dupOfId: e.target.value.trim() })} placeholder={t('fbt.dup.ph', 'Duplicate of (reference)')} aria-label={t('fbt.dup.ph', 'Duplicate of (reference)')} className="!w-48 font-mono text-xs" />
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button size="sm" variant="primary" disabled={busy || !edit.tags.length} onClick={() => save({ tags: edit.tags, category: edit.category, severity: edit.severity, dupOfId: edit.dupOfId || null })}>{busy ? <Spinner /> : t('common.save', 'Save')}</Button>
+          <Button size="sm" variant="ghost" disabled={busy} onClick={() => save({ reset: true })} title={t('fbt.reset.d', 'Drop the staff triage and let the rules and Laya decide again')}><RotateCcw size={12} /> {t('fbt.reset', 'Reset')}</Button>
+          {!edit.tags.length && <span className="text-[11px] text-[var(--faint)]">{t('fbt.onetag', 'Pick at least one tag.')}</span>}
+        </div>
+      </div>}
+    </section>
+  );
+}
+
 export function AdminFeedbackCentre() {
   const { t } = useI18n(); const toast = useToast();
   const [cfg, setCfg] = useState(null);
@@ -315,10 +414,15 @@ export function AdminFeedbackCentre() {
   const [showSettings, setShowSettings] = useState(false); const [draft, setDraft] = useState(null); const [savingCfg, setSavingCfg] = useState(false);
   const [bundle, setBundle] = useState(null);      // { loading } | analysed bundle | { error }
   const [openGroup, setOpenGroup] = useState(null);
+  // agent-laya-triage: filters on the automatic triage, folded behind one button.
+  const [tTag, setTTag] = useState(''); const [tCat, setTCat] = useState(''); const [tSev, setTSev] = useState(''); const [tDup, setTDup] = useState('');
+  const [showTf, setShowTf] = useState(false);
+  const nTf = [tTag, tCat, tSev, tDup].filter(Boolean).length;
+  const L = useMemo(() => ({ ...triageLabels(t), dup: t('fbt.dup', 'duplicate?'), pending: t('fbt.pending', 'Laya pending') }), [t]);
 
   const loadCfg = () => api.get('/admin/feedback/config').then((c) => { setCfg(c); const first = Object.keys(c.projects)[0] || c.knownProjects[0]?.key || ''; setProject((cur) => cur || first); }).catch(() => toast.error(t('common.failed', 'Failed.')));
   useEffect(() => { loadCfg(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  const qs = `project=${encodeURIComponent(project)}${kind ? `&kind=${kind}` : ''}${status ? `&status=${status}` : ''}${version ? `&version=${encodeURIComponent(version)}` : ''}${qApplied ? `&q=${encodeURIComponent(qApplied)}` : ''}&sort=${sort}&page=${page}`;
+  const qs = `project=${encodeURIComponent(project)}${kind ? `&kind=${kind}` : ''}${status ? `&status=${status}` : ''}${version ? `&version=${encodeURIComponent(version)}` : ''}${qApplied ? `&q=${encodeURIComponent(qApplied)}` : ''}${tTag ? `&tag=${encodeURIComponent(tTag)}` : ''}${tCat ? `&category=${tCat}` : ''}${tSev ? `&severity=${tSev}` : ''}${tDup ? `&dup=${tDup}` : ''}&sort=${sort}&page=${page}`;
   const { data, loading, reload } = useAsync(() => project && view === 'inbox' ? api.get(`/admin/feedback?${qs}`) : Promise.resolve(null), [qs, view]);
   const crashes = useAsync(() => project && view === 'crashes' ? api.get(`/admin/feedback/crashes?project=${encodeURIComponent(project)}&days=${days}`) : Promise.resolve(null), [project, view, days]);
 
@@ -539,7 +643,15 @@ export function AdminFeedbackCentre() {
               <Select value={version} onChange={(e) => { setVersion(e.target.value); setPage(0); }} className="!w-auto" aria-label={t('fb.ver.all', 'All versions')}><option value="">{t('fb.ver.all', 'All versions')}</option>{(data?.versions || []).filter((v) => v.version).map((v) => <option key={v.version} value={v.version}>{v.version} ({v.n})</option>)}</Select>
               <Select value={sort} onChange={(e) => { setSort(e.target.value); setPage(0); }} className="!w-auto" title={t('fb.sort', 'Sort')}><option value="severity">{t('fb.sort.sev', 'By severity')}</option><option value="new">{t('fb.sort.new', 'Newest')}</option><option value="old">{t('fb.sort.old', 'Oldest')}</option></Select>
               <form className="flex-1 min-w-[160px] flex gap-1" onSubmit={(e) => { e.preventDefault(); setQApplied(q.trim()); setPage(0); }}><Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('fb.search', 'Search title, text, e-mail, fingerprint')} aria-label={t('fb.search', 'Search title, text, e-mail, fingerprint')} /><Button size="sm">{t('common.search', 'Search')}</Button></form>
+              <Button size="sm" variant={showTf || nTf ? 'primary' : 'ghost'} onClick={() => setShowTf((v) => !v)} aria-expanded={showTf} title={t('fbt.filters', 'Triage filters')} aria-label={t('fbt.filters', 'Triage filters')}><Filter size={13} />{nTf ? <span className="tabular-nums">{nTf}</span> : null}</Button>
             </div>
+            {(showTf || nTf > 0) && <div className="flex items-center gap-2 flex-wrap">
+              <Select value={tCat} onChange={(e) => { setTCat(e.target.value); setPage(0); }} className="!w-auto" aria-label={t('fbt.category', 'Category')}><option value="">{t('fbt.cat.all', 'All categories')}</option>{TRIAGE_CATEGORIES.map((c) => <option key={c} value={c}>{L.category[c]}</option>)}</Select>
+              <Select value={tSev} onChange={(e) => { setTSev(e.target.value); setPage(0); }} className="!w-auto" aria-label={t('fbt.severity', 'Severity')}><option value="">{t('fbt.sev.all', 'Any severity')}</option>{[...TRIAGE_SEVERITIES].reverse().map((s) => <option key={s} value={s}>{L.severity[s]}</option>)}</Select>
+              <Select value={tTag} onChange={(e) => { setTTag(e.target.value); setPage(0); }} className="!w-auto" aria-label={t('fbt.tags', 'Tags')}><option value="">{t('fbt.tag.all', 'All tags')}</option>{TRIAGE_TAGS.map((x) => <option key={x} value={x}>{L.tag[x]}</option>)}</Select>
+              <Select value={tDup} onChange={(e) => { setTDup(e.target.value); setPage(0); }} className="!w-auto" aria-label={t('fbt.dups', 'Duplicates')}><option value="">{t('fbt.dup.any', 'Duplicates or not')}</option><option value="1">{t('fbt.dup.only', 'Likely duplicates')}</option><option value="0">{t('fbt.dup.none', 'No duplicate')}</option></Select>
+              {nTf > 0 && <Button size="sm" variant="ghost" onClick={() => { setTTag(''); setTCat(''); setTSev(''); setTDup(''); setPage(0); }}>{t('fbt.clear', 'Clear')}</Button>}
+            </div>}
             {data?.windowed && (
               <div className="mt-2 text-[11.5px] rounded-lg border border-[var(--line)] panel text-[var(--muted)] px-2.5 py-2 flex items-start gap-2">
                 <AlertTriangle size={13} className="shrink-0 mt-0.5 text-warning" />
@@ -554,6 +666,7 @@ export function AdminFeedbackCentre() {
                     <div className="flex items-center gap-2 flex-wrap"><Badge tone={FB_KIND_TONE[f.kind]}>{t(`fb.kind.${f.kind}`, f.kind)}</Badge><span className="font-medium text-sm truncate min-w-0 flex-1" title={f.title || undefined}>{f.title || <span className="text-[var(--faint)]">{t('fb.untitled', '(untitled)')}</span>}</span>{f.count > 1 && <Badge>×{f.count}</Badge>}<Badge tone={FB_STATUS_TONE[f.status]}>{t(`fb.st.${f.status}`, f.status)}</Badge></div>
                     <div className="text-xs text-[var(--faint)] mt-0.5 flex items-center gap-2 flex-wrap"><span>{fmtAgo(f.createdAt)}</span>{f.appVersion && <span>· v{f.appVersion}</span>}{f.os && <span>· {f.os}</span>}<span>· {f.userName ? f.userName : f.email ? f.email : t('fb.anon', 'anonymous')}</span>{f.attachments.length > 0 && <span className="inline-flex items-center gap-0.5">· {f.attachments.some(isImage) ? <ImageIcon size={10} /> : <Paperclip size={10} />} {t('fbx.natt', '{n} attached').replace('{n}', String(f.attachments.length))}</span>}{f.reportId && <span className="inline-flex items-center gap-0.5" title={t('fbx.hasthread', 'Has a conversation in Reports')}>· <MessageSquare size={10} /></span>}</div>
                     <div className="text-xs text-[var(--muted)] mt-1 line-clamp-2">{f.body}</div>
+                    <TriageChips tr={f.triage} kind={f.kind} L={L} />
                   </button>)}
                   {data.total > data.take && <div className="flex items-center justify-between text-xs text-[var(--muted)] pt-2"><Button size="sm" variant="ghost" disabled={page === 0} onClick={() => setPage(page - 1)} aria-label={t('common.prev', 'Previous')}>‹</Button><span>{page * data.take + 1}–{Math.min(data.total, (page + 1) * data.take)} / {data.total}</span><Button size="sm" variant="ghost" disabled={(page + 1) * data.take >= data.total} onClick={() => setPage(page + 1)} aria-label={t('common.next', 'Next')}>›</Button></div>}
                 </div>}
@@ -643,6 +756,10 @@ export function AdminFeedbackCentre() {
               <h2 className="text-lg font-bold mt-1 break-words">{open.title || t('fb.untitled', '(untitled)')}</h2>
               <div className="text-xs text-[var(--faint)] font-mono mt-0.5 break-all">{open.id}{open.fingerprint ? ` · ${open.fingerprint.slice(0, 16)}` : ''}</div>
             </div>
+            <TriagePanel key={`${open.id}:${open.triage?.at || ''}`} item={open} L={L}
+              onSaved={(it) => { setOpen((o) => (o && o.id === it.id ? { ...o, triage: it.triage } : o)); reload(); }}
+              onOpen={(id) => openItem(id)}
+              onTag={(x) => { setTTag(x); setView('inbox'); setPage(0); }} />
             {/* Status as one control: where it is now, and the three places it can go. */}
             <div className="flex items-center gap-2 flex-wrap">
               <div className="inline-flex rounded-[10px] bg-[var(--surface-2)] p-0.5" role="group" aria-label={t('fbx.status', 'Status')}>

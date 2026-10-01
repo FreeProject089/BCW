@@ -502,6 +502,78 @@ function demoSessions() {
 
 /** Read-only answers for the fetch-on-demand endpoints, keyed by path. Anything not listed
  *  returns an empty object, which every caller already tolerates. */
+/** /api/laya: Laya (BMM assistant) usage. Codes and counts only, like the real endpoint. */
+function demoLaya(daysRaw: string | null) {
+  const days = Math.min(366, Math.max(1, Number(daysRaw) || 30));
+  const r = rng(DEMO_SEED ^ 0x1a7a ^ days);
+  const scale = days / 30;
+  const feat = (feature: string, uses: number, users: number, p50: number, p90: number, errRate: number, absRate: number) => {
+    const u = Math.round(uses * scale);
+    const errors = Math.round(u * errRate);
+    return { feature, uses: u, users: Math.max(1, Math.round(users * Math.min(1, 0.4 + scale * 0.6))), ok: u - errors, errors, abstained: Math.round(u * absRate), p50_ms: p50, p90_ms: p90 };
+  };
+  const by_feature = [
+    feat("mod_suggest", 1840, 412, 380, 1450, 0.03, 0.08),
+    feat("smart_search", 1210, 298, 140, 520, 0.01, 0.02),
+    feat("ask", 760, 221, 900, 3200, 0.05, 0.11),
+    feat("report_precheck", 240, 96, 210, 780, 0.02, 0.0),
+    feat("report_triage", 90, 12, 1600, 5200, 0.07, 0.04),
+    feat("draft", 55, 21, 2400, 7900, 0.09, 0.0),
+    feat("test", 38, 30, 650, 1900, 0.13, 0.0),
+  ];
+  const uses = by_feature.reduce((a, f) => a + f.uses, 0);
+  const errors = by_feature.reduce((a, f) => a + f.errors, 0);
+  const abstained = by_feature.reduce((a, f) => a + f.abstained, 0);
+  const fieldRow = (field: string, total: number, rate: number) => {
+    const t = Math.round(total * scale);
+    const accepted = Math.round(t * rate);
+    return { field, accepted, rejected: t - accepted, rate: t ? Math.round((accepted / t) * 1000) / 10 : 0 };
+  };
+  const fields = [fieldRow("name", 690, 0.91), fieldRow("version", 610, 0.84), fieldRow("author", 520, 0.77), fieldRow("tags", 480, 0.62),
+    fieldRow("description", 410, 0.55), fieldRow("links", 190, 0.71), fieldRow("language", 150, 0.88), fieldRow("nsfw", 60, 0.95)];
+  const accepted = fields.reduce((a, f) => a + f.accepted, 0);
+  const rejected = fields.reduce((a, f) => a + f.rejected, 0);
+  const users_active = Math.round(1480 * Math.min(1, 0.45 + scale * 0.55));
+  const users_laya = Math.round(users_active * 0.38);
+  const start = Math.floor(NOW / DAY) * DAY - (days - 1) * DAY;
+  const w = Array.from({ length: days }, (_, i) => 0.7 + r() * 0.6 + i / days * 0.4);
+  const ws = w.reduce((a, x) => a + x, 0);
+  const share = (total: number, i: number) => Math.round((total * w[i]) / ws);
+  const daily = w.map((_, i) => ({
+    day: new Date(start + i * DAY).toISOString().slice(0, 10),
+    uses: share(uses, i), users: Math.round(share(users_laya, i) * Math.min(days, 6)), errors: share(errors, i),
+    accepted: share(accepted, i), rejected: share(rejected, i),
+  }));
+  const queries = by_feature.filter((f) => f.feature === "ask" || f.feature === "smart_search").reduce((a, f) => a + f.uses, 0);
+  const clicked = Math.round(queries * 0.64);
+  return {
+    days, since_ms: start, users_active, users_laya, adoption_pct: Math.round((users_laya / users_active) * 1000) / 10,
+    uses, errors, error_pct: Math.round((errors / uses) * 1000) / 10, abstained,
+    accepted, rejected, acceptance_pct: Math.round((accepted / (accepted + rejected)) * 1000) / 10, truncated: false,
+    by_feature,
+    by_provider: [
+      { provider: "embedded", uses: Math.round(uses * 0.52), users: Math.round(users_laya * 0.44) },
+      { provider: "rules", uses: Math.round(uses * 0.27), users: Math.round(users_laya * 0.7) },
+      { provider: "server", uses: Math.round(uses * 0.15), users: Math.round(users_laya * 0.2) },
+      { provider: "local", uses: Math.round(uses * 0.04), users: Math.round(users_laya * 0.05) },
+      { provider: "external", uses: Math.round(uses * 0.02), users: Math.round(users_laya * 0.02) },
+    ],
+    fields,
+    latency_buckets: [
+      { bucket: "<250", n: Math.round(uses * 0.34) }, { bucket: "250-1000", n: Math.round(uses * 0.38) },
+      { bucket: "1-3s", n: Math.round(uses * 0.18) }, { bucket: "3-10s", n: Math.round(uses * 0.08) }, { bucket: ">10s", n: Math.round(uses * 0.02) },
+    ],
+    errors_by_code: [
+      { code: "timeout", n: Math.round(errors * 0.38) }, { code: "embedded:runtime", n: Math.round(errors * 0.24) },
+      { code: "server:unavailable", n: Math.round(errors * 0.17) }, { code: "embedded:oom", n: Math.round(errors * 0.12) }, { code: "other", n: Math.round(errors * 0.09) },
+    ],
+    ask: { queries, clicked, click_rate: Math.round((clicked / queries) * 1000) / 10, low_confidence: Math.round(queries * 0.12),
+      kinds: [{ kind: "mod", n: Math.round(clicked * 0.52) }, { kind: "setting", n: Math.round(clicked * 0.21) }, { kind: "page", n: Math.round(clicked * 0.17) }, { kind: "profile", n: Math.round(clicked * 0.1) }] },
+    model: { install: Math.round(212 * scale), install_failed: Math.round(9 * scale), uninstall: Math.round(31 * scale), cancel: Math.round(14 * scale), test: Math.round(38 * scale) },
+    daily,
+  };
+}
+
 export function demoApiGet(url: string): any {
   const [path, qs = ""] = url.split("?");
   const q = new URLSearchParams(qs);
@@ -548,6 +620,9 @@ export function demoApiGet(url: string): any {
         })),
       };
     }
+
+    case "/api/laya":
+      return demoLaya(q.get("days"));
 
     case "/api/versions":
       return {

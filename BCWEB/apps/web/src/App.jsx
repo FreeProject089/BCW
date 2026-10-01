@@ -52,6 +52,7 @@ import { applySeoHead, setCanonical, fetchRouteMeta, applyRouteMeta } from './li
 import { getOrbTransitionPref, getLogoutConfirm } from './lib/prefs.js';
 import { canAdmin, effectiveCaps, hasProjectGrant, utilAllowed } from './lib/roles.js';
 import { readLayout, navAlignClass } from './lib/navLayout.js';
+import { findProjectsGroup, otherProjectsFor, mobileProjectsLayout } from './lib/nav-projects.js'; // agent-bcw-nav: one projects menu
 import CookieConsent from './ui/CookieConsent.jsx';
 import PwaUpdatePrompt from './ui/pwa-update.jsx';
 import PwaInstallPrompt from './ui/pwa-install.jsx';
@@ -134,6 +135,7 @@ const ShowcaseProjectPage = named(() => import('./pages/project.jsx'), 'Showcase
 // prerelease (agent-prerelease): early access, the list and one pre-release.
 const PrereleasesPage = named(() => import('./pages/prereleases.jsx'), 'PrereleasesPage');
 const PrereleasePage = named(() => import('./pages/prereleases.jsx'), 'PrereleasePage');
+const PayPage = named(() => import('./pages/pay.jsx'), 'PayPage'); // agent-bcw-pools: admin-made payment links
 const Profile = lazyChunk(() => import('./pages/profile.jsx'));
 const PublicProfile = lazyChunk(() => import('./pages/publicprofile.jsx'));
 const UserSearch = named(() => import('./pages/publicprofile.jsx'), 'UserSearch');
@@ -148,6 +150,9 @@ const CommunityCatalogPage = lazyChunk(() => import('./pages/catalogpage.jsx'));
 const ProjectCatalogPage = lazyChunk(() => import('./pages/project-catalog.jsx'));
 const RepoPublicPage = lazyChunk(() => import('./pages/repopublic.jsx'));
 const Hosting = named(() => import('./pages/hosting.jsx'), 'Hosting');
+// agent-bcw-bot: the bot's public features and pricing pages (the paywall's destinations).
+const BotFeaturesPage = named(() => import('./pages/bot-public.jsx'), 'BotFeaturesPage');
+const BotPricingPage = named(() => import('./pages/bot-public.jsx'), 'BotPricingPage');
 const Legal = named(() => import('./pages/legal.jsx'), 'Legal');
 const LegalIndex = named(() => import('./pages/legal.jsx'), 'LegalIndex');
 const LegalArchive = named(() => import('./pages/legal.jsx'), 'LegalArchive');
@@ -167,7 +172,8 @@ const KOFI = 'https://ko-fi.com/bettercommunity';
 // one "Apps" dropdown, then Blog / Docs / Repos / Hosting as flat links. Mirrors
 // DEFAULT_NAV_SEED in pages.jsx so the editor's "Reset to default" restores exactly this.
 const DEFAULT_ITEMS = [
-  { type: 'group', k: 'nav.apps', icon: Boxes, children: [
+  // agent-bcw-nav: "Projects", not "Apps": this one menu now also holds the other projects.
+  { type: 'group', k: 'nav.projects', icon: Orbit, children: [
     { to: '/p/bmm', k: 'nav.bmm', icon: Boxes, img: '/icons/bmm.png' },
     { to: '/p/bsm', k: 'nav.bsm', icon: Music2, img: '/icons/bsm.png' },
     { to: '/p/installer', k: 'nav.installer', icon: Download, img: '/icons/bi.png' },
@@ -647,6 +653,9 @@ export function Nav({ preview = null } = {}) {
   const effItems = rawItems
     .map((it) => it.type === 'group' ? { ...it, children: (it.children || []).filter((c) => gateTo(c.to)) } : it)
     .filter((it) => it.type === 'group' ? it.children.length > 0 : gateTo(it.to));
+  // agent-bcw-nav: the group that holds the projects. When there is one, the other projects
+  // live INSIDE it (desktop menu and phone sheet), and the separate Projects button goes.
+  const projIdx = findProjectsGroup(effItems);
   // Admin-pinned showcase projects: shown as their own inline pills (default) or grouped
   // under a single "Projects" hover-dropdown when the admin chose projectsMode:'dropdown'.
   // Each keeps its own icon. Visitor-gated project links already filtered upstream.
@@ -757,7 +766,9 @@ export function Nav({ preview = null } = {}) {
         ? <span key="u-notif" className="nav-link !px-2 relative" title={t('nav.notifications')}>{ug('notifications', Bell)}</span>
         : <NavNotifications key="u-notif" onBadge={publishNavBadge} icon={hasIcon('notifications', theme) || uCfg.notifications?.size ? ug('notifications', Bell) : null} />;
       // N-topbar: a menu (the site's projects, then the other projects), not a bare link.
-      case 'projects': return <span key="u-proj" className="hidden sm:inline-flex">{projectsMenu}</span>;
+      // agent-bcw-nav: gone when the nav has a projects group, which now holds the other
+      // projects too (one door, not two). Kept only for a nav configured without one.
+      case 'projects': return projIdx >= 0 ? null : <span key="u-proj" className="hidden sm:inline-flex">{projectsMenu}</span>;
       // Inert in the preview: it would switch the ADMIN's language, not the preview's.
       case 'lang': return <span key="u-lang" className={preview ? 'pointer-events-none contents' : 'contents'}><LangToggle type={uCfg.lang?.type || 'auto'} icon={hasIcon('lang', theme) || uCfg.lang?.size ? ug('lang', Languages) : null} /></span>;
       case 'theme': return <ThemeToggle key="u-theme" lightIcon={themeKnob('light')} darkIcon={themeKnob('dark')} />;
@@ -858,6 +869,33 @@ export function Nav({ preview = null } = {}) {
       ]} />
   );
   // fin N-topbar (agent-topbar-N)
+  // agent-bcw-nav: the pill bar's Projects group, drawn as the projects popover: the group's
+  // own links, then the other projects, then "All other projects".
+  const navOthers = projIdx >= 0
+    ? otherProjectsFor({ groupChildren: effItems[projIdx].children, pinned: pinnedShowcase, all: showcaseAll, max: layout.projectsMax })
+    : [];
+  const projNavMenu = (it) => {
+    const kids = it.children || [];
+    const active = onProjects || kids.some((c) => loc.pathname === c.to || loc.pathname.startsWith(c.to + '/'));
+    return (
+      <span key="proj-menu" className="inline-flex shrink-0" data-nav-idx={it._idx}>
+        <TopMenu dataKey="projects" align="start" chevron label={navLabel(it, t, lang)}
+          triggerClass={pill({ isActive: active }) + ' shrink-0'}
+          trigger={<><NavIcon item={it} size={16} /><span className="nav-lbl">{navLabel(it, t, lang)}</span></>}
+          sections={[
+            { key: 'ours', title: navOthers.length ? t('nav.menu.proj.ours', 'Projects') : '', items: kids.map((c, j) => ({
+              key: 'g' + j, to: c.to, icon: <NavIcon item={c} size={18} />, label: navLabel(c, t, lang), desc: navSubLabel(c, lang) || undefined,
+            })) },
+            { key: 'others', title: t('nav.menu.proj.others', 'Other projects'), items: navOthers.map((p) => ({
+              key: 'o-' + p.slug, to: `/project/${p.slug}`,
+              icon: <ShowcaseIcon icon={p.icon} size={18} fallback={<Sparkles size={18} />} />,
+              label: p.isAnnouncing ? (p.announceTitle || p.name) : p.name,
+            })) },
+            { key: 'all', items: [{ key: 'all', to: '/projects', end: true, icon: <LayoutGrid size={17} />, label: t('nav.menu.proj.all', 'All other projects') }] },
+          ]} />
+      </span>
+    );
+  };
   return (
     <header ref={headerRef} className="sticky top-0 z-40 px-2 sm:px-3 pt-2 sm:pt-3">
       {/* The bar and the phone sheet share this box. It is `relative` and it carries the
@@ -887,9 +925,9 @@ export function Nav({ preview = null } = {}) {
         <div ref={segNavRef} className={`seg-nav ${compact || iconsOnly ? 'is-compact' : ''} ${textOnly && !(compact || iconsOnly) ? 'is-textonly' : ''} hidden lg:flex flex-1 min-w-0 overflow-x-auto no-scrollbar ${navAlignClass(layout.align)}`}>
           <nav className={`inline-flex items-center rounded-full bg-[var(--surface-2)] p-1 border border-[var(--line)] shrink-0 ${layout.density === 'compact' ? 'gap-0' : 'gap-0.5'}`}>
             {effItems.map((it, i) => it.type === 'group'
-              ? <NavDropdown key={'g' + i} item={it} t={t} lang={lang} idx={it._idx} />
+              ? (i === projIdx ? projNavMenu(it) : <NavDropdown key={'g' + i} item={it} t={t} lang={lang} idx={it._idx} />)
               : <NavLink key={it.to} to={it.to} data-nav-idx={it._idx} title={navLabel(it, t, lang)} aria-label={navLabel(it, t, lang)} className={(s) => pill(s) + ' shrink-0'}><NavIcon item={it} size={16} /><span className="nav-lbl">{navLabel(it, t, lang)}</span></NavLink>)}
-            {projectsDropdown
+            {projIdx >= 0 ? null : projectsDropdown
               ? <NavDropdown key="proj-dd" item={projectsGroup} t={t} lang={lang} />
               : pinnedShowcase.map((p) => (
                 <NavLink key={p.slug} to={`/project/${p.slug}`} title={p.name} aria-label={p.name} className={(s) => pill(s) + ' shrink-0'}>
@@ -940,8 +978,9 @@ export function Nav({ preview = null } = {}) {
           the look committed in 20fd0998 is untouched — only the box it sits in changed. */}
       {open && (
         <div ref={sheetRef} className="absolute left-0 right-0 top-full z-10 lg:hidden">
-          <MobileMenu cfg={navCfg?.mobileMenu} items={effItems} projectsGroup={projectsDropdown ? projectsGroup : null}
-            pinned={projectsDropdown ? [] : pinnedShowcase} user={user} uVisible={uVisible} ug={ug}
+          <MobileMenu cfg={navCfg?.mobileMenu} items={effItems} projectsGroup={projIdx < 0 && projectsDropdown ? projectsGroup : null}
+            pinned={projIdx >= 0 || projectsDropdown ? [] : pinnedShowcase} user={user} uVisible={uVisible} ug={ug}
+            projects={projIdx >= 0 ? { idx: projIdx, group: effItems[projIdx], others: navOthers } : null}
             onClose={() => setOpen(false)} onLogout={() => { logout(); setOpen(false); }} />
         </div>
       )}
@@ -985,10 +1024,11 @@ export function readMobileMenu(c) {
     extras: (Array.isArray(m.extras) ? m.extras : []).filter((x) => x && String(x.to || '').startsWith('/')).slice(0, 8),
   };
 }
-function MobileMenu({ cfg, items, projectsGroup, pinned, user, uVisible, ug, onClose, onLogout }) {
+function MobileMenu({ cfg, items, projectsGroup, pinned, user, uVisible, ug, onClose, onLogout, projects = null }) {
   const { t, lang } = useI18n();
   const m = readMobileMenu(cfg);
   const [openGroup, setOpenGroup] = useState(null);
+  const [projMore, setProjMore] = useState(false); // agent-bcw-nav
   const tiles = m.layout === 'tiles';
   const withIcon = (n) => (typeof n.icon === 'string' && NAV_ICONS[n.icon] ? { ...n, icon: NAV_ICONS[n.icon] } : n);
   const cell = ({ isActive }) => `msheet-tile ${isActive ? 'is-active' : ''}`;
@@ -1013,7 +1053,7 @@ function MobileMenu({ cfg, items, projectsGroup, pinned, user, uVisible, ug, onC
     ];
   };
   const nav = [
-    ...items.flatMap((it, i) => (it.type === 'group'
+    ...items.flatMap((it, i) => (projects && i === projects.idx ? [] : it.type === 'group'
       ? group('g' + i, it)
       : [link('l' + i, it.to, navLabel(it, t, lang), <NavIcon item={withIcon(it)} size={18} />, { 'data-nav-idx': it._idx })])),
     ...(projectsGroup ? group('proj', projectsGroup) : []),
@@ -1021,7 +1061,7 @@ function MobileMenu({ cfg, items, projectsGroup, pinned, user, uVisible, ug, onC
       <ShowcaseIcon icon={p.icon} size={18} fallback={<Sparkles size={18} />} />)),
   ];
   const shortcuts = [
-    uVisible('projects') && link('s-proj', '/projects', t('nav.projects'), ug('projects', Orbit)),
+    !projects && uVisible('projects') && link('s-proj', '/projects', t('nav.projects'), ug('projects', Orbit)),
     m.contact && link('s-contact', '/contact', t('nav.contact', 'Contact'), <Mail size={18} />),
     uVisible('settings') && link('s-set', '/settings', t('nav.settings', 'Settings'), ug('settings', SettingsIcon)),
     ...m.extras.map((x, i) => link('x' + i, x.to, navLabel(x, t, lang) || x.to, <NavIcon item={withIcon({ ...x, icon: x.icon || 'Boxes' })} size={18} />)),
@@ -1036,6 +1076,41 @@ function MobileMenu({ cfg, items, projectsGroup, pinned, user, uVisible, ug, onC
       </button>
     ),
   ].filter(Boolean) : [];
+  // agent-bcw-nav: the projects get their own section, laid out by how many there are: one
+  // clean row of tiles when they fit, else the first few and a "N more" tile opening a
+  // one-column list. It replaces the group tile that opened a boxed strip wrapping onto two lines.
+  const projList = projects ? [
+    ...(projects.group.children || []).map((c, j) => ({ key: 'pg' + j, to: c.to, label: navLabel(c, t, lang), glyph: <NavIcon item={withIcon(c)} size={18} /> })),
+    ...projects.others.map((p) => ({ key: 'po-' + p.slug, to: `/project/${p.slug}`, label: p.isAnnouncing ? (p.announceTitle || p.name) : p.name,
+      glyph: <ShowcaseIcon icon={p.icon} size={18} fallback={<Sparkles size={18} />} /> })),
+  ] : [];
+  const projLay = mobileProjectsLayout(projList.length, m.columns);
+  const projSection = projList.length > 0 && (
+    <section className="msheet-sec">
+      <div className="msheet-h msheet-h-row">
+        <span>{navLabel(projects.group, t, lang)}</span>
+        <Link to="/projects" onClick={onClose} className="msheet-h-link">{t('nav.menu.proj.seeAll', 'See all')}</Link>
+      </div>
+      {tiles ? (
+        <>
+          <div className="msheet-grid is-tiles" style={{ gridTemplateColumns: `repeat(${projLay.columns}, minmax(0, 1fr))` }}>
+            {projList.slice(0, projLay.tiles).map((x) => link(x.key, x.to, x.label, x.glyph))}
+            {projLay.mode === 'more' && (
+              <button type="button" className={`msheet-tile ${projMore ? 'is-open' : ''}`} aria-expanded={projMore} onClick={() => setProjMore((v) => !v)}>
+                <span className="msheet-ic"><MoreHorizontal size={18} /></span>
+                <span className="msheet-lbl">{t('nav.menu.proj.more', '{n} more').replace('{n}', String(projLay.rest))}</span>
+              </button>
+            )}
+          </div>
+          {projLay.mode === 'more' && projMore && (
+            <div className="msheet-grid is-list msheet-projlist">{projList.slice(projLay.tiles).map((x) => link(x.key, x.to, x.label, x.glyph))}</div>
+          )}
+        </>
+      ) : (
+        <div className="msheet-grid is-list">{projList.map((x) => link(x.key, x.to, x.label, x.glyph))}</div>
+      )}
+    </section>
+  );
   const section = (title, kids) => kids.length > 0 && (
     <section className="msheet-sec">
       <div className="msheet-h">{title}</div>
@@ -1055,6 +1130,7 @@ function MobileMenu({ cfg, items, projectsGroup, pinned, user, uVisible, ug, onC
     <div className="lg:hidden msheet topbar anim-fade" role="navigation" aria-label={t('nav.menu.aria', 'Site menu')}
       onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
       <div className="msheet-grip" aria-hidden />
+      {projSection}
       {section(t('nav.menu.nav', 'Browse'), nav)}
       {section(t('nav.menu.short', 'Shortcuts'), shortcuts)}
       {user
@@ -1527,7 +1603,7 @@ function Protected({ children, role }) {
   return children;
 }
 
-const TITLES = { '/': 'Home', '/catalog': 'Catalog', '/submit': 'Submit', '/blog': 'Blog', '/docs': 'Docs', '/faq': 'FAQ', '/repos': 'Server Repos', '/hosting': 'Hosting', '/projects': 'Projects', '/contact': 'Contact', '/auth': 'Sign in', '/profile': 'Profile', '/dashboard': 'Dashboard', '/admin': 'Admin', '/settings': 'Settings', '/2fa': 'Authenticator', '/legal': 'Legal', '/legal/about': 'About', '/legal/privacy': 'Privacy', '/legal/terms': 'Terms', '/legal/cookies': 'Cookies', '/legal/refunds': 'Payments & Refunds', '/legal/dpa': 'Data Processing Addendum' };
+const TITLES = { '/': 'Home', '/catalog': 'Catalog', '/submit': 'Submit', '/blog': 'Blog', '/docs': 'Docs', '/faq': 'FAQ', '/repos': 'Server Repos', '/hosting': 'Hosting', '/projects': 'Projects', '/contact': 'Contact', '/auth': 'Sign in', '/profile': 'Profile', '/dashboard': 'Dashboard', '/admin': 'Admin', '/settings': 'Settings', '/2fa': 'Authenticator', '/legal': 'Legal', '/legal/about': 'About', '/legal/privacy': 'Privacy', '/legal/terms': 'Terms', '/legal/cookies': 'Cookies', '/legal/refunds': 'Payments & Refunds', '/legal/dpa': 'Data Processing Addendum', '/legal/projects': 'Project Policy', '/legal/pools': 'Pools & payment links', '/legal/bot': 'Discord bot terms' };
 
 // Site-wide banner(s) for active admin announcements. Dismissal is per-announcement
 // (by id) and persisted in localStorage, so re-dismissing after a page reload isn't
@@ -1848,6 +1924,9 @@ export default function App() {
               <Route path="/repos" element={<ReposPage />} />
               <Route path="/repo/:id" element={<RepoDashboard />} />
               <Route path="/hosting" element={<Hosting />} />
+              <Route path="/bot" element={<Navigate to="/bot/features" replace />} />
+              <Route path="/bot/features" element={<BotFeaturesPage />} />
+              <Route path="/bot/pricing" element={<BotPricingPage />} />
               <Route path="/myo" element={<MyoPage />} />
               <Route path="/myo/:id" element={<Protected><MyoRequestPage /></Protected>} />
               <Route path="/p/:key" element={<ProjectPage />} />
@@ -1855,6 +1934,7 @@ export default function App() {
               <Route path="/project/:slug" element={<ShowcaseProjectPage />} />
               <Route path="/prereleases" element={<PrereleasesPage />} />
               <Route path="/prereleases/:slug" element={<PrereleasePage />} />
+              <Route path="/pay/:token" element={<PayPage />} />{/* agent-bcw-pools */}
               <Route path="/profile" element={<Protected><Profile /></Protected>} />
               <Route path="/users" element={<UserSearch />} />
               <Route path="/u/:id" element={<PublicProfile />} />
@@ -1914,6 +1994,8 @@ export default function App() {
               <Route path="/terms" element={<Navigate to="/legal/terms" replace />} />
               <Route path="/cookies" element={<Navigate to="/legal/cookies" replace />} />
               <Route path="/refunds" element={<Navigate to="/legal/refunds" replace />} />
+              {/* agent-bcw-rules: the Project Policy's short address. */}
+              <Route path="/policy/projects" element={<Navigate to="/legal/projects" replace />} />
               <Route path="/dashboard" element={<Protected><Dashboard /></Protected>} />
               <Route path="/admin" element={<Protected role={['MOD', 'ADMIN']}><Admin /></Protected>} />
               {/* The studio on its own surface (pages/studio.jsx). Signed-in only here; WHO may

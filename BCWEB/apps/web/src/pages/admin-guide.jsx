@@ -124,6 +124,8 @@ export const GUIDE = [
           { en: 'Presentation media accepts images, video, rrweb and BMM replay embeds — each with a live preview.', fr: 'Les médias de présentation acceptent images, vidéo, rrweb et replays BMM — chacun avec un aperçu en direct.' },
           { en: 'The timeline can be linked to a GitHub repo (or a dropped .git) so commits, contributors and per-day activity fill in automatically; timeline and release notes render Markdown.', fr: 'La chronologie peut être liée à un dépôt GitHub (ou un .git déposé) pour remplir automatiquement commits, contributeurs et activité par jour ; chronologie et notes de version rendent le Markdown.' },
           { en: 'Page visibility gates who can see each page; a countdown teaser and scheduled content swap are set here too.', fr: 'La visibilité des pages contrôle qui voit chaque page ; le compte à rebours et l’échange de contenu programmé se règlent aussi ici.' },
+          // agent-bcw-rules: the Project Policy review checklist.
+          { en: 'Listing requests follow the Project Policy (/legal/projects). Each one shows the applicant’s contact and a checklist (contact reachable, source seen, tests passed, security review, plus BetterInstaller and cause when claimed); Approve stays off until it is complete, so an AI project cannot be approved before its tests pass.', fr: 'Les demandes de référencement suivent la Politique des projets (/legal/projects). Chacune affiche le contact du demandeur et une liste de vérifications (contact joignable, code vu, tests réussis, revue de sécurité, plus BetterInstaller et cause quand ils sont annoncés) ; Approuver reste désactivé tant qu’elle n’est pas complète, donc un projet avec IA ne peut pas être approuvé avant d’avoir réussi ses tests.' },
           // Studio phase 8 (agent-studio-8): the studio has one surface, and this is its manual.
           { en: 'Studio pages are drawn in the studio, a full-screen editor at /studio (Studio pages → Open the studio). It is the only place they are edited: the config editor lists them and links there.', fr: 'Les pages studio se dessinent dans le studio, un éditeur plein écran sous /studio (Pages studio → Ouvrir le studio). C’est le seul endroit où elles se modifient : l’éditeur de config les liste et y renvoie.' },
           { en: 'The studio has a fixed placement: at the top the document (its name, undo and redo, the board being drawn, the previews, Save); on the left pages, blocks, layers and components; on the right the inspector of the selected block and the Page panel; the bottom is empty until you move a panel there.', fr: 'Le studio a une disposition fixe : en haut le document (son nom, annuler et rétablir, la planche dessinée, les aperçus, Enregistrer) ; à gauche les pages, les blocs, les calques et les composants ; à droite l’inspecteur du bloc sélectionné et le panneau Page ; le bas reste vide tant que tu n’y déplaces pas un panneau.' },
@@ -337,8 +339,8 @@ export const GUIDE_TABS = {
   // notify (agent-notify): + the notification composer and the BMM launch card.
   editorial: ['announcements', 'faq', 'newsletter', 'mail', 'reviews', 'polls', 'reactions', 'projectreviews', 'notify', 'bmmlaunch'],
   badges: ['badges'],
-  repos: ['repos', 'pools', 'entityhosting', 'transfers'],
-  plans: ['plans', 'payments', 'hosting'],
+  repos: ['repos', 'pools', 'entityhosting', 'projectpools', 'transfers'], // + projectpools: agent-bcw-pools
+  plans: ['plans', 'payments', 'hosting', 'paylinks'], // + paylinks: agent-bcw-pools
   promotions: ['promotions'],
   events: ['events'],
   myo: ['myo'],

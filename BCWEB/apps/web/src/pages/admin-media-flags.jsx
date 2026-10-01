@@ -363,7 +363,7 @@ export function AdminMediaFlags() {
             <div className="flex items-center gap-2 flex-wrap">
               {!blink && <Button size="sm" variant="ghost" disabled={!bothShown} onClick={() => setBlink(true)} title={bothShown ? t('adm.mf.blink.t', 'Swap the two in the same frame, which is how a crop or a watermark becomes visible.') : t('adm.mf.blink.locked', 'Show both pictures first: blinking would uncover them.')}><ArrowLeftRight size={13} /> {t('adm.mf.blink', 'Blink between them')}</Button>}
               <Verdict f={cur} resolve={resolve} t={t} />
-              <Button size="sm" variant="ghost" className="ms-auto" onClick={() => setKeys((v) => !v)} aria-expanded={keys}><Keyboard size={13} /> {t('adm.mf.keys', 'Shortcuts')}</Button>
+              <Button size="sm" variant="ghost" className="ms-auto only-desktop" onClick={() => setKeys((v) => !v)} aria-expanded={keys}><Keyboard size={13} /> {t('adm.mf.keys', 'Shortcuts')}</Button>
             </div>
             {keys && (
               <ul className="text-[11px] text-[var(--muted)] flex flex-wrap gap-x-4 gap-y-1">

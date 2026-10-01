@@ -10,7 +10,7 @@
 //   POST   /ai/suggest         tags / category / language for what I am about to submit
 //   POST   /ai/describe        draft a description (generative: my key, or the site key if my plan has it)
 //   POST   /ai/check           "is this likely to be held?" before I post: coarse, never the rule
-//   POST   /ai/feedback        "that warning was wrong / right" — a count, nothing else
+//   POST   /ai/feedback        "that warning was wrong / right", or a suggestion applied / dismissed — a count, nothing else
 //
 // PUBLIC
 //   GET    /site/features      site-wide switches the web needs before it draws: OS mode on/off
@@ -37,6 +37,7 @@ import {
   sealKey, last4, keyShapeOk, checkBaseUrl, hostOf, isStaff,
 } from '../lib/ai-features.mjs';
 import { stackSignature, stackTextOf } from './feedback.mjs';
+import { SEARCH_BOUNDS } from '../lib/search-ai.mjs'; // agent-bcw-nav
 
 export const OS_ENABLED_KEY = 'os.enabled';
 const ADMIN_TIER = ['ADMIN', 'SUPERADMIN'];
@@ -87,7 +88,20 @@ const CheckBody = z.object({
   surface: z.enum(['community', 'member_message', 'team_message']).default('community'),
   text: z.string().min(1).max(8000),
 }).strict();
-const FeedbackBody = z.object({ feature: z.enum(FEATURE_IDS), verdict: z.enum(['wrong', 'right']) }).strict();
+// Two shapes: a verdict on a warning ("this warning is wrong"), or what a member did with a
+// suggestion (applied it, or dismissed it). Only enums and a small count: no text, no content id.
+export const FeedbackBody = z.union([
+  z.object({ feature: z.enum(FEATURE_IDS), verdict: z.enum(['wrong', 'right']) }).strict(),
+  z.object({
+    feature: z.enum(FEATURE_IDS),
+    outcome: z.enum(['accepted', 'rejected']),
+    provider: z.enum(['laya', 'external', 'byok', 'site', 'local', 'rules']).default('rules'),
+    field: z.enum(['tags', 'category', 'description', 'language']).optional(),
+    n: z.number().int().min(1).max(20).default(1),
+  }).strict(),
+]);
+/** The analytics' provider for a suggestion's source: word matching counts as `rules`. */
+export const feedbackProvider = (src) => (src === 'local' ? 'rules' : src);
 const KeyBody = z.object({
   baseUrl: z.string().trim().min(8).max(300),
   key: z.string().min(8).max(400),
@@ -111,6 +125,12 @@ const FeaturesBody = z.object({
     site: z.object({ inPerMTok: z.number().min(0).max(1000).optional(), outPerMTok: z.number().min(0).max(1000).optional() }).strict().optional(),
   }).strict().optional(),
   retentionDays: int(...FEATURE_BOUNDS.retentionDays),
+  // agent-bcw-nav: the search bars' limits (lib/search-ai.mjs).
+  search: z.object({
+    anon: z.boolean().optional(),
+    perUserPerMin: int(...SEARCH_BOUNDS.perUserPerMin), perAnonPerMin: int(...SEARCH_BOUNDS.perAnonPerMin),
+    perIpPerMin: int(...SEARCH_BOUNDS.perIpPerMin), anonPerIpPerDay: int(...SEARCH_BOUNDS.anonPerIpPerDay), cacheTtlSec: int(...SEARCH_BOUNDS.cacheTtlSec),
+  }).strict().optional(),
 }).strict();
 
 /** A member's key, as it may be shown: never the key, never the full URL's path. */
@@ -139,9 +159,17 @@ export default async function aiFeatureRoutes(app) {
     const p = await db();
     const row = await p.adminSetting.findUnique({ where: { key: OS_ENABLED_KEY } }).catch(() => null);
     reply.header('Cache-Control', 'public, max-age=30');
+    // agent-bcw-nav: whether the search bars may ask Laya at all, so a page never sends a
+    // request that can only answer "off". Who may is still checked on every call.
+    let search = { ai: false, anon: false };
+    try {
+      const { cfg } = await loadFeatures();
+      const f = cfg.features.search;
+      search = { ai: !!f?.enabled && classifierOn(await aiLoadConfig()), anon: !!cfg.search?.anon && f?.audience === 'all' };
+    } catch { /* unreadable: off */ }
     // OS mode is ON unless an admin switched it off: it was shipped on, and a missing row must
     // not take away what people already use.
-    return { os: { enabled: row?.value !== false, beta: true } };
+    return { os: { enabled: row?.value !== false, beta: true }, search };
   });
 
   // ── Members ─────────────────────────────────────────────────────────────────────────────
@@ -279,7 +307,11 @@ export default async function aiFeatureRoutes(app) {
   app.post('/ai/feedback', { preHandler: requireRole(), config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => {
     const parsed = FeedbackBody.safeParse(req.body || {});
     if (!parsed.success) return reply.code(400).send({ ok: false, error: 'invalid_input' });
-    recordAiEvent(parsed.data.feature, parsed.data.verdict === 'wrong' ? 'falsePositive' : 'confirmed', 'rules');
+    const d = parsed.data;
+    // A staff-only helper cannot be "rated" by a member who never saw it.
+    if (FEATURES[d.feature].staffOnly && !isStaff(req.user)) return reply.code(403).send({ ok: false, error: 'staff_only' });
+    if (d.verdict) recordAiEvent(d.feature, d.verdict === 'wrong' ? 'falsePositive' : 'confirmed', 'rules');
+    else recordAiEvent(d.feature, d.outcome, feedbackProvider(d.provider), d.n);
     return { ok: true };
   });
 
@@ -373,7 +405,9 @@ export default async function aiFeatureRoutes(app) {
     const r = await generate(p, req.user, 'summarize', {
       system: 'You summarise a moderation or support thread for a moderator. Write 3 to 5 short bullet points in English: what is claimed, what evidence is given, what was already answered, what remains open. Neutral, no judgement, no names.',
       prompt: material, maxTokens: 300,
-    }, { cfg, site, paid: false, staff: true });
+    }, { cfg, site, paid: false, staff: true, siteOnly: true });
+    // The site key or nothing: a report is the platform's data, not the moderator's to send to
+    // a provider of their own choosing (finding 8). No site key → { ok:false, reason:'no_site_key' }.
     if (!r.value) return { ok: false, reason: r.reason };
     return { ok: true, text: r.value.text, provider: r.value.provider, host: r.value.host };
   });

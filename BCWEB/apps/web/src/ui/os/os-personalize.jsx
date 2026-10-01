@@ -7,7 +7,7 @@
 // shell, opaque (it is a popup), focus kept inside while it is open, Escape closes it.
 
 import { useEffect, useRef } from 'react';
-import { X, Image as ImageIcon, LayoutGrid, PanelBottom, Sparkles, RotateCcw, Eye } from 'lucide-react';
+import { X, Image as ImageIcon, LayoutGrid, PanelBottom, PanelTop, Sparkles, RotateCcw, Eye } from 'lucide-react';
 import { useI18n } from '../../i18n.jsx';
 
 function Choice({ label, value, options, onChange }) {
@@ -82,6 +82,11 @@ export default function OsPersonalize({ prefs, setPrefs, hiddenCount, onShowIcon
             <Choice label={t('os.pz.bar', 'Taskbar position')} value={prefs.bar} onChange={(v) => setPrefs({ bar: v })}
               options={[['bottom', t('os.pz.bottom', 'Bottom')], ['top', t('os.pz.top', 'Top')]]} />
           </Row>
+          <Row icon={PanelTop} title={t('os.pz.topbar', 'Site bar')}>
+            <Choice label={t('os.pz.topbar', 'Site bar')} value={prefs.topbar} onChange={(v) => setPrefs({ topbar: v })}
+              options={[['auto', t('os.pz.topbar.auto', 'Auto-hide')], ['show', t('os.pz.topbar.show', 'Always shown')]]} />
+          </Row>
+          <p className="os-pz-note">{t('os.pz.topbar.d', 'Auto-hide: point at the top edge, swipe down, or press Alt+Shift+H.')}</p>
           <Row icon={PanelBottom} title={t('os.pz.labels', 'Names on the taskbar buttons')}>
             <Switch on={prefs.labels} onChange={(v) => setPrefs({ labels: v })} label={t('os.pz.labels', 'Names on the taskbar buttons')} />
           </Row>

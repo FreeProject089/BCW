@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { db, requireRole, logAudit, clientIp, clearUserCache, CAPABILITIES, SCOPE_RIGHTS, GRANT_RIGHTS, grantRights, hasCap, canEditProject, canEditShowcase, projectGrants, studioGrants, holdsStudioRight } from '../lib/lib.mjs';
+import { db, requireRole, logAudit, clientIp, clearUserCache, CAPABILITIES, SCOPE_RIGHTS, GRANT_RIGHTS, grantRights, hasCap, canEditProject, canEditShowcase, projectGrants, studioGrants, holdsStudioRight, earlyAccessGrants, holdsEarlyAccessRight } from '../lib/lib.mjs';
 import { KEY_SHAPE } from '../lib/project-keys.mjs';
 
 // Custom roles + per-project edit grants.
@@ -153,6 +153,12 @@ export default async function roleRoutes(app) {
         const ok = target.allShowcase
           ? (hasCap(user, 'manage_studio') || (await studioGrants(user.uid)).allShowcase)
           : await holdsStudioRight(user, target.showcaseProjectId ? 'showcase' : 'project', target.showcaseProjectId || target.projectKey);
+        if (!ok) return false;
+      } else if (r === 'early_access') {
+        // agent-bcw-pools: early access needs early access there (the capability, or the right).
+        const ok = target.allShowcase
+          ? (hasCap(user, 'manage_prereleases') || (await earlyAccessGrants(user.uid)).allShowcase)
+          : await holdsEarlyAccessRight(user, target.showcaseProjectId ? 'showcase' : 'project', target.showcaseProjectId || target.projectKey);
         if (!ok) return false;
       } else return false;
     }

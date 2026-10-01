@@ -21,7 +21,7 @@ site works the same with every helper gone.
 | Queue triage | staff | nothing (rules score, AI signal already on the case, age) | same |
 | Duplicate detection | staff (needs Reports too) | nothing (word shingles, Jaccard) | same |
 | Crash causes | staff (needs Reports too) | the classifier for the 8 largest groups | keyword causes |
-| Thread summaries | staff (needs Reports too) | a generative key (the site key, or the staff member's own) | not offered |
+| Thread summaries | staff (needs Reports too) | the **site key only** (never a staff member's own key) | not offered |
 
 Laya classifies and never writes, so the two "draft" features need an OpenAI-compatible
 `/chat/completions` endpoint: a key a member brings, or the site key.
@@ -55,11 +55,15 @@ and optionally a model. The key is sealed (AES-256-GCM, `lib/ai-keys.mjs`) befor
 never returned to any browser (the member sees the host and the last four characters), and
 deleted with the account. The address follows the external provider's rules: https, public, no
 credentials, no query. A daily call limit per member protects their bill.
+`AI_EXTERNAL_ALLOW_PRIVATE=1` never applies to a member's key or a Discord server's key: only
+the operator's provider and the site key may use a private address (anything else would let a
+member aim the API at 127.0.0.1, the LAN or the cloud metadata address).
 
 **The site key.** Admins only (a moderator with `manage_moderation` sees whether one is set,
 not the form). Sealed the same way, stored in `AdminSetting ai.siteKey`, kept out of
 `GET /admin/settings`, the settings door and every export. It serves:
-- the staff summaries, if "use it for the staff tools" is ticked;
+- the staff summaries, always and only through it: a report is the platform's data, so it never
+  goes out with a moderator's personal key (no site key = no summary, reason `no_site_key`);
 - paying members' drafts, only if "include it in paid plans" is ticked (you pay for those).
 Its own per-person and whole-site daily ceilings apply on top of the features' limits.
 
@@ -104,6 +108,13 @@ Every helper button says it before it is pressed:
 | Member's own key | the provider the member chose, under their agreement with it |
 | Site key | the provider of the site key, your processor |
 | Local / rules | nowhere: word matching and the moderation rules, on the API |
+
+**Capacity.** Moderation and the helpers (smart search, BMM suggestions, the `feat:*`
+helpers) do not share a queue or a budget. The helpers get at most one slot less than the
+concurrency setting (moderation keeps one when there are two or more), a quarter of the queue
+and half of the per-minute budget; a waiting moderation call goes first and drops the queued
+helpers. A burst of anonymous searches answers `busy` or `rate_limited` to the searches, never
+to moderation.
 
 A summary sends the thread's messages with their roles (reporter, staff, system), never names
 or e-mail addresses. A draft sends the item's type, name and the member's notes. Before you

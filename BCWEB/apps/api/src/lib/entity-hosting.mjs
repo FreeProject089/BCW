@@ -10,6 +10,8 @@
 // every place that asks "how much room is left in this pool" must subtract them, or the
 // same bytes get handed to a repo as well. entityPoolQuotaBytes() is what those places add.
 
+import { projectBytesOnPool } from './project-pool.mjs'; // agent-bcw-pools
+
 export const KINDS = ['blog', 'project-contact', 'team-contact'];
 export const MODES = ['inherit', 'custom', 'unlimited', 'pool'];
 export const ATTACH = ['inherit', 'off', 'always', 'pool_only'];
@@ -71,7 +73,11 @@ export async function siteAttachmentDefault(p) {
 export async function entityPoolQuotaBytes(p, poolId, { exceptId = null } = {}) {
   if (!poolId) return 0n;
   const agg = await p.entityHostingSettings.aggregate({ where: { poolId, mode: 'pool', ...(exceptId ? { NOT: { id: exceptId } } : {}) }, _sum: { quotaBytes: true } }).catch(() => null);
-  return agg?._sum?.quotaBytes || 0n;
+  // agent-bcw-pools: a pool dedicated to a project also carries that project's own files
+  // (lib/project-pool.mjs). Added here, the one place every "room left" asks, so none of the
+  // callers needs to know dedicated pools exist.
+  const files = await projectBytesOnPool(p, poolId).catch(() => 0n);
+  return (agg?._sum?.quotaBytes || 0n) + files;
 }
 
 /**

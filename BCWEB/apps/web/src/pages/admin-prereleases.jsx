@@ -11,11 +11,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   FlaskConical, Plus, Save, Eye, Play, Download, Lock, Trash2, Upload, Users, CheckCircle2, XCircle, Star, MessageSquare, ExternalLink, Shuffle,
+  UserPlus, HardDrive, Check,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { useAsync } from './pages.jsx';
-import { Button, Card, Badge, Input, Textarea, Select, Field, EmptyState, Spinner, Modal, useToast, useDialog, formatBytes } from '../ui/ui.jsx';
+import { Button, Card, Badge, Input, Textarea, Select, Field, EmptyState, Spinner, Modal, Explain, useToast, useDialog, formatBytes } from '../ui/ui.jsx';
 import { PhaseBadge, prText } from '../ui/prerelease-bits.jsx';
 
 const MODES = ['manual', 'draw', 'first', 'all'];
@@ -76,7 +77,9 @@ export function AdminPrereleases() {
   const { t, lang } = useI18n();
   const toast = useToast();
   const list = useAsync(() => api.get('/prerelease-manage'), []);
-  const projects = useAsync(() => api.get('/contact/projects').catch(() => ({ projects: [] })), []);
+  // agent-bcw-pools: only the projects this viewer may open a pre-release on (the server's own
+  // rule), each with the pool its file will be stored on when it has one.
+  const projects = useAsync(() => api.get('/prerelease-manage/projects').catch(() => ({ projects: [] })), []);
   const [creating, setCreating] = useState(null); // { ref, draft }
   const [openId, setOpenId] = useState(null);
   const errText = (code) => ({
@@ -95,8 +98,9 @@ export function AdminPrereleases() {
     <div data-testid="admin-prereleases">
       <div className="flex items-center gap-2 mb-3 flex-wrap">
         <h2 className="font-semibold flex items-center gap-2"><FlaskConical size={16} /> {t('apr.title', 'Early access')}</h2>
-        <Button size="sm" variant="primary" className="ms-auto" onClick={() => setCreating({ ref: projects.data?.projects?.[0]?.ref || '', draft: draftOf(null) })}><Plus size={14} /> {t('apr.new', 'New pre-release')}</Button>
+        <Button size="sm" variant="primary" className="ms-auto" disabled={!projects.data?.projects?.length} onClick={() => setCreating({ ref: projects.data?.projects?.[0]?.ref || '', draft: { ...draftOf(null), mode: 'all', published: true } })}><Plus size={14} /> {t('apr.new', 'New pre-release')}</Button>
       </div>
+      <EarlyAccessTeam projects={projects.data?.projects || []} />
       {list.loading && !list.data ? <div className="flex items-center gap-2 text-[var(--muted)] py-6"><Spinner /> {t('common.loading', 'Loading…')}</div>
         : !rows.length ? <EmptyState icon={FlaskConical} title={t('apr.none', 'No pre-release yet')} sub={t('apr.none.s', 'Open one to let members sign up for a version before it is out.')} />
         : (
@@ -117,18 +121,122 @@ export function AdminPrereleases() {
         )}
       <Modal open={!!creating} onClose={() => setCreating(null)} title={t('apr.new', 'New pre-release')} icon={FlaskConical} width="max-w-3xl"
         footer={<><Button variant="ghost" onClick={() => setCreating(null)}>{t('common.cancel', 'Cancel')}</Button><Button variant="primary" disabled={!creating?.ref || (creating?.draft.title.trim().length || 0) < 2} onClick={create}><Plus size={14} /> {t('apr.create', 'Create')}</Button></>}>
-        {creating && (
-          <div className="space-y-3">
-            <Field label={t('apr.f.project', 'Project')}>
-              <Select value={creating.ref} onChange={(e) => setCreating({ ...creating, ref: e.target.value })}>
-                {(projects.data?.projects || []).map((p) => <option key={p.ref} value={p.ref}>{p.name}</option>)}
-              </Select>
-            </Field>
-            <PrereleaseForm value={creating.draft} onChange={(d) => setCreating({ ...creating, draft: d })} />
-          </div>
-        )}
+        {creating && <QuickCreate projects={projects.data?.projects || []} value={creating} onChange={setCreating} />}
       </Modal>
     </div>
+  );
+}
+
+// agent-bcw-pools: the creation form, shortened. What most pre-releases need is a project, a
+// title and who gets in; everything else keeps its default and sits under "More options".
+const QUICK_MODES = ['all', 'draw', 'manual', 'first'];
+function QuickCreate({ projects, value, onChange }) {
+  const { t } = useI18n();
+  const modeLabel = useModeLabel();
+  const d = value.draft;
+  const set = (k, v) => onChange({ ...value, draft: { ...d, [k]: v } });
+  const hint = {
+    all: t('apr.q.all', 'Anyone who signs up can download at once.'),
+    draw: t('apr.q.draw', 'Sign-ups close, then a fair draw picks the winners.'),
+    manual: t('apr.q.manual', 'You tick who gets it.'),
+    first: t('apr.q.first', 'The first ones to sign up get it.'),
+  };
+  const proj = projects.find((p) => p.ref === value.ref);
+  return (
+    <div className="space-y-4" data-testid="apr-quick">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label={t('apr.f.project', 'Project')}>
+          <Select value={value.ref} onChange={(e) => onChange({ ...value, ref: e.target.value })}>
+            {projects.map((p) => <option key={p.ref} value={p.ref}>{p.name}</option>)}
+          </Select>
+        </Field>
+        <Field label={t('apr.f.title', 'Title')}><Input value={d.title} maxLength={120} onChange={(e) => set('title', e.target.value)} placeholder={t('apr.f.title.ph', 'Version 2.0 beta')} /></Field>
+      </div>
+      {proj?.pool && (
+        <p className="text-xs text-[var(--muted)] flex items-center gap-1.5">
+          <HardDrive size={12} aria-hidden /> {t('apr.q.pool', 'Files go to the pool "{p}" ({f} free).').replace('{p}', proj.pool.name).replace('{f}', formatBytes(proj.pool.freeBytes || 0))}
+        </p>
+      )}
+      <fieldset>
+        <legend className="text-sm font-medium mb-1.5">{t('apr.q.how', 'Who gets it')}</legend>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {QUICK_MODES.map((m) => (
+            <button key={m} type="button" onClick={() => set('mode', m)} aria-pressed={d.mode === m}
+              className={`text-start rounded-lg border p-2.5 transition min-w-0 ${d.mode === m ? 'border-[var(--primary)] tint-primary' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
+              <span className="text-sm font-medium flex items-center gap-1.5">{d.mode === m ? <Check size={13} className="text-[var(--accent-ink)]" aria-hidden /> : <span className="w-[13px]" aria-hidden />}{modeLabel(m)}</span>
+              <span className="block text-xs text-[var(--muted)] mt-0.5">{hint[m]}</span>
+            </button>
+          ))}
+        </div>
+      </fieldset>
+      {(d.mode === 'draw' || d.mode === 'first') && (
+        <Field label={t('apr.count', 'How many')} className="max-w-[12rem]"><Input type="number" min={1} value={d.selectCount} onChange={(e) => set('selectCount', e.target.value)} placeholder="50" /></Field>
+      )}
+      <label className="inline-flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={d.published} onChange={(e) => set('published', e.target.checked)} /> {t('apr.q.open', 'Open sign-ups now')}</label>
+      <Explain label={t('apr.q.more', 'More options')}>
+        <div className="pt-2"><PrereleaseForm value={d} onChange={(nd) => onChange({ ...value, draft: nd })} /></div>
+      </Explain>
+    </div>
+  );
+}
+
+// agent-bcw-pools: who runs early access on a project, beside the page editors. The right is
+// per project; a manager of the project (or a holder of "Manage early access") hands it out.
+function EarlyAccessTeam({ projects }) {
+  const { t } = useI18n();
+  const toast = useToast();
+  const [ref, setRef] = useState('');
+  const cur = ref || projects[0]?.ref || '';
+  const q = useAsync(() => (cur ? api.get(`/prerelease-access/${encodeURIComponent(cur)}`) : Promise.resolve(null)), [cur]);
+  const [email, setEmail] = useState('');
+  const [gone, setGone] = useState(() => new Set());
+  if (!projects.length) return null;
+  const holders = (q.data?.holders || []).filter((h) => !gone.has(h.userId));
+  const add = async () => {
+    try {
+      await api.post(`/prerelease-access/${encodeURIComponent(cur)}`, { email: email.trim() });
+      setEmail(''); q.reload();
+      toast.success(t('apr.team.added', 'Added. They can run early access on this project now.'));
+    } catch (x) {
+      toast.error(({ user_not_found: t('apr.team.nouser', 'No account with this address.'), cannot_grant_self: t('apr.team.self', 'You already have it.'), forbidden: t('apr.team.forbidden', 'Only a manager of this project can do that.') })[x.data?.error] || t('common.failed', 'Failed.'));
+    }
+  };
+  const remove = (h) => {
+    setGone((s) => new Set(s).add(h.userId));
+    toast.action({
+      tone: 'success', duration: 6000, cancelLabel: t('common.undo', 'Undo'), msg: t('apr.team.removed', 'Removed.'),
+      onCommit: async () => { try { await api.del(`/prerelease-access/${encodeURIComponent(cur)}/${h.userId}`); q.reload(); } catch { toast.error(t('common.failed', 'Failed.')); } },
+      onCancel: () => setGone((s) => { const n = new Set(s); n.delete(h.userId); return n; }),
+    });
+  };
+  return (
+    <Explain className="mb-3 text-sm" label={t('apr.team.t', 'Who runs early access')} summary={t('apr.team.s', 'Page editors, plus the people you add here.')}>
+      <div className="pt-2 space-y-2" data-testid="apr-team">
+        <Select className="!w-auto max-w-full" value={cur} onChange={(e) => setRef(e.target.value)} aria-label={t('apr.f.project', 'Project')}>
+          {projects.map((p) => <option key={p.ref} value={p.ref}>{p.name}</option>)}
+        </Select>
+        {q.loading && !q.data ? <Spinner /> : !holders.length
+          ? <p className="text-xs text-[var(--muted)]">{t('apr.team.none', 'Nobody besides the page editors.')}</p>
+          : (
+            <ul className="flex flex-wrap gap-1.5">
+              {holders.map((h) => (
+                <li key={h.userId}>
+                  <Badge>
+                    {h.name || h.userId}
+                    {q.data?.canGrant && <button type="button" className="ms-1 hover:text-error" onClick={() => remove(h)} title={t('apr.team.remove', 'Remove {n}').replace('{n}', h.name || h.userId)} aria-label={t('apr.team.remove', 'Remove {n}').replace('{n}', h.name || h.userId)}><XCircle size={11} /></button>}
+                  </Badge>
+                </li>
+              ))}
+            </ul>
+          )}
+        {q.data?.canGrant && (
+          <div className="flex flex-wrap items-center gap-2">
+            <Input type="email" className="!w-64 max-w-full" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t('apr.team.email', 'Their account e-mail')} aria-label={t('apr.team.email', 'Their account e-mail')} />
+            <Button size="sm" disabled={!/@/.test(email)} onClick={add}><UserPlus size={14} /> {t('apr.team.add', 'Add')}</Button>
+          </div>
+        )}
+      </div>
+    </Explain>
   );
 }
 
@@ -165,7 +273,7 @@ function PrereleaseDetail({ id, onChanged, onGone }) {
       await api.patch(`/prerelease-manage/${id}`, { downloadKey: p.key, downloadName: file.name, downloadSize: file.size });
       toast.success(t('apr.uploaded', 'File uploaded. Only selected members can download it.'));
       reload();
-    } catch { toast.error(t('apr.err.upload', 'The upload failed.')); }
+    } catch (x) { toast.error(x?.data?.error === 'pool_full' ? t('apr.err.pool', 'Not enough room in the project pool ({f} free).').replace('{f}', formatBytes(x.data.freeBytes || 0)) : t('apr.err.upload', 'The upload failed.')); }
     finally { setUploading(false); }
   };
   const selBody = () => ({ mode: sel.mode, ...(sel.count !== '' ? { count: Number(sel.count) } : {}), ...(sel.mode === 'manual' ? { signupIds: [...picked] } : {}), notifyOthers: sel.notifyOthers });

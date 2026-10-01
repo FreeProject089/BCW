@@ -22,6 +22,7 @@ telemetry-dashboard/
     src/sampling.rs  deterministic per-install sampling (shared with the BMM client)
     src/issues.rs    live issues: ingest validation + second scrub, grouping, spikes, GDPR hash
     src/issues_ai.rs Laya labels through the BCWEB API (queue, breaker, cache, counters)
+    src/laya.rs      Laya usage analytics: pure aggregation (unit-tested) + one query
   web/      React/Tailwind dashboard (built to web/dist, served by the API)
     src/lib/replay-decode.ts   .bmmreplay / rrweb stream decoder (unit-tested)
   Dockerfile, docker-compose.yml
@@ -122,6 +123,7 @@ Viewer (`X-Admin-Key`, or the BetterCommunity SSO token as `X-BC-Token` / `?bc=`
 | GET    | `/api/sessions` · `/api/event?name=` · `/api/user?id=` · `/api/replay?session_id=` | drill-downs |
 | POST   | `/api/funnel` · `/api/journeys` | funnel / journey queries                    |
 | GET/POST/DELETE | `/api/goals`    | goals                                              |
+| GET    | `/api/laya?days=` | Laya usage over `days` (1..366, default 30): adoption, per feature/provider, acceptance per field, latency buckets, error codes, Ask clicks, model installs, daily series |
 | GET    | `/api/issues` · `/api/issues/stream` | grouped issues (filters `status level component category version q sort`) · **SSE** live stream |
 | GET/POST | `/api/issues/:fp` · `/api/issues/:fp/labels` · `/api/issues/:fp/reclassify` | detail · status/assignee/notes · staff label correction (feedback kept) · ask Laya again |
 | GET/POST | `/api/issues/ai` · `/api/issues/settings` | Laya status, counters, agreement · Laya switch + spike thresholds |
@@ -208,6 +210,28 @@ It reads `.bmmreplay` files plain or gzip'd (header sniffed; `DecompressionStrea
 re-seeks after a hidden tab (rAF is paused there) and falls back to an interval ticker while
 hidden; a `.bmmreplay` can be opened from disk on any session. BMM's recorder forces a full
 snapshot when the telemetry stream subscribes, so new streams always start playable.
+
+## Laya page
+
+`/laya` (nav "Produit") shows how BMM's assistant is used over 7 / 30 / 90 days: adoption
+(installs that used Laya / installs active in the window), uses and error rate, acceptance
+rate of suggestions per field, per-feature p50/p90, provider split (embedded / server /
+local / external / rules), latency buckets, top error codes, Ask click-through and model
+install / uninstall counts.
+
+It reads four events BMM sends into `events`, all **content-free**: codes, counts and
+booleans, never prompt or answer text, file names, mod names or search queries.
+
+| Event | Props |
+| ----- | ----- |
+| `laya_use` | `feature`, `provider`, `ok`, `latency_ms`, `latency_bucket`, `abstained`, `error?` (short code), `suggested_fields?` (field names), `hits?`, `low_confidence?`, `session_id`, `app_version?` |
+| `laya_feedback` | `feature`, `field`, `outcome` (`accepted`/`rejected`), `source`, `provider` |
+| `laya_ask_click` | `feature`, `kind` (mod/profile/setting/doc/command/other) |
+| `laya_model` | `action` (`install`/`uninstall`/`cancel`/`test`), `ok`, `error?` |
+
+The server trusts none of it: every string is reduced to `[a-z0-9_:.-]`, 40 chars max (else
+`other`), numbers are clamped, and at most 200 000 rows are read per request (the answer
+says `truncated` when that cap is hit).
 
 ## Map
 

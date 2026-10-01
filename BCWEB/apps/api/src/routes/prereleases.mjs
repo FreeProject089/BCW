@@ -10,7 +10,8 @@
 //                                             lives two minutes, or to the stored external URL
 //   GET    /me/prereleases                    my sign-ups, for the dashboard
 //
-// A PROJECT'S EDITORS (requireEditor, then canEditTarget in the handler: the manager capability
+// A PROJECT'S EDITORS (requireEditor, then canRunEarlyAccess in the handler: the page editors'
+// rule, canEditTarget, plus agent-bcw-pools' manage_prereleases / early_access right; the manager capability
 // or a per-project `pages` grant, the rule the project page editor uses)
 //   GET    /projects-prereleases/:ref         a project's pre-releases (drafts for its editors)
 //   POST   /projects-prereleases/:ref         open one (the project comes from the URL)
@@ -39,10 +40,15 @@ import {
   windowOf, serPublic, serManage, serMine, serSignupForEditor, signupsCsv, prereleaseSlug,
 } from '../lib/prerelease.mjs';
 import {
-  projectByRef, projectsByTargets, projectByTarget, canSeeProject, isListable, liveUser, canEditTarget, projectCard,
+  projectByRef, projectsByTargets, projectByTarget, canSeeProject, isListable, liveUser, projectCard,
+  canRunEarlyAccess, earlyAccessProjects, canManageTarget,
 } from '../lib/project-target.mjs';
 import { mailSignup, mailSelected, mailNotSelected } from '../lib/prerelease-mail.mjs';
 import { REVIEW_HAS_LINK, REVIEW_MIN_ACCOUNT_AGE_MS } from '../lib/review-rules.mjs';
+import { checkProjectRoom, poolOfTarget, poolSummary } from '../lib/project-pool.mjs'; // agent-bcw-pools
+import { poolRoom } from '../lib/entity-hosting.mjs'; // agent-bcw-pools
+import { hasCap, grantRights } from '../lib/lib.mjs'; // agent-bcw-pools
+import { ciEquals } from '../lib/ci-equals.mjs'; // agent-bcw-pools
 
 const bad = (reply, r) => reply.code(400).send({ error: 'invalid_input', issues: r.error.issues.slice(0, 8).map((i) => ({ path: i.path.join('.'), message: i.message })) });
 /** Every column but the seed, which only the selection code and the public serialiser read. */
@@ -77,7 +83,7 @@ async function manageTarget(p, req, reply) {
   const proj = await projectByTarget(p, row.target);
   // A pre-release whose project is gone is managed by whoever manages that kind of project.
   const user = req.user;
-  const may = proj ? await canEditTarget(user, proj) : false;
+  const may = proj ? await canRunEarlyAccess(user, proj) : false;
   if (!may) { reply.code(403).send({ error: 'forbidden' }); return null; }
   return { row, proj };
 }
@@ -130,7 +136,7 @@ export default async function prereleaseRoutes(app) {
     if (!row) return reply.code(404).send({ error: 'not_found' });
     const proj = await projectByTarget(p, row.target);
     const user = await liveUser(req);
-    const canManage = !!proj && (await canEditTarget(user, proj));
+    const canManage = !!proj && (await canRunEarlyAccess(user, proj));
     // A draft, or a project the reader may not see, is a 404: "it exists but is not yours" is
     // itself information about an unannounced version.
     if (!canManage && (!row.published || !proj || !(await canSeeProject(p, proj, req)))) return reply.code(404).send({ error: 'not_found' });
@@ -231,7 +237,7 @@ export default async function prereleaseRoutes(app) {
     const proj = await projectByRef(p, String(req.params.ref || ''));
     if (!proj) return reply.code(404).send({ error: 'unknown_project' });
     const user = await liveUser(req);
-    const canManage = await canEditTarget(user, proj);
+    const canManage = await canRunEarlyAccess(user, proj);
     if (!canManage && !(await canSeeProject(p, proj, req))) return reply.code(404).send({ error: 'not_found' });
     const rows = await p.preRelease.findMany({
       where: { target: proj.target, ...(canManage ? {} : { published: true }) },
@@ -251,7 +257,7 @@ export default async function prereleaseRoutes(app) {
     const p = await db();
     const proj = await projectByRef(p, String(req.params.ref || ''));
     if (!proj) return reply.code(404).send({ error: 'unknown_project' });
-    if (!(await canEditTarget(req.user, proj))) return reply.code(403).send({ error: 'forbidden' });
+    if (!(await canRunEarlyAccess(req.user, proj))) return reply.code(403).send({ error: 'forbidden' });
     const b = prereleaseWriteSchema.safeParse(req.body || {});
     if (!b.success) return bad(reply, b);
     if (b.data.downloadKey) return reply.code(400).send({ error: 'upload_after_create' });
@@ -281,7 +287,7 @@ export default async function prereleaseRoutes(app) {
     const mayBy = new Map();
     for (const t of new Set(rows.map((r) => r.target))) {
       const proj = projects.get(t);
-      mayBy.set(t, proj ? await canEditTarget(req.user, proj) : false);
+      mayBy.set(t, proj ? await canRunEarlyAccess(req.user, proj) : false);
     }
     const kept = rows.filter((r) => mayBy.get(r.target));
     const counts = await countsFor(p, kept.map((r) => r.id));
@@ -352,6 +358,9 @@ export default async function prereleaseRoutes(app) {
     if (!Number.isSafeInteger(size) || size <= 0) return reply.code(400).send({ error: 'invalid_size' });
     if (size > LIMITS.fileBytes) return reply.code(413).send({ error: 'too_large', maxBytes: LIMITS.fileBytes });
     if (!/^[\w.+-]+\/[\w.+-]+$/.test(contentType)) return reply.code(415).send({ error: 'unsupported_type' });
+    // agent-bcw-pools: a project with a DEDICATED pool stores its pre-release files there.
+    const pooled = await checkProjectRoom(p, m.row.target, size, { replacedBytes: m.row.downloadKey ? Number(m.row.downloadSize || 0) : 0, room: poolRoom });
+    if (pooled.pooled && !pooled.ok) return reply.code(413).send({ error: 'pool_full', poolName: pooled.poolName, freeBytes: pooled.freeBytes, needBytes: pooled.needBytes });
     const safe = filename.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80);
     const key = `${fileKeyPrefix(m.row.id)}${randomUUID()}-${safe}`;
     let url;
@@ -458,4 +467,74 @@ export default async function prereleaseRoutes(app) {
       .header('Cache-Control', 'no-store')
       .send(signupsCsv(rows));
   });
+
+  // ── agent-bcw-pools : who runs early access, and the creation form's project list ─────
+  //   GET    /prerelease-manage/projects            the projects the caller may open one on
+  //   GET    /prerelease-access/:ref                who holds the early_access right there
+  //   POST   /prerelease-access/:ref                give it to an account (by e-mail)
+  //   DELETE /prerelease-access/:ref/:userId        take it back
+  // Giving the right is for the project's MANAGERS (canManageTarget: manage_projects /
+  // manage_showcase) and for holders of manage_prereleases: nobody hands out what they do not
+  // hold, and a page grantee is not a manager. The right is stored on ProjectPermission (the
+  // per-project grant row), merged into the rights the row already carries.
+  app.get('/prerelease-manage/projects', { preHandler: requireEditor() }, async (req) => {
+    const p = await db();
+    const projects = await earlyAccessProjects(p, req.user);
+    // The pool each project stores its files on, when it has one: the form says where the file goes.
+    const pools = await Promise.all(projects.map((x) => poolOfTarget(p, x.target)));
+    const summaries = await Promise.all(pools.map((g) => (g ? poolSummary(p, g, { room: poolRoom }) : null)));
+    return { projects: projects.map((x, i) => ({ ref: x.ref, name: x.name, official: x.official, pool: summaries[i] ? { name: summaries[i].name, freeBytes: summaries[i].freeBytes, poolBytes: summaries[i].poolBytes } : null })) };
+  });
+
+  const mayGrantEarlyAccess = (user, proj) => hasCap(user, 'manage_prereleases') || canManageTarget(user, proj);
+  const accessWhere = (proj) => (proj.official ? { projectKey: proj.projectKey, showcaseProjectId: null, allShowcase: false } : { showcaseProjectId: proj.showcaseProjectId, projectKey: null, allShowcase: false });
+
+  app.get('/prerelease-access/:ref', { preHandler: requireEditor() }, async (req, reply) => {
+    const p = await db();
+    const proj = await projectByRef(p, String(req.params.ref || ''));
+    if (!proj) return reply.code(404).send({ error: 'unknown_project' });
+    if (!(await canRunEarlyAccess(req.user, proj))) return reply.code(403).send({ error: 'forbidden' });
+    const rows = await p.projectPermission.findMany({ where: accessWhere(proj), include: { user: { select: { id: true, displayName: true, avatar: true } } }, take: 200 });
+    const holders = rows.filter((g) => grantRights(g).includes('early_access')).map((g) => ({ userId: g.userId, name: g.user?.displayName || '', avatar: g.user?.avatar || null, since: g.createdAt }));
+    return { canGrant: mayGrantEarlyAccess(req.user, proj), holders };
+  });
+
+  app.post('/prerelease-access/:ref', { preHandler: requireEditor(), config: { rateLimit: { max: 30, timeWindow: '10 minutes' } } }, async (req, reply) => {
+    const p = await db();
+    const proj = await projectByRef(p, String(req.params.ref || ''));
+    if (!proj) return reply.code(404).send({ error: 'unknown_project' });
+    if (!mayGrantEarlyAccess(req.user, proj)) return reply.code(403).send({ error: 'forbidden' });
+    const email = String(req.body?.email || '').trim().toLowerCase().slice(0, 200);
+    if (!/^[^\s@]+@[^\s@]+$/.test(email)) return reply.code(400).send({ error: 'invalid_input' });
+    const u = await p.user.findFirst({ where: { email: ciEquals(email), closedAt: null }, select: { id: true, displayName: true } });
+    if (!u) return reply.code(404).send({ error: 'user_not_found' });
+    if (u.id === req.user.uid) return reply.code(400).send({ error: 'cannot_grant_self' });
+    const where = { userId: u.id, ...accessWhere(proj) };
+    const existing = await p.projectPermission.findFirst({ where });
+    if (existing) {
+      const rights = [...new Set([...grantRights(existing), 'early_access'])];
+      await p.projectPermission.update({ where: { id: existing.id }, data: { rights } });
+    } else {
+      await p.projectPermission.create({ data: { ...where, rights: ['early_access'], grantedBy: req.user.uid } });
+    }
+    await logAudit(p, req.user.uid, 'project_permission.grant', `${u.id}: ${proj.ref} [early_access]`, clientIp(req));
+    await notify(p, u.id, 'role_granted', `You can now run early access for ${proj.name}.`, { bodyFr: `Tu peux maintenant gérer l’accès anticipé de ${proj.name}.`, href: '/admin?s=prereleases' }).catch(() => {});
+    return reply.code(201).send({ ok: true, holder: { userId: u.id, name: u.displayName } });
+  });
+
+  app.delete('/prerelease-access/:ref/:userId', { preHandler: requireEditor() }, async (req, reply) => {
+    const p = await db();
+    const proj = await projectByRef(p, String(req.params.ref || ''));
+    if (!proj) return reply.code(404).send({ error: 'unknown_project' });
+    if (!mayGrantEarlyAccess(req.user, proj)) return reply.code(403).send({ error: 'forbidden' });
+    const row = await p.projectPermission.findFirst({ where: { userId: String(req.params.userId || '').slice(0, 40), ...accessWhere(proj) } });
+    if (!row || !grantRights(row).includes('early_access')) return reply.code(404).send({ error: 'not_found' });
+    const rest = (Array.isArray(row.rights) ? row.rights : []).filter((r) => r !== 'early_access');
+    // The row's other rights (the page, the studio) are not this screen's to remove.
+    if (rest.length) await p.projectPermission.update({ where: { id: row.id }, data: { rights: rest } });
+    else await p.projectPermission.delete({ where: { id: row.id } });
+    await logAudit(p, req.user.uid, 'project_permission.revoke', `${row.userId}: ${proj.ref} [early_access]`, clientIp(req));
+    return { ok: true };
+  });
+  // ── fin agent-bcw-pools ──
 }

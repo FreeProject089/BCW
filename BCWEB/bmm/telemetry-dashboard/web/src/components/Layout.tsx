@@ -2,7 +2,7 @@ import { useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import {
   LayoutDashboard, Radio, Lightbulb, Users, Map as MapIcon, TrendingUp, Tags, Zap, ListOrdered, Route, Filter, Target,
-  FileText, Boxes, Bug, ShieldCheck, Database, BookOpen, ShieldAlert, SlidersHorizontal, Menu, ArrowLeft, Sun, Moon, Monitor, Package, type LucideIcon,
+  FileText, Boxes, Bug, ShieldCheck, Database, BookOpen, ShieldAlert, SlidersHorizontal, Menu, ArrowLeft, Sun, Moon, Monitor, Package, Sparkles, type LucideIcon,
 } from "lucide-react";
 import { useStore, bcHome, isDemo, type Theme } from "../lib/store";
 import { Segmented } from "./ui";
@@ -47,6 +47,7 @@ const NAV: { group: string; items: { to: string; label: string; icon: LucideIcon
     items: [
       { to: "/pages", label: "Pages & perf", icon: FileText },
       { to: "/bmm", label: "BMM insights", icon: Boxes },
+      { to: "/laya", label: "Laya", icon: Sparkles },
     ],
   },
   {

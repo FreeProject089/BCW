@@ -21,7 +21,7 @@ coupe-circuit coupe l’ensemble, et le site fonctionne pareil sans aucune aide.
 | Tri de la file | staff | rien (score des règles, signal IA déjà sur le cas, ancienneté) | pareil |
 | Détection des doublons | staff (il faut aussi Signalements) | rien (fragments de mots, Jaccard) | pareil |
 | Causes de plantage | staff (il faut aussi Signalements) | le classifieur pour les 8 plus gros groupes | causes par mots-clés |
-| Résumés de fils | staff (il faut aussi Signalements) | une clé générative (celle du site, ou celle du membre du staff) | non proposé |
+| Résumés de fils | staff (il faut aussi Signalements) | la **clé du site seulement** (jamais la clé personnelle d’un membre du staff) | non proposé |
 
 Laya classe et n’écrit jamais : les deux fonctions de « brouillon » demandent un point d’accès
 `/chat/completions` compatible OpenAI, avec la clé d’un membre ou la clé du site.
@@ -63,7 +63,9 @@ paramètres. Une limite d’appels quotidienne par membre protège sa facture.
 **La clé du site.** Admins seulement (un modérateur avec `manage_moderation` voit si elle est
 posée, pas le formulaire). Scellée de la même façon, stockée dans `AdminSetting ai.siteKey`,
 tenue hors de `GET /admin/settings`, de la porte des réglages et de tous les exports. Elle sert :
-- aux résumés du staff, si « l’utiliser pour les outils du staff » est coché ;
+- aux résumés du staff, toujours et seulement elle : un signalement est une donnée de la
+  plateforme, il ne part jamais avec la clé personnelle d’un modérateur (pas de clé du site =
+  pas de résumé, raison `no_site_key`) ;
 - aux brouillons des membres payants, seulement si « l’inclure dans les offres payantes » est
   coché (c’est vous qui payez).
 Ses propres plafonds par personne et pour tout le site s’ajoutent aux limites des fonctions.
@@ -111,6 +113,16 @@ Chaque bouton d’aide le dit avant d’être pressé :
 | Clé du membre | le fournisseur choisi par le membre, selon son contrat avec lui |
 | Clé du site | le fournisseur de la clé du site, votre sous-traitant |
 | Local / règles | nulle part : correspondance de mots et règles de modération, dans l’API |
+
+**Capacité.** La modération et les aides (recherche intelligente, suggestions BMM, aides
+`feat:*`) ne partagent ni file ni budget. Les aides ont au plus un emplacement de moins que la
+concurrence (la modération en garde un dès qu’il y en a deux), un quart de la file et la moitié
+du budget par minute ; un appel de modération en attente passe d’abord et fait tomber les aides
+en file. Une rafale de recherches anonymes répond `busy` ou `rate_limited` aux recherches,
+jamais à la modération.
+
+`AI_EXTERNAL_ALLOW_PRIVATE=1` ne vaut jamais pour la clé d’un membre ni celle d’un serveur
+Discord : seuls le fournisseur de l’opérateur et la clé du site peuvent viser une adresse privée.
 
 Un résumé envoie les messages du fil avec leur rôle (auteur du signalement, staff, système),
 jamais les noms ni les adresses e-mail. Un brouillon envoie le type de l’élément, son nom et les

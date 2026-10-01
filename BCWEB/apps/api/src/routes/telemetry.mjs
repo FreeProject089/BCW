@@ -6,6 +6,7 @@ import { db, requireRole, logAudit, safeEqual, clientIp, sessionUser } from '../
 import { boundedSet } from '../lib/boundedmap.mjs';
 import { sendMail, mailShell, emailEnabled, escapeHtml } from '../lib/mail.mjs';
 import { errorReply } from '../lib/error-reply.mjs';
+import { linkSecret } from '../lib/link-secret.mjs';
 
 const ADMIN_TIER = ['MOD', 'ADMIN', 'SUPERADMIN'];
 // Same scheme-derived Secure flag as the main session cookie (lib.mjs).
@@ -20,7 +21,7 @@ function validTelemetryToken(token) {
   try {
     const [payload, sig] = String(token || '').split('.');
     if (!payload || !sig) return null;
-    const secret = process.env.BC_LINK_SECRET || process.env.LINK_LOOKUP_SECRET || 'dev-link-secret';
+    const secret = linkSecret();
     const expected = crypto.createHmac('sha256', secret).update(payload).digest('base64url');
     const a = Buffer.from(expected), b = Buffer.from(sig);
     if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
@@ -132,6 +133,17 @@ export default async function telemetryRoutes(app) {
     return reply.code(204).header('Cache-Control', 'no-store').send();
   });
 
+  // agent-bcw-os: may THIS account open the telemetry dashboard? Asked by the admin's OS mode to
+  // decide whether it draws the telemetry app at all. The same rule POST /admin/telemetry/token
+  // enforces (server-control.mjs): requireRole('ADMIN') (live role, 2FA, staff lock), then the
+  // grant unless SUPERADMIN. Nothing but a boolean comes back, and no token is minted.
+  app.get('/telemetry/access', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    reply.header('Cache-Control', 'no-store');
+    if (req.user.role === 'SUPERADMIN') return { access: true };
+    const me = await (await db()).user.findUnique({ where: { id: req.user.uid }, select: { canViewTelemetry: true } }).catch(() => null);
+    return { access: !!me?.canViewTelemetry };
+  });
+
   // SUPERADMIN: who can view telemetry.
   app.get('/admin/telemetry-access/users', { preHandler: requireRole('SUPERADMIN') }, async () => {
     const p = await db();
@@ -156,7 +168,8 @@ export default async function telemetryRoutes(app) {
   // or its erasure, and hands the mail back here so the address never leaves BCWEB.
   // Same shared secret as /link/lookup (LINK_LOOKUP_SECRET = the service's BC_LINK_SECRET).
   const linkSecretOk = (req, reply) => {
-    const secret = process.env.LINK_LOOKUP_SECRET || process.env.JWT_SECRET;
+    // Its own secret, never JWT_SECRET (audit Oct 2026, finding 9: lib/link-secret.mjs).
+    const secret = linkSecret();
     if (!secret || !safeEqual(req.headers['x-link-secret'] || '', secret)) { reply.code(401).send({ error: 'unauthorized' }); return false; }
     return true;
   };

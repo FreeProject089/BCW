@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { hostingFor, limitsFor } from '../lib/entity-hosting.mjs';
+import { hostingFor, limitsFor, poolRoom } from '../lib/entity-hosting.mjs';
+import { checkProjectRoom } from '../lib/project-pool.mjs'; // agent-bcw-pools
 import { db, requireRole, requireCap, optionalAuth, slugify, pruneRevisions, blogRoleGrants } from '../lib/lib.mjs';
 import { emailEnabled } from '../lib/mail.mjs';
 import { sendNewsletter } from './newsletter.mjs';
@@ -152,6 +153,19 @@ async function checkBlogLimits(p, { projectId, showcaseProjectId, showcaseConfig
     if (!isEdit && lim.maxItems > 0 && u.count >= lim.maxItems) return { error: 'blog_limit', scope: 'blog', kind: 'count', limit: lim.maxItems, current: u.count };
     if (lim.maxBytes !== null && u.bytes + addBytes > lim.maxBytes) return { error: 'blog_limit', scope: lim.source === 'pool' ? 'pool' : 'blog', kind: 'size', limitKB: Math.floor(lim.maxBytes / 1024), currentKB: Math.round((u.bytes + addBytes) / 1024) };
     return null;
+  }
+  // agent-bcw-pools: a project with a DEDICATED pool keeps its blog there (lib/project-pool.mjs):
+  // the article is measured against what the pool has left, and the site-wide caps, which are
+  // for projects that have no storage of their own, do not apply.
+  const target = showcaseProjectId ? `sc:${showcaseProjectId}` : (projectId ? ref : null);
+  if (target) {
+    let replacedBytes = 0;
+    if (isEdit) {
+      const old = await p.blogPost.findUnique({ where: { id: excludeId }, select: { body: true, bodyFr: true } }).catch(() => null);
+      replacedBytes = old ? Buffer.byteLength(old.body || '') + Buffer.byteLength(old.bodyFr || '') : 0;
+    }
+    const room = await checkProjectRoom(p, target, addBytes, { replacedBytes, room: poolRoom });
+    if (room.pooled) return room.ok ? null : { error: 'blog_limit', scope: 'pool', kind: 'size', limitKB: Math.floor(room.freeBytes / 1024), currentKB: Math.round(room.needBytes / 1024) };
   }
   const s = Object.fromEntries((await p.adminSetting.findMany()).map((r) => [r.key, r.value]));
   const gMaxPosts = Number(s['blog.maxTotalPosts'] ?? 0);

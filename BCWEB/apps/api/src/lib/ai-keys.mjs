@@ -58,12 +58,22 @@ export function keyShapeOk(k) {
 }
 
 /**
- * Validate a provider base URL for a stored key. The operator may lift the private-address rule
- * for their own network (AI_EXTERNAL_ALLOW_PRIVATE=1, also what the tests' fake servers use) —
- * but only the operator, from the environment; a member never can.
+ * Validate a provider base URL for a stored key.
+ *
+ * The operator may lift the private-address rule for THEIR provider (AI_EXTERNAL_ALLOW_PRIVATE=1:
+ * a model on their own network) — and that is the SITE key only (`{ site: true }`). A member's
+ * key (BYOK) and a Discord server's key never get it: their URL is typed by somebody else, and
+ * with the switch on it would aim the API's own network position at 127.0.0.1, the LAN or the
+ * cloud metadata address (SSRF). Audit Oct 2026, finding 6.
+ *
+ * Tests only: AI_TEST_ALLOW_PRIVATE_BYOK=1 lets the route tests point a member key at their fake
+ * provider on 127.0.0.1. It is read only under the node test runner (NODE_TEST_CONTEXT) and
+ * never in production, so no deployment can turn it on.
  */
-export function checkBaseUrl(raw, env = process.env) {
-  const allowPrivate = /^(1|true)$/i.test(String(env.AI_EXTERNAL_ALLOW_PRIVATE || ''));
+export function checkBaseUrl(raw, { site = false } = {}, env = process.env) {
+  const operator = /^(1|true)$/i.test(String(env.AI_EXTERNAL_ALLOW_PRIVATE || ''));
+  const testDoor = /^(1|true)$/i.test(String(env.AI_TEST_ALLOW_PRIVATE_BYOK || '')) && !!env.NODE_TEST_CONTEXT && env.NODE_ENV !== 'production';
+  const allowPrivate = site ? operator : testDoor;
   const v = validateExternalUrl(raw, { allowPrivate });
   if (!v.ok) return v;
   return { ok: true, url: v.url.toString().replace(/\/+$/, ''), host: v.url.host, allowPrivate };

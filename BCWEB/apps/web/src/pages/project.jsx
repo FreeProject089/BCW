@@ -36,7 +36,7 @@ import { useAuth } from './auth.jsx';
 import RrwebPreview from '../hero/RrwebPreview.jsx';
 import { GithubIcon, KofiIcon, DiscordIcon, RedditIcon, AppLogo, APP_LOGO } from '../ui/brand.jsx';
 import { MessageSquare } from 'lucide-react';
-import { Button, Card, Badge, PageHeader, EmptyState, Spinner, Modal, Input, Textarea, Field, useToast } from '../ui/ui.jsx';
+import { Button, Card, Badge, PageHeader, EmptyState, Spinner, Modal, Input, Textarea, Field, Select, useToast } from '../ui/ui.jsx';
 import { useDraft, DraftBanner } from '../ui/drafts.jsx';
 import { ProjectContactBar } from '../ui/project-contact.jsx';
 import { ProjectFollowButton } from '../ui/project-follow.jsx'; // notify (agent-notify)
@@ -47,6 +47,7 @@ import { ProjectVersions, ProjectPages, ProjectLegalTab, useProjectContent } fro
 import { ProjectEarlyTab, useProjectExtras } from './prereleases.jsx';
 import ProjectReviewsTab from '../ui/project-reviews.jsx';
 import { FlaskConical as EarlyIcon, MessagesSquare as ReviewsIcon } from 'lucide-react';
+import { BadgeCheck } from 'lucide-react'; // agent-bcw-rules: the Project Policy box
 
 // Which tab is actually shown. A `?tab=` naming one that is switched OFF must not render it:
 // hiding the link while still serving the content means an admin who turns a tab off has not
@@ -1155,13 +1156,25 @@ function RequestListing() {
   const [cfg, setCfg] = useState(null);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [f, setF] = useState({ name: '', short: '', url: '', icon: '', description: '', pitch: '', isOpenSource: true, license: '', ownership: 'owner' });
+  const [f, setF] = useState({ name: '', short: '', url: '', icon: '', description: '', pitch: '', isOpenSource: true, license: '', ownership: 'owner', usesAi: false, sourceAccess: false, usesBetterInstaller: false, causeNote: '', contactEmail: '', contactDiscord: '', contactUrl: '', contactLang: '' });
   const [proof, setProof] = useState(null);   // { key, name } once uploaded (closed-source)
   const [uploading, setUploading] = useState(false);
   const [tos, setTos] = useState(false);      // accepted the Submission Terms
+  const [tests, setTests] = useState(false);  // agent-bcw-rules: lets us test it + review its security (Project Policy)
   const [payAck, setPayAck] = useState(false); // acknowledged the payment is non-refundable
 
   useEffect(() => { api.get('/showcase-requests/config').then(setCfg).catch(() => setCfg(null)); }, []);
+  // agent-bcw-rules: prefill the follow-up contact from the account, without overwriting
+  // anything already typed (or restored from a draft).
+  useEffect(() => {
+    if (!user) return;
+    setF((v) => ({
+      ...v,
+      contactEmail: v.contactEmail || user.email || '',
+      contactUrl: v.contactUrl || (/^https:\/\//i.test(user.website || '') ? user.website : ''),
+      contactLang: v.contactLang || (['en', 'fr'].includes(user.locale) ? user.locale : ''),
+    }));
+  }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // A kept draft (ui/drafts.jsx). Twelve fields, a pitch written for a human to read, and a
   // last step that leaves for Stripe — coming back from an abandoned checkout used to mean
@@ -1194,15 +1207,22 @@ function RequestListing() {
 
   // The gate: name + label + accepted terms, plus either a licence (open-source) or ownership
   // + proof (closed-source). The paid button additionally needs the non-refundable ack.
-  const baseOk = !!user && f.name.trim() && f.short.trim() && tos
-    && (closed ? (f.ownership === 'owner' && !!proof) : !!f.license.trim());
+  // agent-bcw-rules: the Project Policy adds consent to tests + a security review (always),
+  // and access to the source whenever the project is not open source (AI or not).
+  // agent-bcw-rules: a follow-up contact (e-mail or Discord), and a website only if https.
+  const emailOk = !f.contactEmail.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.contactEmail.trim());
+  const discordOk = !f.contactDiscord.trim() || /^@?[A-Za-z0-9_.]{2,32}$/.test(f.contactDiscord.trim());
+  const urlOk = !f.contactUrl.trim() || /^https:\/\/[^\s/]+/i.test(f.contactUrl.trim());
+  const contactOk = (!!f.contactEmail.trim() || !!f.contactDiscord.trim()) && emailOk && discordOk && urlOk;
+  const baseOk = !!user && f.name.trim() && f.short.trim() && tos && tests && contactOk
+    && (closed ? (f.ownership === 'owner' && !!proof && f.sourceAccess) : !!f.license.trim());
 
   const submit = async (paid) => {
     if (!f.name.trim() || !f.short.trim()) return toast.error(t('rl.need', 'A name and a short label are required.'));
     setBusy(true);
     try {
       const r = await api.post('/showcase-requests', {
-        ...f, paid, tosAccepted: tos,
+        ...f, paid, tosAccepted: tos, testsConsent: tests,
         proofKey: proof?.key || '', proofName: proof?.name || '',
       });
       // A paid request answers with a checkout URL. Following it is the whole point, so it
@@ -1212,8 +1232,8 @@ function RequestListing() {
       if (r?.checkoutUrl) { window.location.href = r.checkoutUrl; return; }
       toast.success(t('rl.sent2', 'Sent \u2014 we will reply either way. If we need more detail, you will find a thread in your dashboard under Reports & contact.'));
       setOpen(false);
-      setF({ name: '', short: '', url: '', icon: '', description: '', pitch: '', isOpenSource: true, license: '', ownership: 'owner' });
-      setProof(null); setTos(false); setPayAck(false);
+      setF({ name: '', short: '', url: '', icon: '', description: '', pitch: '', isOpenSource: true, license: '', ownership: 'owner', usesAi: false, sourceAccess: false, usesBetterInstaller: false, causeNote: '', contactEmail: '', contactDiscord: '', contactUrl: '', contactLang: '' });
+      setProof(null); setTos(false); setTests(false); setPayAck(false);
     } catch (e) {
       const code = e?.body?.error;
       toast.error(
@@ -1223,6 +1243,10 @@ function RequestListing() {
               : code === 'closed_needs_owner' ? t('rl.closedowner', 'A closed-source project can only be submitted by its rights-holder.')
                 : code === 'closed_needs_proof' ? t('rl.closedproof', 'A closed-source project needs proof of rights attached.')
                   : code === 'license_required' ? t('rl.licreq', 'Name the licence for an open-source project.')
+                    : code === 'contact_required' ? t('rl.contactreq', 'Give us a way to reach you: an e-mail or a Discord username.')
+                    : code === 'tests_consent_required' ? t('rl.testsreq', 'Let us test the project and review its security first.')
+                    : code === 'closed_needs_source' ? t('rl.srcreq', 'A project that is not open source needs to give us access to its source.')
+                    : code === 'ai_needs_source' ? t('rl.aisrcreq', 'A project that uses AI must give us access to its source.')
                     : code === 'bad_proof_key' ? t('rl.badproof', 'That proof upload was not recognised \u2014 try uploading it again.')
                       : t('rl.fail', 'Could not send that.'));
     } finally { setBusy(false); }
@@ -1248,6 +1272,17 @@ function RequestListing() {
       {open && (
         <div className="mt-4 pt-4 border-t border-[var(--line)]">
           {!user && <p className="text-sm text-warning mb-3">{t('rl.signin', 'Sign in first \u2014 a request is a conversation, and we need somewhere to send the answer.')}</p>}
+          {/* agent-bcw-rules: the Project Policy in four lines, before anything is typed. */}
+          <div className="rounded-lg border border-[var(--line)] panel p-3 mb-4 text-xs">
+            <div className="font-semibold mb-1.5 flex items-center gap-1.5"><BadgeCheck size={14} className="text-[var(--accent-ink)]" /> {t('rl.pol.h', 'What we accept')}</div>
+            <ul className="space-y-1 text-[var(--muted)] list-disc ps-4">
+              <li>{t('rl.pol.1', 'Open source, or access to the source for our reviewers.')}</li>
+              <li>{t('rl.pol.2', 'We test it and review its security before listing it.')}</li>
+              <li>{t('rl.pol.3', 'AI projects: welcome, source access required, tested by our team first.')}</li>
+              <li>{t('rl.pol.4', 'Big pluses: BetterInstaller as the installer, supporting a good cause.')}</li>
+            </ul>
+            <Link to="/legal/projects" target="_blank" className="inline-block mt-1.5 text-[var(--accent-ink)] underline">{t('rl.pol.link', 'Read the Project Policy')}</Link>
+          </div>
           <div className="grid sm:grid-cols-2 gap-3">
             <Field label={t('rl.name', 'Project name')}><Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="My Project" /></Field>
             {/* Not derived from the name: "Better Sound Maker" would become "BET", and the
@@ -1264,6 +1299,30 @@ function RequestListing() {
               <Field label={t('rl.pitch', 'Why it belongs here')} hint={t('rl.pitchhint', 'The part a reviewer actually reads.')}>
                 <Textarea rows={3} value={f.pitch} onChange={(e) => setF({ ...f, pitch: e.target.value })} />
               </Field>
+            </div>
+
+            {/* agent-bcw-rules: how we reach you after the request. Staff only, never public. */}
+            <div className="sm:col-span-2 pt-2 border-t border-[var(--line)]">
+              <div className="text-xs font-semibold">{t('rl.ct.h', 'How we reach you')}</div>
+              <p className="text-[11px] text-[var(--muted)] mb-2">{t('rl.ct.s', 'An e-mail or a Discord username, at least one. Only our team sees it.')}</p>
+              <div className="grid sm:grid-cols-2 gap-3">
+                <Field label={t('rl.ct.email', 'E-mail')}>
+                  <Input type="email" value={f.contactEmail} onChange={(e) => set({ contactEmail: e.target.value })} placeholder="you@example.com" aria-invalid={!emailOk} />
+                </Field>
+                <Field label={t('rl.ct.discord', 'Discord username')}>
+                  <Input value={f.contactDiscord} maxLength={33} onChange={(e) => set({ contactDiscord: e.target.value })} placeholder="username" aria-invalid={!discordOk} />
+                </Field>
+                <Field label={t('rl.ct.url', 'Website or repository (optional)')} hint={!urlOk ? t('rl.ct.urlbad', 'An https:// address only.') : undefined}>
+                  <Input value={f.contactUrl} onChange={(e) => set({ contactUrl: e.target.value })} placeholder="https://github.com/you" aria-invalid={!urlOk} />
+                </Field>
+                <Field label={t('rl.ct.lang', 'Preferred language')}>
+                  <Select value={f.contactLang} onChange={(e) => set({ contactLang: e.target.value })}>
+                    <option value="">{t('rl.ct.lang.any', 'No preference')}</option>
+                    <option value="en">English</option>
+                    <option value="fr">Français</option>
+                  </Select>
+                </Field>
+              </div>
             </div>
 
             {/* ── Licence, source & ownership ─────────────────────────────── */}
@@ -1298,8 +1357,32 @@ function RequestListing() {
                     <span className="btn btn-sm">{uploading ? <Spinner /> : (proof ? t('rl.proof.replace', 'Replace proof') : t('rl.proof.add', 'Attach proof of rights'))}</span>
                     {proof && <span className="text-xs text-success truncate max-w-[200px]">✓ {proof.name}</span>}
                   </label>
+                  <label className="flex items-start gap-2 text-xs cursor-pointer mt-2">
+                    <input type="checkbox" className="mt-0.5" checked={f.sourceAccess} onChange={(e) => set({ sourceAccess: e.target.checked })} />
+                    <span>{t('rl.srcaccess', 'I will give your reviewers read access to the source code (kept confidential, used only for the review).')}</span>
+                  </label>
                 </div>
               )}
+            </div>
+          </div>
+
+          {/* agent-bcw-rules: AI and the pluses (Project Policy). */}
+          <div className="mt-4 pt-3 border-t border-[var(--line)] grid sm:grid-cols-2 gap-3">
+            <div>
+              <label className="flex items-start gap-2 text-sm cursor-pointer">
+                <input type="checkbox" className="mt-1" checked={f.usesAi} onChange={(e) => set({ usesAi: e.target.checked })} />
+                <span>{t('rl.ai', 'It uses AI')}</span>
+              </label>
+              {f.usesAi && <p className="text-[11px] text-[var(--muted)] mt-1">{t('rl.ai.note', 'Say in the pitch what the AI does, which provider, and what data it sends. Our team tests it before any decision.')}</p>}
+            </div>
+            <div>
+              <div className="text-xs font-semibold mb-1.5">{t('rl.plus.h', 'Pluses (optional)')}</div>
+              <label className="flex items-start gap-2 text-sm cursor-pointer">
+                <input type="checkbox" className="mt-1" checked={f.usesBetterInstaller} onChange={(e) => set({ usesBetterInstaller: e.target.checked })} />
+                <span>{t('rl.plus.bi', 'BetterInstaller is its official installer')}</span>
+              </label>
+              <Input className="mt-2 !text-sm" maxLength={300} value={f.causeNote} onChange={(e) => set({ causeNote: e.target.value })}
+                placeholder={t('rl.plus.cause', 'A cause it supports (e.g. donations to cancer research)')} aria-label={t('rl.plus.cause.a', 'A cause it supports')} />
             </div>
           </div>
 
@@ -1321,6 +1404,10 @@ function RequestListing() {
             <label className="flex items-start gap-2 text-xs cursor-pointer">
               <input type="checkbox" className="mt-0.5" checked={tos} onChange={(e) => setTos(e.target.checked)} />
               <span>{t('rl.tos.pre', 'I have read and accept the')} <Link to="/legal/submissions" target="_blank" className="text-[var(--accent-ink)] underline">{t('rl.tos.link', 'Submission Terms')}</Link>{t('rl.tos.post', ', and I confirm my declarations above are accurate.')}</span>
+            </label>
+            <label className="flex items-start gap-2 text-xs cursor-pointer">
+              <input type="checkbox" className="mt-0.5" checked={tests} onChange={(e) => setTests(e.target.checked)} />
+              <span>{t('rl.tests', 'You may install and test it, and review its security, before deciding.')} <Link to="/legal/projects" target="_blank" className="text-[var(--accent-ink)] underline">{t('rl.pol.short', 'Project Policy')}</Link></span>
             </label>
             {cfg.paidEnabled && (
               <label className="flex items-start gap-2 text-xs cursor-pointer">

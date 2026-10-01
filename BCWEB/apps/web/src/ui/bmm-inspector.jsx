@@ -144,6 +144,7 @@ export default function BmmInspector({ endpoint = '/admin/inspect' }) {
     resources: t('bmi.p.resources', 'Changes how hard BMM works (CPU, disk and network limits, pausing work)'),
     tasks: t('bmi.p.tasks', 'Runs or switches on other scheduled tasks'),
     network: t('bmi.p.network', 'Sends webhooks and chat messages, reads feeds (never a private address unless the step allows the local network)'),
+    ai: t('bmi.p.ai', 'Asks Laya (AI) on the PC; the answers are kept as data, never run'),
   };
   const REACH = {
     'custom.command': t('bmi.r.command', 'Runs an external program'),

@@ -227,7 +227,7 @@ export function AdminApi() {
     <div>
       <div className="flex items-center gap-2 mb-4 flex-wrap">
         <h2 className="font-semibold flex items-center gap-2 me-2"><KeyRound size={16} className="text-[var(--accent-ink)]" /> {t('aapi.title', 'Public API')}</h2>
-        <div className="inline-flex rounded-[12px] bg-[var(--surface-2)] p-0.5">
+        <div className="inline-flex flex-wrap max-w-full rounded-[12px] bg-[var(--surface-2)] p-0.5">
           {[['overview', t('aapi.tab.overview', 'Usage')], ['keys', t('aapi.tab.keys', 'Keys')], ['requests', t('aapi.tab.requests', 'Calls')], ['sandbox', t('aapi.tab.sandbox', 'Sandbox')], ['limits', t('aapi.tab.limits', 'Limits')], ['settings', t('aapi.tab.settings', 'Recording')]].map(([k, l]) => (
             <button key={k} onClick={() => setView(k)}
               className={`px-3 py-1.5 rounded-[10px] text-sm ${view === k ? 'bg-[var(--bg-solid)] font-medium shadow-sm' : 'text-[var(--muted)]'}`}>{l}</button>

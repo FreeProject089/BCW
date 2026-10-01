@@ -104,6 +104,9 @@ if (existsSync(CADDY)) {
     if (t.startsWith('#')) return;
     const m = /Content-Security-Policy\s+"([^"]*)"/.exec(t);
     if (!m || /\bsandbox\b/.test(m[1])) return; // the sandboxed file-serving policy is not a page that installs
+    // A frame-ancestors-only policy (the telemetry origin, framed by the OS mode) restricts no
+    // loading at all and is not the site's: nothing to check here.
+    if (m[1].split(';').map((x) => x.trim()).filter(Boolean).every((d) => /^frame-ancestors\s/i.test(d))) return;
     n += 1;
     const p = m[1];
     const worker = directive(p, 'worker-src') || directive(p, 'script-src') || directive(p, 'default-src');

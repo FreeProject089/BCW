@@ -10,6 +10,7 @@ import { nextTenureStart, graceHoursFor, syncLoyaltyCoupon } from '../lib/loyalt
 // hosting2 (agent-hosting): calendar-month terms, the lapse rule, catalogue file hosting.
 import { addMonths, normaliseLoyalty, LOYALTY_KEY, catalogTenureOnPayment, syncCatalogLoyaltyCoupon } from '../lib/loyalty.mjs';
 import { checkoutRenewedEnd } from '../lib/loyalty.mjs'; // followups (agent-bcw-followups)
+import { fulfilPaylink, expirePaylinkHold } from '../lib/paylinks.mjs'; // agent-bcw-pools
 
 // hosting2 (agent-hosting): the loyalty policy as stored (one row), for the lapse rule and the sync.
 async function loyaltyPolicy(p) {
@@ -86,6 +87,25 @@ export async function dispatchStripeEvent({ p, stripe, event, log = console }) {
     if (evtType === 'checkout.session.completed') {
       const s = event.data.object;
       const meta = s.metadata || {};
+
+      // agent-bcw-pools: an admin-made payment link (lib/paylinks.mjs). Idempotent: the use is
+      // claimed pending -> paid once, and only the claiming delivery provisions.
+      if (meta.type === 'paylink' && meta.useId && meta.userId) {
+        await fulfilPaylink(p, s, {
+          provisionPool: provisionHostingPool,
+          notify,
+          receipt: async ({ userId, link, amountCents, currency }) => {
+            if (!emailEnabled()) return;
+            const u = await p.user.findUnique({ where: { id: userId }, select: { email: true } });
+            if (!u?.email) return;
+            const amount = `${(amountCents / 100).toFixed(2)} ${String(currency).toUpperCase()}`;
+            const subject = `Receipt: ${link.title}`;
+            const body = `<p>We received <b>${escapeHtml(amount)}</b> for <b>${escapeHtml(link.title)}</b>${link.interval === 'month' ? ' (monthly, renews until you cancel it)' : ''}.</p><p>Your invoices are in Billing, on your dashboard.</p>`;
+            await sendMail({ to: u.email, mailId: 'paylink-receipt', subject, html: mailShell(subject, body, { url: `${process.env.SITE_URL || ''}/dashboard?s=billing`, label: 'Open Billing' }), text: `${subject}\n\n${amount}` }).catch(() => {});
+          },
+        });
+        return { received: true };
+      }
 
       // One extra team: credit the slot once per session (the Payment row is the receipt and
       // the idempotency key — a replayed event finds it and does nothing).
@@ -517,6 +537,24 @@ export async function dispatchStripeEvent({ p, stripe, event, log = console }) {
         return { received: true };
       }
 
+      // agent-bcw-bot: a credit pack for one Discord server. The credits are a ledger row keyed
+      // on the session id (lib/bot-billing.mjs grantCredits), so a replayed event or the
+      // reconciler finishing the same session adds nothing. Written only once the money cleared.
+      if (meta.type === 'bot_credits' && meta.guildId && meta.userId) {
+        if (s.payment_status && s.payment_status !== 'paid' && s.payment_status !== 'no_payment_required') return { received: true };
+        const credits = Math.max(0, Math.min(1_000_000, parseInt(meta.credits, 10) || 0));
+        if (!credits) return { received: true };
+        const { grantCredits, expiryFrom, DEFAULT_EXPIRY_MONTHS } = await import('../lib/bot-billing.mjs');
+        // The validity sold at checkout (metadata, written server-side), counted from payment.
+        const months = meta.months != null && meta.months !== '' ? Math.max(0, Math.min(120, parseInt(meta.months, 10) || 0)) : DEFAULT_EXPIRY_MONTHS;
+        const r = await grantCredits(p, { guildId: meta.guildId, delta: credits, reason: 'purchase', ref: `stripe:${s.id}`, userId: meta.userId, note: `pack ${meta.packId || ''}`.trim(), expiresAt: expiryFrom(new Date(), months) });
+        if (r.ok && !r.duplicate) {
+          await p.payment.create({ data: { userId: meta.userId, kind: 'FEATURE', description: `${credits} Discord bot credits`, amountCents: s.amount_total ?? 0, currency: s.currency || 'usd', stripeSessionId: s.id } }).catch(() => {});
+          await notify(p, meta.userId, 'feature_banner_unlocked', `${credits} bot credits added to your server.`, { href: `/dashboard?s=discord&guild=${meta.guildId}&view=billing`, bodyFr: `${credits} crédits bot ajoutés à ton serveur.` }).catch(() => {});
+        }
+        return { received: true };
+      }
+
       // A paid MARKETPLACE product — payment cleared, so deliver the key/content/role now.
       if (meta.type === 'marketplace' && meta.productId && meta.userId) {
         const product = await p.projectProduct.findUnique({ where: { id: meta.productId } });
@@ -772,6 +810,14 @@ export async function dispatchStripeEvent({ p, stripe, event, log = console }) {
           }
           return { received: true };
         }
+        // agent-bcw-pools: a monthly payment link that is NOT a pool (a pool link has a
+        // Subscription row, handled just below). One receipt per invoice.
+        const plUse = await p.paymentLinkUse.findFirst({ where: { stripeSubId: inv.subscription, status: 'paid' }, include: { link: { select: { kind: true, title: true } } } }).catch(() => null);
+        if (plUse && plUse.link?.kind !== 'pool') {
+          const dup = await p.payment.findFirst({ where: { stripeSessionId: inv.id }, select: { id: true } });
+          if (!dup) await p.payment.create({ data: { userId: plUse.userId, kind: 'CUSTOM', description: `${plUse.link?.title || 'Payment link'} (monthly renewal)`.slice(0, 300), amountCents: inv.amount_paid ?? 0, currency: inv.currency || 'usd', stripeSessionId: inv.id } });
+          return { received: true };
+        }
         const sub = await p.subscription.findUnique({ where: { stripeSubId: inv.subscription } });
         // hosting2 (agent-hosting): once per invoice (the receipt below is keyed on its id).
         if (sub && await hostingDone(p, inv.id)) return { received: true };
@@ -846,6 +892,7 @@ export async function dispatchStripeEvent({ p, stripe, event, log = console }) {
       // the reservation TTL. The TTL stays as the backstop for a session Stripe never tells
       // us about; this is the case it can tell us about, so it should not cost an hour of a
       // finite pool.
+      await expirePaylinkHold(p, event.data.object?.id); // agent-bcw-pools: the place goes back
       const released = await releasePoolKeys(p, event.data.object?.id).catch(() => 0);
       if (released) log.info?.({ session: event.data.object?.id, released }, 'released held pool key(s)');
       return { received: true };
@@ -915,8 +962,18 @@ export async function dispatchStripeEvent({ p, stripe, event, log = console }) {
       // delivered stays delivered — a key in somebody's app does not stop working because
       // they stopped paying — and `expiresAt` on the last row is when the term they paid
       // for actually runs out. Marking it 'ended' only stops the renewal.
+      // agent-bcw-bot: except a Discord ROLE, which each server decides about (take it back now,
+      // keep it, or after a grace period: lib/purchased-roles.mjs). Read before the update.
+      let mkEnding = [];
+      try { mkEnding = await p.projectProductPurchase.findMany({ where: { stripeSubId: subId, status: 'active' }, select: { id: true, productId: true, buyerId: true, product: { select: { deliveryKind: true, roleId: true } } } }); } catch { mkEnding = []; }
       const mkRows = await p.projectProductPurchase.updateMany({ where: { stripeSubId: subId, status: 'active' }, data: { status: 'ended' } });
-      if (mkRows.count > 0) return { received: true };
+      if (mkRows.count > 0) {
+        if (mkEnding.some((x) => x.product?.deliveryKind === 'role')) {
+          const { scheduleRoleRemovals } = await import('../lib/purchased-roles.mjs');
+          await scheduleRoleRemovals(p, mkEnding).catch((e) => log?.warn?.(`[purchased-roles] schedule failed: ${e.message}`));
+        }
+        return { received: true };
+      }
       const fsub = await p.featureSubscription.findUnique({ where: { stripeSubId: subId } });
       if (fsub) { await p.featureSubscription.update({ where: { id: fsub.id }, data: { status: 'canceled' } }); return { received: true }; }
       const sub = await p.subscription.findUnique({ where: { stripeSubId: subId } });

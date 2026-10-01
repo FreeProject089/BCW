@@ -17,10 +17,11 @@
 // focuses that screen's window. So every existing link into the dashboards keeps working, and
 // switching back to the classic mode lands on the screen that was in front.
 //
-// ONE CLICK
-// A desktop icon, a start menu tile, a pinned taskbar button: one click (or Enter) opens. The
-// double click of a file manager is the wrong model for a list of screens, and it was the one
-// gesture a touch screen, a pen and a keyboard do not have.
+// OPENING
+// A start menu tile, a pinned taskbar button, a screen in a folder window: one click (or Enter)
+// opens. Desktop icons are SELECTED by a click since agent-bcw-os (Ctrl/Shift, rubber band, drag
+// to move, drop into folders: os-desktop.jsx) and open on a double click, Enter, or one tap on a
+// touch screen or with a pen, the gestures those devices do have.
 //
 // FULLSCREEN
 // The Fullscreen API on <html>, with the shell covering the page (html[data-os-full]): the
@@ -44,6 +45,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   LayoutGrid, Search, AppWindow, Pin, PinOff, Minus, Maximize2, Minimize2, PanelLeft, PanelRight, X, XCircle, Palette,
   Eye, EyeOff, Maximize, Minimize, RotateCcw, Monitor, LayoutDashboard, ArrowLeft, ArrowRight, PanelLeftOpen,
+  Folder, FolderPlus, FolderOutput, Pencil, Trash2, Layers, Group, Activity, Grid3x3, CheckSquare,
 } from 'lucide-react';
 import { useI18n } from '../../i18n.jsx';
 import { useDialog, useToast } from '../ui.jsx';
@@ -57,6 +59,14 @@ import OsMenu, { isMenuKey, menuPoint, spatialFocus } from './os-menu.jsx';
 import OsTray from './os-tray.jsx';
 import OsPersonalize from './os-personalize.jsx';
 import { SnapFlyout, SnapAssist } from './os-snap.jsx';
+// agent-bcw-os: desktop icons (select, move, folders), taskbar groups, the telemetry app, the
+// auto-hidden site topbar.
+import { DesktopIcons, FolderView, DeskCtx } from './os-desktop.jsx';
+import { TaskGroup } from './os-groups.jsx';
+import { TelemetryApp, useTelemetryAccess, TELEMETRY_APP } from './os-apps.jsx';
+import { useTopbarAutoHide } from './os-topbar.js';
+import { CELLS, gridDims, placeIcons, cellAt, inFolders, isFolderId, newId, FOLDER_PREFIX, GROUP_PREFIX } from './desk.js';
+import { useAuth } from '../../pages/auth.jsx';
 import './os.css';
 
 const TASKBAR_H = 48;
@@ -122,19 +132,22 @@ export default function OsShell({ scope, title, icon: Icon, tabs, render, search
   const key = layoutKey(scope, mode.uid);
   const fs = useFullscreen();
 
-  // The nav, exactly as SideDash reads it.
-  const realTabs = useMemo(() => tabs.filter((tb) => tb.id), [tabs]);
-  const leaves = useMemo(() => realTabs.flatMap((tb) => (tb.sub?.length ? tb.sub : [tb]).map((lf) => ({ ...lf, parent: tb }))), [realTabs]);
-  const tabById = useMemo(() => new Map(realTabs.map((tb) => [tb.id, tb])), [realTabs]);
-  const leafById = useMemo(() => new Map(leaves.map((lf) => [lf.id, lf])), [leaves]);
+  // The nav, exactly as SideDash reads it, plus the shell's own apps (os-apps.jsx) for the
+  // accounts the server says may open them.
+  const { user } = useAuth();
+  const teleOk = useTelemetryAccess(mode.uid, scope === 'admin' && ['ADMIN', 'SUPERADMIN'].includes(user?.role));
+  const appTabs = useMemo(() => (teleOk ? [{ id: TELEMETRY_APP, label: t('os.app.tele', 'BMM telemetry'), icon: Activity, app: true }] : []), [teleOk, t]);
+  const realTabs = useMemo(() => [...tabs.filter((tb) => tb.id), ...appTabs], [tabs, appTabs]);
+  const baseLeafById = useMemo(() => new Map(realTabs.flatMap((tb) => (tb.sub?.length ? tb.sub : [tb]).map((lf) => [lf.id, { ...lf, parent: tb }]))), [realTabs]);
   const sections = useMemo(() => {
     const out = [];
     for (const tb of tabs) {
       if (tb.heading) out.push({ heading: tb.heading, items: [] });
       else if (tb.id) { if (!out.length) out.push({ heading: null, items: [] }); out[out.length - 1].items.push(tb); }
     }
+    if (appTabs.length) out.push({ heading: t('os.apps', 'Apps'), items: appTabs });
     return out.filter((s) => s.items.length);
-  }, [tabs]);
+  }, [tabs, appTabs, t]);
 
   const urlLeaf = sp.get('s');
   const [state, dispatch] = useReducer(reduce, null, () => {
@@ -143,10 +156,19 @@ export default function OsShell({ scope, title, icon: Icon, tabs, render, search
     const saved = readLayout(key);
     if (saved) s = reduce(s, { type: 'hydrate', saved });
     // A deep link wins over the saved layout: it is what the person just asked for.
-    const lf = urlLeaf && leafById.get(urlLeaf);
+    const lf = urlLeaf && baseLeafById.get(urlLeaf);
     if (lf) s = reduce(s, { type: 'open', id: lf.parent.id, leaf: lf.id });
     return s;
   });
+
+  // Folders are windows too (their contents), so they join the tab list after the reducer.
+  const folders = useMemo(() => state.icons?.folders || [], [state.icons]);
+  const folderTabs = useMemo(() => folders.map((f) => ({ id: f.id, label: f.name, icon: Folder, folder: true })), [folders]);
+  const allTabs = useMemo(() => [...realTabs, ...folderTabs], [realTabs, folderTabs]);
+  const leaves = useMemo(() => allTabs.flatMap((tb) => (tb.sub?.length ? tb.sub : [tb]).map((lf) => ({ ...lf, parent: tb }))), [allTabs]);
+  const tabById = useMemo(() => new Map(allTabs.map((tb) => [tb.id, tb])), [allTabs]);
+  const leafById = useMemo(() => new Map(leaves.map((lf) => [lf.id, lf])), [leaves]);
+  const isVirtual = (id) => id === TELEMETRY_APP || isFolderId(id);
 
   // Only windows and pins whose tab exists for this person, today.
   const wins = useMemo(() => state.wins.filter((w) => tabById.has(w.id)), [state.wins, tabById]);
@@ -161,6 +183,8 @@ export default function OsShell({ scope, title, icon: Icon, tabs, render, search
   const recentTabs = useMemo(() => (state.recent || []).map((id) => tabById.get(id)).filter(Boolean).slice(0, 4), [state.recent, tabById]);
   const deskTabs = useMemo(() => realTabs.filter((tb) => !hiddenSet.has(tb.id)), [realTabs, hiddenSet]);
   const hiddenCount = realTabs.length - deskTabs.length;
+  const groups = useMemo(() => (state.groups || []).map((g) => ({ ...g, members: g.items.map((id) => tabById.get(id)).filter(Boolean) })).filter((g) => g.members.length), [state.groups, tabById]);
+  const grouped = useMemo(() => new Set(groups.flatMap((g) => g.members.map((m) => m.id))), [groups]);
   const leafFor = (w) => (leafById.get(w.leaf)?.parent?.id === w.id ? leafById.get(w.leaf) : leafById.get((tabById.get(w.id)?.sub?.[0] || tabById.get(w.id))?.id));
   const firstLeaf = (tb) => (tb.sub?.[0] || tb).id;
 
@@ -174,6 +198,10 @@ export default function OsShell({ scope, title, icon: Icon, tabs, render, search
     try { window.scrollTo(0, 0); } catch { /* jsdom */ }
     return () => root.removeAttribute('data-os-shell');
   }, [scope]);
+
+  // ── The site's topbar: out of the way (os-topbar.js) ───────────────────────
+  const autoHide = prefs.topbar !== 'show';
+  const topbar = useTopbarAutoHide(autoHide);
 
   // ── Desktop size ───────────────────────────────────────────────────────────
   const deskRef = useRef(null);
@@ -191,7 +219,7 @@ export default function OsShell({ scope, title, icon: Icon, tabs, render, search
     return () => { window.removeEventListener('resize', measure); ro?.disconnect(); };
   }, []);
   // Entering or leaving fullscreen, or moving the taskbar, changes the desktop's box.
-  useLayoutEffect(() => { measureRef.current(); }, [fs.on, prefs.bar]);
+  useLayoutEffect(() => { measureRef.current(); }, [fs.on, prefs.bar, autoHide]);
 
   // ── Persistence ────────────────────────────────────────────────────────────
   // aios (agent-bcw-ai-os): the layout key names the ACCOUNT. When it changes under a mounted
@@ -211,7 +239,7 @@ export default function OsShell({ scope, title, icon: Icon, tabs, render, search
       try { localStorage.setItem(key, JSON.stringify(serialize(state))); } catch { /* private window: this session only */ }
     }, 250);
     return () => clearTimeout(h);
-  }, [state.wins, state.active, state.pins, state.start, state.hidden, state.recent, key]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [state.wins, state.active, state.pins, state.start, state.hidden, state.recent, state.icons, state.groups, key]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── URL ⇄ windows ──────────────────────────────────────────────────────────
   // In: a `?s=` from anywhere opens or focuses that screen's window.
@@ -227,6 +255,8 @@ export default function OsShell({ scope, title, icon: Icon, tabs, render, search
   // instead of walking through every focus change).
   const frontLeaf = activeWin ? (leafFor(activeWin)?.id || null) : null;
   useEffect(() => {
+    // A folder or an app is not a screen of the classic mode: the address keeps the last one.
+    if (activeWin && isVirtual(activeWin.id)) return;
     // A leaf this person does not have (yet: the dashboard adds some tabs after a fetch) is
     // left alone, so the window opens once the tab appears.
     if (urlLeaf && !leafById.has(urlLeaf)) return;
@@ -257,8 +287,11 @@ export default function OsShell({ scope, title, icon: Icon, tabs, render, search
     const lf = leafById.get(leafId);
     if (!lf) return;
     setLauncher(null);
-    dispatch({ type: 'open', id: lf.parent.id, leaf: lf.id });
-  }, [leafById]);
+    // A folder opens small, the telemetry dashboard large; a screen at the default size.
+    const size = isFolderId(lf.parent.id) ? { w: 560, h: 380 }
+      : lf.parent.id === TELEMETRY_APP ? { w: Math.round(state.vp.w * 0.9), h: Math.round(state.vp.h * 0.9) } : null;
+    dispatch({ type: 'open', id: lf.parent.id, leaf: lf.id, ...(size ? { size } : {}) });
+  }, [leafById, state.vp.w, state.vp.h]);
   const openHref = useCallback((href) => {
     setLauncher(null);
     if (/^https?:/i.test(href || '')) window.open(href, '_blank', 'noopener');
@@ -293,14 +326,14 @@ export default function OsShell({ scope, title, icon: Icon, tabs, render, search
   };
   const exit = () => { setLauncher(null); if (fs.on) fs.toggle(); mode.set(false); };
   const toClassic = (leafId) => {
-    if (leafId) setSp((p) => { const n = new URLSearchParams(p); n.set('s', leafId); return n; }, { replace: true });
+    if (leafId && !isVirtual(leafById.get(leafId)?.parent?.id || leafId)) setSp((p) => { const n = new URLSearchParams(p); n.set('s', leafId); return n; }, { replace: true });
     exit();
   };
 
   // Snap, then offer the rest of the layout to the other windows (snap assist).
-  const snapTo = useCallback((id, zone) => {
+  const snapTo = useCallback((id, zone, layoutId = null) => {
     dispatch({ type: 'snap', id, zone });
-    const zones = assistZones(zone);
+    const zones = assistZones(zone, layoutId);
     setAssist(zones.length ? { zones, taken: [id] } : null);
   }, []);
   const fill = (id) => {
@@ -364,6 +397,7 @@ export default function OsShell({ scope, title, icon: Icon, tabs, render, search
     'os.desktop': () => dispatch({ type: 'showDesktop' }),
     'os.tile': () => dispatch({ type: 'tile' }),
     'os.fullscreen': () => fs.toggle(),
+    'os.topbar': () => topbar.toggle(), // agent-bcw-os
   });
 
   // Escape leaves the immersive fallback (real fullscreen: the browser handles Escape itself),
@@ -378,8 +412,77 @@ export default function OsShell({ scope, title, icon: Icon, tabs, render, search
     return () => window.removeEventListener('keydown', onKey);
   }, [fs.immersive]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── The desktop: icons on a grid, selection, folders (desk.js, os-desktop.jsx) ──
+  const [sel, setSel] = useState([]);
+  const [renaming, setRenaming] = useState(null);
+  const iconsRef = useRef(null);
+  const cell = CELLS[prefs.icons] || CELLS.md;
+  const dims = gridDims(state.vp, cell);
+  const inFold = useMemo(() => inFolders(state.icons), [state.icons]);
+  const deskItems = useMemo(() => [
+    ...deskTabs.filter((tb) => !inFold.has(tb.id)).map((tb) => ({ id: tb.id, label: tb.label, icon: tb.icon, badge: badgeOf(tb), open: openIds.has(tb.id) })),
+    ...folders.map((f) => ({ id: f.id, label: f.name, folder: true, count: f.items.filter((id) => tabById.has(id)).length, open: openIds.has(f.id), badge: 0 })),
+  ], [deskTabs, inFold, folders, openIds, tabById]);
+  const placed = useMemo(() => placeIcons(deskItems.map((it) => it.id), state.icons?.pos, dims), [deskItems, state.icons, dims.cols, dims.rows]); // eslint-disable-line react-hooks/exhaustive-deps
+  const cellOfPoint = (at) => {
+    const d = deskRef.current?.getBoundingClientRect();
+    if (!d) return null;
+    const c = cellAt(at.x - d.left, at.y - d.top, cell, dims);
+    return [...placed.values()].some((p) => p.c === c.c && p.r === c.r) ? null : c;
+  };
+  const openItem = (id) => { const tb = tabById.get(id); if (tb) openLeaf(firstLeaf(tb)); };
+  const newFolder = (items = [], at = null) => {
+    const id = newId(FOLDER_PREFIX, folders.map((f) => f.id));
+    dispatch({ type: 'folder', op: 'new', id, name: t('os.fold.new', 'New folder'), items, at });
+    setSel([id]);
+    setRenaming(id);
+  };
+  const deleteFolder = (fid) => {
+    const f = folders.find((x) => x.id === fid);
+    if (!f) return;
+    dispatch({ type: 'folder', op: 'delete', id: fid });
+    if (f.items.length) toast.info(t('os.fold.deleted', 'Folder deleted. Its screens are back on the desktop.'));
+  };
+  const onRename = (id, v) => {
+    if (v === undefined) { setRenaming(id); return; }
+    setRenaming(null);
+    if (typeof v === 'string' && isFolderId(id)) dispatch({ type: 'folder', op: 'rename', id, name: v });
+  };
+  const groupIds = (state.groups || []).map((g) => g.id);
+  const newGroup = (items) => dispatch({ type: 'group', op: 'new', id: newId(GROUP_PREFIX, groupIds), name: t('os.grp.name', 'Group'), items });
+  const toGroup = (gid, items) => dispatch({ type: 'group', op: 'add', id: gid, items });
+  // What a folder window needs, through a context: its body is rendered by the memoised window.
+  const deskCtx = useMemo(() => ({
+    folders, tabById, deskRef, cell, dims,
+    openTab: (id) => openItem(id),
+    moveToFolder: (fid, ids) => dispatch({ type: 'folder', op: 'add', id: fid, items: ids }),
+    outOfFolder: (fid, ids, at) => dispatch({ type: 'folder', op: 'remove', id: fid, items: ids, pos: at ? Object.fromEntries(ids.map((i) => [i, at])) : undefined }),
+    dropGroup: (gid, ids) => toGroup(gid, ids),
+    renameFolder: (fid, name) => dispatch({ type: 'folder', op: 'rename', id: fid, name }),
+    deleteFolder: (fid) => deleteFolderRef.current(fid),
+    itemMenu: (fid, tb, at) => itemMenuRef.current(fid, tb, at),
+  }), [folders, tabById, cell, dims.cols, dims.rows]); // eslint-disable-line react-hooks/exhaustive-deps
+  const deleteFolderRef = useRef(deleteFolder); deleteFolderRef.current = deleteFolder;
+  const renderLeaf = useCallback((leaf) => {
+    if (leaf === TELEMETRY_APP) return <TelemetryApp />;
+    if (isFolderId(leaf)) return <FolderView fid={leaf} />;
+    return render(leaf);
+  }, [render]);
+
   // ── Menus ──────────────────────────────────────────────────────────────────
   const openMenu = (at, items, label) => { setLauncher(null); setMenu({ at, items, label }); };
+  // "Group on the taskbar", "Add to <group>", "Take out of <group>" for a set of screens.
+  const groupItems = (ids) => {
+    const screens = ids.filter((id) => !isFolderId(id));
+    if (!screens.length) return [];
+    const one = screens.length === 1 && groups.find((g) => g.items.includes(screens[0]));
+    return [
+      { k: 'grpnew', icon: Group, label: t('os.grp.new', 'Group on the taskbar'), run: () => newGroup(screens) },
+      ...groups.filter((g) => !screens.every((i) => g.items.includes(i))).slice(0, 4)
+        .map((g) => ({ k: `grp-${g.id}`, icon: Layers, label: t('os.grp.addto', 'Add to {name}').replace('{name}', g.name), run: () => toGroup(g.id, screens) })),
+      ...(one ? [{ k: 'grpout', icon: Layers, label: t('os.grp.outof', 'Take out of {name}').replace('{name}', one.name), run: () => dispatch({ type: 'group', op: 'remove', id: one.id, items: screens }) }] : []),
+    ];
+  };
   const pinItems = (tb) => [
     { k: 'pinbar', icon: pinSet.has(tb.id) ? PinOff : Pin, label: pinSet.has(tb.id) ? t('os.pin.bar.off', 'Unpin from the taskbar') : t('os.pin.bar.on', 'Pin to the taskbar'), run: () => dispatch({ type: 'pin', id: tb.id }) },
     { k: 'pinstart', icon: startSet.has(tb.id) ? PinOff : LayoutGrid, label: startSet.has(tb.id) ? t('os.pin.start.off', 'Unpin from start') : t('os.pin.start.on', 'Pin to start'), run: () => dispatch({ type: 'pin', id: tb.id, where: 'start' }) },
@@ -388,9 +491,43 @@ export default function OsShell({ scope, title, icon: Icon, tabs, render, search
     { k: 'open', icon: AppWindow, label: openIds.has(tb.id) ? t('os.m.front', 'Bring to the front') : t('os.m.open', 'Open'), run: () => openLeaf(firstLeaf(tb)) },
     { sep: true },
     ...pinItems(tb),
+    ...groupItems([tb.id]),
+    { k: 'infold', icon: FolderPlus, label: t('os.fold.put', 'Put in a new folder'), run: () => newFolder([tb.id], cellOfPoint(at)) },
     { k: 'hide', icon: EyeOff, label: t('os.m.deskoff', 'Remove from the desktop'), run: () => dispatch({ type: 'desk', id: tb.id, show: false }) },
+    ...(tb.app ? [] : [{ sep: true }, { k: 'classic', icon: PanelLeftOpen, label: t('os.win.classic', 'Open in the classic mode'), run: () => toClassic(firstLeaf(tb)) }]),
+  ], tb.label);
+  const folderMenu = (f, at) => openMenu(at, [
+    { k: 'open', icon: AppWindow, label: openIds.has(f.id) ? t('os.m.front', 'Bring to the front') : t('os.m.open', 'Open'), run: () => openItem(f.id) },
     { sep: true },
-    { k: 'classic', icon: PanelLeftOpen, label: t('os.win.classic', 'Open in the classic mode'), run: () => toClassic(firstLeaf(tb)) },
+    { k: 'ren', icon: Pencil, label: t('os.fold.rename', 'Rename'), hint: 'F2', run: () => setRenaming(f.id) },
+    { k: 'del', icon: Trash2, label: t('os.fold.delete', 'Delete the folder'), danger: true, run: () => deleteFolder(f.id) },
+  ], f.name);
+  // Several icons selected: what applies to all of them.
+  const selMenu = (ids, at) => {
+    const screens = ids.filter((id) => !isFolderId(id));
+    openMenu(at, [
+      { k: 'open', icon: AppWindow, label: t('os.sel.open', 'Open {n} windows').replace('{n}', String(ids.length)), run: () => ids.forEach(openItem) },
+      { sep: true },
+      { k: 'infold', icon: FolderPlus, label: t('os.fold.put', 'Put in a new folder'), disabled: !screens.length, run: () => newFolder(screens, cellOfPoint(at)) },
+      ...groupItems(screens),
+      { k: 'hide', icon: EyeOff, label: t('os.m.deskoff', 'Remove from the desktop'), disabled: !screens.length, run: () => screens.forEach((id) => dispatch({ type: 'desk', id, show: false })) },
+    ], t('os.sel.n', '{n} selected').replace('{n}', String(ids.length)));
+  };
+  const deskIconMenu = (id, at) => {
+    if (sel.length > 1 && sel.includes(id)) { selMenu(sel, at); return; }
+    const f = folders.find((x) => x.id === id);
+    if (f) { folderMenu(f, at); return; }
+    const tb = tabById.get(id);
+    if (tb) iconMenu(tb, at);
+  };
+  // A screen inside a folder window.
+  const itemMenuRef = useRef(null);
+  itemMenuRef.current = (fid, tb, at) => openMenu(at, [
+    { k: 'open', icon: AppWindow, label: openIds.has(tb.id) ? t('os.m.front', 'Bring to the front') : t('os.m.open', 'Open'), run: () => openLeaf(firstLeaf(tb)) },
+    { k: 'out', icon: FolderOutput, label: t('os.fold.out', 'Move to the desktop'), run: () => dispatch({ type: 'folder', op: 'remove', id: fid, items: [tb.id] }) },
+    { sep: true },
+    ...pinItems(tb),
+    ...groupItems([tb.id]),
   ], tb.label);
   const appMenu = (tb, at) => setMenu({ at, label: tb.label, items: [
     { k: 'open', icon: AppWindow, label: openIds.has(tb.id) ? t('os.m.front', 'Bring to the front') : t('os.m.open', 'Open'), run: () => openLeaf(firstLeaf(tb)) },
@@ -402,6 +539,10 @@ export default function OsShell({ scope, title, icon: Icon, tabs, render, search
   ] });
   const visibleCount = wins.filter((w) => w.mode !== 'min').length;
   const deskMenu = (at) => openMenu(at, [
+    { k: 'newfold', icon: FolderPlus, label: t('os.fold.new', 'New folder'), run: () => newFolder([], cellOfPoint(at)) },
+    { k: 'selall', icon: CheckSquare, label: t('os.sel.all', 'Select all'), hint: 'Ctrl+A', disabled: !deskItems.length, run: () => setSel(deskItems.map((it) => it.id)) },
+    { k: 'arrange', icon: Grid3x3, label: t('os.m.arrange', 'Arrange the icons'), disabled: !Object.keys(state.icons?.pos || {}).length, run: () => dispatch({ type: 'iconsPos', pos: {} }) },
+    { sep: true },
     { k: 'pz', icon: Palette, label: t('os.pz.t2', 'Personalise…'), run: () => setPersonalize(true) },
     { k: 'sm', checked: prefs.icons === 'sm', label: t('os.pz.icons.sm', 'Small icons'), run: () => mode.setPrefs({ icons: 'sm' }) },
     { k: 'md', checked: prefs.icons === 'md', label: t('os.pz.icons.md', 'Medium icons'), run: () => mode.setPrefs({ icons: 'md' }) },
@@ -430,6 +571,7 @@ export default function OsShell({ scope, title, icon: Icon, tabs, render, search
       { k: 'right', icon: PanelRight, label: t('os.win.snapright', 'Snap to the right half'), run: () => snapTo(w.id, 'right') },
       { sep: true },
       pinItems(tb)[0],
+      ...groupItems([w.id]),
       { sep: true },
       { k: 'others', icon: XCircle, label: t('os.m.closeothers', 'Close the other windows'), disabled: !others.length, run: () => closeMany(others) },
       { k: 'close', icon: X, label: t('os.win.close', 'Close'), danger: true, run: () => closeWin(w.id) },
@@ -450,49 +592,53 @@ export default function OsShell({ scope, title, icon: Icon, tabs, render, search
     { k: 'right', icon: ArrowRight, label: t('os.m.moveright', 'Move right'), disabled: barPins[barPins.length - 1]?.id === tb.id, run: () => dispatch({ type: 'movePin', id: tb.id, dir: 1 }) },
     { sep: true },
     ...pinItems(tb),
+    ...groupItems([tb.id]),
   ], tb.label);
+  const groupMenu = (g, at) => {
+    const i = groups.indexOf(g);
+    openMenu(at, [
+      { k: 'all', icon: LayoutDashboard, label: t('os.grp.openall', 'Open side by side'), run: () => openGroup(g) },
+      { k: 'left', icon: ArrowLeft, label: t('os.m.moveleft', 'Move left'), disabled: i <= 0, run: () => dispatch({ type: 'group', op: 'move', id: g.id, dir: -1 }) },
+      { k: 'right', icon: ArrowRight, label: t('os.m.moveright', 'Move right'), disabled: i === groups.length - 1, run: () => dispatch({ type: 'group', op: 'move', id: g.id, dir: 1 }) },
+      { sep: true },
+      { k: 'ungroup', icon: Layers, label: t('os.grp.ungroup', 'Ungroup'), run: () => dispatch({ type: 'group', op: 'delete', id: g.id }) },
+    ], g.name);
+  };
+  const openGroup = (g) => {
+    const ids = g.members.map((m) => m.id);
+    ids.forEach((id) => { const tb = tabById.get(id); if (tb) dispatch({ type: 'open', id, leaf: firstLeaf(tb) }); });
+    dispatch({ type: 'tile', ids });
+  };
   const onMenuKey = (fn) => (e) => { if (isMenuKey(e)) { e.preventDefault(); fn(menuPoint(e)); } };
 
   const [snapPreview, setSnapPreview] = useState(null);
-  const preview = snapPreview ? rectForZone(snapPreview, state.vp) : null;
-  const iconsRef = useRef(null);
+  const [flyPreview, setFlyPreview] = useState(null);
+  const shownPreview = snapPreview || (fly ? flyPreview : null);
+  const preview = shownPreview ? rectForZone(shownPreview, state.vp) : null;
   const tasksRef = useRef(null);
 
   return (
+    <DeskCtx.Provider value={deskCtx}>
     <div className="os-shell" data-wallpaper={prefs.wallpaper} data-icons={prefs.icons} data-bar={prefs.bar} data-anim={prefs.anim ? '' : undefined}
       data-full={fs.on ? '' : undefined} style={{ '--os-taskbar-h': `${TASKBAR_H}px` }}>
       <div className="os-desktop" ref={deskRef}
         onContextMenu={(e) => { if (e.target === e.currentTarget || e.target === iconsRef.current) { e.preventDefault(); deskMenu(menuPoint(e)); } }}>
-        <ul ref={iconsRef} className="os-icons" aria-label={t('os.desktop', 'Desktop')}
-          onKeyDown={(e) => spatialFocus(e, iconsRef.current, '.os-icon')}>
-          {deskTabs.map((tb) => {
-            const b = badgeOf(tb);
-            const open = openIds.has(tb.id);
-            return (
-              <li key={tb.id}>
-                <button type="button" className={`os-icon${open ? ' is-open' : ''}`}
-                  onClick={() => openLeaf(firstLeaf(tb))}
-                  onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); iconMenu(tb, menuPoint(e)); }}
-                  onKeyDown={onMenuKey((at) => iconMenu(tb, at))}
-                  title={tb.label}>
-                  <span className="os-icon-tile"><tb.icon size={22} aria-hidden />{b ? <span className="os-icon-badge">{b}</span> : null}</span>
-                  <span className="os-icon-label">{tb.label}</span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+        <DesktopIcons items={deskItems} placed={placed} cell={cell} dims={dims} sel={sel} setSel={setSel} deskRef={deskRef} listRef={iconsRef}
+          renaming={renaming} onRename={onRename} onOpen={openItem} onMenu={deskIconMenu}
+          onMove={(pos) => dispatch({ type: 'iconsPos', pos })}
+          onDropFolder={(fid, ids) => dispatch({ type: 'folder', op: 'add', id: fid, items: ids })}
+          onDropGroup={toGroup} />
 
         {!wins.some((w) => w.mode !== 'min') && (
           <div className="os-hint" aria-hidden>
             <AppWindow size={18} className="text-[var(--accent-ink)]" />
-            <span>{t('os.hint.one', 'Click an icon, or open the start menu, to put a screen in a window. Right-click for more.')}</span>
+            <span>{t('os.hint.two', 'Double-click an icon, or use the start menu, to open a screen. Right-click for more.')}</span>
           </div>
         )}
 
         {wins.map((w) => (
           <OsWindow key={w.id} win={w} tab={tabById.get(w.id)} leaf={leafFor(w)} active={activeWin?.id === w.id}
-            mounted={mounted.has(w.id)} vp={state.vp} deskRef={deskRef} dispatch={dispatch} render={render}
+            mounted={mounted.has(w.id)} vp={state.vp} deskRef={deskRef} dispatch={dispatch} render={renderLeaf}
             onLeaf={setLeaf} onClose={closeWin} onSnapPreview={setSnapPreview} registerEl={registerEl} act={act} pinned={pinSet.has(w.id)} />
         ))}
 
@@ -528,7 +674,18 @@ export default function OsShell({ scope, title, icon: Icon, tabs, render, search
           </ul>
         )}
         <ul ref={tasksRef} className="os-tasks" aria-label={t('os.tasks', 'Open windows')} onKeyDown={(e) => spatialFocus(e, tasksRef.current, '.os-task')}>
-          {wins.map((w) => {
+          {groups.map((g) => (
+            <li key={g.id}>
+              <TaskGroup group={g} members={g.members} openIds={openIds} activeId={activeWin?.id} top={prefs.bar === 'top'}
+                onOpen={(m) => openLeaf(firstLeaf(m))} onOpenAll={() => openGroup(g)}
+                onMinAll={() => g.members.forEach((m) => { if (openIds.has(m.id)) dispatch({ type: 'minimize', id: m.id }); })}
+                onRename={(name) => dispatch({ type: 'group', op: 'rename', id: g.id, name })}
+                onRemove={(m) => dispatch({ type: 'group', op: 'remove', id: g.id, items: [m.id] })}
+                onUngroup={() => dispatch({ type: 'group', op: 'delete', id: g.id })}
+                onMenu={(at) => groupMenu(g, at)} />
+            </li>
+          ))}
+          {wins.filter((w) => !grouped.has(w.id)).map((w) => {
             const tb = tabById.get(w.id);
             const lf = leafFor(w);
             const dormant = w.mode === 'min' && !mounted.has(w.id);
@@ -561,7 +718,8 @@ export default function OsShell({ scope, title, icon: Icon, tabs, render, search
       {menu && <OsMenu at={menu.at} items={menu.items} label={menu.label} onClose={() => setMenu(null)} />}
       {fly && wins.some((w) => w.id === fly.id) && (
         <SnapFlyout anchor={fly.rect} vp={state.vp} viaKeyboard={fly.kb}
-          onPick={(z) => { const id = fly.id; closeFly(false); snapTo(id, z); }}
+          onPick={(z, layoutId) => { const id = fly.id; closeFly(false); setFlyPreview(null); snapTo(id, z, layoutId); }}
+          onPreview={setFlyPreview}
           onClose={closeFly}
           onHover={(on) => { flyHover.current = on; if (!on && !fly.kb) act.leaveFly(); else clearTimeout(flyTimer.current); }} />
       )}
@@ -571,6 +729,7 @@ export default function OsShell({ scope, title, icon: Icon, tabs, render, search
       )}
       {fs.on && <span className="sr-only" role="status">{t('os.full.on', 'Fullscreen. Press Escape, or the fullscreen button in the tray, to leave it.')}</span>}
     </div>
+    </DeskCtx.Provider>
   );
 }
 

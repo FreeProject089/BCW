@@ -34,6 +34,7 @@ import { recordAi, userCallsToday, setAiPricing } from './ai-usage.mjs';
 import { sealKey, openKey, last4, keyShapeOk, checkBaseUrl, hostOf } from './ai-keys.mjs';
 import { safeFetch } from './net.mjs';
 import { boundedSet } from './boundedmap.mjs';
+import { normalizeSearch } from './search-ai.mjs'; // agent-bcw-nav: Laya in the search bars
 
 // ── The catalogue ───────────────────────────────────────────────────────────────────────────
 /**
@@ -52,6 +53,12 @@ export const FEATURES = Object.freeze({
   // telemetry-live: Laya labels on the BMM live-issue groups, asked by the telemetry service
   // (POST /internal/telemetry/classify-issue). Laya only; no fallback (the dashboard shows none).
   telemetry_issues: { kind: 'classifier', staffOnly: true, fallback: null },
+  // agent-laya-triage: Laya refines the rules' triage of incoming feedback / bug / crash reports
+  // (lib/feedback-triage.mjs). Laya only; the rules' triage stands without it.
+  feedback_triage: { kind: 'classifier', staffOnly: true, fallback: 'rules' },
+  // agent-bcw-nav: the search bars' intent and rerank (lib/search-ai.mjs). Signed-out visitors
+  // too when the admin allows it; the deterministic search stands without it.
+  search: { kind: 'classifier', staffOnly: false, fallback: 'local' },
 });
 export const FEATURE_IDS = Object.freeze(Object.keys(FEATURES));
 export const AUDIENCES = Object.freeze(['all', 'paid', 'staff']);
@@ -73,6 +80,8 @@ const FEATURE_DEFAULTS = {
   duplicates: { enabled: true, audience: 'staff', perUserPerDay: 200, paidPerUserPerDay: 200 },
   crash_clusters: { enabled: true, audience: 'staff', perUserPerDay: 100, paidPerUserPerDay: 100 },
   telemetry_issues: { enabled: true, audience: 'staff', perUserPerDay: 5000, paidPerUserPerDay: 5000 },
+  feedback_triage: { enabled: true, audience: 'staff', perUserPerDay: 5000, paidPerUserPerDay: 5000 },
+  search: { enabled: false, audience: 'all', perUserPerDay: 300, paidPerUserPerDay: 1000 }, // agent-bcw-nav
 };
 
 /** Hard bounds, so no setting can turn a limit into a no-op. */
@@ -125,6 +134,7 @@ export function normalizeFeatures(raw) {
     },
     pricing: { external: price(pr.external), site: price(pr.site) },
     retentionDays: clampInt(r.retentionDays, ...FEATURE_BOUNDS.retentionDays, 90),
+    search: normalizeSearch(r.search), // agent-bcw-nav: per account / signed-out / per IP, cache
   };
 }
 
@@ -172,7 +182,7 @@ export function publicSiteKey(site) {
 
 /** Seal a site key into the value stored under AI_SITE_KEY. Returns { error } or { value }. */
 export function buildSiteKey({ baseUrl, key, model }) {
-  const u = checkBaseUrl(baseUrl);
+  const u = checkBaseUrl(baseUrl, { site: true });
   if (!u.ok) return { error: u.error };
   if (!keyShapeOk(key)) return { error: 'bad_key' };
   const m = String(model || '').trim().slice(0, 80);
@@ -249,6 +259,8 @@ async function hit(keys) {
   return { ok: true };
 }
 export function _clearLimitsForTests() { _rl.clear(); }
+/** agent-bcw-nav: the same counter for a caller with its own keys (lib/search-ai.mjs). */
+export const rateHit = (keys) => hit(keys);
 
 /**
  * Every limit that applies to one request, in order: per IP per minute, per user per minute,
@@ -283,7 +295,17 @@ const secondsToMidnight = () => { const n = new Date(); const m = Date.UTC(n.get
  * it for this person. `withKey: false` resolves the source for a disclosure without opening
  * the envelope.
  */
-export async function resolveGenKey(p, user, { cfg, site, paid, staff, withKey = true }) {
+export async function resolveGenKey(p, user, { cfg, site, paid, staff, withKey = true, siteOnly = false }) {
+  // `siteOnly`: platform work (a staff summary of somebody else's report) goes through the
+  // platform's own provider or nowhere, never through the key a moderator pays for privately
+  // (audit Oct 2026, finding 8). The site key is used whatever forStaff/forPaid say: those
+  // decide who may spend it on THEIR OWN content, not whether the platform may use it.
+  if (siteOnly) {
+    if (!site?.keySecret) return { source: null, reason: 'no_site_key' };
+    const key = withKey ? openKey(site.keySecret, 'site') : null;
+    if (withKey && !key) return { source: null, reason: 'site_key_unreadable' };
+    return { source: 'site', baseUrl: site.baseUrl, model: site.model, key, host: hostOf(site.baseUrl) };
+  }
   if (cfg.byok.enabled && user?.uid) {
     const row = await p.aiUserKey.findUnique({ where: { userId: user.uid } }).catch(() => null);
     if (row) {
@@ -332,7 +354,7 @@ export async function generate(p, user, feature, { system, prompt, maxTokens }, 
     const layer = await aiLoadConfig();
     if (layer.killed) { recordAi({ feature, provider: 'off', outcome: 'killed', userId: uid }); return { value: null, reason: 'disabled' }; }
     const { cfg, site } = ctx;
-    const k = await resolveGenKey(p, user, { cfg, site, paid: ctx.paid, staff: ctx.staff });
+    const k = await resolveGenKey(p, user, { cfg, site, paid: ctx.paid, staff: ctx.staff, siteOnly: !!ctx.siteOnly });
     if (!k.source) return { value: null, reason: k.reason };
     provider = k.source;
     // The key's own daily allowance, on top of the feature's: a BYOK member's quota protects
@@ -344,7 +366,8 @@ export async function generate(p, user, feature, { system, prompt, maxTokens }, 
     ]);
     if (!lim.ok) { recordAi({ feature, provider, outcome: 'rateLimited', userId: uid }); return { value: null, reason: 'quota_reached' }; }
     if (genInFlight >= cfg.gen.concurrency) { recordAi({ feature, provider, outcome: 'dropped', userId: uid }); return { value: null, reason: 'busy' }; }
-    const u = checkBaseUrl(k.baseUrl);
+    // The operator's private-address switch follows the SITE key only (finding 6).
+    const u = checkBaseUrl(k.baseUrl, { site: provider === 'site' });
     if (!u.ok) return { value: null, reason: 'no_key' };
     genInFlight += 1;
     const ctl = new AbortController();

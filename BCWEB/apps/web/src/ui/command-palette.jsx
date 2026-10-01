@@ -34,6 +34,8 @@ import { buildIndex, searchIndex } from './palette-search.js';
 import { readRecent, pushRecent, onOpenPalette, readDocRecent, pushDocRecent, clearDocRecent } from './palette-recent.js';
 import { useShortcutHints, useTouchOnly, Keys } from './shortcuts.jsx';
 import { paletteCombo } from '../lib/shortcuts.js';
+import { useSmartSearch, SmartSearchHint } from './smart-search.jsx'; // agent-bcw-nav: Laya, optional
+import { toCandidates, applyOrder } from '../lib/smart-search-core.js';
 import './command-palette.css';
 
 // Snapshot the CURRENT view's searchable content — headings, buttons, links, labels, table
@@ -284,7 +286,7 @@ export default function CommandPalette() {
     'act:shortcuts': () => nav('/settings#shortcuts'),
   }), [lang, setLang, theme, auth, nav]);
 
-  const items = useMemo(() => {
+  const baseItems = useMemo(() => {
     const n = deferredQ.trim();
     if (!n) {
       if (docsOnly) return docRecent.map((r) => docRow(r, !!r.section, 'docrecent'));
@@ -312,6 +314,14 @@ export default function CommandPalette() {
     return out.slice(0, RENDER_CAP);
   }, [deferredQ, docs, index, pageEls, recent, docRecent, docsOnly, docsFirst, onDocs]);
 
+  // agent-bcw-nav: Laya may reorder the LEADING group (never across groups, so the headers
+  // stay one per group) and say where the query seems to belong. The list above is already
+  // the answer; this only rearranges its top when the AI is on and sure.
+  const [plain, setPlain] = useState(false);
+  const lead = useMemo(() => { const g = baseItems[0]?.group; const out = []; for (const it of baseItems) { if (it.group !== g || out.length >= 8) break; out.push(it); } return out; }, [baseItems]);
+  const smart = useSmartSearch({ q: deferredQ, scope: docsOnly ? 'docs' : 'global', candidates: toCandidates(lead, (it) => it.id, (it) => it.title), enabled: open && !!deferredQ.trim() });
+  const items = plain || !smart.order ? baseItems : applyOrder(baseItems, (it) => it.id, smart.order);
+  useEffect(() => { setPlain(false); }, [deferredQ]);
   useEffect(() => { setActive(0); }, [deferredQ, docs, scope]);
   useEffect(() => { listRef.current?.querySelector('[data-active="1"]')?.scrollIntoView({ block: 'nearest' }); }, [active, items]);
 
@@ -366,6 +376,10 @@ export default function CommandPalette() {
             ? <button type="button" className="cmdk-close" onClick={() => setOpen(false)} aria-label={t('common.close', 'Close')} title={t('common.close', 'Close')}><X size={16} /></button>
             : <kbd className="cmdk-kbd">Esc</kbd>}
         </div>
+        {/* agent-bcw-nav */}
+        <SmartSearchHint className="px-4 pt-2" intent={smart.intent} q={n} here={docsOnly ? 'docs' : null}
+          reordered={!plain && items !== baseItems && items.some((it, i) => it !== baseItems[i])} onPlain={() => setPlain(true)}
+          onGo={() => setOpen(false)} onDocs={() => setScope('docs')} />
         <div ref={listRef} id="cmdk-list" role="listbox" className="cmdk-list">
           {items.length === 0 && (docsOnly && n.length < 2 ? (
             <div className="px-4 py-8 text-center text-sm text-[var(--muted)]">{t('docs.search.hint', 'Search titles and section headings across the docs.')}</div>

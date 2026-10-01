@@ -26,7 +26,7 @@ déjà.
 | Variable | Rôle |
 |---|---|
 | `JWT_SECRET` | signe les sessions/cookies. **Chaîne aléatoire longue** (`openssl rand -hex 32`). En prod l'API refuse de démarrer avec la valeur d'exemple. |
-| `LINK_LOOKUP_SECRET` | signe le lookup de liaison BMM↔BCWEB et le handoff SSO télémétrie (le service télémétrie vérifie la même valeur sous le nom `BC_LINK_SECRET`). Il a un fallback — mais c'est `dev-link-secret`, commité dans ce repo : mets-en un vrai. `openssl rand -hex 32`. |
+| `LINK_LOOKUP_SECRET` | signe le lookup de liaison BMM↔BCWEB et le handoff SSO télémétrie (le service télémétrie vérifie la même valeur sous le nom `BC_LINK_SECRET`). Il a un fallback — mais c'est `dev-link-secret`, commité dans ce repo : mets-en un vrai. `openssl rand -hex 32`. Sa propre valeur : jamais de repli sur `JWT_SECRET`, et le démarrage en production refuse une valeur égale à `JWT_SECRET` (le service télémétrie la détient). |
 | `BOT_SHARED_SECRET` | l'identifiant du bot Discord auprès de l'API. Non défini, compose donne **à la fois** à l'api et au bot la valeur de `LINK_LOOKUP_SECRET` : ils sont donc d'accord — **pose-le en production** : le code de l'API ne lit plus que celle-ci depuis septembre 2026 (plus de repli sur `LINK_LOOKUP_SECRET`, SECURITY_SUMMARY §9 n° 4), et c'est le repli propre à compose sur le secret de liaison qui fait encore marcher une valeur non définie — les deux services ne doivent pas partager un secret. |
 | `AUDIT_SECRET` | clé HMAC de la chaîne d'audit inviolable. Non défini → retombe sur `JWT_SECRET` (ça va). ⚠️ **La changer alors que des entrées existent invalide la vérification de toutes les précédentes** — pose-la une fois, avant la mise en ligne. |
 | `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` | Le premier compte SUPERADMIN, créé par `npm run setup`. **Règle les deux avant le premier lancement** : le compte n'est créé que s'il n'existe pas déjà, donc les changer ensuite ne fait rien. Non définis, chaque installation part avec le même mot de passe publié par défaut (`admin@bettercommunity.local` / `change-me-now`). |
@@ -87,6 +87,7 @@ Callback à déclarer chez chaque fournisseur : `<SITE_URL>/api/auth/oauth/<prov
 | `TELEMETRY_API_KEY` | clé d'ingestion de la télémétrie. |
 | `TELEMETRY_RETENTION_DAYS` | au-delà de combien de jours les événements de télémétrie sont purgés. |
 | `TELEMETRY_DELETE_DELAY_H` | délai (heures) avant qu'une demande de suppression de données soit exécutée — la fenêtre pendant laquelle elle reste annulable. |
+| `TELEMETRY_ISSUES_AI` | `1` (défaut) laisse le dashboard demander à Laya, via l'API, d'étiqueter les groupes d'erreurs BMM en direct (catégorie, gravité, doublon probable) ; `0` le coupe côté télémétrie. Coupé aussi quand la couche IA de l'API ou l'interrupteur du dashboard est coupé. |
 
 ## 9. Email transactionnel (optionnel — confirmation + reset mot de passe)
 | Variable | Rôle |
@@ -128,7 +129,7 @@ Tout vide = IA éteinte, règles seules. Une valeur fixée ici **l'emporte** sur
 | `AI_TIMEOUT_MS` / `AI_CONCURRENCY` | forcer le délai par appel (1500 par défaut) et les appels simultanés (1 par défaut). |
 | `AI_EXTERNAL_URL` | base d'une API compatible OpenAI, par ex. `https://api.example.com/v1`. https et publique seulement. Un **tiers** : mettre d'abord à jour la politique de confidentialité. |
 | `AI_EXTERNAL_KEY` | sa clé. **Secret.** Lue ici seulement : jamais stockée, journalisée ni affichée. |
-| `AI_EXTERNAL_ALLOW_PRIVATE` | `1` = autoriser http et les adresses privées, pour un modèle hébergé sur ton propre réseau. Vaut aussi pour les clés saisies sur le site (clés des membres, clé du site). |
+| `AI_EXTERNAL_ALLOW_PRIVATE` | `1` = autoriser http et les adresses privées, pour un modèle hébergé sur ton propre réseau. Vaut pour le fournisseur de l'opérateur et la **clé du site** seulement ; jamais pour la clé d'un membre ni celle d'un serveur Discord (ce serait une SSRF depuis le réseau de l'API). |
 | `AI_KEYS_SECRET` | scelle les clés IA stockées en base (clés des membres, clé du site ; [AI_FEATURES_FR.md](AI_FEATURES_FR.md)). **Secret.** Vide = dérivé de `JWT_SECRET`. Le changer rend toutes les clés stockées illisibles : il faut les ressaisir. |
 
 ## 12. Divers

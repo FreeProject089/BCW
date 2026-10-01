@@ -35,6 +35,7 @@ import uploadRoutes from './routes/uploads.mjs';
 import platformAssetRoutes from './routes/platform-assets.mjs';
 import hostingRoutes from './routes/hosting.mjs';
 import botPlanRoutes from './routes/bot-plans.mjs'; // M-plans: Discord bot plans
+import botBillingRoutes from './routes/bot-billing.mjs'; // agent-bcw-bot: bot credits, AI budget, BYOK
 import marketplaceRoutes from './routes/marketplace.mjs';
 import paymentsAdminRoutes from './routes/payments-admin.mjs';
 import stripeWebhook from './routes/stripe-webhook.mjs';
@@ -98,12 +99,15 @@ import configTransferRoutes from './routes/config-transfer.mjs';
 import jwt from 'jsonwebtoken';
 import connectionRoutes from './routes/connections.mjs';
 import prereleaseRoutes from './routes/prereleases.mjs'; // prerelease (agent-prerelease): early access
+import paylinkRoutes from './routes/paylinks.mjs'; // agent-bcw-pools: admin-made payment links
+import projectPoolRoutes from './routes/project-pools.mjs'; // agent-bcw-pools: pools dedicated to a project
 import projectReviewRoutes from './routes/project-reviews.mjs'; // prerelease (agent-prerelease): per-project reviews
 import releaseAnnounceRoutes from './routes/release-announce.mjs'; // prerelease (agent-prerelease): announcing a release
 import notifyRoutes from './routes/notify.mjs'; // notify (agent-notify): feeds, follows, the admin composer
 import bmmLaunchRoutes from './routes/bmm-launch.mjs'; // notify (agent-notify): the BMM launch feed
 import aiRoutes from './routes/ai.mjs'; // laya (agent-laya-bcweb): the optional AI provider layer's doors
 import aiFeatureRoutes from './routes/ai-features.mjs'; // aios (agent-bcw-ai-os): member + staff AI features, BYOK, usage analytics, /site/features
+import searchAiRoutes from './routes/search-ai.mjs'; // agent-bcw-nav: POST /search/smart, Laya's optional intent + rerank for the search bars
 import { flushAiUsage } from './lib/ai-usage.mjs'; // aios
 import moderationRoutes from './routes/moderation.mjs'; // moderation (agent-moderation): the rules-first moderation engine's queue and settings
 import { recordRequest } from './lib/monitor.mjs';
@@ -412,6 +416,7 @@ await app.register(uploadRoutes);
 await app.register(platformAssetRoutes);
 await app.register(hostingRoutes);
 await app.register(botPlanRoutes); // Discord bot plans: list, checkout, servers, free tier
+await app.register(botBillingRoutes); // agent-bcw-bot: credits wallet, AI allowance, /ask, paywall links
 await app.register(marketplaceRoutes);
 await app.register(paymentsAdminRoutes);
 await app.register(analyticsRoutes);
@@ -470,12 +475,15 @@ await app.register(configTransferRoutes); // /admin/config-transfer: the custom 
 await app.register(rightsRoutes); // rights notices (copyright & co.), the queue, the protected-works registry
 await app.register(connectionRoutes); // social profile connections (youtube/twitch/github/steam)
 await app.register(prereleaseRoutes); // prerelease (agent-prerelease)
+await app.register(paylinkRoutes); // agent-bcw-pools
+await app.register(projectPoolRoutes); // agent-bcw-pools
 await app.register(projectReviewRoutes); // prerelease (agent-prerelease)
 await app.register(releaseAnnounceRoutes); // prerelease (agent-prerelease)
 await app.register(notifyRoutes); // notify (agent-notify)
 await app.register(bmmLaunchRoutes); // notify (agent-notify)
 await app.register(aiRoutes); // laya (agent-laya-bcweb): /admin/ai, /ai/bmm/suggest, /bot/ai/automod (lib/moderation/ai.mjs)
 await app.register(aiFeatureRoutes); // aios (agent-bcw-ai-os): /ai/*, /admin/ai/{usage,features,site-key,triage,summarize,duplicates,crash-clusters}, /site/features
+await app.register(searchAiRoutes); // agent-bcw-nav
 await app.register(moderationRoutes); // moderation (agent-moderation): /admin/moderation/*, /bot/moderation/check
 await app.register(statusRoutes); // public status page: service uptime, incidents, alert sign-up
 await app.register(codeWebhookRoutes); // encapsulated: raw-body for the GitHub HMAC

@@ -203,6 +203,32 @@ lui-même, au-dessus du bouton, parce que quelqu'un qui s'apprête à payer mér
 avant de cliquer plutôt qu'après un refus. Si tu refuses une demande payante, un remboursement
 est dû et aucun code ne l'émet — c'est une conversation.
 
+### La Politique des projets : ce qu’une demande doit remplir
+
+Les règles publiques sont sur `/legal/projects` (lien court `/policy/projects`, aussi dans le
+pied de page). Le formulaire les résume en quatre lignes et l’API les applique
+(`declarationError` dans `showcase-requests.mjs`) :
+
+| Règle | Formulaire | Refus du serveur |
+|---|---|---|
+| Accord pour les tests et une revue de sécurité (toute demande) | case à cocher | `tests_consent_required` |
+| Un contact pour la suite : e-mail ou nom Discord (site facultatif, https seulement ; langue préférée) | prérempli depuis le compte | `contact_required` |
+| Open source : une licence est nommée | champ licence | `license_required` |
+| Pas open source : titulaire des droits + preuve + accès au code pour les relecteurs | preuve + case à cocher | `closed_needs_owner`, `closed_needs_proof`, `closed_needs_source` |
+| Utilise l’IA et pas open source : accès au code | même case | `ai_needs_source` |
+
+Atouts (facultatifs) : **BetterInstaller comme installateur officiel**, et **une cause que le
+projet soutient** (une fonctionnalité ou une proposition de don : recherche contre le cancer,
+bien-être animal…). Ils aident à choisir entre de bons projets et ne remplacent jamais une règle.
+
+**Les vérifications.** Chaque demande en attente affiche le contact du demandeur (staff seulement, avec boutons Copier) et une liste : *contact joignable vérifié*, *code vu*, *tests réussis*,
+*revue de sécurité faite*, plus *BetterInstaller vérifié* et *cause vérifiée* quand le
+demandeur les a annoncés. Les cases sont enregistrées au fur et à mesure
+(`PUT /admin/showcase-requests/:id/checks`), car les tests peuvent prendre des jours.
+**Approuver reste désactivé tant que toutes les cases requises ne sont pas cochées**, et l’API
+refuse aussi (`409 checklist_incomplete`). C’est ainsi que « les projets avec IA doivent réussir
+nos tests » est appliqué : personne ne peut en approuver un avant que *tests réussis* soit coché.
+
 ### Les traiter
 
 La file se trouve en haut de **Admin → Contenu → Projets**, au-dessus des éditeurs par projet,

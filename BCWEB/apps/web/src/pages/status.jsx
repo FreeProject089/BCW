@@ -31,15 +31,20 @@ const BANNER = {
 };
 
 /** 90 days as 90 bars. Colour AND a title, because colour alone says nothing to a screen reader. */
+// agent-bcw-nav: on a phone, the last PHONE_DAYS only. Ninety bars at 2px each plus their gaps
+// are wider than a 375px card: the row ran off the right edge (clipped by the page), so the
+// "today" end, the one that matters, was the part nobody could see.
+const PHONE_DAYS = 30;
 function UptimeBars({ days, t }) {
+  const cut = Math.max(0, days.length - PHONE_DAYS);
   return (
-    <div className="flex gap-[2px] items-end h-8" role="img"
+    <div className="flex gap-px sm:gap-[2px] items-end h-8 min-w-0" role="img"
       aria-label={t('st.bars.a11y', 'Daily uptime for the last {n} days').replace('{n}', days.length)}>
-      {days.map((d) => {
+      {days.map((d, i) => {
         const pct = d.uptimePct;
         const tone = pct >= 99.9 ? 'var(--success)' : pct >= 95 ? 'var(--warning)' : 'var(--error)';
         return (
-          <span key={String(d.day)} className="flex-1 min-w-[2px] rounded-sm" style={{ height: '100%', background: tone, opacity: pct >= 99.9 ? 0.85 : 1 }}
+          <span key={String(d.day)} className={`flex-1 min-w-0 rounded-sm ${i < cut ? 'hidden sm:block' : ''}`} style={{ height: '100%', background: tone, opacity: pct >= 99.9 ? 0.85 : 1 }}
             title={`${String(d.day).slice(0, 10)} — ${pct.toFixed(2)}%`} />
         );
       })}
@@ -122,7 +127,7 @@ export default function StatusPage() {
   const rest = ordered.length - page.length;
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8">
+    <div className="max-w-3xl mx-auto sm:px-4 py-6 sm:py-8 min-w-0">
       {sp.get('subscribed') && <div className="mb-4 rounded-xl border border-[var(--success)] bg-[color-mix(in_srgb,var(--success)_10%,transparent)] px-4 py-3 text-sm">{t('st.confirmed', 'You are subscribed. You will hear from us when something breaks, and when it is fixed.')}</div>}
       {sp.get('unsubscribed') && <div className="mb-4 rounded-xl border border-[var(--line)] px-4 py-3 text-sm">{t('st.unsubbed', 'You will not get any more status messages.')}</div>}
 
@@ -141,13 +146,14 @@ export default function StatusPage() {
           return (
             <div key={s.key}>
               <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
-                <span className="font-medium flex items-center gap-2"><st.icon size={15} style={{ color: st.tone }} /> {SERVICE_NAME(s.key, (lang === 'fr' && s.labelFr) || s.label, t)}</span>
+                <span className="font-medium flex items-center gap-2 min-w-0"><st.icon size={15} style={{ color: st.tone }} className="shrink-0" /> <span className="min-w-0 break-words">{SERVICE_NAME(s.key, (lang === 'fr' && s.labelFr) || s.label, t)}</span></span>
                 <span className="text-sm" style={{ color: st.tone }}>{t(st.key, st.en)}</span>
               </div>
               {s.state !== 'not_configured' && <>
                 <UptimeBars days={s.days} t={t} />
                 <div className="flex justify-between text-[11px] text-[var(--faint)] mt-1">
-                  <span>{t('st.ago', '{n} days ago').replace('{n}', d.windowDays || 90)}</span>
+                  <span className="sm:hidden">{t('st.ago', '{n} days ago').replace('{n}', Math.min(PHONE_DAYS, s.days?.length || PHONE_DAYS))}</span>
+                  <span className="hidden sm:inline">{t('st.ago', '{n} days ago').replace('{n}', d.windowDays || 90)}</span>
                   <span className="tabular-nums">{s.uptimePct.toFixed(2)}%</span>
                   <span>{t('st.today', 'today')}</span>
                 </div>
@@ -189,7 +195,7 @@ export default function StatusPage() {
                 {i.updates?.length ? (
                   <ul className="mt-1 space-y-0.5">
                     {i.updates.map((u, k) => (
-                      <li key={k} className="text-[12px] text-[var(--muted)]">
+                      <li key={k} className="text-[12px] text-[var(--muted)] break-words">
                         <b className="text-[var(--text)]">{u.state}</b> — {u.body}
                       </li>
                     ))}

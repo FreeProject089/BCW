@@ -78,7 +78,74 @@ const bodySchema = z.object({
   proofName: z.string().trim().max(160).optional().default(''),
   // Must be true — the button is gated client-side too, but the server is the real gate.
   tosAccepted: z.boolean(),
+  // ── Project Policy (/legal/projects) ──
+  usesAi: z.boolean().optional().default(false),
+  sourceAccess: z.boolean().optional().default(false),
+  testsConsent: z.boolean().optional().default(false),
+  usesBetterInstaller: z.boolean().optional().default(false),
+  causeNote: z.string().trim().max(300).optional().default(''),
+  // ── Follow-up contact (at least one of e-mail / Discord; see declarationError) ──
+  contactEmail: z.union([z.literal(''), z.string().trim().toLowerCase().max(200).email()]).optional().default(''),
+  // A Discord username: 2-32 of letters, digits, "_" and "."; a leading "@" is dropped.
+  contactDiscord: z.string().trim().max(40).transform((v) => v.replace(/^@/, ''))
+    .refine((v) => v === '' || /^[A-Za-z0-9_.]{2,32}$/.test(v), 'not a Discord username').optional().default(''),
+  // https ONLY. z.string().url() would accept javascript: and data:, so the scheme is checked
+  // on the parsed URL (httpsUrlOk), and the stored value is what we re-serialised.
+  contactUrl: z.string().trim().max(400).refine((v) => v === '' || httpsUrlOk(v), 'https address only').optional().default(''),
+  contactLang: z.enum(['', 'en', 'fr']).optional().default(''),
 });
+
+/** An https: address that parses, with a host and no credentials. Nothing else is stored. */
+export function httpsUrlOk(v) {
+  try {
+    const u = new URL(String(v));
+    return u.protocol === 'https:' && !!u.hostname && !u.username && !u.password;
+  } catch { return false; }
+}
+
+/**
+ * The Project Policy, as code. Returns an error code, or null when the declarations pass.
+ * Pure, so the rules are tested without a database (test/showcase-requests.test.mjs).
+ *
+ *   · every request lets us run tests and a security review;
+ *   · open source names its licence; otherwise we get access to the source (always, and
+ *     it is the only way in for a project that uses AI and is not open source);
+ *   · closed source comes from the rights-holder, with proof of rights.
+ */
+export function declarationError(d) {
+  if (d.tosAccepted !== true) return 'tos_required';
+  if (d.testsConsent !== true) return 'tests_consent_required';
+  // Somewhere to answer: the review is a conversation, and a decision nobody can deliver is
+  // no decision. An e-mail, a Discord handle, or both.
+  if (!String(d.contactEmail || '').trim() && !String(d.contactDiscord || '').trim()) return 'contact_required';
+  if (!d.isOpenSource) {
+    if (d.ownership !== 'owner') return 'closed_needs_owner';
+    if (!d.proofKey) return 'closed_needs_proof';
+    if (d.sourceAccess !== true) return d.usesAi ? 'ai_needs_source' : 'closed_needs_source';
+  } else if (!d.license) {
+    return 'license_required';
+  }
+  return null;
+}
+
+/** The staff checklist. What must be ticked before approving this request. */
+export const REVIEW_CHECKS = ['contactVerified', 'sourceChecked', 'testsPassed', 'securityReviewed', 'installerChecked', 'causeChecked'];
+export function requiredChecks(row) {
+  const need = ['contactVerified', 'sourceChecked', 'testsPassed', 'securityReviewed'];
+  if (row?.usesBetterInstaller) need.push('installerChecked');
+  if (row?.causeNote) need.push('causeChecked');
+  return need;
+}
+/** Only the known keys, only booleans: the column is not a place to store anything else. */
+function pickChecks(o) {
+  const out = {};
+  for (const k of REVIEW_CHECKS) if (o && o[k] === true) out[k] = true;
+  return out;
+}
+export function missingChecks(row, checks) {
+  const c = checks && typeof checks === 'object' ? checks : {};
+  return requiredChecks(row).filter((k) => c[k] !== true);
+}
 
 // NEVER exposes proofKey (the private storage key) — only whether a proof exists, plus its
 // display name. contactReportId is the dashboard chat thread for this submission.
@@ -90,6 +157,12 @@ const ser = (r) => ({
   isOpenSource: r.isOpenSource, license: r.license, ownership: r.ownership,
   hasProof: !!r.proofKey, proofName: r.proofName,
   tosAcceptedAt: r.tosAcceptedAt, contactReportId: r.contactReportId,
+  usesAi: !!r.usesAi, sourceAccess: !!r.sourceAccess, testsConsent: !!r.testsConsent,
+  usesBetterInstaller: !!r.usesBetterInstaller, causeNote: r.causeNote || '',
+  reviewChecks: r.reviewChecks && typeof r.reviewChecks === 'object' ? r.reviewChecks : {},
+  // The follow-up contact. ser() only ever answers the applicant (/me) and staff (/admin).
+  contactEmail: r.contactEmail || '', contactDiscord: r.contactDiscord || '',
+  contactUrl: r.contactUrl || '', contactLang: r.contactLang || '',
   createdAt: r.createdAt,
   ...(r.user ? { user: { id: r.user.id, displayName: r.user.displayName, email: r.user.email } } : {}),
 });
@@ -131,20 +204,10 @@ export default async function showcaseRequestRoutes(app) {
     if (!b.success) return reply.code(400).send({ error: 'invalid_input', details: b.error.flatten() });
     const d = b.data;
 
-    // The terms are the gate. The button is disabled client-side until accepted, but that is a
-    // convenience — this is where it actually counts.
-    if (d.tosAccepted !== true) return reply.code(400).send({ error: 'tos_required' });
-
-    // Declaration rules. We accept BOTH open- and closed-source, but:
-    //  - a closed-source listing must come from the rights-HOLDER (never a fan), and
-    //  - it must carry proof of rights (a private upload) — no proof, no listing.
-    //  - an open-source listing should name its licence (fan or owner both fine).
-    if (!d.isOpenSource) {
-      if (d.ownership !== 'owner') return reply.code(400).send({ error: 'closed_needs_owner' });
-      if (!d.proofKey) return reply.code(400).send({ error: 'closed_needs_proof' });
-    } else if (!d.license) {
-      return reply.code(400).send({ error: 'license_required' });
-    }
+    // The terms and the Project Policy are the gate (declarationError, above). The form
+    // disables its buttons until they pass, but that is a convenience; this is where it counts.
+    const bad = declarationError(d);
+    if (bad) return reply.code(400).send({ error: bad });
     // A proof key is only trusted if it is one the CALLER uploaded: presign hands non-prefixed
     // kinds a key under uploads/<their uid>/, so anything else is a forged/borrowed reference.
     if (d.proofKey && !d.proofKey.startsWith(`uploads/${req.user.uid}/`)) {
@@ -181,6 +244,10 @@ export default async function showcaseRequestRoutes(app) {
         ownership: d.ownership,
         proofKey: d.proofKey || '', proofName: d.proofKey ? (d.proofName || 'proof') : '',
         tosAcceptedAt: new Date(),
+        usesAi: d.usesAi, sourceAccess: d.isOpenSource ? false : d.sourceAccess, testsConsent: true,
+        usesBetterInstaller: d.usesBetterInstaller, causeNote: d.causeNote,
+        contactEmail: d.contactEmail, contactDiscord: d.contactDiscord,
+        contactUrl: d.contactUrl ? new URL(d.contactUrl).toString() : '', contactLang: d.contactLang,
       },
     });
 
@@ -291,6 +358,8 @@ export default async function showcaseRequestRoutes(app) {
       // Approved but not yet visible: the page is created unpublished so it can be filled in
       // before anybody sees it.
       publish: z.boolean().optional().default(false),
+      // The review checklist (Project Policy). Merged over what was saved before.
+      checks: z.record(z.boolean()).optional(),
       // "Approve & configure": the whole page as the New-project modal writes it, so the
       // listing is created finished instead of created bare and edited afterwards.
       project: z.object({
@@ -303,6 +372,13 @@ export default async function showcaseRequestRoutes(app) {
       }).optional(),
     }).safeParse(req.body || {});
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+
+    // Nothing is approved before the checklist is done: source seen, tests passed, security
+    // reviewed (and the pluses the applicant claimed, checked). A project that uses AI has no
+    // other way in: this is the "tested by our team" rule.
+    const checks = pickChecks({ ...(row.reviewChecks || {}), ...(b.data.checks || {}) });
+    const missing = missingChecks(row, checks);
+    if (missing.length) return reply.code(409).send({ error: 'checklist_incomplete', missing });
 
     const slug = slugify(b.data.slug || row.slug);
     if (!slug) return reply.code(400).send({ error: 'bad_slug' });
@@ -332,10 +408,23 @@ export default async function showcaseRequestRoutes(app) {
     if (row.proofKey) await deleteObject(row.proofKey).catch(() => {});
     const saved = await p.showcaseRequest.update({
       where: { id: row.id },
-      data: { status: 'approved', reviewNote: b.data.note, reviewedAt: new Date(), reviewerId: req.user.uid, projectId: project.id, proofKey: '', proofName: '' },
+      data: { status: 'approved', reviewNote: b.data.note, reviewedAt: new Date(), reviewerId: req.user.uid, projectId: project.id, proofKey: '', proofName: '', reviewChecks: checks },
     });
     await logAudit(p, req.user.uid, 'showcase.approve', `${row.name} → /project/${slug}${row.paid ? ' (paid)' : ''}`, clientIp(req)).catch(() => {});
     return { ok: true, request: ser(saved), project: { id: project.id, slug: project.slug } };
+  });
+
+  // ── Staff: save the checklist while testing (it can take days) ──
+  app.put('/admin/showcase-requests/:id/checks', { preHandler: requireRole('MOD', 'ADMIN') }, async (req, reply) => {
+    const p = await db();
+    const row = await p.showcaseRequest.findUnique({ where: { id: req.params.id } });
+    if (!row) return reply.code(404).send({ error: 'not_found' });
+    if (row.status !== 'pending') return reply.code(409).send({ error: 'already_reviewed' });
+    const b = z.object({ checks: z.record(z.boolean()) }).safeParse(req.body || {});
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const checks = pickChecks({ ...(row.reviewChecks || {}), ...b.data.checks });
+    const saved = await p.showcaseRequest.update({ where: { id: row.id }, data: { reviewChecks: checks } });
+    return { ok: true, request: ser(saved), missing: missingChecks(saved, checks) };
   });
 
   // ── Staff: reject ──

@@ -19,6 +19,7 @@ import { ensureAppIcons } from './features/icons.mjs';
 import { openLive, liveComponent, liveModal, joinByCode, listLobbies, LIVE_GAMES, MULTI_GAMES, VISIBILITIES } from './features/casino-live.mjs';
 import { seasonStatusCard } from './features/season.mjs';
 import { parseAmount, parseWholeInRange } from './amount.mjs';
+import { cmdPlan, cmdAsk } from './features/plancmd.mjs'; // agent-bcw-bot
 
 export const BRAND = ui.BRAND;
 // Kept under its old name: panel.mjs and the pollers still call it. A one-card reply.
@@ -29,6 +30,10 @@ export const commandData = [
   new SlashCommandBuilder().setName('verify').setDescription('Re-check your links and update your access roles'),
   new SlashCommandBuilder().setName('refreshroles').setDescription('Re-sync your gated roles now (after linking on the website)'),
   new SlashCommandBuilder().setName('voice').setDescription('Show the control panel for your temp voice channel'),
+  // agent-bcw-bot: the server's plan / AI budget, and the members' AI helper.
+  new SlashCommandBuilder().setName('plan').setDescription('This server’s bot plan, AI allowance and credits'),
+  new SlashCommandBuilder().setName('ask').setDescription('Ask the AI helper a short question')
+    .addStringOption((o) => o.setName('question').setDescription('Your question').setRequired(true).setMinLength(2).setMaxLength(1500)),
   new SlashCommandBuilder().setName('clear').setDescription('Delete recent messages (max 100)')
     .addIntegerOption((o) => o.setName('count').setDescription('How many (1-100)').setMinValue(1).setMaxValue(100))
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
@@ -149,6 +154,8 @@ export async function handleInteraction(i) {
     if (i.commandName === 'link') return cmdLink(i);
     if (i.commandName === 'verify' || i.commandName === 'refreshroles') return cmdVerify(i);
     if (i.commandName === 'voice') return sendPanel(i);
+    if (i.commandName === 'plan') return cmdPlan(i); // agent-bcw-bot
+    if (i.commandName === 'ask') return cmdAsk(i); // agent-bcw-bot
     if (i.commandName === 'clear') {
       const n = i.options.getInteger('count') || 100;
       const del = await clearMessages(i.channel, n);

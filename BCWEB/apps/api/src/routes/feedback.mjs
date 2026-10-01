@@ -8,6 +8,7 @@ import { acceptCreatorProof } from '../lib/creator-identity.mjs';
 import { putObject, getObject, deleteObject, prefixUsage } from '../lib/storage.mjs';
 import { sendMail, mailShell, emailEnabled, escapeHtml } from '../lib/mail.mjs';
 import { deleteSubmission } from '../lib/feedback-thread.mjs';
+import { triageByRules, refineLater, triageOf, rulesTriage, triageColumns, bestDuplicate, duplicateCandidates, TRIAGE_TAGS, TRIAGE_CATEGORIES, TRIAGE_SEVERITIES, MAX_TAGS } from '../lib/feedback-triage.mjs'; // agent-laya-triage
 
 // Feedback & crash centre. One inbox per project (BMM, BSM, whatever comes next) that any app
 // can post feedback, bug reports and crash dumps to — the thing BMM used BetaHub for, now on
@@ -293,6 +294,7 @@ const pub = (f) => ({
   meta: f.meta, attachments: (f.attachments || []).map((a, i) => ({ i, name: a.name, type: a.type, size: a.size })),
   fingerprint: f.fingerprint, count: f.count, status: f.status, userId: f.userId, email: f.email, creatorId: f.creatorId,
   reportId: f.reportId, createdAt: f.createdAt, updatedAt: f.updatedAt,
+  triage: triageOf(f), // agent-laya-triage
 });
 
 /**
@@ -336,6 +338,19 @@ export async function senderIdFrom({ sessionUid = null, headers = {}, aud, now, 
   if (!looksLikeBcId(claimed)) return null;
   if (await byCreatorId(claimed)) return null;   // a linked creator id still needs a proof
   return (await byBcId(claimed)) || null;
+}
+
+/**
+ * Does this submission need an e-mail before it is accepted?
+ *
+ * Only when nobody could answer it otherwise: no recognised account AND no address, on a
+ * project that asks for one. BMM restates the same rule (features/feedback/feedback-contact.ts)
+ * to decide whether its dialog shows the field; `unverified` in the 422 tells it that a
+ * creator id WAS sent but proved nothing, so it can say "we could not confirm your account"
+ * and reveal the field instead of asking for an address it never offered.
+ */
+export function needsContact({ userId, email, requireContact }) {
+  return !userId && !String(email || '').trim() && !!requireContact;
 }
 
 // Module-level and exported so the config import (lib/config-transfer.mjs) validates a seed
@@ -424,7 +439,7 @@ export default async function feedbackRoutes(app) {
     const text = `${d.title}\n${d.body}`.toLowerCase();
     if ((pc.blockedWords || []).some((w) => w && text.includes(String(w).toLowerCase()))) return reply.code(422).send({ error: 'filtered' });
     if (Buffer.byteLength(d.body, 'utf8') > pc.maxBodyKB * 1024) return reply.code(413).send({ error: 'body_too_large', maxBodyKB: pc.maxBodyKB });
-    if (!userId && !d.email && pc.requireContact) return reply.code(422).send({ error: 'contact_required' });
+    if (needsContact({ userId, email: d.email, requireContact: pc.requireContact })) return reply.code(422).send({ error: 'contact_required', unverified: !!req.headers['x-creator-id'] });
     if (d.attachments.length > pc.maxAttachments) return reply.code(413).send({ error: 'too_many_attachments', max: pc.maxAttachments });
 
     // Crash sampling: acknowledged, not stored. The client is told so it does not retry.
@@ -470,12 +485,18 @@ export default async function feedbackRoutes(app) {
     // column is `String @default("")`, so an unproven or absent header stores the empty
     // string rather than null.
     const creatorId = String(req.headers['x-creator-id'] || '').slice(0, 200).toLowerCase();
+    // agent-laya-triage: the rules' triage, inline and cheap (one bounded SELECT for duplicate
+    // candidates). It never blocks the intake: a failure files the row untriaged and the
+    // sweeper's backfill triages it later. Laya refines it AFTER the response (below).
+    const triage = await triageByRules(p, { id, projectKey: key, kind: d.kind, title: d.title, body: d.body }).then((t) => t.data).catch(() => ({}));
     const row = await p.feedback.create({ data: {
       id, projectKey: key, kind: d.kind, title: d.title.slice(0, 200), body: d.body, appVersion: d.appVersion, os: d.os, meta: meta ?? undefined,
       attachments: stored, fingerprint, userId, email: d.email, creatorId, ipHash: ipHash(ip),
       ...(mod.action === 'hold' ? { status: 'ignored' } : {}), // moderation (agent-moderation)
+      ...triage, // agent-laya-triage
     } });
     linkCase(p, mod, 'feedback', row.id); // moderation (agent-moderation)
+    if (triage.triageSource === 'rules') refineLater(p, row.id, { log: req.log }); // agent-laya-triage: fire-and-forget
 
     // Where the conversation lives.
     let threadId = null;
@@ -541,6 +562,12 @@ export default async function feedbackRoutes(app) {
     if (q.status && STATUSES.includes(q.status)) where.status = q.status;
     if (q.version) where.appVersion = String(q.version).slice(0, 40);
     if (q.q) { const s = String(q.q).slice(0, 120); where.OR = [{ title: { contains: s, mode: 'insensitive' } }, { body: { contains: s, mode: 'insensitive' } }, { email: { contains: s, mode: 'insensitive' } }, { fingerprint: { contains: s } }]; }
+    // agent-laya-triage: filters on the automatic triage. Unknown values are ignored, like `kind`.
+    if (q.tag && TRIAGE_TAGS.includes(q.tag)) where.triageTags = { has: q.tag };
+    if (q.category && TRIAGE_CATEGORIES.includes(q.category)) where.triageCategory = q.category;
+    if (q.severity && TRIAGE_SEVERITIES.includes(q.severity)) where.triageSeverity = q.severity;
+    if (q.dup === '1') where.triageDupOfId = { not: null };
+    else if (q.dup === '0') where.triageDupOfId = null;
     const page = Math.max(0, parseInt(q.page, 10) || 0); const take = 50;
     // Sort: newest (default), oldest, or BY SEVERITY (crash > bug > feedback, newest within a
     // kind). Severity has no DB column to order on, so it ranks a bounded window in memory —
@@ -558,8 +585,12 @@ export default async function feedbackRoutes(app) {
     let windowed = false;
     if (sort === 'severity') {
       const RANK = { crash: 0, bug: 1, feedback: 2 };
+      // agent-laya-triage: the severity HINT first (staff-set or automatic), the kind breaks ties
+      // and ranks rows that were never triaged.
+      const SEV = { critical: 0, high: 1, medium: 2, low: 3 };
+      const sev = (r) => SEV[r.triageSeverity] ?? [1, 2, 3][RANK[r.kind]] ?? 4;
       const win = await p.feedback.findMany({ where, orderBy: { createdAt: 'desc' }, take: SEV_WINDOW });
-      win.sort((a, b) => (RANK[a.kind] ?? 9) - (RANK[b.kind] ?? 9)); // stable → keeps newest-first within a kind
+      win.sort((a, b) => sev(a) - sev(b) || (RANK[a.kind] ?? 9) - (RANK[b.kind] ?? 9)); // stable → keeps newest-first within a rank
       rows = win.slice(page * take, page * take + take);
       pageTotal = win.length;
       windowed = total > win.length;
@@ -744,6 +775,48 @@ export default async function feedbackRoutes(app) {
       await p.report.update({ where: { id: r.reportId }, data: { status: 'closed', userUnread: true, lastActivityAt: new Date(), messages: { create: { staff: true, body: b.data.status === 'resolved' ? 'Marked as resolved by the team.' : 'Closed without action.' } } } }).catch(() => {});
       if (r.userId) notify(p, r.userId, 'report_closed', `Your ${r.kind} "${r.title || r.id}" was ${b.data.status === 'resolved' ? 'resolved' : 'closed'}.`, { bodyFr: `Ton ${r.kind} « ${r.title || r.id} » a été ${b.data.status === 'resolved' ? 'résolu' : 'fermé'}.`, href: `/dashboard?s=reports&r=${r.reportId}` }).catch(() => {});
     }
+    return { ok: true, item: pub(r) };
+  });
+
+  // agent-laya-triage: staff correct the automatic triage. The same door as the status (READ:
+  // manage_reports, MOD+). A staff edit sets source=staff, which no automatic pass — the Laya
+  // refinement, the backfill — ever writes over. `reset` hands the row back to the rules (and
+  // to Laya): the one way out of a staff triage, taken on purpose.
+  const triageIn = z.union([
+    z.object({ reset: z.literal(true) }).strict(),
+    z.object({
+      tags: z.array(z.enum(TRIAGE_TAGS)).min(1).max(MAX_TAGS),
+      category: z.enum(TRIAGE_CATEGORIES),
+      severity: z.enum(TRIAGE_SEVERITIES),
+      dupOfId: z.string().trim().max(40).nullable().optional(),
+    }).strict(),
+  ]);
+  app.post('/admin/feedback/:id/triage', { preHandler: READ }, async (req, reply) => {
+    const b = triageIn.safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input', detail: b.error.issues?.[0]?.message });
+    const p = await db();
+    const cur = await p.feedback.findUnique({ where: { id: req.params.id }, select: { id: true, projectKey: true, kind: true, title: true, body: true, createdAt: true, triageDupOfId: true, triageDupScore: true } });
+    if (!cur) return reply.code(404).send({ error: 'not_found' });
+    let data;
+    if ('reset' in b.data) {
+      const dup = bestDuplicate(cur, await duplicateCandidates(p, cur));
+      data = triageColumns(rulesTriage(cur), dup);
+    } else {
+      let dupOfId = b.data.dupOfId === undefined ? cur.triageDupOfId : b.data.dupOfId || null;
+      if (dupOfId) {
+        // Only a real report of the same project, never itself.
+        if (dupOfId === cur.id) return reply.code(400).send({ error: 'bad_duplicate' });
+        const other = await p.feedback.findUnique({ where: { id: dupOfId }, select: { projectKey: true } });
+        if (!other || other.projectKey !== cur.projectKey) return reply.code(400).send({ error: 'bad_duplicate' });
+      }
+      data = {
+        triageTags: TRIAGE_TAGS.filter((t) => b.data.tags.includes(t)), triageCategory: b.data.category, triageSeverity: b.data.severity,
+        triageDupOfId: dupOfId, triageDupScore: dupOfId && dupOfId === cur.triageDupOfId ? cur.triageDupScore : null,
+        triageSource: 'staff', triagedAt: new Date(), triagePending: false,
+      };
+    }
+    const r = await p.feedback.update({ where: { id: cur.id }, data });
+    if ('reset' in b.data) refineLater(p, r.id, { log: req.log });
     return { ok: true, item: pub(r) };
   });
 

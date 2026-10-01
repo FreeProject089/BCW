@@ -14,6 +14,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { LayoutDashboard, Copy, RefreshCw, Terminal, Smartphone, Fingerprint, X, Monitor, Tablet, MapPin, LogOut, Globe } from 'lucide-react';
 import { stagePending, addLocalAccount, attachBackupCodesBySecret } from '../lib/twofa-lib.js';
 import { TotpQuickFill } from './twofa-fill.jsx';
+import { SectionPicker } from '../ui/section-picker.jsx'; // agent-bcw-nav: the phone's section picker
 
 // A small section heading used to group the profile cards into clear zones
 // (Public profile / Security / Connections / Account) instead of one flat stack.
@@ -229,7 +230,11 @@ export default function Profile() {
             link to "your security settings" is a link, and so the browser Back button works
             the way the tabs make you expect. */}
         <div className="min-w-0">
-          <div className="inline-flex flex-wrap rounded-[12px] bg-[var(--surface-2)] p-0.5 mb-5">
+          {/* agent-bcw-nav: on a phone the four tabs are a picker, the dashboards' pattern,
+              instead of a segmented strip that wrapped onto a second line. */}
+          <SectionPicker className="md:hidden mb-5" label={t('prof.tabs', 'Profile sections')}
+            items={PROFILE_TABS.map(([id, icon, label]) => ({ id, icon, label: label(t) }))} active={tab} onPick={setTab} />
+          <div className="hidden md:inline-flex flex-wrap rounded-[12px] bg-[var(--surface-2)] p-0.5 mb-5">
             {PROFILE_TABS.map(([id, icon, label]) => {
               const Ico = icon;
               return (
@@ -793,7 +798,9 @@ function AccountInfoCard({ user }) {
             <span className="grid place-items-center w-9 h-9 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] shrink-0"><r.icon size={16} className="text-[var(--accent-ink)]" /></span>
             <div className="min-w-0 flex-1">
               <div className="text-[11px] uppercase tracking-wider text-[var(--faint)]">{r.label}</div>
-              <div className="text-sm font-medium truncate flex items-center gap-2">{r.value}{r.action}</div>
+              {/* agent-bcw-nav: the TEXT truncates, not the row: `truncate` on a flex row clipped a
+                  long e-mail's show/hide button off the card at 768px. */}
+              <div className="text-sm font-medium flex items-center gap-2 min-w-0"><span className="truncate min-w-0" title={typeof r.value === 'string' ? r.value : undefined}>{r.value}</span>{r.action}</div>
             </div>
           </div>
         ))}

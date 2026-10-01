@@ -63,6 +63,18 @@ const directive = (policy, name) => {
   return null;
 };
 
+// A policy made of `frame-ancestors` alone (the telemetry origin's, agent-bcw-os Sept 30 2026:
+// the site frames it in the OS mode, and its full policy still waits for a browser check) only
+// says who may frame the page. It is not a script policy, so the script and form checks below
+// do not apply to it; what it may not do is let ANY page frame it.
+const framingOnly = (v) => { const ds = v.split(';').map((x) => x.trim()).filter(Boolean); return ds.length > 0 && ds.every((d) => /^frame-ancestors\s/i.test(d)); };
+for (const p of policies.filter((x) => framingOnly(x.value))) {
+  const fa = directive(p.value, 'frame-ancestors') || [];
+  const bad = fa.filter((s) => ['*', 'https:', 'http:', 'data:', 'blob:'].includes(s.toLowerCase()) || /^\S*\*/.test(s));
+  if (!fa.length || bad.length) fail.push(`${rel(CADDYFILE)}:${p.line}: frame-ancestors ${bad.length ? `allows ${bad.join(' ')} (any page could frame it)` : 'is empty'}.`);
+}
+policies.splice(0, policies.length, ...policies.filter((x) => !framingOnly(x.value)));
+
 for (const p of policies) {
   const where = `${rel(CADDYFILE)}:${p.line}`;
   const script = directive(p.value, 'script-src') || directive(p.value, 'default-src');

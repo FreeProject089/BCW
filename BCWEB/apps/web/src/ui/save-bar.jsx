@@ -91,7 +91,7 @@ export function SaveBar({
           {busy ? t('savebar.saving', 'Saving…') : dirty ? t('savebar.dirty', 'Unsaved changes') : t('savebar.clean', 'All changes saved')}
         </span>
         {detail && <span className="text-[var(--muted)]">{' · '}{detail}</span>}
-        <span className="hidden md:inline text-[var(--faint)]">{' · '}{t('savebar.kbd', 'Ctrl+S to save')}</span>
+        <span className="hidden md:inline only-desktop text-[var(--faint)]">{' · '}{t('savebar.kbd', 'Ctrl+S to save')}</span>
       </span>
       {/* Not shrink-0: on a phone in French the group is wider than the bar, and a group that
           cannot shrink cannot wrap. It takes its own line and its buttons wrap inside it. */}

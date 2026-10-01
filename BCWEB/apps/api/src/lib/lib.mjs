@@ -413,6 +413,9 @@ export const CAPABILITIES = [
   // Translators — scoped to what they may translate, not to admin power. `translate_site`
   // opens the runtime-locale editor (site strings); the other two scope blog/docs translation.
   'translate_site', 'translate_blog', 'translate_docs',
+  // agent-bcw-pools: early access (pre-releases) on EVERY project, without the right to edit
+  // any page. The per-project form of it is the `early_access` right (a grant or a scoped role).
+  'manage_prereleases',
 ];
 // Default capabilities a MOD holds without explicit grants.
 const MOD_DEFAULT_CAPS = ['manage_users'];
@@ -468,7 +471,9 @@ export function isScopedRole(r) {
 // automatically the person who should read what visitors write to the project.
 // 'studio': draw the studio pages of these projects (PLAN-STUDIO-2026 3.1). Its own right, not
 // implied by 'pages': the page's words and its hand-drawn layout are granted apart.
-const SCOPE_RIGHTS = ['pages', 'blog', 'market', 'inbox', 'studio'];
+// 'early_access' (agent-bcw-pools): open and run the pre-releases of these projects (routes/
+// prereleases.mjs). Its own right: running a sign-up list is not editing the page.
+const SCOPE_RIGHTS = ['pages', 'blog', 'market', 'inbox', 'studio', 'early_access'];
 export function scopeRights(r) {
   const rights = Array.isArray(r?.scope?.rights) ? r.scope.rights.filter((x) => SCOPE_RIGHTS.includes(x)) : [];
   return rights.length ? rights : ['pages'];
@@ -621,7 +626,7 @@ export async function projectGrants(uid) {
 }
 /** What a DIRECT grant may carry. A scoped role carries more (blog, market, inbox), which have
  *  their own direct grants elsewhere (BlogPermission) or none. */
-export const GRANT_RIGHTS = ['pages', 'studio'];
+export const GRANT_RIGHTS = ['pages', 'studio', 'early_access']; // early_access: agent-bcw-pools
 /** The rights a direct ProjectPermission row carries. Same allowlist idea as a scoped role's:
  *  an unknown string grants nothing, and an empty or missing list means `pages`, the only
  *  thing a grant meant before the column existed. */
@@ -658,6 +663,42 @@ export async function studioGrants(uid) {
     }
   } catch { /* no grants on error */ }
   return out;
+}
+// agent-bcw-pools: the early-access right, same two sources as the studio right (direct grants
+// whose rights include it, scoped roles carrying it). Never implied by 'pages'.
+export async function earlyAccessGrants(uid) {
+  const out = { allShowcase: false, showcaseIds: new Set(), projectKeys: new Set() };
+  if (!uid) return out;
+  try {
+    const p = await db();
+    const gs = await p.projectPermission.findMany({ where: { userId: uid }, select: { showcaseProjectId: true, projectKey: true, allShowcase: true, rights: true } });
+    for (const g of gs) {
+      if (!grantRights(g).includes('early_access')) continue;
+      if (g.allShowcase) out.allShowcase = true;
+      if (g.showcaseProjectId) out.showcaseIds.add(g.showcaseProjectId);
+      if (g.projectKey) out.projectKeys.add(g.projectKey);
+    }
+    const u = await p.user.findUnique({ where: { id: uid }, select: { customRoleIds: true } });
+    if (u?.customRoleIds?.length) {
+      const roles = await p.customRole.findMany({ where: { id: { in: u.customRoleIds } }, select: { scope: true } });
+      for (const r of roles) {
+        if (!isScopedRole(r) || !scopeRights(r).includes('early_access')) continue;
+        if (r.scope.allShowcase) out.allShowcase = true;
+        for (const id of r.scope.showcaseIds || []) out.showcaseIds.add(id);
+        for (const k of r.scope.projectKeys || []) out.projectKeys.add(k);
+      }
+    }
+  } catch { /* no grants on error */ }
+  return out;
+}
+/** May this user run early access on ONE project (kind 'project' + key, or 'showcase' + id)?
+ *  The manage_prereleases capability (every project), or the early_access right on it. Page
+ *  editors are asked separately by the caller (project-target.mjs canRunEarlyAccess). */
+export async function holdsEarlyAccessRight(user, kind, id) {
+  if (!user?.uid) return false;
+  if (hasCap(user, 'manage_prereleases')) return true;
+  const g = await earlyAccessGrants(user.uid);
+  return kind === 'project' ? g.projectKeys.has(id) : (g.allShowcase || g.showcaseIds.has(id));
 }
 /** Does this user hold the studio right on this target, whatever its switch says? This is
  *  what "may they GRANT it" asks (routes/roles.mjs); opening asks canUseStudio below. */

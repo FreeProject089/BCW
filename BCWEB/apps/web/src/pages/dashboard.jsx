@@ -13,7 +13,7 @@ import { useI18n } from '../i18n.jsx';
 import { useIntro } from '../ui/IntroContext.jsx';
 import { MyRepos, Billing } from './repos.jsx';
 import { TransfersCard } from './profile.jsx';
-import { MyDiscordServers } from './discord-servers.jsx';
+import { MyDiscordServers } from './discord-dashboard.jsx'; // agent-bcw-bot: the rebuilt bot dashboard
 import { OnboardingSlot } from './onboarding.jsx';
 
 // These two tabs live in admin.jsx (an artefact of splitting the old pages monolith —

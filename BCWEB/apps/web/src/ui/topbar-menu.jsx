@@ -40,7 +40,7 @@ const EST_W = 288; // first-frame width guess, corrected before paint once the p
  * @param footer       optional node under the last section
  * @param title        tooltip of the trigger
  */
-export function TopMenu({ label, trigger, triggerClass = '', chevron = false, header = null, sections = [], footer = null, title, dataKey }) {
+export function TopMenu({ label, trigger, triggerClass = '', chevron = false, header = null, sections = [], footer = null, title, dataKey, align = 'end' }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState(null);
   const btnRef = useRef(null);
@@ -62,7 +62,9 @@ export function TopMenu({ label, trigger, triggerClass = '', chevron = false, he
     const w = Math.min(menuRef.current?.offsetWidth || EST_W, vw - GAP * 2);
     // Aligned on the trigger's END edge (the menus live at the right of the bar), then kept on
     // screen: a trigger near the left edge pushes the panel right, never off the page.
-    let left = r.right - w;
+    // agent-bcw-nav: a menu opened from the LEFT of the bar (the Projects pill) hangs from the
+    // trigger's start edge instead.
+    let left = align === 'start' ? r.left : r.right - w;
     left = Math.max(GAP, Math.min(left, vw - GAP - w));
     const next = { left: Math.round(left), top: Math.round(r.bottom + GAP) };
     setPos((p) => (p && p.left === next.left && p.top === next.top ? p : next));

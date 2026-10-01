@@ -10,6 +10,7 @@ import { api, SITE_URL } from '../api.mjs';
 import { guildConfig, config } from '../config.mjs';
 import { tr } from '../i18n.mjs';
 import { learnButton } from '../help.mjs';
+import { isPaywall, paywallCard } from '../paywall.mjs'; // agent-bcw-bot
 import { CATEGORIES, GROUPS, CATEGORY_KEYS, normalizeLogs, resolveRoute, setupLogForum, setupAlertForum, logEvent, _queue } from './logs.mjs';
 import { manualLockdown, stateFor, lockdownActive } from './automod.mjs';
 
@@ -37,6 +38,8 @@ async function saveOrExplain(i, t, r) {
   if (r?.error === 'not_allowed' && r.linked === false) {
     await ui.reply(i, { title: t('cfg.link.title'), body: [t('cfg.link.body')], color: ui.INFO, buttons: [ui.btn('eco:link', t('btn.link'), ButtonStyle.Primary, { emoji: 'link' })] });
   } else if (r?.error === 'not_allowed') await ui.line(i, t('cfg.notmanager'), { color: ui.BAD });
+  // agent-bcw-bot: a paid feature from Discord → the plans page, not a bare "failed".
+  else if (isPaywall(r)) await (i.deferred || i.replied ? ui.editReply(i, paywallCard(t, r, i.guildId)) : ui.reply(i, paywallCard(t, r, i.guildId)));
   else await ui.line(i, t('cfg.failed'), { color: ui.BAD });
   return false;
 }

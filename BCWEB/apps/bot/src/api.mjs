@@ -86,7 +86,12 @@ export const api = {
   // owner/manager list itself. Keeps its error, for the same reason setGuildSettings does.
   setGuildFeatures: (guildId, actorDiscordId, patch) =>
     call('PUT', `/bot/guilds/${encodeURIComponent(guildId)}/features`, { actorDiscordId, patch })
-      .catch((e) => ({ ok: false, error: e?.body?.error || 'network', linked: e?.body?.linked })),
+      // agent-bcw-bot: a 402 names the feature / limit, so the reply can be the paywall card.
+      .catch((e) => ({ ok: false, error: e?.body?.error || 'network', linked: e?.body?.linked, feature: e?.body?.feature, limit: e?.body?.limit, max: e?.body?.max })),
+  // agent-bcw-bot: the server's plan (tier, features, AI budget) and the /ask door. aiAsk never
+  // throws: a refusal comes back as { ok: false, error, status } for the paywall card.
+  guildPlan: (guildId) => call('GET', `/bot/guilds/${encodeURIComponent(guildId)}/plan`),
+  aiAsk: (body) => call('POST', '/bot/ai/ask', body).catch((e) => ({ ok: false, error: e?.body?.error || 'network', status: e?.status || 0 })),
   reportHandlerError: (message, stack, context) => call('POST', '/bot/errors', { message, stack, context }).catch(() => {}),
   // Self-serve role panels. `panels` is EVERY panel (a button press on last month's
   // message must still work), `due` names the ones whose rendered form has changed.

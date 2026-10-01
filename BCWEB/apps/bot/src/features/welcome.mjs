@@ -5,6 +5,7 @@ import { AttachmentBuilder } from 'discord.js';
 import * as ui from '../ui.mjs';
 import { guildConfig } from '../config.mjs';
 import { api, SITE_URL } from '../api.mjs';
+import { gates } from '../throttle.mjs'; // agent-bcw-bot: a raid of joins renders two banners at a time, not fifty
 
 let canvas = null, canvasTried = false;
 async function loadCanvas() {
@@ -164,7 +165,7 @@ export async function onMemberAdd(member) {
   const ch = member.guild.channels.cache.get(w.channelId);
   if (!ch?.send) return;
   // Banner failures are LOGGED (not swallowed) so a missing image is diagnosable.
-  const img = await banner(member, 'Welcome', w.gifBg, w.bgImage).catch((e) => { console.warn('[bot] welcome banner failed:', e.message); return null; });
+  const img = await gates.render.run(() => banner(member, 'Welcome', w.gifBg, w.bgImage)).catch((e) => { console.warn('[bot] welcome banner failed:', e.message); return null; });
   await ch.send(welcomeCard(applyVars(w.joinMessage, member), img, 0xf59e0b))
     .catch((e) => console.warn('[bot] welcome send failed:', e.message));
 }
@@ -175,7 +176,7 @@ export async function onMemberRemove(member) {
   const ch = member.guild.channels.cache.get(w.channelId);
   if (!ch?.send) return;
   // The bye message gets its own banner too (same style, "Goodbye" headline).
-  const img = await banner(member, 'Goodbye', w.gifBg, w.bgImage).catch((e) => { console.warn('[bot] bye banner failed:', e.message); return null; });
+  const img = await gates.render.run(() => banner(member, 'Goodbye', w.gifBg, w.bgImage)).catch((e) => { console.warn('[bot] bye banner failed:', e.message); return null; });
   await ch.send(welcomeCard(applyVars(w.leaveMessage, member), img, 0x6b7280))
     .catch((e) => console.warn('[bot] bye send failed:', e.message));
 }
