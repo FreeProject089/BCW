@@ -38,10 +38,10 @@
 # guides/run/AI_LAYA_EN.md, "What was verified"): `docker compose --profile ai up` once by hand
 # before you rely on it.
 
-# python:3.12-slim-trixie, pinned by tag AND digest (the index digest, 2026-09-29). Both stages
+# python:3.12-slim-trixie, pinned by tag AND digest (the index digest, re-pinned 2026-10-06). Both stages
 # MUST use the same one: the venv's python is a symlink to /usr/local/bin/python3.12 of the base.
 # Bump both lines together: `docker buildx imagetools inspect python:3.12-slim-trixie`.
-FROM python:3.12-slim-trixie@sha256:f77ac9e44ae96ef2c90b8053ea08c31f8be030f824196b0ae4db6d462c84e51f AS build
+FROM python:3.12-slim-trixie@sha256:02108f5d322dd89f1c9e552442c25acb0543dfdbc455693a5599624f20d9155d AS build
 
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_NO_CACHE_DIR=1 \
@@ -63,7 +63,7 @@ RUN python -m venv /opt/venv \
  && find /opt/venv -name __pycache__ -type d -prune -exec rm -rf {} +
 
 # ── runtime ──────────────────────────────────────────────────────────────────────────────────
-FROM python:3.12-slim-trixie@sha256:f77ac9e44ae96ef2c90b8053ea08c31f8be030f824196b0ae4db6d462c84e51f
+FROM python:3.12-slim-trixie@sha256:02108f5d322dd89f1c9e552442c25acb0543dfdbc455693a5599624f20d9155d
 
 ENV PATH=/opt/venv/bin:$PATH \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -96,7 +96,15 @@ ENV PATH=/opt/venv/bin:$PATH \
 #     links stay (a few coreutils login-accounting tools such as `who` lose libsystemd; nothing
 #     here runs them).
 #   - The import check at the end fails the build if the cut removed anything Python needs.
+#   - FIRST, while apt is still there: `apt-get upgrade` pulls the Debian security fixes published
+#     after the pinned base (as `apk upgrade` does in the Alpine images). 2026-10-06: the base
+#     digest above already carries openssl 3.5.7-1~deb13u3, but not libpcre2-8-0 10.46-1~deb13u3
+#     (CVE-2026-103111, HIGH), which turned the "BCWEB security" run red. The lists and caches go
+#     with apt in the purge below.
 RUN set -eu; \
+    apt-get update; \
+    DEBIAN_FRONTEND=noninteractive apt-get upgrade -y --no-install-recommends; \
+    apt-get clean; \
     useradd --uid 10001 --user-group --create-home --home-dir /home/laya --shell /usr/sbin/nologin laya; \
     mkdir -p /models/hf; \
     chown -R laya:laya /models; \

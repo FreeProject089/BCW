@@ -35,7 +35,9 @@ RUN cargo build --release
 # - the digest (multi-arch index): a floating tag let the build take whatever distroless
 #   published that day. Bump it deliberately, then rescan as security.yml does:
 #   `docker buildx imagetools inspect gcr.io/distroless/cc-debian13:nonroot`.
-FROM gcr.io/distroless/cc-debian13:nonroot@sha256:54df941ed0d06a1bd95ef5e0ce391fd8d9f94b64782dc9a60062727849ee3f97
+#   Re-pinned 2026-10-06: the previous digest shipped libssl3t64 3.5.7-1~deb13u2 (CVE-2026-75804,
+#   CVE-2026-84782, HIGH); this one ships 3.5.7-1~deb13u3.
+FROM gcr.io/distroless/cc-debian13:nonroot@sha256:e792ab3d241a468a4fd7519ddbbebe66b49b5f365771716ea688ad40b6c6f1c2
 WORKDIR /app
 COPY --from=server /app/target/release/bmm-telemetry-server /usr/local/bin/bmm-telemetry-server
 COPY --from=web /web/dist ./public

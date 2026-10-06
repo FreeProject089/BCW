@@ -69,3 +69,9 @@ e404f531a482bd03ce70b5ed20dc82f550940ae4:BCWEB/apps/api/src/seed-docs-fr.mjs:cur
 f94bffeee14292b3abcce5542450c8f3b3c6ea54:BCWEB/apps/web/src/pages/dashboard.jsx:generic-api-key:137
 d4c89fe4f07fe5ea74cb8bdef95f38878a1a18fb:BCWEB/apps/web/src/twofa-lib.js:generic-api-key:6
 9fa0827b16e38d67cab43f63ae6019cc905ee600:BCWEB/apps/web/src/ui/palette-recent.js:generic-api-key:14
+
+# bot-billing.test.mjs (2ee83b16, line 455): the BYOK test PUTs a made-up provider key
+# ('sk-test-guildkey-…', sent to a fake local base URL) and asserts it is never echoed back nor
+# written to the audit log. Never a credential; the test now builds it at run time.
+# Reviewed 2026-10-06.
+2ee83b163ad87e526c6055d9d04341f531271022:BCWEB/apps/api/test/bot-billing.test.mjs:generic-api-key:455
