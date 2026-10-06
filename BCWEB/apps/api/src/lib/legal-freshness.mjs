@@ -85,14 +85,22 @@ export function legalWordingDate(git, rel, { working = null, today = new Date().
   const show = (rev) => { try { return git(['show', `${rev}:${rel}`]); } catch { return null; } };
   if (working != null) {
     const head = show('HEAD');
-    if (head != null && stripClasses(working) !== stripClasses(head)) return today;
+    const lf = (t) => String(t).replace(/\r\n/g, '\n');   // a CRLF checkout is not an edit
+    if (head != null && stripClasses(lf(working)) !== stripClasses(lf(head))) return today;
   }
   const log = String(git(['log', '--format=%H %cs', '--', rel]) || '').trim().split('\n').filter(Boolean);
   for (const line of log) {
     const [sha, date] = line.split(' ');
     const after = show(sha);
     const before = show(`${sha}^`);
-    if (before == null || after == null) return date;   // created here, or a root commit
+    if (before == null || after == null) {
+      // A shallow clone cuts history: its boundary commit LOOKS like the file's creation and
+      // would report the checkout's date. That is unknown, not a date.
+      let shallow = false;
+      try { shallow = String(git(['rev-parse', '--is-shallow-repository'])).trim() === 'true'; } catch { /* treat as full */ }
+      if (shallow && after != null) return '';
+      return date;   // created here, or a root commit
+    }
     if (stripClasses(after) !== stripClasses(before)) return date;
   }
   return log.length ? log[log.length - 1].split(' ')[1] : '';
