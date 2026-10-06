@@ -126,13 +126,14 @@ Services, arêtes `depends_on`, ordre de démarrage, et **ce qui est publié sur
 Ce n'est pas une liste de fautes — le proxy d'entrée *doit* publier 80 et 443. C'est la liste
 de ce qui est joignable depuis l'extérieur de la machine, une liste que quelqu'un devrait
 pouvoir réciter et ne le peut généralement pas. Elle est épinglée sous le nom `publishedPorts`
-plus bas et compte trois entrées, pour douze services (onze, plus le ponctuel `volume-perms`) :
+plus bas et compte deux entrées, pour douze services (onze, plus le ponctuel `volume-perms`) :
 
 | Service | Publié | Remarque |
 | --- | --- | --- |
-| `caddy` | `80`, `443`, `5176` | L'entrée. 80 et 443 sont sa raison d'être. |
-`db` (`5432`), `api` (`3000-3009`, une **plage**) et `storage` (`9000`, le stockage objet ; il n'a
-pas de console) sont publiés uniquement sur `127.0.0.1`, d'où leur absence de cette liste : la
+| `caddy` | `80`, `443` | L'entrée. 80 et 443 sont sa raison d'être. |
+
+`db` (`5432`), `api` (`3000-3009`, une **plage**), `storage` (`9000`, le stockage objet ; il n'a
+pas de console) et le `5176` du site local de Caddy sont publiés uniquement sur `127.0.0.1`, d'où leur absence de cette liste : la
 carte lit l'adresse d'écoute, et la boucle locale n'est pas le réseau. L'API et le stockage objet (alors
 MinIO, avec sa console sur `9001`) étaient publiés sur toutes les interfaces ; les ports publiés par Docker contournent `ufw` sur une
 installation standard, donc ils étaient joignables de l'extérieur quoi que dise le pare-feu
@@ -145,9 +146,12 @@ installation standard, donc ils étaient joignables de l'extérieur quoi que dis
     pare-feu écrite une fois) a raison jusqu'au prochain redémarrage. Lisez la carte, ou
     `docker compose port api 3000`, plutôt que le premier port de la plage.
 
-`5176` est l'adresse locale du site ; `run/DEPLOY_FR.md` §12 précise que le pare-feu doit tout
-fermer sauf 22/80/443 juste après le premier déploiement, d'où l'intérêt de mettre le même fait
-sur un écran qu'on regarde plus d'une fois.
+`5176` est l'adresse locale du site, sur la boucle locale depuis le 2026-10-06 : le `docker ps` de
+production le montrait, avec l'API et la console MinIO, sur `0.0.0.0`, parce que le serveur tournait
+avec un compose antérieur au correctif. La CI lance désormais `infra/check-published-ports.mjs`,
+qui échoue sur tout port publié vers le réseau autre que le 80/443 de Caddy, avec le même lecteur
+de ports que cette carte. Un pare-feu sur l'hôte n'y suffit pas : les ports publiés par Docker le
+contournent (`run/DEPLOY_FR.md` §12).
 
 !!! note "Cette carte répond désormais dans le conteneur"
     Elle renvoyait un 404 sur toute instance déployée, parce que rien ne copie `infra/` dans
@@ -311,7 +315,7 @@ les semaines et sont écrits plus haut comme des instantanés datés, volontaire
 | `liveSecretFallbacks` | Lectures `process.env` de nom secret avec repli codé en dur et sans garde de démarrage | **0** |
 | `dataLossMigrations` | Migrations contenant `DROP TABLE`, `DROP COLUMN` ou `DELETE FROM` | **3** |
 | `indexDrift` | Index créés par une migration et absents de `schema.prisma` | **0** |
-| `publishedPorts` | Entrées de port joignables depuis l'extérieur de la machine | **3** |
+| `publishedPorts` | Entrées de port joignables depuis l'extérieur de la machine | **2** |
 | `workflows` | Fichiers de workflow GitHub Actions que la carte peut atteindre | **5** |
 | `workflowJobs` | Jobs dans ces workflows | **21** |
 | `workflowSecrets` | Secrets distincts exigés par ces workflows | **2** |

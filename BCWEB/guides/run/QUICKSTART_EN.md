@@ -59,6 +59,9 @@ docker compose exec db psql -U bcweb -d bcweb -c \
 ```bash
 ufw allow 22 && ufw allow 80 && ufw allow 443 && ufw enable
 ```
+ufw does **not** filter Docker's published ports, and an Alpine host or LXC has no ufw: what
+keeps the API and storage off the network is their `127.0.0.1` bind in the compose file. Check it
+with `docker ps --format '{{.Names}} {{.Ports}}'` (see DEPLOY guide §12).
 
 ### 7. CDN — Cloudflare (free, recommended)
 1. Cloudflare → **Add a site** → your domain → set the given **nameservers** at your registrar.

@@ -344,11 +344,32 @@ L'API expose trois sondes (toutes exemptées du rate limiter, sans logs de requ�
 
 ## 12. Verrouille — pare-feu (juste après le premier déploiement)
 
-Seul Caddy doit être exposé à Internet. Le compose publie aussi `5432` (db), `3000` (api)
-et `9000` (stockage objet) — sur `127.0.0.1` seulement ; ferme quand même tout sauf SSH + HTTP(S) :
+Seul Caddy doit être exposé à Internet. Le compose publie aussi `5432` (db), `3000-3009` (api),
+`9000` (stockage objet) et le `5176` du site local de Caddy — sur `127.0.0.1` seulement : ils
+répondent sur le serveur lui-même (la sonde `/ready` des scripts de déploiement, un tunnel SSH) et
+nulle part ailleurs. Seuls le `80` et le `443` de Caddy sont publiés vers le réseau, et la CI échoue
+sur tout autre (`node BCWEB/infra/check-published-ports.mjs`, sur chaque fichier compose du dépôt).
+
+**C'est l'adresse de liaison qui protège, pas le pare-feu.** Docker écrit ses propres règles
+iptables pour les ports publiés, avant celles d'ufw : `ufw deny 3000` ne fait rien pour un conteneur
+publié sur `0.0.0.0:3000`. Un hôte ou LXC Alpine (le serveur de production en est un, sur Proxmox)
+n'a pas d'ufw du tout. Vérifie ce que le serveur publie vraiment — après chaque déploiement, pas
+seulement le premier :
+```bash
+docker ps --format '{{.Names}} {{.Ports}}'
+# attendu : 0.0.0.0/[::] UNIQUEMENT sur 80 et 443 (caddy) ; tout le reste en 127.0.0.1:...
+```
+et depuis une machine **extérieure** (pas le serveur), `nc -zv <ip-serveur> 3000 9000 9001 5176`
+doit échouer pour chaque port. Ferme quand même tout sauf SSH + HTTP(S) en bordure — le pare-feu
+de l'hébergeur/Proxmox, ou ufw sur un hôte Debian/Ubuntu :
 ```bash
 ufw allow 22 && ufw allow 80 && ufw allow 443 && ufw enable
 ```
+Le stockage objet n'a pas de console à atteindre ; versitygw ne sert que le S3. Pour atteindre un
+port en boucle locale depuis ta machine, passe par un tunnel SSH :
+`ssh -L 9000:127.0.0.1:9000 -p <port-ssh> <user>@<serveur>`. Procédure de correction du serveur de
+production (ports publiés sur toutes les interfaces, octobre 2026) :
+[SECURITY_PORTS_FIX_FR.md](SECURITY_PORTS_FIX_FR.md).
 Postgres, Redis et le stockage objet restent sur le réseau Docker interne — ne les expose
 jamais. (Le `9000` du stockage doit être joignable publiquement, parce que le navigateur
 utilise les URLs d'upload pré-signées en direct : mets-le derrière le sous-domaine Caddy

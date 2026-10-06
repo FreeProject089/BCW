@@ -30,7 +30,7 @@ avec des valeurs factices.
 | Job | Ce qu'il vérifie |
 |---|---|
 | Web build (vite) | `npm ci`, `npm run lint`, `npm run i18n:check`, `npm run css:check`, `npm run legal:check`, `npm run build`, `npm run budget` dans `apps/web` |
-| API syntax + Prisma + billing tests | `node --check` sur chaque module de l'API, variables d'env documentées, les affirmations des guides (`guides/check-claims.mjs`), liens des seeds, guide markdown, `prisma validate`, `migrate deploy` sur un Postgres jetable, contrôle de dérive des migrations, `npm test` |
+| API syntax + Prisma + billing tests | `node --check` sur chaque module de l'API, variables d'env documentées, aucun port publié vers le réseau sauf le 80/443 de Caddy (`infra/check-published-ports.mjs`), les affirmations des guides (`guides/check-claims.mjs`), liens des seeds, guide markdown, `prisma validate`, `migrate deploy` sur un Postgres jetable, contrôle de dérive des migrations, `npm test` |
 | Native addon (Rust) | `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`, l'addon se construit et se charge, tests du chemin natif |
 | Caddyfile | `caddy validate` avec l'image de la stack, et `infra/caddy/site.mjs selftest` |
 | Secret scan | `.github/scripts/secret-scan.mjs` (autotest, puis chaque fichier suivi, `*.example` compris) |

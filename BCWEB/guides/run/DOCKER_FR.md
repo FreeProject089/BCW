@@ -21,7 +21,7 @@ pour la production. Tout est piloté par **un seul** fichier compose :
 | `bot` | build `apps/bot/Dockerfile` | Bot Discord (connection manager) | — |
 | `telemetry-db` | `postgres:16-alpine` | Postgres séparé pour la télémétrie BMM | interne uniquement |
 | `telemetry` | build `bmm/telemetry-dashboard/Dockerfile` | Ingest + dashboard télémétrie (Rust + React) | via caddy |
-| `caddy` | `caddy:2-alpine` | Proxy inverse de bord — HTTPS, en-têtes sécurité, anti-bot | `80`, `443`, `5176` |
+| `caddy` | `caddy:2-alpine` | Proxy inverse de bord — HTTPS, en-têtes sécurité, anti-bot | `80`, `443` (+ `127.0.0.1:5176`, le site local) |
 | `pgbouncer` | `edoburu/pgbouncer` | Pooler de connexions Postgres **opt-in** (profil `pgbouncer`) | interne uniquement |
 
 L'**ordre de dépendance** est géré par `depends_on` + healthchecks : `db` doit être
@@ -104,8 +104,11 @@ service se recrée (coupure de quelques secondes sur ce service seulement). Pour
 
 - `.env` : vrais `POSTGRES_PASSWORD`, `JWT_SECRET`, clés S3, `SITE_DOMAIN`/`SITE_URL`
   (https), `COOKIE_DOMAIN=.ton-domaine.com`, clés Stripe + secret webhook.
-- Ports : `5432` (db), `3000` (api) et `9000` (stockage) sont publiés sur `127.0.0.1`
-  seulement — Caddy route en interne, et il n'y a plus de console de stockage à publier.
+- Ports : `5432` (db), `3000` (api), `9000` (stockage) et le `5176` local de Caddy sont publiés
+  sur `127.0.0.1` seulement — Caddy route en interne, et il n'y a plus de console de stockage à
+  publier. Seuls le `80`/`443` de Caddy atteignent le réseau ; la CI échoue sur tout le reste
+  (`node BCWEB/infra/check-published-ports.mjs`). Sur le serveur en marche :
+  `docker ps --format '{{.Names}} {{.Ports}}'` ne doit montrer `0.0.0.0` ou `[::]` que sur `80` et `443`.
 - Montée en charge : `API_REPLICAS=3` dans `.env` + profil `pgbouncer`, puis `up -d`
   (voir guide DEPLOY §Performance) quand le trafic le justifie.
 - Sauvegardes : `pg_dump` pour `db`, un tar de `s3-data` (guide DEPLOY §10, `infra/backup/backup.sh`).

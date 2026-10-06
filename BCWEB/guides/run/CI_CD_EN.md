@@ -29,7 +29,7 @@ dummy values.
 | Job | What it checks |
 |---|---|
 | Web build (vite) | `npm ci`, `npm run lint`, `npm run i18n:check`, `npm run css:check`, `npm run legal:check`, `npm run build`, `npm run budget` in `apps/web` |
-| API syntax + Prisma + billing tests | `node --check` on every API module, env vars documented, the guides' claims (`guides/check-claims.mjs`), seeded links, the markdown guide, `prisma validate`, `migrate deploy` on a throw-away Postgres, the migration drift check, `npm test` |
+| API syntax + Prisma + billing tests | `node --check` on every API module, env vars documented, no port published to the network but Caddy 80/443 (`infra/check-published-ports.mjs`), the guides' claims (`guides/check-claims.mjs`), seeded links, the markdown guide, `prisma validate`, `migrate deploy` on a throw-away Postgres, the migration drift check, `npm test` |
 | Native addon (Rust) | `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`, the addon builds and loads, native-path tests |
 | Caddyfile | `caddy validate` with the image the stack runs, and `infra/caddy/site.mjs selftest` |
 | Secret scan | `.github/scripts/secret-scan.mjs` (self-test, then every tracked file, `*.example` included) |

@@ -58,7 +58,9 @@ export function parseCompose(text) {
       else if (key === 'build') cur.build = true;
       else if (key === 'healthcheck') cur.healthcheck = true;
       else if (['ports', 'expose', 'depends_on', 'volumes'].includes(key)) {
-        const inline = value.trim().match(/^\[(.*)\]$/);
+        // A trailing `# comment` after an inline array made the whole array unreadable, and an
+        // unreadable `ports:` is a published port nobody sees (check-published-ports.mjs).
+        const inline = value.replace(/\s+#.*$/, '').trim().match(/^\[(.*)\]$/);
         if (inline) {
           const items = inline[1].split(',').map((x) => x.trim().replace(/^["']|["']$/g, '')).filter(Boolean);
           if (key === 'depends_on') cur.dependsOn.push(...items);
@@ -80,7 +82,7 @@ export function parseCompose(text) {
     // of them reported as "compose will fail to start".
     const item = raw.match(/^ {6}(?! )-?\s*(.+?):?\s*$/);
     if (item && listKey) {
-      const v = item[1].trim().replace(/^["']|["']$/g, '');
+      const v = item[1].replace(/\s+#.*$/, '').trim().replace(/^["']|["']$/g, '');
       if (!v) continue;
       if (listKey === 'depends_on') cur.dependsOn.push(v);
       else if (listKey === 'ports') cur.ports.push(v);
@@ -102,13 +104,41 @@ export function parseCompose(text) {
  * "3000:3000" publishes to every interface. "127.0.0.1:3000:3000" publishes to loopback
  * only. The difference is whether the service is reachable from the network the host sits
  * on, and it is one token of YAML.
+ *
+ * A BARE port under `ports:` ("5432") is NOT private: Docker publishes it on every interface,
+ * on a random host port. Only `expose:` keeps a port inside the compose network. This used to
+ * report a bare port as "publishes nothing" — the one answer a security map must never give.
+ *
+ * `${VAR:-default}` holds a colon of its own, so it is set aside before the spec is split
+ * (`127.0.0.1:${DB_HOST_PORT:-5432}:5432` is three parts, not four). A bind address that is a
+ * variable is not loopback: what it resolves to is the server's .env, which nothing here sees.
+ *
+ * check-published-ports.mjs (CI) uses this same function, so the admin map and the gate cannot
+ * disagree about what is public.
  */
 export function parsePort(spec) {
-  const s = String(spec).trim();
-  const parts = s.split(':');
-  if (parts.length === 1) return { host: null, container: parts[0], bind: null, public: false };
-  if (parts.length === 2) return { host: parts[0], container: parts[1], bind: '0.0.0.0', public: true };
-  return { host: parts[1], container: parts[2], bind: parts[0], public: !/^(127\.|localhost|::1)/.test(parts[0]) };
+  const vars = [];
+  const s = String(spec).trim().replace(/\$\{[^}]*\}/g, (m) => `@@V${vars.push(m) - 1}@@`);
+  const back = (x) => (x == null ? x : x.replace(/@@V(\d+)@@/g, (_, i) => vars[Number(i)]));
+  let bind = null;
+  let rest = s;
+  const v6 = s.match(/^\[([^\]]*)\]:(.*)$/);
+  if (v6) { bind = v6[1]; rest = v6[2]; }
+  const parts = rest.split(':');
+  if (!v6 && parts.length >= 3) bind = parts.shift();
+  const b = back(bind) ?? '0.0.0.0';
+  // One part = container port only: Docker picks the host port, on every interface.
+  if (parts.length === 1) return { host: null, container: back(parts[0]), bind: b, public: !isLoopback(b) };
+  return { host: back(parts[0]), container: back(parts.slice(1).join(':')), bind: b, public: !isLoopback(b) };
+}
+
+/**
+ * Loopback, as Docker reads a bind address: 127.0.0.0/8 or ::1. Not `localhost` (Docker
+ * refuses a name there), not an empty string, not a variable.
+ */
+export function isLoopback(bind) {
+  const b = String(bind ?? '').trim();
+  return /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(b) || b === '::1';
 }
 
 /**
@@ -118,8 +148,9 @@ export function parsePort(spec) {
  * supposed to publish 80 and 443. It is the list of things that are reachable from outside
  * the machine, which is a list somebody should be able to recite and usually cannot.
  *
- * On this stack it reports three: Caddy's 80/443/5176. Postgres (5432), the API (3000-3009)
- * and object storage (9000) are published on 127.0.0.1 only (SECURITY_SUMMARY §9 #2), and
+ * On this stack it reports two: Caddy's 80 and 443. Postgres (5432), the API (3000-3009),
+ * object storage (9000) and Caddy's local-dev 5176 are published on 127.0.0.1 only
+ * (SECURITY_SUMMARY §9 #2; check-published-ports.mjs fails CI otherwise), and
  * loopback is not the network. They used to be on every interface, with only a line in
  * guides/run/DEPLOY_EN.md §12 telling the operator to firewall them — which is the point of
  * showing this at all: the same fact on a screen somebody looks at more than once.

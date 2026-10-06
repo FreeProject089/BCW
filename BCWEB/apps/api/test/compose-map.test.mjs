@@ -67,6 +67,13 @@ describe('parseCompose', () => {
     assert.deepEqual(caddy.dependsOn, ['api']);
   });
 
+  test('a trailing comment does not hide the ports it follows', () => {
+    const inline = parseCompose('services:\n  a:\n    ports: ["9001:9001"]  # console\n');
+    assert.deepEqual(inline[0].ports, ['9001:9001']);
+    const list = parseCompose('services:\n  a:\n    ports:\n      - "9001:9001" # console\n');
+    assert.deepEqual(list[0].ports, ['9001:9001']);
+  });
+
   test('ports as an inline array and as a list', () => {
     const [, api, caddy] = parseCompose(YAML);
     assert.deepEqual(api.ports, ['3000:3000']);
@@ -85,8 +92,26 @@ describe('parsePort', () => {
     assert.equal(parsePort('127.0.0.1:5176:5176').public, false);
   });
 
-  test('a bare port publishes nothing', () => {
-    assert.equal(parsePort('5432').public, false);
+  test('a bare port is published on every interface, on a port Docker picks', () => {
+    // Only `expose:` keeps a port inside the network. `ports: ["5432"]` is Postgres on the
+    // internet at a random port; this used to say "publishes nothing".
+    assert.deepEqual(parsePort('5432'), { host: null, container: '5432', bind: '0.0.0.0', public: true });
+  });
+
+  test('a ${VAR:-default} host port does not shift the bind address', () => {
+    assert.deepEqual(parsePort('127.0.0.1:${DB_HOST_PORT:-5432}:5432'),
+      { host: '${DB_HOST_PORT:-5432}', container: '5432', bind: '127.0.0.1', public: false });
+    // A variable bind is whatever the server's .env says: not provably loopback.
+    assert.equal(parsePort('${BIND:-127.0.0.1}:3000:3000').public, true);
+  });
+
+  test('explicit every-interface binds, IPv6 loopback, and a protocol suffix', () => {
+    assert.equal(parsePort('0.0.0.0:80:80').public, true);
+    assert.equal(parsePort('[::]:80:80').public, true);
+    assert.equal(parsePort('[::1]:9000:9000').public, false);
+    assert.deepEqual(parsePort('443:443/udp'), { host: '443', container: '443/udp', bind: '0.0.0.0', public: true });
+    // Docker refuses a host name as a bind address, so `localhost` proves nothing.
+    assert.equal(parsePort('localhost:3000:3000').public, true);
   });
 });
 

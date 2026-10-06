@@ -327,11 +327,30 @@ The API exposes three probes (all exempt from the rate limiter, no request logs)
 
 ## 12. Lock it down — firewall (do this right after the first deploy)
 
-Only Caddy should face the internet. The compose file also publishes `5432` (db), `3000` (api)
-and `9000` (object storage) — on `127.0.0.1` only; still, close everything except SSH + HTTP(S):
+Only Caddy should face the internet. The compose file also publishes `5432` (db), `3000-3009`
+(api), `9000` (object storage) and Caddy's local-site `5176` — on `127.0.0.1` only, so they answer
+on the server itself (the deploy scripts' `/ready` probe, an SSH tunnel) and nowhere else. Only
+Caddy's `80` and `443` are published to the network, and CI fails on any other
+(`node BCWEB/infra/check-published-ports.mjs`, every compose file in the repo).
+
+**The bind address is the protection, not the firewall.** Docker writes its own iptables rules
+for published ports, ahead of ufw's, so `ufw deny 3000` does nothing for a container published on
+`0.0.0.0:3000`. An Alpine host or LXC (the production server is one, on Proxmox) has no ufw at all.
+Check what the running server really publishes — after every deploy, not just the first:
+```bash
+docker ps --format '{{.Names}} {{.Ports}}'
+# expected: 0.0.0.0/[::] ONLY on 80 and 443 (caddy); everything else 127.0.0.1:...
+```
+and from a machine **outside** (not the server itself), `nc -zv <server-ip> 3000 9000 9001 5176`
+must fail for every port. Still close everything except SSH + HTTP(S) at the edge — the
+hoster's/Proxmox firewall, or ufw on a Debian/Ubuntu host:
 ```bash
 ufw allow 22 && ufw allow 80 && ufw allow 443 && ufw enable
 ```
+Object storage has no console to reach; versitygw serves S3 only. To reach a loopback port from
+your own machine, use an SSH tunnel: `ssh -L 9000:127.0.0.1:9000 -p <ssh-port> <user>@<server>`.
+The production remediation of October 2026 (ports published on every interface), step by step
+and in French: [SECURITY_PORTS_FIX_FR.md](SECURITY_PORTS_FIX_FR.md).
 Postgres, Redis and the object store stay on the internal Docker network — never expose them.
 (Storage's `9000` is needed publicly because browsers use pre-signed upload URLs directly:
 put it behind the Caddy sub-domain `S3_DOMAIN` rather than opening the raw port.) The **CDN**

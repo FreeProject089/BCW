@@ -118,14 +118,15 @@ Services, `depends_on` edges, start order, and **what is published to the networ
 
 Not a fault list — the edge proxy is *supposed* to publish 80 and 443. It is the list of
 things reachable from outside the machine, which is a list somebody should be able to recite
-and usually cannot. It is pinned as `publishedPorts` below and it is three entries, over twelve
+and usually cannot. It is pinned as `publishedPorts` below and it is two entries, over twelve
 services (eleven, plus the `volume-perms` one-shot):
 
 | Service | Published | Note |
 | --- | --- | --- |
-| `caddy` | `80`, `443`, `5176` | The edge. 80 and 443 are the point of it. |
-`db` (`5432`), `api` (`3000-3009`, a **range**) and `storage` (`9000`, object storage; it has
-no console) are published bound to `127.0.0.1` only, which is why they are not on this list: the
+| `caddy` | `80`, `443` | The edge. 80 and 443 are the point of it. |
+
+`db` (`5432`), `api` (`3000-3009`, a **range**), `storage` (`9000`, object storage; it has
+no console) and Caddy's local-site `5176` are published bound to `127.0.0.1` only, which is why they are not on this list: the
 map reads the bind address, and loopback is not the network. The API and object storage (then
 MinIO, with its console on `9001`) used to be on every interface; Docker-published ports bypass `ufw` on a standard install, so they were
 reachable from outside whatever the firewall said (SECURITY_SUMMARY §9 #2). Browsers reach
@@ -138,9 +139,11 @@ storage through Caddy on `S3_DOMAIN`.
     restart. Read the map, or `docker compose port api 3000`, rather than the first port in the
     range.
 
-`5176` is the local site address; `run/DEPLOY_EN.md` §12 says the firewall must close
-everything but 22/80/443 right after the first deploy, which is the point of putting the same
-fact on a screen somebody looks at more than once.
+`5176` is the local site address, on loopback since 2026-10-06: production `docker ps` showed it,
+the API and MinIO's console on `0.0.0.0` because the server ran a compose file older than the
+fix. CI now runs `infra/check-published-ports.mjs`, which fails on any port published to the
+network other than Caddy's 80/443, with the same port parser as this map. A host firewall is
+not the answer here: Docker's published ports go around it (`run/DEPLOY_EN.md` §12).
 
 !!! note "This answers inside the container now"
     It used to 404 on every deployed instance, because nothing copies `infra/` into the API
@@ -297,7 +300,7 @@ be switched off within a month.
 | `liveSecretFallbacks` | Secret-ish `process.env` reads with a hardcoded fallback and no boot guard | **0** |
 | `dataLossMigrations` | Migrations containing `DROP TABLE`, `DROP COLUMN` or `DELETE FROM` | **3** |
 | `indexDrift` | Indexes created by a migration and absent from `schema.prisma` | **0** |
-| `publishedPorts` | Port entries reachable from outside the machine | **3** |
+| `publishedPorts` | Port entries reachable from outside the machine | **2** |
 | `workflows` | GitHub Actions workflow files the map can reach | **5** |
 | `workflowJobs` | Jobs across those workflows | **21** |
 | `workflowSecrets` | Distinct secrets those workflows need | **2** |

@@ -21,7 +21,7 @@ production. Everything is driven by **one** compose file:
 | `bot` | build `apps/bot/Dockerfile` | Discord bot (connection manager) | — |
 | `telemetry-db` | `postgres:16-alpine` | Separate Postgres for BMM telemetry | internal only |
 | `telemetry` | build `bmm/telemetry-dashboard/Dockerfile` | Telemetry ingest + dashboard (Rust + React) | via caddy |
-| `caddy` | `caddy:2-alpine` | Edge reverse proxy — HTTPS, security headers, anti-bot | `80`, `443`, `5176` |
+| `caddy` | `caddy:2-alpine` | Edge reverse proxy — HTTPS, security headers, anti-bot | `80`, `443` (+ `127.0.0.1:5176`, the local site) |
 | `pgbouncer` | `edoburu/pgbouncer` | **Opt-in** (profile `pgbouncer`) Postgres connection pooler | internal only |
 
 **Dependency order** is handled by `depends_on` + healthchecks: `db` must be healthy
@@ -102,8 +102,11 @@ service recreates (a few seconds gap on that service only). For the api you can
 
 - `.env`: real `POSTGRES_PASSWORD`, `JWT_SECRET`, S3 keys, `SITE_DOMAIN`/`SITE_URL`
   (https), `COOKIE_DOMAIN=.your-domain.com`, Stripe keys + webhook secret.
-- Ports: `5432` (db), `3000` (api) and `9000` (storage) are published on `127.0.0.1` only —
-  Caddy routes internally, and there is no storage console to publish.
+- Ports: `5432` (db), `3000` (api), `9000` (storage) and Caddy's local `5176` are published on
+  `127.0.0.1` only — Caddy routes internally, and there is no storage console to publish. Only
+  Caddy's `80`/`443` reach the network; CI fails on anything else
+  (`node BCWEB/infra/check-published-ports.mjs`). Check the running server with
+  `docker ps --format '{{.Names}} {{.Ports}}'`: no `0.0.0.0` or `[::]` except on `80` and `443`.
 - Scaling: `API_REPLICAS=3` in `.env` + enable the `pgbouncer` profile, then `up -d`
   (see DEPLOY guide §Performance) once traffic justifies it.
 - Backups: `pg_dump` for `db`, a tar of `s3-data` (see DEPLOY guide §10, `infra/backup/backup.sh`).

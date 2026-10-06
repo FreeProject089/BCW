@@ -133,7 +133,9 @@ want in development.
 path: rewriting either makes the store compute a different signature and answer
 `403 SignatureDoesNotMatch`, which reads as "wrong credentials" and is nothing of the sort.
 
-- The local `5176:5176` port mapping in `docker-compose.yml` is only needed for local
-  testing; in production traffic comes in on 80/443. You can leave it or remove it.
+- The local `127.0.0.1:5176:5176` port mapping in `docker-compose.yml` is only needed for local
+  testing; in production traffic comes in on 80/443. It is bound to loopback, so leaving it
+  costs nothing; never widen it to `5176:5176` (every interface), CI refuses that.
 - To change the local port later, edit `SITE_DOMAIN` (e.g. `http://localhost:8080`) and
-  the matching `ports:` mapping for the `caddy` service, then `docker compose up -d`.
+  the matching `ports:` mapping for the `caddy` service (keep the `127.0.0.1:` prefix), then
+  `docker compose up -d`.

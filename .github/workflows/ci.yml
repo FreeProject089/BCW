@@ -106,6 +106,16 @@ jobs:
       # server, because that address is only ever used somewhere else.
       - name: env vars documented
         run: node scripts/check-env-documented.mjs
+      # Only Caddy's 80/443 may reach the network. Production ran the API, MinIO's console and
+      # Caddy's dev port on 0.0.0.0 (2026-10-06): the API reached directly skips every header,
+      # the real-IP rewrite and the anti-bot rules, and Docker's published ports go around a
+      # host firewall. Every compose file in the repo, CRLF-safe, failing closed on what it
+      # cannot read. The selftest first: a check that stopped catching shapes fails there.
+      - name: no port published to the network but caddy 80/443
+        working-directory: .
+        run: |
+          node BCWEB/infra/check-published-ports.mjs --selftest
+          node BCWEB/infra/check-published-ports.mjs
       # The guides must describe THIS stack. check-links proves every link resolves, which a
       # guide naming a deleted service or a renamed script passes perfectly. This checks the
       # claims a reader ACTS on: every `docker compose <service>`, `npm run <script>`,

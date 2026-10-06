@@ -498,7 +498,12 @@ services:
     # Caddy listens on 5176; :80 stays published for the telemetry origin, :443 for
     # production auto-HTTPS. In production point SITE_DOMAIN at your domain and the
     # 80/443 mappings handle ACME + HTTPS (see DOMAIN_SETUP.md).
-    ports: ["5176:5176", "80:80", "443:443"]
+    # 5176 is the LOCAL site only, so loopback only: in production nothing listens behind it,
+    # and on every interface it was one more open port on the server for no reader at all
+    # (production `docker ps`, 2026-10-06). The browser, `infra/tunnel.mjs` and a local curl
+    # all dial localhost. 80 and 443 are the only ports this stack publishes to the network,
+    # and infra/check-published-ports.mjs fails CI on anything else.
+    ports: ["127.0.0.1:5176:5176", "80:80", "443:443"]
     # Wait for the API to be HEALTHY (serving), not just started — otherwise the
     # telemetry forward_auth 502-spams during API boot (connection refused).
     depends_on:

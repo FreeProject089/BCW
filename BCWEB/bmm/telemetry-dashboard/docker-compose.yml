@@ -32,8 +32,10 @@ services:
       RATE_PER_MIN: ${RATE_PER_MIN:-240}
       MAX_BATCH: ${MAX_BATCH:-1000}
       STATIC_DIR: /app/public
+    # Loopback only: the dashboard holds every BMM install's telemetry behind one ADMIN_KEY.
+    # Open http://localhost:8900 on this machine; to serve it, put a reverse proxy in front.
     ports:
-      - "8900:8900"
+      - "127.0.0.1:8900:8900"
     depends_on:
       db:
         condition: service_healthy

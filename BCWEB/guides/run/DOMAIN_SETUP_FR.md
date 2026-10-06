@@ -137,7 +137,9 @@ voulu en développement.
 chemin : le réécrire fait calculer au stockage une signature différente, et il répond
 `403 SignatureDoesNotMatch` — ce qui se lit comme « mauvais identifiants » et n'a rien à voir.
 
-- Le mapping de port local `5176:5176` dans `docker-compose.yml` ne sert qu'aux tests
-  locaux ; en production le trafic arrive sur 80/443. Vous pouvez le garder ou le retirer.
+- Le mapping de port local `127.0.0.1:5176:5176` dans `docker-compose.yml` ne sert qu'aux tests
+  locaux ; en production le trafic arrive sur 80/443. Il est lié à la boucle locale, le garder ne
+  coûte rien ; ne l'élargissez jamais en `5176:5176` (toutes les interfaces), la CI le refuse.
 - Pour changer le port local plus tard, éditez `SITE_DOMAIN` (ex. `http://localhost:8080`)
-  et le mapping `ports:` correspondant du service `caddy`, puis `docker compose up -d`.
+  et le mapping `ports:` correspondant du service `caddy` (gardez le préfixe `127.0.0.1:`), puis
+  `docker compose up -d`.
