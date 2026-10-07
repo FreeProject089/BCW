@@ -41,15 +41,15 @@ corrige d'abord ces deux lignes dans `.env`, puis `docker compose up -d caddy ap
 
 C'est le « premier déploiement après septembre 2026 » de [DEPLOY_FR.md](DEPLOY_FR.md) §9 (fin de
 section, interrupteur de CD coupé) suivi de **Quitter MinIO** (même guide) : mise à jour de `.env`
-(`node infra/check-env-spec.mjs` liste ce qui manque), copie des objets MinIO vers `storage`, puis
+(liste des variables : [UPGRADE_2026-10_FR.md](UPGRADE_2026-10_FR.md) §4), copie des objets MinIO vers `storage`, puis
 `infra/deploy.sh`. Le site est coupé pendant la copie. Points propres à ce correctif :
 
 - l'ancien conteneur `bcweb-minio-1` devient orphelin et **garde** `0.0.0.0:9000` tant qu'il tourne :
   le nouveau `storage` ne pourra pas prendre `127.0.0.1:9000` avant l'étape 3 de *Quitter MinIO*
   (`docker stop bcweb-minio-1`). Ne lance pas `--remove-orphans` avant l'étape 8 ;
 - si tu as appliqué l'option B, **retire d'abord** ses lignes de `docker-compose.override.yml` (la
-  clé `minio:` ferait échouer compose : un service sans image). Le fichier ne garde que ce que
-  DEPLOY_FR §9 y met (`extra_hosts` de Caddy).
+  clé `minio:` ferait échouer compose : un service sans image). Depuis octobre 2026 `extra_hosts` est
+  dans le compose suivi : le fichier override peut être supprimé.
 
 ## Option B (mitigation immédiate, 5 minutes, sans migration)
 
