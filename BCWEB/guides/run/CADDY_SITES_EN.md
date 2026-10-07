@@ -44,25 +44,26 @@ it. There is nothing to configure beyond the DNS record.
 
 ---
 
-## Once: let Caddy see the folder
+## Caddy sees the folder (built in since October 2026)
 
-Today compose mounts **only** the base `Caddyfile` into the container, so Caddy cannot see
-`sites.d/`, `live/` or `static/`. Two lines in the `caddy` service of
-`infra/compose/docker-compose.yml`:
+The `caddy` service in `infra/compose/docker-compose.yml` mounts the whole `infra/caddy/`
+folder, starts through `entrypoint.sh` and maps `host.docker.internal` to the host:
 
 ```yaml
   caddy:
-    image: caddy:2-alpine
-    command: ["sh", "/etc/caddy/entrypoint.sh"]      # ← add
-    # …
+    command: ["sh", "/etc/caddy/entrypoint.sh"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
-      - ../caddy:/etc/caddy:ro                         # ← replaces ../caddy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy-data:/data
-      - caddy-config:/config
+      - ../caddy:/etc/caddy:ro
 ```
 
-Keep `extra_hosts: - "host.docker.internal:host-gateway"` — the host case needs it. Then,
-once (a few seconds of downtime):
+There is nothing to edit. These lines used to be a hand edit of the tracked compose file on
+the server, which made the tree dirty, and `infra/deploy.sh` and the CD gate refuse to deploy
+over a dirty tree: the setup this guide described blocked the deploy the other guide described.
+
+An installation whose compose predates this (a caddy container started with the single-file
+mount) picks it up at the next `git pull` followed by, once (a few seconds of downtime):
 
 ```sh
 cd infra/compose
@@ -74,8 +75,8 @@ Two side benefits. A folder mount sees a file that `git pull` **replaced** (a si
 mount keeps showing the old one until the container is recreated), and the start-up script
 refuses to let one bad file take the platform down.
 
-Until this is done, `site.mjs add … --no-apply`, `build` and `diff` work, and `apply` refuses
-with these same lines.
+Until the container is recreated, `site.mjs add … --no-apply`, `build` and `diff` work, and
+`apply` refuses and says why.
 
 ---
 
@@ -101,6 +102,17 @@ tests on `*.localhost` names only.
 
 After an apply the command also checks the two things that go wrong next: whether the name
 resolves (and to what), and whether Caddy can actually reach the program behind it.
+
+### HTTPS terminated in front of this server
+
+When a hosting relay or a proxy holds the certificates and forwards plain HTTP to port 80 here
+(BetterCommunity production since October 2026), every name must be written `http://name`: a
+bare name makes Caddy chase a certificate it cannot get, for ever, and its redirect to https
+loops through the proxy. Put `TLS_TERMINATED_UPSTREAM=true` in `infra/compose/.env`:
+`site.mjs add` then writes `http://` by itself, and `apply` / `status` flag a file that does
+not. The name must also be added **on the front proxy**, with the same target as the main
+site, or it answers an error before the request ever reaches Caddy. `TRUSTED_PROXIES`
+([ENV_EN.md](ENV_EN.md)) carries the real visitor IP through to the API.
 
 ### "It must use ports 80 and 443"
 
@@ -259,8 +271,9 @@ you never added.
 yes` line: the site's trailing-slash rule and the app fight over `/status/`. Start again from
 `templates/path.caddy`.
 
-**`apply` says the container does not see infra/caddy/** — the compose change in
-[Once](#once-let-caddy-see-the-folder) is not in place (or the container was not recreated).
+**`apply` says the container does not see infra/caddy/** — the caddy container still runs with the
+old mount: see [Caddy sees the folder](#caddy-sees-the-folder-built-in-since-october-2026)
+(`git pull`, then `docker compose up -d caddy`).
 
 **Git Bash on Windows turns `--path /status` into `C:/Program Files/Git/status`** — write
 `--path status`; the CLI adds the slash.

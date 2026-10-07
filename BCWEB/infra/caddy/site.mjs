@@ -98,6 +98,9 @@ const RE = {
 const RESERVED_PATHS = ['api', 'hosting', 'og', 'assets', 'oauth2', '.well-known', 'sitemap.xml', 'robots.txt', 'repos.json', 'catalog.json'];
 // Ports that are Caddy itself on this machine: proxying to them loops back into Caddy.
 const CADDY_PORTS = [80, 443, 2019];
+// Names that reach this machine or Caddy itself from inside the caddy container: on these, a
+// Caddy port loops back into Caddy. Any other name is another container, with its own ports.
+const SELF_NAMES = ['host.docker.internal', 'localhost', '127.0.0.1', 'caddy', 'bcweb-caddy-1'];
 
 export function checkDomain(v) {
     const d = String(v || '').trim().toLowerCase().replace(/\.$/, '');
@@ -111,9 +114,13 @@ export function checkName(v) {
     if (!RE.name.test(n)) die(`"${v}" is not a usable name (lowercase letters, digits, hyphens; up to 63)`);
     return n;
 }
-export function checkPort(v) {
+function checkPortRange(v) {
     const p = Number(v);
     if (!Number.isInteger(p) || p < 1 || p > 65535) die(`"${v}" is not a port (1-65535)`);
+    return p;
+}
+export function checkPort(v) {
+    const p = checkPortRange(v);
     if (CADDY_PORTS.includes(p)) die(`port ${p} is Caddy's own on this machine — the program cannot be listening there, and proxying to it would loop back into Caddy. Move the program to another port (e.g. 8081).`);
     return p;
 }
@@ -122,7 +129,13 @@ export function checkUpstream(v) {
     const m = RE.upstream.exec(s);
     // nosemgrep: html-in-template-string -- CLI error message, not HTML
     if (!m) die(`"${v}" is not <name>:<port> (e.g. myapp:3000 — the container's name and the port it listens on INSIDE the container)`);
-    checkPort(m[2]);
+    // A container's OWN port 80 is not Caddy's: `bmm-repo-nginx:80` is an nginx listening inside
+    // its own network namespace, the commonest upstream there is. Refusing every 80/443 here made
+    // the `service` case unusable for exactly the containers it exists for (production, Oct
+    // 2026). The loop the rule guards against only happens when the name IS this machine or
+    // Caddy itself, so the Caddy ports are refused for those names alone.
+    if (SELF_NAMES.includes(m[1])) checkPort(m[2]);
+    else checkPortRange(m[2]);
     return s;
 }
 export function checkPath(v) {
@@ -328,13 +341,13 @@ function reload(configInContainer) {
 }
 
 const MOUNT_HELP = `The caddy container does not see infra/caddy/ as a folder yet, so a generated file cannot reach it.
-Add these two lines to the caddy service in infra/compose/docker-compose.yml (once):
+The compose file in the repository mounts the folder (since October 2026); the running container
+was created from an older one. Recreate it, once (a few seconds of downtime):
 
-    command: ["sh", "/etc/caddy/entrypoint.sh"]
-    volumes:
-      - ../caddy:/etc/caddy:ro          # replaces ../caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+    git pull            # if docker-compose.yml does not say  - ../caddy:/etc/caddy:ro  yet
+    docker compose up -d caddy
 
-then: docker compose up -d caddy   (a few seconds of downtime, once) — guides/run/CADDY_SITES_EN.md`;
+Do not edit the tracked compose file by hand: deploy.sh refuses a dirty tree — guides/run/CADDY_SITES_EN.md`;
 
 // ── Diff ─────────────────────────────────────────────────────────────────────────────────
 function showDiff(oldText, newText, labels) {
@@ -373,9 +386,58 @@ function backups(t = T) {
     return existsSync(t.backups) ? readdirSync(t.backups).filter((f) => f.startsWith('Caddyfile.')).sort() : [];
 }
 
+// ── HTTPS terminated in front of this Caddy ──────────────────────────────────────────────
+// When a relay or proxy in front of the server holds the certificates and forwards plain HTTP
+// to :80 (production since October 2026), every site address here must be `http://name`. A
+// bare name makes Caddy try ACME for a certificate it can never get (the challenge reaches the
+// front proxy, not Caddy) and retry for ever, and it redirects :80 to https, which the front
+// proxy sends back to :80. The setting lives in infra/compose/.env, next to SITE_DOMAIN.
+
+/** A value from the environment, else from infra/compose/.env (where the operator sets it). */
+function setting(key, env = process.env, file = join(COMPOSE_DIR, '.env')) {
+    if (env[key] !== undefined && env[key] !== '') return env[key];
+    if (!existsSync(file)) return '';
+    for (const line of readFileSync(file, 'utf8').split(/\r?\n/)) {
+        const m = /^\s*([A-Z0-9_]+)\s*=\s*(.*)$/.exec(line);
+        if (m && m[1] === key) return m[2].trim().replace(/^(['"])(.*)\1$/, '$2');
+    }
+    return '';
+}
+export const tlsUpstream = (env, file) => /^(1|true|yes|on)$/i.test(setting('TLS_TERMINATED_UPSTREAM', env, file));
+
+/** The site addresses of a sites.d file that are NOT `http://…` (Caddy would manage a
+ *  certificate for them). Top-level block openers only; comments and snippets ignored. */
+export function bareAddresses(text) {
+    const out = [];
+    let depth = 0;
+    for (const raw of text.replace(/\r\n/g, '\n').split('\n')) {
+        const l = raw.replace(/(^|\s)#.*$/, '').trim();
+        if (!l) continue;
+        if (depth === 0 && l.endsWith('{') && !l.startsWith('(')) {
+            for (const a of l.slice(0, -1).split(/[\s,]+/).filter(Boolean)) if (!/^http:\/\//i.test(a)) out.push(a);
+        }
+        for (const ch of l) { if (ch === '{') depth++; else if (ch === '}') depth = Math.max(0, depth - 1); }
+    }
+    return out;
+}
+
+/** Warn about every sites.d address Caddy would try to get a certificate for. */
+function warnBareAddresses(t = T) {
+    if (!tlsUpstream()) return 0;
+    let n = 0;
+    for (const f of dropins(t, 'site')) {
+        for (const a of bareAddresses(readFileSync(join(t.dirs.site, f), 'utf8'))) {
+            warn(`sites.d/${f}: "${a}" has no http:// — TLS_TERMINATED_UPSTREAM is on, so Caddy would try (and fail, for ever) to get a certificate the front proxy already holds. Write it http://${a.replace(/^https:\/\//i, '')}`);
+            n++;
+        }
+    }
+    return n;
+}
+
 /** Validate → diff → confirm → back up → swap → reload; restore the backup if the reload
  *  fails. `text` defaults to a fresh build; `rollback` and `apply --from` pass a file. */
 async function apply({ text, yes = false, label = 'generated' } = {}) {
+    if (text === undefined) warnBareAddresses();
     text ??= build();
     mkdirSync(T.liveDir, { recursive: true });
     const current = existsSync(T.live) ? readFileSync(T.live, 'utf8') : null;
@@ -461,7 +523,9 @@ async function cmdAdd(kind, o) {
     if (kind !== 'path') {
         domain = await need('domain', 'Domain or sub-domain (e.g. shop.example.com):', checkDomain);
         v.DOMAIN = domain;
-        v.ADDRESS = o.http ? `http://${domain}` : domain;
+        const upstreamTls = !o.http && tlsUpstream();
+        v.ADDRESS = o.http || upstreamTls ? `http://${domain}` : domain;
+        if (upstreamTls) say(dim(`TLS_TERMINATED_UPSTREAM is on (infra/compose/.env): writing http://${domain} — the proxy in front holds the certificate. Add ${domain} there too.`));
     }
     if (kind === 'service') upstream = v.UPSTREAM = await need('to', 'Container and port inside it (e.g. myapp:3000):', checkUpstream);
     if (kind === 'host') { v.PORT = await need('port', 'Port the program listens on, on this machine (e.g. 8081):', checkPort); upstream = `host.docker.internal:${v.PORT}`; }
@@ -611,6 +675,7 @@ async function cmdRollback(which, o) {
 
 function cmdStatus() {
     const hash = sourcesHash(T);
+    if (tlsUpstream()) say(`${green('●')} TLS_TERMINATED_UPSTREAM: extra sites must be http:// — ${warnBareAddresses() ? 'see the warnings above' : 'they all are'}`);
     if (!existsSync(T.live)) say(`${yellow('●')} no live/Caddyfile — Caddy runs the base Caddyfile (+ drop-ins through its imports). First apply: site.mjs apply`);
     else {
         const m = /sources-sha256: (\w+)/.exec(readFileSync(T.live, 'utf8'));
@@ -637,11 +702,16 @@ function cmdSelftest() {
 
     // 1. The input checks are the only thing between a typed value and a Caddyfile directive.
     for (const bad of ['a.com {', 'a.com\nb', 'a.com b.com', 'http://a.com', '*.a.com', 'a', '1.2.3.4', 'a..com', '-a.com', 'a.com"', 'a.com}']) check(`domain refuses ${JSON.stringify(bad)}`, refuses(checkDomain, bad));
-    for (const bad of ['app:3000 {', 'app', 'app:0', 'app:70000', 'app:443', 'app:80', 'a b:1', 'app:3000\nx']) check(`upstream refuses ${JSON.stringify(bad)}`, refuses(checkUpstream, bad));
+    for (const bad of ['app:3000 {', 'app', 'app:0', 'app:70000', 'host.docker.internal:443', 'host.docker.internal:80', 'caddy:80', 'localhost:2019', 'a b:1', 'app:3000\nx']) check(`upstream refuses ${JSON.stringify(bad)}`, refuses(checkUpstream, bad));
+    check('upstream accepts a container\'s own port 80 (bmm-repo-nginx:80)', !refuses(checkUpstream, 'bmm-repo-nginx:80'));
     for (const bad of ['/api', '/api/x', '/hosting', '/a b', '/a{', '/.well-known', '/', '/a\nb']) check(`path refuses ${JSON.stringify(bad)}`, refuses(checkPath, bad));
     for (const bad of ['javascript:alert(1)', 'https://a.com/x', 'https://a.com?q', 'https://u:p@a.com', 'ftp://a.com']) check(`redirect target refuses ${JSON.stringify(bad)}`, refuses(checkTarget, bad));
     check('domain accepts shop.example.com', checkDomain('Shop.Example.com.') === 'shop.example.com');
     check('path normalises /status/', checkPath('status/') === '/status');
+    // HTTPS terminated in front: a bare address is the one that loops ACME; http:// is fine.
+    check('bareAddresses finds a bare site address', JSON.stringify(bareAddresses('# a.com {\nvault.example.com {\n\treverse_proxy vault:8787 {\n\t\theader_up X 1\n\t}\n}\n')) === '["vault.example.com"]');
+    check('bareAddresses accepts http:// addresses and skips snippets', bareAddresses('(snip) {\n\tencode gzip\n}\nhttp://a.example.com, http://b.example.com {\n\timport snip\n}\n').length === 0);
+    check('TLS_TERMINATED_UPSTREAM read from the environment', tlsUpstream({ TLS_TERMINATED_UPSTREAM: 'true' }, '/nonexistent') && !tlsUpstream({}, '/nonexistent'));
 
     // 2. Throw-away copies of this folder — one per scenario — then ONE caddy container that
     //    validates and adapts all of them (a container start is the slow part, not Caddy).
@@ -730,7 +800,8 @@ const HELP = `${bold('node infra/caddy/site.mjs')} — other sites and apps behi
 
   ${bold('add')} <kind> [flags]   write a drop-in from a template, validate everything, apply
 ${Object.entries(KINDS).map(([k, v]) => `      ${k.padEnd(9)} ${v.help}`).join('\n')}
-      --name N     file name (default from the domain)   --http   plain HTTP (local tests)
+      --name N     file name (default from the domain)   --http   plain HTTP (local tests;
+                   automatic when infra/compose/.env has TLS_TERMINATED_UPSTREAM=true)
       --force      replace an existing file              --no-apply  write + validate only
       --dry-run    print the file, write nothing
   ${bold('list')}                  every drop-in, and whether it is live

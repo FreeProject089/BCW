@@ -42,27 +42,40 @@ ignorés par git (`infra/caddy/.gitignore`) : un `git pull` n'y touche jamais.
 80 et 443, obtient un certificat Let's Encrypt pour chaque nom au premier chargement de la
 config, et le renouvelle. Il n'y a rien à configurer en dehors de l'enregistrement DNS.
 
+**Sauf si le HTTPS se termine devant ce serveur** (un relais d'hébergement ou un proxy détient
+les certificats et transmet du HTTP au port 80 d'ici — la production BetterCommunity depuis
+octobre 2026). Alors chaque nom doit être écrit `http://nom` : un nom nu fait chercher à Caddy
+un certificat qu'il ne peut pas obtenir, sans fin, et sa redirection vers https boucle à
+travers le proxy. Mets `TLS_TERMINATED_UPSTREAM=true` dans `infra/compose/.env` : `site.mjs add`
+écrit alors `http://` tout seul, et `apply` / `status` signalent un fichier qui ne le fait pas.
+Le nom doit en plus être ajouté **chez le proxy de devant**, avec la même cible que le site
+principal ; sans ça il répond une erreur avant même d'atteindre Caddy. `TRUSTED_PROXIES`
+([ENV_FR.md](ENV_FR.md)) fait arriver l'IP du vrai visiteur jusqu'à l'API.
+
 ---
 
-## Une seule fois : laisser Caddy voir le dossier
+## Caddy voit le dossier (par défaut depuis octobre 2026)
 
-Aujourd'hui compose ne monte **que** le `Caddyfile` de base dans le conteneur : Caddy ne voit
-ni `sites.d/`, ni `live/`, ni `static/`. Deux lignes dans le service `caddy` de
-`infra/compose/docker-compose.yml` :
+Le service `caddy` de `infra/compose/docker-compose.yml` monte tout le dossier
+`infra/caddy/`, démarre par `entrypoint.sh` et fait pointer `host.docker.internal` sur l'hôte :
 
 ```yaml
   caddy:
-    image: caddy:2-alpine
-    command: ["sh", "/etc/caddy/entrypoint.sh"]      # ← à ajouter
-    # …
+    command: ["sh", "/etc/caddy/entrypoint.sh"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
-      - ../caddy:/etc/caddy:ro                         # ← remplace ../caddy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy-data:/data
-      - caddy-config:/config
+      - ../caddy:/etc/caddy:ro
 ```
 
-Gardez `extra_hosts: - "host.docker.internal:host-gateway"` — le cas « hôte » en a besoin.
-Puis, une fois (quelques secondes de coupure) :
+Rien à modifier. Ces lignes étaient avant une modification à la main du fichier compose suivi
+par git, sur le serveur : l'arbre devenait « modifié », et `infra/deploy.sh` comme la porte
+du CD refusent de déployer sur un arbre modifié. La mise en place de ce guide bloquait le
+déploiement de l'autre.
+
+Une installation dont le compose est plus ancien (conteneur caddy lancé avec le montage du
+seul fichier) le prend au prochain `git pull` suivi, une fois (quelques secondes de coupure),
+de :
 
 ```sh
 cd infra/compose
@@ -75,8 +88,8 @@ Deux bénéfices au passage. Un montage de dossier voit un fichier que `git pull
 n'est pas recréé), et le script de démarrage empêche un seul mauvais fichier de faire tomber
 la plateforme.
 
-Tant que ce n'est pas fait, `site.mjs add … --no-apply`, `build` et `diff` fonctionnent, et
-`apply` refuse en affichant ces mêmes lignes.
+Tant que le conteneur n'est pas recréé, `site.mjs add … --no-apply`, `build` et `diff`
+fonctionnent, et `apply` refuse en disant pourquoi.
 
 ---
 
@@ -274,9 +287,9 @@ ici pour un nom que vous n'avez jamais ajouté.
 `paths.d/` écrit à la main sans la ligne `vars … bc_mount yes` : la règle du slash final du
 site et l'application se disputent `/status/`. Repartez de `templates/path.caddy`.
 
-**`apply` dit que le conteneur ne voit pas infra/caddy/** — le changement compose de
-[Une seule fois](#une-seule-fois--laisser-caddy-voir-le-dossier) n'est pas en place (ou le
-conteneur n'a pas été recréé).
+**`apply` dit que le conteneur ne voit pas infra/caddy/** — le conteneur caddy tourne encore avec
+l'ancien montage : voir [Caddy voit le dossier](#caddy-voit-le-dossier-par-défaut-depuis-octobre-2026)
+(`git pull`, puis `docker compose up -d caddy`).
 
 **Git Bash sous Windows transforme `--path /status` en `C:/Program Files/Git/status`** —
 écrivez `--path status` ; la CLI ajoute le slash.

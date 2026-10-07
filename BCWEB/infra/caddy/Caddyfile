@@ -18,6 +18,27 @@
 	on_demand_tls {
 		ask http://api:3000/domains/ask?key={$DOMAIN_ASK_KEY:}
 	}
+
+	# HTTPS terminated IN FRONT of this Caddy (a hosting relay, a router, another proxy that
+	# holds the certificates and forwards plain HTTP to port 80 here). Production runs that way
+	# since October 2026. Two things follow, and only the second needs this block:
+	#
+	#   1. Every site address must be written `http://name` (SITE_DOMAIN, TELEMETRY_DOMAIN,
+	#      S3_DOMAIN in .env, and every sites.d/ file — `TLS_TERMINATED_UPSTREAM=true` makes
+	#      infra/caddy/site.mjs write them that way). A bare `name` makes Caddy try to get a
+	#      certificate the front proxy already has, fail, and retry for ever; it also redirects
+	#      :80 to https, which the front proxy then forwards back to :80 — a loop.
+	#   2. Every request arrives from the front proxy's address. Without this, the API sees ONE
+	#      client: every rate limit is shared by all visitors, and an IP ban bans everybody.
+	#      TRUSTED_PROXIES lists the front proxy's address(es) as seen from here (CIDR or IP,
+	#      space-separated). Caddy then reads the real client from the X-Forwarded-For it sent
+	#      (`strict`: the right-most address that is NOT a trusted proxy, which a client cannot
+	#      forge) and passes it on as {client_ip} — see `header_up X-Forwarded-For` below.
+	#      Empty (the default) = trust nobody, exactly the behaviour before this block.
+	servers {
+		trusted_proxies static {$TRUSTED_PROXIES:}
+		trusted_proxies_strict
+	}
 }
 
 # Reverse proxy. SITE_DOMAIN drives the scheme:
@@ -64,6 +85,11 @@
 		# A container that refused one dial is set aside briefly rather than re-tried by
 		# every request in the queue.
 		fail_duration 10s
+		# ONE address: the client as Caddy established it (the peer, or with TRUSTED_PROXIES
+		# the real client behind the front proxy). apps/api/src/lib/client-ip.mjs reads the
+		# LAST hop; Caddy's default would append the front proxy after the client's own list,
+		# and the last hop would be the proxy again. Unchanged when TRUSTED_PROXIES is empty.
+		header_up X-Forwarded-For {client_ip}
 	}
 }
 
@@ -382,7 +408,11 @@
 	# /issues is BMM's live error reporting (same public key, its own rate bucket).
 	@ingest path /batch /batch/ /batch/* /capture /capture/* /delete-request /data-request /api/packet-status /issues
 	handle @ingest {
-		reverse_proxy telemetry:8900
+		# One address, as on the API (see api_upstream): the telemetry server reads the FIRST
+		# X-Forwarded-For hop, which with TRUSTED_PROXIES set would otherwise be the client's own.
+		reverse_proxy telemetry:8900 {
+			header_up X-Forwarded-For {client_ip}
+		}
 	}
 
 	# The DASHBOARD (SPA + /api/stats + assets): gated behind a BCWEB login + the
@@ -401,8 +431,11 @@
 		# is a trade, not an oversight.
 		forward_auth api:3000 {
 			uri /telemetry/authorize
+			header_up X-Forwarded-For {client_ip}
 		}
-		reverse_proxy telemetry:8900
+		reverse_proxy telemetry:8900 {
+			header_up X-Forwarded-For {client_ip}
+		}
 	}
 }
 

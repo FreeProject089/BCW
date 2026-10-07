@@ -288,11 +288,11 @@ lancer le workflow avec *dry run* coché (la porte vérifie quand même le sha e
 
 **Le premier déploiement après septembre 2026** est une migration et se fait à la main,
 interrupteur en place : déplacer les modifications locales du serveur (le bloc du site
-`bettervault` dans `caddy/sites.d/`, `extra_hosts` dans le fichier override) puis
+`bettervault` dans `caddy/sites.d/` ; `extra_hosts` est dans le compose suivi depuis octobre 2026) puis
 `git checkout` des deux fichiers suivis ; mettre `.env` à jour (`BOT_SHARED_SECRET`, un
 `S3_SECRET_KEY` d'au moins 24 caractères, `S3_CORS_ALLOW_ORIGIN` à la place de
-`MINIO_API_CORS_ALLOW_ORIGIN`, `DOMAIN_ASK_KEY` ; `node infra/check-env-spec.mjs` liste ce qui
-manque) ; suivre *Quitter MinIO* pour le stockage ; puis `infra/deploy.sh`. Ne retirer
+`MINIO_API_CORS_ALLOW_ORIGIN`, `DOMAIN_ASK_KEY`, `LINK_LOOKUP_SECRET` différent de `JWT_SECRET`, un `SITE_URL` en `https://` ;
+`node infra/check-env-spec.mjs` vérifie la spec de l'assistant, PAS ton `.env`) ; suivre *Quitter MinIO* pour le stockage ; puis `infra/deploy.sh`. Ne retirer
 l'interrupteur qu'une fois ce déploiement vert.
 
 ## 10. Sauvegardes
@@ -489,7 +489,9 @@ quelque chose rate, l’ancienne stack a toujours toutes ses données.
 
 Tout ce qui suit se lance sur le serveur, dans `infra/compose/`, avec le projet compose `bcweb`
 (volumes `bcweb_*`, réseau `bcweb_default`). L’image MinIO doit encore être sur cette machine —
-elle y est si MinIO tournait ici : `docker image inspect minio/minio:RELEASE.2025-09-07T16-13-09Z`.
+elle y est si MinIO tournait ici. Prends l'image que l'ancien conteneur fait vraiment tourner, pas
+une étiquette d'un guide (un compose d'avant le 2026-09-24 lançait `minio/minio:latest`) :
+`docker inspect -f '{{.Config.Image}}' bcweb-minio-1`.
 
 1. **Sauvegarde d’abord, avec l’ANCIEN code** (le nouveau `backup.sh` archive `s3-data`, plus
    `minio-data`), ou à la main :
@@ -505,13 +507,16 @@ elle y est si MinIO tournait ici : `docker image inspect minio/minio:RELEASE.202
    ```
 3. **Mets MinIO de côté.** Son service compose n’existe plus : son conteneur est orphelin et
    tient le port 9000. Arrête-le et relance la même image en conteneur temporaire, sans port
-   publié, sur le réseau de la stack :
+   publié, sur le réseau de la stack (si cette mise à jour a changé `S3_ACCESS_KEY` /
+   `S3_SECRET_KEY`, MinIO attend toujours l'ANCIENNE paire : prends `S3K`/`S3S` dans ta copie
+   de `.env`, et donne la nouvelle paire au remote `NEW` de l'étape 5) :
    ```bash
+   MINIO_IMG="$(docker inspect -f '{{.Config.Image}}' bcweb-minio-1)"
    docker stop bcweb-minio-1
    S3K="$(grep '^S3_ACCESS_KEY=' .env | cut -d= -f2-)"; S3S="$(grep '^S3_SECRET_KEY=' .env | cut -d= -f2-)"
    docker run -d --name bcweb-minio-old --network bcweb_default \
      -v bcweb_minio-data:/data -e MINIO_ROOT_USER="$S3K" -e MINIO_ROOT_PASSWORD="$S3S" \
-     minio/minio:RELEASE.2025-09-07T16-13-09Z server /data
+     "$MINIO_IMG" server /data
    ```
 4. **Démarre le nouveau stockage** (volume-perms passe d’abord et prépare le volume `s3-data` neuf) :
    ```bash

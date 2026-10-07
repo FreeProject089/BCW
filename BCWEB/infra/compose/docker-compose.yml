@@ -533,8 +533,29 @@ services:
       # Extra origins the browser may fetch from (space-separated), for a live B.MD block or a
       # project's live number on another host. Empty = the site, storage, and the fixed list.
       CSP_CONNECT_SRC_EXTRA: ${CSP_CONNECT_SRC_EXTRA:-}
+      # HTTPS terminated by a proxy in front of this one: its address(es), so the real client
+      # IP reaches the API instead of the proxy's (Caddyfile, global `servers` block). Empty =
+      # trust nobody.
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
+    # The other sites on this server (infra/caddy/sites.d/, paths.d/, guides/run/CADDY_SITES_EN.md)
+    # need these three, and they used to be a hand edit of THIS file on the server. A hand edit
+    # of a tracked file is exactly what infra/deploy.sh and deploy-gate.sh refuse to deploy over
+    # (dirty tree), so the documented setup made the documented deploy impossible. Production
+    # was running with this edit (and a site block pasted into the Caddyfile) on 2026-10-07.
+    #
+    # - The whole folder, not the one file: Caddy then sees sites.d/, paths.d/, static/ and the
+    #   generated live/Caddyfile, and a file that `git pull` REPLACED (a single-file bind mount
+    #   keeps showing the old inode until the container is recreated).
+    # - entrypoint.sh starts Caddy on the first config that validates (live, then base + drop-ins,
+    #   then BetterCommunity alone), so one bad drop-in can no longer take every site down.
+    # - host.docker.internal is the host machine, for the `host` case (a program listening on a
+    #   port of the server itself). Built in on Docker Desktop, needs this mapping on Linux.
+    #   Harmless when no site uses it.
+    command: ["sh", "/etc/caddy/entrypoint.sh"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
-      - ../caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ../caddy:/etc/caddy:ro
       - caddy-data:/data
       - caddy-config:/config
 
