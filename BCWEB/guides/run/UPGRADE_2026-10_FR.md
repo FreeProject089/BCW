@@ -96,7 +96,7 @@ created at … ». **Sinon** (fichier de 0 octet, erreur) : ne continue pas.
 Puis, **depuis ton PC** (PowerShell ou terminal) :
 
 ```sh
-scp -P 2222 freeproject@192.168.1.56:backups/bcweb-db-2026-10-07.dump .
+scp -P 2222 freeproject@45.145.164.20:backups/bcweb-db-2026-10-07.dump .
 ```
 
 La copie de `.env` contient tous les secrets : garde-la sur le serveur (`chmod 600`), ne
