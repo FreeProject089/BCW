@@ -469,7 +469,7 @@ le nouveau.
 
 **Vérifier :** `docker ps --format '{{.Names}}\t{{.Ports}}' | grep filebrowser` →
 `127.0.0.1:8082->80/tcp`. Pour l'utiliser depuis ton PC :
-`ssh -p 2222 -L 8082:127.0.0.1:8082 freeproject@192.168.1.56` puis `http://localhost:8082`.
+`ssh -p 2222 -L 8082:127.0.0.1:8082 freeproject@45.145.164.20` puis `http://localhost:8082`.
 Ensuite `docker rm bmm-repo-filebrowser-old`.
 **Retour arrière :** `docker rm -f bmm-repo-filebrowser && docker rename bmm-repo-filebrowser-old bmm-repo-filebrowser && docker start bmm-repo-filebrowser`.
 
